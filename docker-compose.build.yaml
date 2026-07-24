@@ -1,0 +1,12 @@
+
+services:
+  api:
+    image: ${DOCKER_USER}/api
+    build:
+      context: ./api
+      target: production
+  front:
+    image: ${DOCKER_USER}/front
+    build:
+      context: ./front
+      target: production

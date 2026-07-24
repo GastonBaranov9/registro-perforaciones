@@ -1,0 +1,47 @@
+<ion-content>
+  
+  <ion-toolbar>
+  <ion-buttons slot="end" color="primary">
+  <ion-button (click)="irAIntervaloLit()" color="primary" fill="solid">Crear Intervalo Litológico</ion-button>
+ </ion-buttons>
+  <ion-buttons slot="start" color="primary">
+    <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
+     </ion-buttons>
+</ion-toolbar>
+
+
+  @for (intervaloLit of this.intervalosLitologicos(); track intervaloLit.id_intervalo_litologico) {
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title
+        >Intervalo Litológico: {{ intervaloLit.id_intervalo_litologico }}</ion-card-title
+      >
+    </ion-card-header>
+
+    <ion-card-content>
+      <ion-list>
+        <ion-item>
+          <ion-label>Desde: </ion-label>
+          <ion-label>{{ intervaloLit.desde_m }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Hasta: </ion-label>
+          <ion-label>{{ intervaloLit.hasta_m }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Material: </ion-label>
+          <ion-label>{{ intervaloLit.material }}</ion-label>
+        </ion-item>
+      </ion-list>
+      @if(!this.id_pozo){
+      <ion-content>Pozo No Encontrado</ion-content>
+      }@else{
+      <ion-button (click)="irAEditar(this.id_pozo, intervaloLit)">Editar</ion-button>
+      <ion-button color="danger" (click)="borrarIntervaloLit(intervaloLit)"> Borrar </ion-button>
+      }
+    </ion-card-content>
+  </ion-card>
+  }
+</ion-content>

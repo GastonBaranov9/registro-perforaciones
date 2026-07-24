@@ -1,0 +1,46 @@
+<ion-content>
+
+  <ion-toolbar>
+  <ion-buttons slot="end" color="primary">
+  <ion-button (click)="irACrear()" color="primary" fill="solid"> Crear Intervalo Diametro </ion-button>
+ </ion-buttons>
+  <ion-buttons slot="start" color="primary">
+    <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
+     </ion-buttons>
+</ion-toolbar>
+
+  @for (intervaloDiam of this.intervalosDiametros(); track
+  intervaloDiam.id_intervalo_diametro_perforacion) {
+
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>
+        Intervalo Diametro: {{ intervaloDiam.id_intervalo_diametro_perforacion }}
+      </ion-card-title>
+    </ion-card-header>
+
+    <ion-card-content>
+      <ion-list>
+        <ion-item>
+          <ion-label>Desde (m)</ion-label>
+          <ion-label>{{ intervaloDiam.desde_m }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Hasta (m)</ion-label>
+          <ion-label>{{ intervaloDiam.hasta_m }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Diámetro (mm)</ion-label>
+          <ion-label>{{ intervaloDiam.diametro_pulg }}</ion-label>
+        </ion-item>
+      </ion-list>
+
+      <ion-button (click)="irAEditar(intervaloDiam)"> Editar </ion-button>
+
+      <ion-button color="danger" (click)="borrarIntervaloDiam(intervaloDiam)"> Borrar </ion-button>
+    </ion-card-content>
+  </ion-card>
+  }
+</ion-content>

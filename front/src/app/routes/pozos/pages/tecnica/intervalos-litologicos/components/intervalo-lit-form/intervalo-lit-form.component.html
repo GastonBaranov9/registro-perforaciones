@@ -1,0 +1,37 @@
+<form #intervaloLitForm="ngForm" (ngSubmit)="handleIntervaloLit()">
+  <ion-list>
+    <ion-item>
+      <ion-label position="stacked">Desde: </ion-label>
+      <ion-input
+        type="number"
+        name="desde_m"
+        [(ngModel)]="this.intervaloLitologico().desde_m"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Hasta: </ion-label>
+      <ion-input
+        type="number"
+        name="hasta_m"
+        [(ngModel)]="this.intervaloLitologico().hasta_m"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Material: </ion-label>
+      <ion-input
+        type="text"
+        name="material"
+        [(ngModel)]="this.intervaloLitologico().material"
+        required
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+
+  <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid">
+    GUARDAR INTERVALO LITOLOGICO
+  </ion-button>
+</form>

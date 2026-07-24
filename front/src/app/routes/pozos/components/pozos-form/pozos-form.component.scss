@@ -1,0 +1,37 @@
+ion-img{
+    display: block;
+  margin: 0 auto;   
+  width: 80%;
+  max-width: 400px;
+  height: auto;
+  border-radius: 10px;
+  object-fit: contain;
+}
+ion-label {
+  font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif !important;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ion-color-medium);
+  margin-bottom: 4px;
+}
+
+ion-list {
+  background: transparent;
+}
+ion-item {
+  --inner-padding-end: 12px;
+  --inner-padding-start: 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+ion-toggle {
+  transform: scale(0.95);
+}
+ion-button[type='submit'] {
+  margin-top: 32px;
+  height: 52px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+

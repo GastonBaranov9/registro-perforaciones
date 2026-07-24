@@ -1,0 +1,41 @@
+
+<ion-content class="ion-padding">
+
+  <ion-toolbar>
+  <ion-buttons slot="start" color="primary">
+     <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
+     </ion-buttons>
+</ion-toolbar>
+ 
+  <ion-card>
+    <ion-card-content>
+      <h2>Editar nivel de aporte</h2>
+
+      @if (this.nivelResource.hasValue()) {
+      <app-aportes-form
+        [nivelAporte]="this.nivelResource.value()!"
+        (saved)="this.handleEdit($event)" 
+      />
+      } @else if (this.nivelResource.isLoading()) {
+      <ion-spinner></ion-spinner>
+      } @else {
+      <p>No se encontró el nivel de aporte</p>
+      }
+
+      <ion-button
+        fill="outline"
+        expand="block"
+        (click)="this.nivelResource.reload()"
+        [disabled]="this.disabled()"
+      >
+        RECARGAR
+      </ion-button>
+
+      @if (this.errorMessage()) {
+      <div class="error-message">
+        {{ this.errorMessage() }}
+      </div>
+      }
+    </ion-card-content>
+  </ion-card>
+</ion-content>

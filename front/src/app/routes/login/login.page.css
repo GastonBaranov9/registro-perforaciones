@@ -1,0 +1,128 @@
+ion-content.hero-welcome::part(scroll) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+
+@media (max-width: 768px) {
+  ion-content.hero-welcome::part(scroll) {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    min-height: auto;        
+    padding: 1.5rem 1.5rem 0.75rem;
+  }
+
+  .hero-card {
+    margin-top: 2rem;       
+    margin-bottom: 2rem;     
+  }
+}
+
+.hero-card {
+  max-width: 420px;
+  width: 100%;
+  padding: 2.3rem 2rem;
+  border-radius: 28px;
+
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(244, 248, 255, 0.95));
+  backdrop-filter: blur(14px) saturate(130%);
+
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+
+  position: relative;
+  overflow: hidden;
+  animation: heroFadeUp 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Borde suave en gradiente */
+.hero-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(227, 36, 43, 0.35), rgba(0, 87, 216, 0.35));
+  opacity: 0.35;
+  z-index: -1;
+}
+
+/* Titulos */
+.hero-subtitle {
+  font-size: 0.9rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  margin-bottom: 0.8rem;
+  color: #111;
+  text-align: center;
+}
+
+.hero-title {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+  text-align: center;
+  color: #c60505;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 1);
+}
+
+.hero-tagline {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.05rem;
+  opacity: 0.9;
+  color: #273043;
+}
+
+/* Inputs */
+.form-field {
+  margin-bottom: 1.3rem;
+}
+
+/* BOTÓN ENTRAR (el problema actual) */
+.login-button {
+  margin-top: 1.2rem;
+  padding: 0.9rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+
+  /* rojo marca */
+  --background: linear-gradient(90deg, #e3242b, #d01e24);
+  --background-hover: linear-gradient(90deg, #cc1c23, #b8181f);
+
+  color: white;
+
+  border-radius: 12px;
+
+  /* sombra linda de botón */
+  box-shadow: 0 6px 16px rgba(227, 36, 43, 0.35);
+
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.login-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(227, 36, 43, 0.45);
+}
+
+/* Animación */
+@keyframes heroFadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.97);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

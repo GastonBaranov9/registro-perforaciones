@@ -1,0 +1,38 @@
+.contenedor-pozos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+h5 {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: #1b2b5c;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  position: relative;
+  margin-bottom: 1rem;
+  padding-bottom: 0.3rem;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 60%;
+    height: 3px;
+    background: linear-gradient(90deg, #e60000, #1b2b5c);
+    transform: translateX(-50%);
+    border-radius: 2px;
+  }
+}
+
+.intro h5 {
+  color: #0701ab;
+  text-align: center;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+
+  text-shadow: 0 2px 3px rgb(255, 255, 255);
+}

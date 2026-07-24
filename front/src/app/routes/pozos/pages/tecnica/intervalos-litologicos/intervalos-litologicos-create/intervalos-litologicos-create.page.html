@@ -1,0 +1,22 @@
+<ion-content class="ion-padding">
+      <ion-toolbar>
+  <ion-buttons slot="start" color="primary">
+     <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
+     </ion-buttons>
+</ion-toolbar>
+  <ion-card>
+    <ion-card-content>
+      <h2>Crear un nuevo intervalo litológico</h2>
+
+      <app-intervalo-lit-form
+        [intervaloLitologico]="this.intervaloLitologico()"
+        (saved)="guardarIntervaloLit($event)"
+      ></app-intervalo-lit-form>
+      @if (errorMessage()) {
+      <p class="error">
+        {{ errorMessage() }}
+      </p>
+      }
+    </ion-card-content>
+  </ion-card>
+</ion-content>

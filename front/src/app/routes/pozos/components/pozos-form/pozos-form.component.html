@@ -1,0 +1,170 @@
+<form #sitioForm="ngForm" (ngSubmit)="handlePozo()">
+  <ion-list class="ion-padding">
+    <ion-item>
+      <ion-label position="stacked">Empresa</ion-label>
+      <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">ID Propietario</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="id_propietario"
+        [(ngModel)]="this.pozo().id_propietario"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">ID Sitio</ion-label>
+      <ion-input
+        type="number"
+        name="id_sitio"
+        [(ngModel)]="this.pozo().id_sitio"
+        required
+      ></ion-input>
+      <ion-button
+        slot="end"
+        size="Default"
+        type="button"
+        *ngIf="!agregareditar(); else editarSitioBtn"
+        (click)="onCrearSitioClick()"
+      >
+        Crear Sitio
+      </ion-button>
+
+      <ng-template #editarSitioBtn>
+        <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">
+          Editar Sitio
+        </ion-button>
+      </ng-template>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">ID Perforador</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="id_perforador"
+        [(ngModel)]="this.pozo().id_perforador"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Fecha de inicio</ion-label>
+      <ion-input type="date" name="fecha_inicio" [(ngModel)]="this.pozo().fecha_inicio"></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Fecha de fin</ion-label>
+      <ion-input type="date" name="fecha_fin" [(ngModel)]="this.pozo().fecha_fin"></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Profundidad final (m)</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="profundidad_final_m"
+        [(ngModel)]="this.pozo().profundidad_final_m"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item lines="none">
+      <ion-label position="stacked">Sello sanitario</ion-label>
+      <ion-toggle name="sello_sanitario" [(ngModel)]="this.pozo().sello_sanitario"></ion-toggle>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Pre-filtro</ion-label>
+      <ion-input type="text" name="pre_filtro" [(ngModel)]="this.pozo().pre_filtro"></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Nivel estático (m)</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="nivel_estatico_m"
+        [(ngModel)]="this.pozo().nivel_estatico_m"
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Nivel dinámico (m)</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="nivel_dinamico_m"
+        [(ngModel)]="this.pozo().nivel_dinamico_m"
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Caudal estimado (L/h)</ion-label>
+      <ion-input
+        min="0"
+        step="1"
+        type="number"
+        name="caudal_estimado_lh"
+        [(ngModel)]="this.pozo().caudal_estimado_lh"
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Método sedimentario</ion-label>
+      <ion-input
+        type="text"
+        name="metodo_sedimentario"
+        [(ngModel)]="this.pozo().metodo_sedimentario"
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Método rocoso</ion-label>
+      <ion-input
+        type="text"
+        name="metodo_rocoso"
+        [(ngModel)]="this.pozo().metodo_rocoso"
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Cementación</ion-label>
+      <ion-input type="text" name="cementacion" [(ngModel)]="this.pozo().cementacion"></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Desarrollo</ion-label>
+      <ion-input type="text" name="desarrollo" [(ngModel)]="this.pozo().desarrollo"></ion-input>
+    </ion-item>
+
+    @if(this.agregareditar()===true){
+    <ion-item>
+      <ion-label position="stacked">Cambiar foto al pozo</ion-label><br>
+      @if (!getFoto()) {
+      <ion-label>No hay foto</ion-label>
+      }@else {
+      <ion-img [src]="getFoto()" alt="Imagen del pozo"></ion-img>
+      }
+      <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
+    </ion-item>
+    }@else{
+    <ion-item>
+      <ion-label position="stacked">Agregar foto al pozo</ion-label><br>
+
+      <app-foto slot = "end"(fotoTomada)="fotoCapturada($event)"></app-foto> </ion-item
+    >}
+  </ion-list>
+  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid">
+    GUARDAR POZO
+  </ion-button>
+</form>

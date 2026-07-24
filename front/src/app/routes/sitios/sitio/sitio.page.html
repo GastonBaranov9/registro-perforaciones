@@ -1,0 +1,15 @@
+<ion-content fullscreen class="ion-padding">
+  <div class="intro">
+    <h5 class="rojo">MENU SITIOS</h5>
+  </div>
+  <div class="contenedor-sitio">
+
+    <app-estilo-paginas titulo="CREAR UN SITIO" (clickPagina)="crearSitio()">> </app-estilo-paginas>
+        <app-estilo-paginas titulo="LISTA DE SITIOS" link="/sitios-list"> </app-estilo-paginas>
+    @if(!this.user){
+      <p>No hay usuario</p>
+
+    }
+  
+  </div>
+</ion-content>

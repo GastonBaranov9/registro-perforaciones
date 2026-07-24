@@ -1,0 +1,50 @@
+<form #usuarioForm="ngForm" (ngSubmit)="handleSubmit()">
+  <ion-list>
+    
+    <ion-item>
+      <ion-label position="stacked">Nombre</ion-label>
+      <ion-input type="text" name="nombre" [(ngModel)]="this.user().nombre" required></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Email</ion-label>
+      <ion-input type="email" name="email" [(ngModel)]="this.user().email" required></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Contraseña</ion-label>
+      <ion-input
+        type="password"
+        name="password"
+        [(ngModel)]="this.user().password"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item lines="none">
+      <ion-label>Activo</ion-label>
+      <ion-toggle name="activo" [(ngModel)]="this.user().activo"></ion-toggle>
+    </ion-item>
+
+    <ion-item lines="none" *ngIf="this.isAdmin()">
+  <ion-label position="stacked">Rol</ion-label>
+  <ion-select
+    name="roles"
+    multiple="true"
+    placeholder="Seleccionar roles"
+    [compareWith]="compareWith"
+    [(ngModel)]="this.user().roles"
+  >
+    @for (rol of this.roles(); track $index) {
+      <ion-select-option [value]="rol">
+        {{ rol.nombre }}
+      </ion-select-option>
+    }
+  </ion-select>
+</ion-item>
+  </ion-list>
+
+  <ion-button type="submit" expand="block" [disabled]="usuarioForm.invalid">
+    GUARDAR CAMBIOS
+  </ion-button>
+</form>

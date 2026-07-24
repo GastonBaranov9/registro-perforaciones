@@ -1,0 +1,63 @@
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Compilaciones
+dist/
+**/dist/
+www/
+**/www/
+api/static/
+
+# Pruebas y cobertura
+coverage/
+**/coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos temporales
+tmp/
+temp/
+.cache/
+.angular/
+.eslintcache
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Android / Capacitor
+front/android/.gradle/
+front/android/build/
+front/android/app/build/
+front/android/local.properties
+front/android/app/src/main/assets/public/
+front/android/app/src/main/assets/capacitor.config.json
+front/android/app/src/main/assets/capacitor.plugins.json
+*.jks
+*.keystore
+
+# Archivos cargados por usuarios o generados durante pruebas
+api/public/*
+!api/public/.gitkeep
+api/src/public/*
+!api/src/public/.gitkeep
+
+# Archivo accidental detectado en el proyecto original
+/a

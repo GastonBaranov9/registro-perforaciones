@@ -1,0 +1,15 @@
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-content>
+      <h2>Crear nuevo usuario</h2>
+      
+      <app-usuario-form (saved)="guardarUsuario($event)" [roles]="this.roles()"></app-usuario-form>
+
+      @if (errorMessage()) {
+      <p class="error">
+        {{ errorMessage() }}
+      </p>
+      }
+    </ion-card-content>
+  </ion-card>
+</ion-content>

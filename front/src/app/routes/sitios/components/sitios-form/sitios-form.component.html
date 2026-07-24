@@ -1,0 +1,50 @@
+<form #sitioForm="ngForm" (ngSubmit)="handleSitio()">
+  <ion-list>
+    <ion-item>
+      <ion-label position="stacked">Departamento</ion-label>
+      <ion-input
+        type="text"
+        name="depertamento"
+        [(ngModel)]="this.sitio().departamento"
+        
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Localidad</ion-label>
+      <ion-input
+        type="text"
+        name="localidad"
+        [(ngModel)]="this.sitio().localidad"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Latitud</ion-label>
+      <ion-input
+        type="text"
+        name="id_sitio"
+        [ngModel]="this.sitio().latitud ?? 'Cargando ubicación... '"
+        required
+        readonly
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Longitud</ion-label>
+      <ion-input
+        type="text"
+        name="longitud"
+        [ngModel]="this.sitio().longitud?? 'Cargando ubicación... '"
+        required
+        readonly
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+
+  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid">
+    GUARDAR SITIO
+  </ion-button>
+</form>

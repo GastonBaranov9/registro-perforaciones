@@ -1,0 +1,14 @@
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-content>
+      <h2>Crear un nuevo sitio</h2>
+
+      <app-sitios-form [sitio]="sitio()" (saved)="guardarSitio($event)"></app-sitios-form>
+      @if (errorMessage()) {
+      <p class="error">
+        {{ errorMessage() }}
+      </p>
+      }
+    </ion-card-content>
+  </ion-card>
+</ion-content>

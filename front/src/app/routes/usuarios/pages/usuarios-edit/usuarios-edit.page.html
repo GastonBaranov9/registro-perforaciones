@@ -1,0 +1,28 @@
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-content>
+      <h2>Editar usuario</h2>
+
+      @if (this.userResource.hasValue()) {
+      <app-usuario-form [user]="this.userResource.value()!" [roles]="this.roles()" (saved)="this.handleEdit($event)" />
+      } @else {
+      <p>No hay usuario</p>
+      }
+
+      <ion-button
+        fill="outline"
+        expand="block"
+        (click)="this.userResource.reload()"
+        [disabled]="this.disabled()"
+      >
+        RECARGAR
+      </ion-button>
+
+      @if (this.errorMessage()) {
+      <div class="error-message">
+        {{ this.errorMessage() }}
+      </div>
+      }
+    </ion-card-content>
+  </ion-card>
+</ion-content>

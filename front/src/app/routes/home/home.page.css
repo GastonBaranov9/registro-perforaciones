@@ -1,0 +1,140 @@
+:root {
+  --brand-red: #e3242b;
+  --brand-blue: #0057d8;
+  --brand-light: #f5f7ff;
+}
+
+/* Contenedor del hero: lo centramos mejor */
+.hero-welcome {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 960px;
+  padding: 1.5rem;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* si queda muy arriba o abajo, ajustá este min-height */
+  min-height: calc(100vh - 170px); /* resta el alto del header */
+}
+
+/* Tarjeta principal más clara y transparente */
+.hero-card {
+  pointer-events: auto;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2.5rem 2.1rem;
+  border-radius: 28px;
+
+  /* fondo claro con un toque de rojo/azul y transparencia */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(244, 248, 255, 0.9));
+  background-blend-mode: screen;
+  backdrop-filter: blur(14px) saturate(130%);
+
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  color: #1b1f2a;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  position: relative;
+  overflow: hidden;
+  animation: heroFadeUp 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* borde con color de marca pero mucho más suave */
+.hero-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(227, 36, 43, 0.4), rgba(0, 87, 216, 0.45));
+  opacity: 0.3;
+  z-index: -1;
+}
+
+.hero-card-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* Subtítulo "Bienvenido a" */
+.hero-subtitle {
+  font-size: 1rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  margin-bottom: 0.9rem;
+  opacity: 1;
+  color: #12151d;
+}
+
+/* Título principal con sombra menos difuminada */
+.hero-title {
+  font-size: clamp(1.9rem, 3.4vw, 2.8rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0 0 1.4rem;
+  position: relative;
+  color: #c60505;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.99); /* <<< sombra más corta y menos difusa */
+}
+
+/* Lema sin tanta sombra y bien legible */
+.hero-tagline {
+  margin-top: 2.1rem;
+  font-size: 1.2rem;
+  opacity: 0.9;
+  color: #273043;
+  text-shadow: none; /* limpio */
+}
+
+/* Animaciones que ya tenías (puedes dejarlas igual) */
+@keyframes heroFadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.97);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes heroGlow {
+  0% {
+    box-shadow: 0 0 6px rgba(227, 36, 43, 0.55), 0 0 10px rgba(0, 87, 216, 0.35);
+    opacity: 0.9;
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(227, 36, 43, 0.85), 0 0 16px rgba(0, 87, 216, 0.8);
+    opacity: 1;
+  }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .hero-card {
+    padding: 2.1rem 1.6rem;
+    border-radius: 22px;
+  }
+
+.hero-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    letter-spacing: 0.12em;
+  }
+
+  .hero-title span {
+    white-space: nowrap;
+  }
+
+  .hero-title::after {
+    width: 78%;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    // "noEmit": true,
+    "module": "NodeNext",
+    "target": "ES2022",
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "outDir": "dist",
+    "sourceMap": true,
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}

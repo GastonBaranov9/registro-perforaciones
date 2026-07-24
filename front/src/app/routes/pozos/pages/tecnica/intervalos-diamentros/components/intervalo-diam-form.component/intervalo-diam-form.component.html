@@ -1,0 +1,37 @@
+<form #intervaloLitForm="ngForm" (ngSubmit)="handleIntervaloDiam()">
+  <ion-list>
+    <ion-item>
+      <ion-label position="stacked">Desde: </ion-label>
+      <ion-input
+        type="number"
+        name="desde"
+        [(ngModel)]="this.intervaloDiametro().desde_m"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Hasta: </ion-label>
+      <ion-input
+        type="number"
+        name="hasta"
+        [(ngModel)]="this.intervaloDiametro().hasta_m"
+        required
+      ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Diametro pulgada: </ion-label>
+      <ion-input
+        type="number"
+        name="tamaño"
+        [(ngModel)]="this.intervaloDiametro().diametro_pulg"
+        required
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+
+  <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid">
+    GUARDAR INTERVALO DIAMETROS
+  </ion-button>
+</form>

@@ -1,0 +1,29 @@
+<ion-content class="ion-padding">
+  <ion-content>
+    <ion-toolbar>
+      <ion-buttons slot="start" color="primary">
+        <ion-back-button default-href="#" (click)="irAtras()" color="primary"></ion-back-button>
+      </ion-buttons>
+    </ion-toolbar>
+    <ion-card>
+      <ion-card-content>
+        <h2>Crear nueva perforación</h2>
+
+        <app-pozos-form
+          [pozo]="nuevoPozo()"
+          (saved)="guardarPozo($event)"
+          [id_pozo]="this.id_pozo()"
+          [agregareditar]="false"
+          (crearSitio)="crearSitio()"
+        >
+        </app-pozos-form>
+
+        @if (errorMessage()) {
+        <p class="error">
+          {{ errorMessage() }}
+        </p>
+        }
+      </ion-card-content>
+    </ion-card>
+  </ion-content>
+</ion-content>

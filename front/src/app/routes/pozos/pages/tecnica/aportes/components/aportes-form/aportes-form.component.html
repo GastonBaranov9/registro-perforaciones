@@ -1,0 +1,17 @@
+
+<form #nivelAporteForm="ngForm" (ngSubmit)="handleNivelAporte()">
+  <ion-list>
+    <ion-item>
+      <ion-label position="stacked">Profundidad: </ion-label>
+      <ion-input
+        type="number"
+        name="longitud"
+        [(ngModel)]="this.nivelAporte().profundidad_m"
+        required
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+  <ion-button type="submit" expand="block" [disabled]="nivelAporteForm.invalid">
+    GUARDAR INTERVALO LITOLOGICO
+  </ion-button>
+</form>

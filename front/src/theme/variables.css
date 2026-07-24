@@ -1,0 +1,46 @@
+/**
+ * Ionic Dark Theme
+ * -----------------------------------------------------
+ * For more info, please see:
+ * https://ionicframework.com/docs/theming/dark-mode
+ */
+
+/* @import "@ionic/angular/css/palettes/dark.always.css"; */
+/* @import "@ionic/angular/css/palettes/dark.class.css"; 
+@import '@ionic/angular/css/palettes/dark.system.css';*/
+:root {
+  --ion-color-new: #fa1a1a;
+  --ion-color-new-rgb: 105, 187, 123;
+  --ion-color-new-contrast: #000000;
+  --ion-color-new-contrast-rgb: 0, 0, 0;
+  --ion-color-new-shade: #fa1a1a;
+  --ion-color-new-tint: #fa1a1a;
+    --ion-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+}
+
+
+.ion-color-new {
+  --ion-color-base: var(--ion-color-new);
+  --ion-color-base-rgb: var(--ion-color-new-rgb);
+  --ion-color-contrast: var(--ion-color-new-contrast);
+  --ion-color-contrast-rgb: var(--ion-color-new-contrast-rgb);
+  --ion-color-shade: var(--ion-color-new-shade);
+  --ion-color-tint: var(--ion-color-new-tint);
+}
+:root {
+  --ion-color-grey: #a8a8a8;
+  --ion-color-grey-rgb: 105, 187, 123;
+  --ion-color-grey-contrast: #000000;
+  --ion-color-grey-contrast-rgb: 0, 0, 0;
+  --ion-color-grey-shade: #a8a8a8;
+  --ion-color-grey-tint: #a8a8a8;
+}
+
+.ion-color-grey {
+  --ion-color-base: var(--ion-color-grey);
+  --ion-color-base-rgb: var(--ion-color-grey-rgb);
+  --ion-color-contrast: var(--ion-color-grey-contrast);
+  --ion-color-contrast-rgb: var(--ion-color-grey-contrast-rgb);
+  --ion-color-shade: var(--ion-color-grey-shade);
+  --ion-color-tint: var(--ion-color-grey-tint);
+}

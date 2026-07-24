@@ -1,0 +1,16 @@
+.columna{
+  background-color: #5f5cf5;
+  color: white;
+  font-weight: bold;
+  text-align: center;}
+
+ion-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  background-color: #7882df;
+  border: solid 0.1px #fff;
+  color: #fff;
+}

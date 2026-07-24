@@ -1,0 +1,55 @@
+.filters-modal::part(content) {
+  height: 62dvh;
+  width: 90%;
+  max-width: 420px;
+  margin: auto;
+  border-radius: 20px;
+}
+
+.filters-modal ion-content::part(scroll)::-webkit-scrollbar {
+  display: none;
+}
+
+.filters-modal ion-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  border: transparent;
+}
+
+.filters-modal ion-label ion-icon {
+  font-size: 1rem;
+  margin-top: 1px;
+}
+
+.filters-modal ion-item {
+  --inner-border-width: 0;
+}
+
+/* Inputs de rango (mín / máx) */
+.range-inputs {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Acciones inferiores del modal */
+.filters-actions {
+  padding: 1rem;
+}
+
+.filters-actions ion-button {
+  height: 44px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+ion-toolbar {
+  --padding-top: 1rem;
+  --padding-bottom: 1rem;
+
+}

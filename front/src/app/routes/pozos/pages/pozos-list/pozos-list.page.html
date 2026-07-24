@@ -1,0 +1,164 @@
+<ion-content>
+  <ion-toolbar>
+        
+    <ion-buttons slot="start">
+      <ion-button id="open-filters" fill="clear">
+        FILTROS
+        <ion-icon name="funnel"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-modal trigger="open-filters" class="filters-modal" #modal>
+    <ng-template>
+      <ion-header>
+        <ion-toolbar>
+          <ion-title size="large">Filtros</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="modal.dismiss()" fill="clear"> Cancelar </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+
+      <ion-content class="filters-content">
+        <ion-list>
+          <ion-item>
+            <ion-label position="stacked">
+              <ion-icon name="water-outline"></ion-icon>
+              Caudal 
+            </ion-label>
+
+            <div class="range-inputs">
+              <ion-input name="caudal_min" type="number" placeholder="Mín" fill="outline" [(ngModel)]="caudal_min">
+              </ion-input>
+              <ion-input name="caudal_max" type="number" placeholder="Máx" fill="outline" [(ngModel)]="caudal_max">
+              </ion-input>
+            </div>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">
+              <ion-icon name="resize-outline"></ion-icon>
+              Profundidad 
+            </ion-label>
+
+            <div class="range-inputs">
+              <ion-input
+              name="produndidad_min"
+                type="number"
+                placeholder="Mín"
+                fill="outline"
+                [(ngModel)]="profundidad_min"
+              >
+              </ion-input>
+
+              <ion-input
+             
+              name="produndidad_max"
+                type="number"
+                placeholder="Máx"
+                fill="outline"
+                [(ngModel)]="profundidad_max"
+              >
+              </ion-input>
+            </div>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">
+              <ion-icon name="document-outline"></ion-icon>
+              Sello sanitario
+            </ion-label>
+            <ion-toggle slot="end" [(ngModel)]="sello_sanitario"> </ion-toggle>
+          </ion-item>
+        </ion-list>
+      </ion-content>
+
+        <ion-footer>
+          <ion-toolbar>
+            <ion-button expand="block" color="primary" (click)="filtrar()" (click)="modal.dismiss()">
+              Aplicar filtros
+            </ion-button></ion-toolbar
+          >
+        </ion-footer>
+    </ng-template>
+  </ion-modal>
+
+  @for (pozo of this.pozos(); track pozo.id_pozo) {
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Pozo: {{ pozo.id_pozo }}</ion-card-title>
+      <ion-card-subtitle>Empresa: {{ pozo.empresa || '-' }}</ion-card-subtitle>
+    </ion-card-header>
+
+    <ion-card-content>
+      <ion-list>
+        <ion-item>
+          <ion-label>ID Propietario</ion-label>
+          <ion-label>{{ pozo.id_propietario }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>ID Sitio</ion-label>
+          <ion-label>{{ pozo.id_sitio }}</ion-label>
+        </ion-item>
+
+        
+        <ion-item>
+          <ion-label>Caudal (lh)</ion-label>
+          <ion-label>{{ pozo.caudal_estimado_lh ?? '-' }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Profundidad (m)</ion-label>
+          <ion-label>{{ pozo.profundidad_final_m ?? '-' }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Sello sanitario</ion-label>
+          <ion-label>{{ pozo.sello_sanitario ? 'Sí' : 'No' }}</ion-label>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Fecha creado</ion-label>
+          <ion-label>
+            {{ pozo.fecha_creado | date : 'dd/MM/yyyy' }}
+          </ion-label>
+        </ion-item>
+      </ion-list>
+      <ion-toolbar>
+        <ion-buttons slot="start">
+          <ion-button id="popover-{{ pozo.id_pozo }}" color="primary"> Técnica </ion-button>
+        </ion-buttons>
+
+        <ion-popover [dismissOnSelect]="true" trigger="popover-{{ pozo.id_pozo }}">
+          <ng-template>
+            <ion-list>
+              <ion-item class="popover" button (click)="irAIntervaloLit(pozo)"
+                >Intervalos Litológicos</ion-item
+              >
+              <ion-item class="popover" button (click)="irAIntervaloPer(pozo)"
+                >Intervalos Diametros Perforación</ion-item
+              >
+              <ion-item class="popover" button (click)="irANivelesA(pozo)"
+                >Niveles de Aporte</ion-item
+              >
+            </ion-list>
+          </ng-template>
+        </ion-popover>
+
+        <ion-buttons slot="end">
+          <ion-button size="large" fill="clear" color="primary" (click)="irADetalle(pozo)">
+            <ion-icon slot="icon-only" name="eye"> </ion-icon
+          ></ion-button>
+          <ion-button fill="clear" color="primary" (click)="irAEditar(pozo)"
+            ><ion-icon slot="icon-only" name="pencil"> </ion-icon
+          ></ion-button>
+          <ion-button fill="clear" color="danger" (click)="borrarPozo(pozo)">
+            <ion-icon slot="icon-only" name="trash"> </ion-icon>
+          </ion-button>
+        </ion-buttons>
+      </ion-toolbar>
+    </ion-card-content>
+  </ion-card>
+  }
+</ion-content>

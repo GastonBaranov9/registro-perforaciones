@@ -1,0 +1,44 @@
+<ion-content class="ion-padding hero-welcome">
+  <div class="hero-card">
+    <div class="hero-card-inner">
+      <div class="hero-subtitle">Iniciar sesión</div>
+
+      <h1 class="hero-title">Accedé a tu cuenta</h1>
+      <div class="form-field">
+        <ion-label position="stacked">Email</ion-label>
+        <ion-input
+          type="email"
+          [(ngModel)]="this.credenciales.email"
+          name="email"
+          placeholder="Ingresa tu correo"
+          helperText="Introducir un email válido"
+          errorText="Email invalido"
+          email
+        >
+        </ion-input>
+      </div>
+
+      <div class="form-field">
+        <ion-label position="stacked">Contraseña</ion-label>
+        <ion-input
+          type="password"
+          [(ngModel)]="this.credenciales.password"
+          name="password"
+          placeholder="••••••••"
+  
+        >
+        </ion-input>
+      </div>
+
+      <ion-button
+        expand="block"
+        shape="round"
+        class="login-button"
+        (click)="logIn(this.credenciales.email, this.credenciales.password)"
+        [disabled]="disabled()"
+      >
+        Entrar
+      </ion-button>
+    </div>
+  </div>
+</ion-content>

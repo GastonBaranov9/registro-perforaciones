@@ -1,0 +1,68 @@
+/* ===== APP BACKGROUND ===== */
+ion-app {
+  --background: none;
+  background: url('https://i.imgur.com/90zjO3q.jpeg') no-repeat center center fixed;
+  background-size: cover;
+}
+
+/* ===== CONTENT ===== */
+ion-content {
+  --background: transparent !important;
+  background: rgba(225, 225, 225, 0.55);
+}
+
+ion-content::part(background) {
+  background: transparent !important;
+}
+
+/* Solo si usás ion-padding */
+.ion-padding {
+  --background: transparent !important;
+}
+
+/* ===== HEADER / TOOLBAR ===== */
+ion-header {
+  --background: transparent;
+}
+
+ion-toolbar {
+  --background: transparent;
+  --color: #000;
+  --border-color: transparent;
+
+}
+
+ion-toolbar ion-button {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--ion-color-medium);
+}
+
+/* ===== POPOVER ===== */
+.popover {
+  --background: transparent;
+  --border-radius: 16px;
+  --detail-icon-color: transparent;
+  --border-width: 0;
+}
+
+/* ===== CARDS ===== */
+ion-card-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+ion-card-subtitle {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+/* ===== ICONOS ===== */
+ion-button ion-icon {
+  font-size: 1.2rem;
+}
+
+ion-button[size="large"] ion-icon {
+  font-size: 1.4rem;
+}

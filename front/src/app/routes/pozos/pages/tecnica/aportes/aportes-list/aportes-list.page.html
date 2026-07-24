@@ -1,0 +1,37 @@
+
+<ion-content>
+<ion-toolbar>
+  <ion-buttons slot="end" color="primary">
+  <ion-button (click)="irACrear()" color="primary" fill="solid">Crear Nivel de Aporte</ion-button>
+ </ion-buttons>
+  <ion-buttons slot="start" color="primary">
+     <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
+     </ion-buttons>
+</ion-toolbar>
+ 
+
+  @for (nivelAporte of this.nivelesAporte(); track nivelAporte.id_nivel_aporte) {
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title
+        >Nivel Aporte {{ nivelAporte.id_nivel_aporte }}</ion-card-title
+      >
+    </ion-card-header>
+
+    <ion-card-content>
+      <ion-list>
+        <ion-item>
+          <ion-label>Desde: </ion-label>
+          <ion-label>{{ nivelAporte.profundidad_m }}</ion-label>
+        </ion-item>
+      </ion-list>
+      @if(!this.id_pozo){
+      <ion-content>Pozo No Encontrado</ion-content>
+      }@else{
+      <ion-button (click)="irAEditar(nivelAporte)">Editar</ion-button>
+      <ion-button color="danger" (click)="borrarNivelAporte(nivelAporte)"> Borrar </ion-button>
+      }
+    </ion-card-content>
+  </ion-card>
+  }
+</ion-content>
