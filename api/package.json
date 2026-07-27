@@ -37,6 +37,7 @@
     "@types/node": "^24.5.2",
     "@types/pg": "^8.15.6",
     "adm-zip": "^0.5.16",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.0",
     "pdf-lib": "^1.17.1",

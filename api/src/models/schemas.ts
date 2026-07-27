@@ -32,6 +32,8 @@ export const Usuario = Type.Object({
 });
 
 export type Usuario = Static<typeof Usuario>;
+export const UsuarioPublico = Type.Omit(Usuario, ["password"]);
+export type UsuarioPublico = Static<typeof UsuarioPublico>;
 
 export const UsuarioRegister = Type.Omit(Usuario, [
   "id_usuario",
