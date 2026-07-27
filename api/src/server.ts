@@ -31,11 +31,6 @@ await server.register(autoLoad, {
   prefix: "/",
 });*/
 
-server.register(fastifyStatic, {
-  root: path.join(__dirname, "static"),
-  prefix: "/",
-  decorateReply: false,
-});
 
 server.register(fastifyStatic, {
   root: path.join(__dirname, "../public"),
