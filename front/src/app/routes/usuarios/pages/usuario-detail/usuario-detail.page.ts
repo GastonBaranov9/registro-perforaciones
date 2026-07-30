@@ -45,11 +45,10 @@ export class UsuarioDetailPage implements OnInit {
     }
   }
 
-  public logOut() {
-    this.mainStore.user.set(null);
-    this.mainStore.token.set(null);
-    this.router.navigate(['/login']);
-  }
+public async logOut() {
+  this.mainStore.clearSession();
+  await this.router.navigate(['/login']);
+}
 
   public irAEditarUser() {
     if (!this.usuario) throw new Error('Usuario no encontrado');
