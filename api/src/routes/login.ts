@@ -23,7 +23,8 @@ const authRoutes = async function (fastify: FastifyInstance) {
           200: Type.Object({
             token: Type.String(),
           }),
-          501: err.ErrorSchema,
+            400: err.ErrorSchema,
+            401: err.ErrorSchema,
         },
       },
     },

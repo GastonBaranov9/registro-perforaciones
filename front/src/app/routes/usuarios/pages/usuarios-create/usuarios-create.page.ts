@@ -1,7 +1,11 @@
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { UsuariosCreateService } from '../../../../shared/services/usuarios-create.service';
 import { Router } from '@angular/router';
-import { Rol, UsuarioBody } from '../../../../shared/types/schemas';
+import {
+  Rol,
+  UsuarioCrearBody,
+  UsuarioFormulario,
+} from '../../../../shared/types/schemas';
 import { IonContent, IonCard, IonCardContent, ToastController } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
@@ -25,28 +29,36 @@ export class UsuariosCreatePage {
     { id_rol: 3, nombre: 'propietario', descr: 'Propietario del sitio' }
   ]);
 
+async guardarUsuario(usuario: UsuarioFormulario) {
+  const body: UsuarioCrearBody = {
+    email: usuario.email.trim(),
+    nombre: usuario.nombre.trim(),
+    password: usuario.password,
+    activo: usuario.activo,
+    roles: usuario.roles,
+  };
 
+  try {
+    this.disabled.set(true);
 
-  async guardarUsuario(usuario: UsuarioBody) {
-    console.log(usuario);
+    const nuevoUsuario =
+      await this.createService.createUsuario(body);
 
-    try {
-      this.disabled.set(true);
-      const nuevoUsuario = await this.createService.createUsuario(usuario);
-      console.log('Usuario creado: ', nuevoUsuario);
-      this.router.navigate(['/usuarios-list']);
-    } catch (err: any) {
-      const toast = await this.toastController.create({
-        message: err.error.message,
-        duration: 1000,
-        position: 'bottom',
-        color: 'danger',
-        animated: true
+    console.log('Usuario creado:', nuevoUsuario);
 
-      });
+    await this.router.navigate(['/usuarios-list']);
+  } catch (err: any) {
+    const toast = await this.toastController.create({
+      message: err.message ?? 'No se pudo crear el usuario',
+      duration: 2000,
+      position: 'bottom',
+      color: 'danger',
+      animated: true,
+    });
 
-      await toast.present();
-    }
+    await toast.present();
+  } finally {
     this.disabled.set(false);
   }
+}
 }

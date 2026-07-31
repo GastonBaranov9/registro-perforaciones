@@ -1,7 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@fastify/type-provider-typebox";
-import { Usuario, Rol, UsuarioBody } from "../models/schemas.ts";
+import {
+  Rol,
+  UsuarioCrearBody,
+  UsuarioActualizarBody,
+  UsuarioPublico,
+} from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import * as func from "../services/usuarios-service.ts";
 import * as rolfunc from "../services/roles-services.ts";
@@ -19,9 +24,9 @@ const usuariosRoutes = async function (
         summary: "Dar de alta un usuario",
         description: "Rol: Administrador",
         tags: ["usuarios"],
-        body: UsuarioBody,
+        body: UsuarioCrearBody,
         response: {
-          201: Usuario,
+          201: UsuarioPublico,
           501: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
@@ -30,7 +35,7 @@ const usuariosRoutes = async function (
       preHandler: [fastify.userIsAdmin],
     },
     async function (req, rep) {
-      const data = req.body as UsuarioBody;
+      const data = req.body as UsuarioCrearBody;
       const usuarioNuevo = await func.createUsuario(data);
       return rep.code(201).send(usuarioNuevo);
     }
@@ -47,44 +52,29 @@ const usuariosRoutes = async function (
         params: Type.Object({
           id_usuario: Type.Integer(),
         }),
-        body: UsuarioBody,
+        body: UsuarioActualizarBody,
         response: {
-          200: Usuario,
+          200: UsuarioPublico,
           501: err.ErrorSchema,
           404: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.IsThisUser],
+      preHandler: [fastify.userIsAdmin],
     },
     async function (req, rep) {
       const { id_usuario } = req.params as {
         id_usuario: number;
       };
     
-      const loggedUser = req.user;
-        console.log(loggedUser)
+const data = req.body as UsuarioActualizarBody;
 
-      let esAdmin = false;
-      if (loggedUser.roles) {
-        for (const rol of loggedUser.roles) {
-          if (rol.nombre === "administracion") {
-            esAdmin = true;
-            break;
-          }
-        }
-      }
+const usuarioEditado = await func.updateUsuario(
+  data,
+  id_usuario
+);
 
-      const data = req.body as UsuarioBody;
-
-      const usuarioEditado = await func.updateUsuario(
-        {
-          ...data,
-          roles: esAdmin ? data.roles :[],
-        },
-        id_usuario
-      );
       if (!usuarioEditado) throw new err.T05UsuarioNoEncontrado();
       
 
@@ -141,14 +131,14 @@ const usuariosRoutes = async function (
           id_usuario: Type.Integer(),
         }),
         response: {
-          200: Usuario,
+          200: UsuarioPublico,
           501: err.ErrorSchema,
           404: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.IsThisUser],
+      preHandler: [fastify.userIsAdmin],
     },
     async function (req, rep) {
       const { id_usuario } = req.params as {
@@ -168,7 +158,7 @@ const usuariosRoutes = async function (
         description: "Rol: Administrador",
         tags: ["usuarios"],
         response: {
-          200: Type.Array(Usuario),
+          200: Type.Array(UsuarioPublico),
           501: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
@@ -209,7 +199,7 @@ const usuariosRoutes = async function (
         id_usuario: number;
         id_rol: number;
       };
-      rolfunc.changeRol(id_usuario, id_rol);
+      await rolfunc.changeRol(id_usuario, id_rol);
       return rep.code(204).send();
     }
   );
@@ -220,7 +210,7 @@ const usuariosRoutes = async function (
     {
       schema: {
         summary: "Obtener los roles de un usuario",
-        description: "Rol: Administrador o el mismo usuario",
+        description: "Rol: Administrador",
         tags: ["usuarios"],
         params: Type.Object({
           id_usuario: Type.Integer(),
@@ -232,7 +222,7 @@ const usuariosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.IsThisUser, fastify.userIsAdmin],
+      preHandler: [fastify.userIsAdmin],
     },
     async function (req, rep) {
       const { id_usuario } = req.params as {

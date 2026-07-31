@@ -11,15 +11,25 @@
       <ion-input type="email" name="email" [(ngModel)]="this.user().email" required></ion-input>
     </ion-item>
 
-    <ion-item>
-      <ion-label position="stacked">Contraseña</ion-label>
-      <ion-input
-        type="password"
-        name="password"
-        [(ngModel)]="this.user().password"
-        required
-      ></ion-input>
-    </ion-item>
+<ion-item>
+  <ion-label position="stacked">
+    Contraseña
+  </ion-label>
+
+  <ion-input
+    type="password"
+    name="password"
+    autocomplete="new-password"
+    [(ngModel)]="this.user().password"
+    [required]="this.passwordRequired()"
+    [minlength]="8"
+    [placeholder]="
+      this.passwordRequired()
+        ? 'Mínimo 8 caracteres'
+        : 'Dejar vacío para conservar la contraseña actual'
+    "
+  ></ion-input>
+</ion-item>
 
     <ion-item lines="none">
       <ion-label>Activo</ion-label>
@@ -31,6 +41,7 @@
   <ion-select
     name="roles"
     multiple="true"
+    required
     placeholder="Seleccionar roles"
     [compareWith]="compareWith"
     [(ngModel)]="this.user().roles"

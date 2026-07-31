@@ -4,7 +4,12 @@
       <h2>Editar usuario</h2>
 
       @if (this.userResource.hasValue()) {
-      <app-usuario-form [user]="this.userResource.value()!" [roles]="this.roles()" (saved)="this.handleEdit($event)" />
+      <app-usuario-form
+  [user]="this.userResource.value()!"
+  [roles]="this.roles()"
+  [passwordRequired]="false"
+  (saved)="this.handleEdit($event)"
+/>
       } @else {
       <p>No hay usuario</p>
       }
