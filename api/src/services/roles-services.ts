@@ -5,24 +5,48 @@ export async function changeRol(
   id_usuario: number,
   id_rol: number
 ): Promise<void> {
+  const client = await myPool.connect();
+  let discardClient = false;
+
   try {
-    const { rows } = await myPool.query(
+    await client.query("BEGIN");
+    await client.query(
+      `SELECT pg_advisory_xact_lock($1::integer, $2::integer)`,
+      [id_usuario, id_rol]
+    );
+
+    const { rows } = await client.query(
       `SELECT 1 FROM usuario_rol WHERE id_usuario = $1 AND id_rol = $2`,
       [id_usuario, id_rol]
     );
+
     if (rows.length > 0) {
-      await myPool.query(
+      await client.query(
         `DELETE FROM usuario_rol WHERE id_usuario = $1 AND id_rol = $2`,
         [id_usuario, id_rol]
       );
     } else {
-      await myPool.query(
+      await client.query(
         `INSERT INTO usuario_rol (id_usuario, id_rol) VALUES ($1, $2)`,
         [id_usuario, id_rol]
       );
     }
-  } catch (e) {
-    console.error(e);
+
+    await client.query("COMMIT");
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      discardClient = true;
+    }
+
+    throw error;
+  } finally {
+    if (discardClient) {
+      client.release(true);
+    } else {
+      client.release();
+    }
   }
 }
 
@@ -46,7 +70,7 @@ export async function createRol(data: RolBody): Promise<Rol> {
         INSERT INTO rol
           (nombre, descr)
         VALUES ($1, $2)
-        RETURNING *;
+        RETURNING id_rol, nombre, descr;
       `;
   try {
     const { rows } = await myPool.query(sql, [data.nombre, data.descr]);
@@ -71,7 +95,7 @@ export async function updateRol(
       nombre = $2,
       descr = $3
     WHERE id_rol = $1
-    RETURNING *;
+    RETURNING id_rol, nombre, descr;
   `;
   try {
     const { rows } = await myPool.query(sql, [id_rol, data.nombre, data.descr]);
@@ -96,7 +120,7 @@ export async function deleteRol(id_rol: number): Promise<Boolean> {
 export async function getRolById(id_rol: number): Promise<Rol> {
   const { rows } = await myPool.query(
     `
-    SELECT *
+    SELECT id_rol, nombre, descr
     FROM rol
     WHERE id_rol = $1
     `,
@@ -108,7 +132,7 @@ export async function getRolById(id_rol: number): Promise<Rol> {
 export async function getAllRoles(): Promise<Rol[]> {
   const { rows } = await myPool.query(
     `
-    SELECT *
+    SELECT id_rol, nombre, descr
     FROM rol
     `
   );
