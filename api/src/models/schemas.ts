@@ -60,13 +60,6 @@ export const UsuarioActualizarBody = Type.Object({
 
 export type UsuarioActualizarBody = Static<typeof UsuarioActualizarBody>;
 
-export const UsuarioRegister = Type.Omit(Usuario, [
-  "id_usuario",
-  "activo",
-  "fecha_registro",
-]);
-export type UsuarioRegister = Static<typeof UsuarioRegister>;
-
 export const UsuarioLogin = Type.Pick(Usuario, ["email", "password"]);
 export type UsuarioLogin = Static<typeof UsuarioLogin>;
 
