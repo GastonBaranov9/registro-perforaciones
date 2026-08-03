@@ -64,3 +64,18 @@ export async function rolUser(
 
   return rows.length > 0;
 }
+
+export async function isUsuarioActivo(id_usuario: number): Promise<boolean> {
+  const { rows } = await myPool.query(
+    `
+      SELECT 1
+      FROM usuario
+      WHERE id_usuario = $1
+        AND activo = TRUE
+      LIMIT 1;
+    `,
+    [id_usuario]
+  );
+
+  return rows.length > 0;
+}

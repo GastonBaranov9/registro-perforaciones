@@ -1,7 +1,7 @@
 import fastifyJwt from "@fastify/jwt";
 import fastifyPlugin from "fastify-plugin";
 import * as err from "../models/errors.ts";
-import { rolUser } from "../services/auth-services.ts";
+import { isUsuarioActivo, rolUser } from "../services/auth-services.ts";
 import { myPool } from "../db/pool.ts";
 
 export default fastifyPlugin(async function (fastify) {
@@ -9,12 +9,43 @@ export default fastifyPlugin(async function (fastify) {
   if (!secret) throw new err.T05ErrorDesconocido("Falta setear FASTIFY_SECRET");
 
   await fastify.register(fastifyJwt, { secret });
+  const authenticatedRequests = new WeakSet<object>();
+
   fastify.decorate("authenticate", async function (req, rep) {
+    if (authenticatedRequests.has(req)) return;
+
     try {
       await req.jwtVerify();
     } catch {
       throw new err.T05NoAutorizado();
     }
+
+    const { sub } = req.user as { sub: unknown };
+    let idUsuario: number;
+
+    if (typeof sub === "number") {
+      if (!Number.isSafeInteger(sub) || sub <= 0) {
+        throw new err.T05NoAutorizado();
+      }
+
+      idUsuario = sub;
+    } else if (typeof sub === "string" && /^[1-9]\d*$/.test(sub)) {
+      const subNumerico = Number(sub);
+
+      if (!Number.isSafeInteger(subNumerico) || subNumerico <= 0) {
+        throw new err.T05NoAutorizado();
+      }
+
+      idUsuario = subNumerico;
+    } else {
+      throw new err.T05NoAutorizado();
+    }
+
+    const usuarioActivo = await isUsuarioActivo(idUsuario);
+
+    if (!usuarioActivo) throw new err.T05NoAutorizado();
+
+    authenticatedRequests.add(req);
   });
   fastify.decorate("userIsAdmin", async function (req, rep) {
     await fastify.authenticate(req, rep);
