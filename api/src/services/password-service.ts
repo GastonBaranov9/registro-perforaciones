@@ -7,6 +7,10 @@ export async function hashPassword(password: string): Promise<string> {
     throw new Error("La contraseña debe tener al menos 8 caracteres");
   }
 
+  if (!/\S/.test(password)) {
+    throw new Error("La contraseña debe contener al menos un carácter no blanco");
+  }
+
   return bcrypt.hash(password, SALT_ROUNDS);
 }
 

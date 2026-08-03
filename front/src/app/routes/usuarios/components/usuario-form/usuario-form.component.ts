@@ -35,6 +35,7 @@ import { MainStore } from '../../../../shared/services/mainstore-service/main.st
   templateUrl: './usuario-form.component.html',
 })
 export class UsuarioFormComponent {
+  public readonly passwordPattern = /^(?=[\s\S]{8,}$)(?=[\s\S]*\S)[\s\S]*$/;
   public user = input<UsuarioFormulario>({
     email: '',
     nombre: '',

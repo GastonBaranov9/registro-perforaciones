@@ -23,6 +23,7 @@
     [(ngModel)]="this.user().password"
     [required]="this.passwordRequired()"
     [minlength]="8"
+    [pattern]="this.passwordPattern"
     [placeholder]="
       this.passwordRequired()
         ? 'Mínimo 8 caracteres'
