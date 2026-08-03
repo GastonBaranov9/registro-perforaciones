@@ -38,6 +38,7 @@ export type UsuarioPublico = Static<typeof UsuarioPublico>;
 
 const PasswordPlanoSchema = Type.String({
   minLength: 8,
+  pattern: "\\S",
 });
 
 export const UsuarioCrearBody = Type.Object({
