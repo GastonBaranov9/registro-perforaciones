@@ -1,12 +1,12 @@
 import { Injectable, signal } from '@angular/core';
-import { Usuario } from '../../types/schemas';
+import { UsuarioPublico } from '../../types/schemas';
 
 @Injectable({
   providedIn: 'root',
 })
 export class MainStore {
   public token = signal<string | null>(null);
-  public user = signal<Usuario | null>(null);
+  public user = signal<UsuarioPublico | null>(null);
   public initialized = signal<boolean>(false);
 
   constructor() {
@@ -25,10 +25,13 @@ export class MainStore {
 
     this.initialized.set(true);
   }
-  public setUser(user: Usuario) {
+  public setUser(user: UsuarioPublico) {
     this.user.set(user);
-    console.log(JSON.stringify(user));
     localStorage.setItem('user', JSON.stringify(user));
+  }
+
+  public isAdmin(): boolean {
+    return this.user()?.roles?.some((rol) => rol.nombre === 'administracion') ?? false;
   }
 
   public clearSession() {

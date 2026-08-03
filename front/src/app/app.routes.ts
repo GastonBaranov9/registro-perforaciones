@@ -25,6 +25,7 @@ export const routes: Routes = [
 
   {
     path: 'usuario',
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/usuarios/usuario/usuario.page')).UsuarioPage,
     title: 'usuario',
@@ -205,7 +206,7 @@ export const routes: Routes = [
 
   {
     path: 'usuarios-edit/:id_usuario',
-    canActivate: [isloggedGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('./routes/usuarios/pages/usuarios-edit/usuarios-edit.page')).UsuariosEditPage,
     title: 'usuarios-edit',

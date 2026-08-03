@@ -41,10 +41,7 @@ async guardarUsuario(usuario: UsuarioFormulario) {
   try {
     this.disabled.set(true);
 
-    const nuevoUsuario =
-      await this.createService.createUsuario(body);
-
-    console.log('Usuario creado:', nuevoUsuario);
+    await this.createService.createUsuario(body);
 
     await this.router.navigate(['/usuarios-list']);
   } catch (err: any) {

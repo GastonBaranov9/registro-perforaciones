@@ -81,12 +81,10 @@ async handleEdit(usuario: UsuarioFormulario) {
   try {
     this.disabled.set(true);
 
-    const editado = await this.editService.editUsuario(
+    await this.editService.editUsuario(
       this.id_usuario(),
       body
     );
-
-    console.log('Usuario editado:', editado);
 
     await this.router.navigate(['/usuarios-list']);
   } catch (err: any) {

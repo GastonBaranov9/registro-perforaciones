@@ -1,4 +1,4 @@
-import { Component, effect, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import {
   IonApp,
@@ -47,21 +47,19 @@ import { AuthService } from './shared/services/auth-service/auth.service';
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App implements OnInit {
+export class App {
   protected readonly title = signal('front');
   public mainStore = inject(MainStore);
   public webSocketService = inject(WebsocketService);
   public authService = inject(AuthService);
 
-  ngOnInit() {
-    effect(() => {
-      if (!this.mainStore.initialized()) return;
+  private readonly sessionInitialization = effect(() => {
+    if (!this.mainStore.initialized()) return;
 
-      if (this.mainStore.token() && !this.mainStore.user()) {
-        this.authService.getUser();
-      }
-    });
-  }
+    if (this.mainStore.token() && !this.mainStore.user()) {
+      this.authService.getUser();
+    }
+  });
 
   public wsConnection = effect(() => {
     if (this.mainStore.user()) {

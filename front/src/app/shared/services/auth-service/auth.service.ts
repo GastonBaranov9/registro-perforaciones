@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, OnInit } from '@angular/core';
 import { MainStore } from '../mainstore-service/main.store';
 import { firstValueFrom } from 'rxjs';
-import { Usuario } from '../../types/schemas';
+import { UsuarioPublico } from '../../types/schemas';
 import { environment } from '../../../../environments/environment';
 
 @Injectable({
@@ -18,12 +18,10 @@ export class AuthService {
       const { token } = await firstValueFrom(
         this.httpClient.post<{ token: string }>(this.baseURL, { email, password })
       );
-      console.log(token);
-
       localStorage.setItem('token', token);
       this.mainStore.token.set(token);
 
-      const user = await firstValueFrom(this.httpClient.get<Usuario>(this.baseURL));
+      const user = await firstValueFrom(this.httpClient.get<UsuarioPublico>(this.baseURL));
 
       this.mainStore.setUser(user);
     } catch (err: any) {
@@ -39,7 +37,7 @@ export class AuthService {
 
   public async getUser() {
     try {
-      const user = await firstValueFrom(this.httpClient.get<Usuario>(this.baseURL));
+      const user = await firstValueFrom(this.httpClient.get<UsuarioPublico>(this.baseURL));
       this.mainStore.user.set(user);
     } catch (err: any) {
       console.log('Mensaje de error', err.error.message);

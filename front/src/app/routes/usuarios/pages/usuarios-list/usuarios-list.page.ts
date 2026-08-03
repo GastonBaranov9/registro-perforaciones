@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { UsuariosListService } from '../../../../shared/services/usuarios-list.service';
-import { Rol, Usuario } from '../../../../shared/types/schemas';
+import { UsuarioPublico } from '../../../../shared/types/schemas';
 import {
   IonCol,
   IonGrid,
@@ -42,7 +42,7 @@ import { WebsocketService } from '../../../../shared/services/websocket.service'
 export class UsuariosListPage implements OnInit, ViewWillEnter {
   public usuarioListService = inject(UsuariosListService);
   private router = inject(Router);
-  public usuarios = signal<Usuario[]>([]);
+  public usuarios = signal<UsuarioPublico[]>([]);
   public webSocketService = inject(WebsocketService);
 
   async ngOnInit(): Promise<void> {
@@ -65,17 +65,17 @@ export class UsuariosListPage implements OnInit, ViewWillEnter {
   });
 
 
-  public getRoles(usuario: Usuario) {
+  public getRoles(usuario: UsuarioPublico) {
     if (!usuario.roles) return 'Sin Rol';
 
     return usuario.roles.map((r) => r.nombre).join(', ');
   }
 
-  irAEditar(usuario: Usuario) {
+  irAEditar(usuario: UsuarioPublico) {
     this.router.navigate(['/usuarios-edit', usuario.id_usuario]);
   }
 
-  public async borrarUser(usuario: Usuario) {
+  public async borrarUser(usuario: UsuarioPublico) {
     await this.usuarioListService.deleteUsuario(usuario.id_usuario);
     this.ionViewWillEnter();
   }
