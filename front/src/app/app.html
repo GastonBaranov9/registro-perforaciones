@@ -20,11 +20,13 @@
           </ion-item>
         </ion-menu-toggle>
 
-        <ion-menu-toggle auto-hide="true">
-          <ion-item routerLink="/usuario">
-            <ion-label>IR A USUARIOS</ion-label>
-          </ion-item></ion-menu-toggle
-        >
+        @if (mainStore.isAdmin()) {
+          <ion-menu-toggle auto-hide="true">
+            <ion-item routerLink="/usuario">
+              <ion-label>IR A USUARIOS</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+        }
 
         <ion-menu-toggle auto-hide="true">
           <ion-item routerLink="/">

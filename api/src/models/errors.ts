@@ -34,6 +34,13 @@ export const T05NoAutorizado = createError(
   401,
   Error
 );
+
+export const T05CredencialesInvalidas = createError(
+  "ERR_AUTH_T05",
+  "Credenciales incorrectas",
+  401,
+  Error
+);
 export const T05SinPermiso = createError(
   "ERR5_T05",
   "No tiene permisos suficientes para realizar esta acción",

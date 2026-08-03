@@ -8,12 +8,31 @@ export type Usuario = {
   roles?: Rol[];
 };
 
-export type UsuarioBody = {
+
+export type UsuarioPublico = Omit<Usuario, 'password'>;
+
+export type UsuarioCrearBody = {
   email: string;
   nombre: string;
   password: string;
   activo: boolean;
-  roles?: Rol[];
+  roles: Rol[];
+};
+
+export type UsuarioActualizarBody = {
+  email: string;
+  nombre: string;
+  password?: string;
+  activo: boolean;
+  roles: Rol[];
+};
+
+export type UsuarioFormulario = {
+  email: string;
+  nombre: string;
+  password: string;
+  activo: boolean;
+  roles: Rol[];
 };
 
 export type Pozo = {

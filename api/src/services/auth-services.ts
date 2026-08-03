@@ -1,29 +1,14 @@
 import { myPool } from "../db/pool.ts";
 import type { Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
-import { hashPassword, verifyPassword } from "./password-service.ts";
+import {verifyPassword } from "./password-service.ts";
 
 type AuthenticatedUser = Pick<
   Usuario,
   "id_usuario" | "email" | "nombre"
 >;
 
-export async function registerUser(
-  data: Omit<Usuario, "id_usuario" | "activo" | "fecha_registro">
-): Promise<Usuario> {
-  const passwordHash = await hashPassword(data.password);
 
-  const sql = `
-    INSERT INTO usuario (email, nombre, password)
-    VALUES ($1, $2, $3)
-    RETURNING *;
-  `;
-
-  const values = [data.email, data.nombre, passwordHash];
-  const { rows } = await myPool.query(sql, values);
-
-  return rows[0] as Usuario;
-}
 
 export async function logUser(
   email: string,
@@ -43,7 +28,7 @@ export async function logUser(
     | undefined;
 
   if (!user) {
-    throw new err.T05DatosIncorrectos();
+    throw new err.T05CredencialesInvalidas();
   }
 
   const passwordIsValid = await verifyPassword(
@@ -52,7 +37,7 @@ export async function logUser(
   );
 
   if (!passwordIsValid) {
-    throw new err.T05DatosIncorrectos();
+    throw new err.T05CredencialesInvalidas();
   }
 
   return {
@@ -75,6 +60,21 @@ export async function rolUser(
         AND LOWER(r.nombre) = LOWER($2)
     `,
     [id_usuario, rol_nombre]
+  );
+
+  return rows.length > 0;
+}
+
+export async function isUsuarioActivo(id_usuario: number): Promise<boolean> {
+  const { rows } = await myPool.query(
+    `
+      SELECT 1
+      FROM usuario
+      WHERE id_usuario = $1
+        AND activo = TRUE
+      LIMIT 1;
+    `,
+    [id_usuario]
   );
 
   return rows.length > 0;

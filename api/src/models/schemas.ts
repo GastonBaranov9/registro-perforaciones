@@ -32,8 +32,33 @@ export const Usuario = Type.Object({
 });
 
 export type Usuario = Static<typeof Usuario>;
+
 export const UsuarioPublico = Type.Omit(Usuario, ["password"]);
 export type UsuarioPublico = Static<typeof UsuarioPublico>;
+
+const PasswordPlanoSchema = Type.String({
+  minLength: 8,
+});
+
+export const UsuarioCrearBody = Type.Object({
+  email: Type.String({ format: "email" }),
+  nombre: Type.String({ minLength: 1 }),
+  password: PasswordPlanoSchema,
+  activo: Type.Boolean(),
+  roles: Type.Array(Rol, { minItems: 1 }),
+});
+
+export type UsuarioCrearBody = Static<typeof UsuarioCrearBody>;
+
+export const UsuarioActualizarBody = Type.Object({
+  email: Type.String({ format: "email" }),
+  nombre: Type.String({ minLength: 1 }),
+  password: Type.Optional(PasswordPlanoSchema),
+  activo: Type.Boolean(),
+  roles: Type.Array(Rol, { minItems: 1 }),
+});
+
+export type UsuarioActualizarBody = Static<typeof UsuarioActualizarBody>;
 
 export const UsuarioRegister = Type.Omit(Usuario, [
   "id_usuario",
@@ -193,8 +218,6 @@ export const bodyIntervaloLitologico = Type.Omit(IntervaloLitologico, [
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
 
-export const UsuarioBody = Type.Omit(Usuario, ["id_usuario", "fecha_registro"]);
-export type UsuarioBody = Static<typeof UsuarioBody>;
 
 export const IntervaloDiametroPerforacionBody = Type.Omit(
   IntervaloDiametroPerforacion,

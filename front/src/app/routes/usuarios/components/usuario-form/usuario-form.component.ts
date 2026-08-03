@@ -11,7 +11,10 @@ import {
   IonSelectOption,
   IonListHeader,
 } from '@ionic/angular/standalone';
-import { Rol, UsuarioBody } from '../../../../shared/types/schemas';
+import {
+  Rol,
+  UsuarioFormulario,
+} from '../../../../shared/types/schemas';
 import { CommonModule } from '@angular/common';
 import { MainStore } from '../../../../shared/services/mainstore-service/main.store';
 
@@ -32,7 +35,7 @@ import { MainStore } from '../../../../shared/services/mainstore-service/main.st
   templateUrl: './usuario-form.component.html',
 })
 export class UsuarioFormComponent {
-  public user = input<UsuarioBody>({
+  public user = input<UsuarioFormulario>({
     email: '',
     nombre: '',
     password: '',
@@ -41,7 +44,7 @@ export class UsuarioFormComponent {
   });
 
   public mainStore = inject(MainStore);
-
+  public passwordRequired = input<boolean>(true);
   public roles = input.required<Rol[]>();
 
   public isAdmin() {
@@ -52,7 +55,7 @@ export class UsuarioFormComponent {
     }
     return false;
   }
-  public saved = output<UsuarioBody>();
+  public saved = output<UsuarioFormulario>();
 
   compareWith(o1: Rol | null, o2: Rol | null): boolean {
     return o1 && o2 ? o1.id_rol === o2.id_rol : o1 === o2;
