@@ -87,6 +87,10 @@
           }
         </ion-item>
       </ion-list>
+      <app-perfil-litologico
+        [idUsuario]="pozo()!.id_propietario"
+        [idPozo]="id_pozo"
+      />
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-button color="primary" (click)="irAEditarPozo()"> Editar </ion-button>

@@ -157,3 +157,30 @@ export type NivelAporte = {
 export type NivelAporteBody = {
   profundidad_m: number;
 };
+
+export type PatronLitologico =
+  | 'diagonal'
+  | 'diagonal-inversa'
+  | 'cruz'
+  | 'puntos'
+  | 'horizontal'
+  | 'vertical';
+
+export type PerfilLitologico = {
+  titulo: 'Perfil litológico del pozo';
+  profundidad_m: number;
+  paso_escala_m: number;
+  tramos: Array<{
+    clase: 'litologia' | 'hueco';
+    desde_m: number;
+    hasta_m: number;
+    material: string;
+    descripcion: string | null;
+    estilo: { color: string; gris: number; patron: PatronLitologico };
+    carril_etiqueta: number;
+  }>;
+  aportes: Array<{ profundidad_m: number }>;
+  rangos: Array<{ desde_m: number; hasta_m: number }>;
+  advertencias: string[];
+  tiene_litologia: boolean;
+};

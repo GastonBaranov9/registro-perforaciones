@@ -20,6 +20,7 @@ import {
 import { Pozo } from '../../../../shared/types/schemas';
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { environment } from '../../../../../environments/environment';
+import { PerfilLitologicoComponent } from '../../../../shared/components/perfil-litologico/perfil-litologico.component';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -36,6 +37,7 @@ import { environment } from '../../../../../environments/environment';
     IonImg,
     IonToolbar,
     IonButtons,
+    PerfilLitologicoComponent,
   ],
   templateUrl: './pozos-detail.page.html',
   styleUrl: './pozos-detail.page.css',

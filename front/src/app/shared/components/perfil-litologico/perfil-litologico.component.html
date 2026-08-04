@@ -1,0 +1,61 @@
+<section class="perfil" aria-labelledby="perfil-titulo">
+  <h2 id="perfil-titulo">Perfil litológico del pozo</h2>
+  @if (cargando()) {
+    <p role="status">Cargando perfil litológico…</p>
+  } @else if (error()) {
+    <p role="alert">{{ error() }}</p>
+  } @else if (!perfil()) {
+    <p>No hay profundidad ni litología registradas para representar.</p>
+  } @else {
+    @if (!perfil()!.tiene_litologia) {
+      <p>No hay intervalos litológicos registrados.</p>
+    }
+    @for (advertencia of perfil()!.advertencias; track advertencia) {
+      <p class="advertencia">{{ advertencia }}</p>
+    }
+    @for (rango of perfil()!.rangos; track rango.desde_m) {
+    <div class="grafico" tabindex="0" aria-describedby="perfil-descripcion">
+      <h3>Profundidad {{ rango.desde_m }}–{{ rango.hasta_m }} m · sección {{ $index + 1 }}/{{ perfil()!.rangos.length }}</h3>
+      <svg viewBox="0 0 760 820" role="img" [attr.aria-label]="'Perfil litológico desde ' + rango.desde_m + ' hasta ' + rango.hasta_m + ' metros'">
+        <title>Perfil litológico del pozo</title>
+        <desc>Capas proporcionales desde {{ rango.desde_m }} hasta {{ rango.hasta_m }} metros, con aportes de agua indicados en azul.</desc>
+        <defs>
+          <pattern id="perfil-diagonal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 2L2-2M0 8L8 0M6 10L10 6" class="trama" /></pattern>
+          <pattern id="perfil-diagonal-inversa" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 6L2 10M0 0L8 8M6-2L10 2" class="trama" /></pattern>
+          <pattern id="perfil-cruz" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8M4 0V8" class="trama" /></pattern>
+          <pattern id="perfil-puntos" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
+          <pattern id="perfil-horizontal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
+          <pattern id="perfil-vertical" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
+        </defs>
+        @for (tick of ticks(perfil()!, rango); track tick) {
+          <line x1="80" [attr.y1]="y(tick, rango)" x2="730" [attr.y2]="y(tick, rango)" class="guia" />
+          <text x="12" [attr.y]="y(tick, rango) + 4" class="escala">{{ tick }} m</text>
+        }
+        <rect x="90" y="70" width="180" height="700" class="contorno" />
+        @for (tramo of tramosEnRango(perfil()!, rango); track tramo.desde_m + '-' + tramo.hasta_m) {
+          <rect x="90" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" width="180" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="tramo.estilo.color" class="capa" />
+          <rect x="90" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" width="180" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="patron(tramo.estilo.patron)" class="capa trama-capa" />
+          <polyline [attr.points]="'270,' + y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango) + ' ' + (300 + tramo.carril_etiqueta * 105) + ',' + y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango)" class="conector" />
+          <text [attr.x]="306 + tramo.carril_etiqueta * 105" [attr.y]="y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango) + 4" class="etiqueta">{{ etiqueta(tramo) }}</text>
+        }
+        @for (aporte of aportesEnRango(perfil()!, rango); track aporte.profundidad_m) {
+          <circle cx="282" [attr.cy]="y(aporte.profundidad_m, rango)" r="6" class="aporte" />
+          <text x="294" [attr.y]="y(aporte.profundidad_m, rango) - 5" class="aporte-texto">Aporte {{ aporte.profundidad_m }} m</text>
+        }
+      </svg>
+    </div>
+    }
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-patron"></span> El tono y la trama identifican materiales; <span class="muestra-aporte"></span> azul identifica aportes de agua; trama cruzada gris indica huecos sin datos.</p>
+    <div class="tabla-contenedor">
+      <table>
+        <caption>Detalle accesible del perfil litológico</caption>
+        <thead><tr><th>Intervalo</th><th>Material</th><th>Descripción</th></tr></thead>
+        <tbody>
+          @for (tramo of perfil()!.tramos; track tramo.desde_m + '-' + tramo.hasta_m) {
+            <tr><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.material }}</td><td>{{ tramo.descripcion || 'Sin descripción registrada' }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
