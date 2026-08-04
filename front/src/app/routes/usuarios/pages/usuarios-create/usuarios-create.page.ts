@@ -86,9 +86,10 @@ export class UsuariosCreatePage {
       await this.createService.createUsuario(body);
 
       await this.router.navigate(['/usuarios-list']);
-    } catch (err: any) {
+    } catch (error: unknown) {
       const toast = await this.toastController.create({
-        message: err.message ?? 'No se pudo crear el usuario',
+        message:
+          error instanceof Error ? error.message : 'No se pudo crear el usuario',
         duration: 2000,
         position: 'bottom',
         color: 'danger',

@@ -106,9 +106,10 @@ export class UsuariosEditPage {
       await this.editService.editUsuario(this.id_usuario(), body);
 
       await this.router.navigate(['/usuarios-list']);
-    } catch (err: any) {
+    } catch (error: unknown) {
       const toast = await this.toastController.create({
-        message: err.message ?? 'No se pudo editar el usuario',
+        message:
+          error instanceof Error ? error.message : 'No se pudo editar el usuario',
         duration: 2000,
         position: 'bottom',
         color: 'danger',
