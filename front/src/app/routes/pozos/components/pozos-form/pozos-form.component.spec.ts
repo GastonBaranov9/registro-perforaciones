@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
@@ -9,11 +12,12 @@ describe('PozosFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ PozosFormComponent ],
-      imports: [IonicModule.forRoot()]
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [PozosFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(PozosFormComponent);
+    fixture.componentRef.setInput('pozo', { id_propietario: 1, id_sitio: 1, id_perforador: 1 });
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));

@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
@@ -9,8 +12,8 @@ describe('SitioPage', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ SitioPage ],
-      imports: [IonicModule.forRoot()]
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [SitioPage, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(SitioPage);
