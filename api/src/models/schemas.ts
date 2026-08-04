@@ -206,10 +206,11 @@ export type InformeAntes = Static<typeof Informe>;
 export const InformeBody = Type.Omit(InformeAntes, ["id_informe", "id_pozo"]);
 export type InformeBody = Static<typeof InformeBody>;
 
-export const bodyIntervaloLitologico = Type.Omit(IntervaloLitologico, [
-  "id_intervalo_litologico",
-  "id_pozo",
-]);
+export const bodyIntervaloLitologico = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }),
+  hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  material: Type.String({ minLength: 1 }),
+});
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
 

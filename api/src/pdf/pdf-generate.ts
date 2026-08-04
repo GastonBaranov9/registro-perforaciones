@@ -309,6 +309,7 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   const perfilLitologico = crearPerfilLitologico(
     litologia,
     reporte.profundidad_final_m,
+    reporte.niveles_aporte,
   );
   if (perfilLitologico) {
     dibujarPerfilLitologico(doc, perfilLitologico, font, bold);

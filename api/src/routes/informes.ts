@@ -12,6 +12,7 @@ import { listIntervalosLitologicosByPozo } from "../services/intervalos-litologi
 import { getReportePozo } from "../services/generar-informe-consultas.ts";
 import { generarPDFBytes } from "../pdf/pdf-generate.ts";
 import { Buffer } from "buffer";
+import { crearPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 const informeRoutes = async function (
   fastify:FastifyInstance
@@ -109,6 +110,40 @@ const informeRoutes = async function (
       return rep.code(200).send(caracteriticasObtenido);
     }
   );
+  fastify.get(
+    "/usuarios/:id_usuario/pozos/:id_pozo/perfil-litologico",
+    {
+      schema: {
+        summary: "Obtener el modelo visual del perfil litológico",
+        description: "Fuente visual compartida por el informe web y el PDF",
+        tags: ["informes"],
+        params: Type.Object({
+          id_usuario: Type.Integer(),
+          id_pozo: Type.Integer(),
+        }),
+        response: {
+          200: Type.Union([Type.Any(), Type.Null()]),
+          404: err.ErrorSchema,
+        },
+        security: [{ BearerAuth: [] }],
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+    },
+    async function (req, rep) {
+      const { id_pozo } = req.params as { id_pozo: number };
+      const reporte = await getReportePozo(id_pozo);
+      if (!reporte) throw new err.T05InformeNoEncontrado();
+      return rep.code(200).send(
+        crearPerfilLitologico(
+          reporte.litologia,
+          reporte.profundidad_final_m,
+          reporte.niveles_aporte,
+        ),
+      );
+    },
+  );
+
   fastify.get(
     "/usuarios/:id_usuario/pozos/:id_pozo/informe-pdf",
     {

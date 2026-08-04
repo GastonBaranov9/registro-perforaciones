@@ -4,42 +4,82 @@ export interface IntervaloPerfilLitologico {
   desde_m: number;
   hasta_m: number;
   material: string;
+  descripcion?: string | null;
 }
 
-export interface TramoPerfilLitologico extends IntervaloPerfilLitologico {
-  color: readonly [number, number, number];
+export interface AportePerfilLitologico {
+  profundidad_m: number;
+}
+
+export type PatronLitologico = "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
+
+export interface EstiloLitologico {
+  color: string;
+  gris: number;
+  patron: PatronLitologico;
+}
+
+export interface TramoPerfilLitologico {
+  clase: "litologia" | "hueco";
+  desde_m: number;
+  hasta_m: number;
+  material: string;
+  descripcion: string | null;
+  estilo: EstiloLitologico;
+  carril_etiqueta: number;
+}
+
+export interface RangoPerfilLitologico {
+  desde_m: number;
+  hasta_m: number;
 }
 
 export interface PerfilLitologico {
+  titulo: "Perfil litológico del pozo";
   profundidad_m: number;
-  tramos: TramoPerfilLitologico[];
   paso_escala_m: number;
+  tramos: TramoPerfilLitologico[];
+  aportes: AportePerfilLitologico[];
+  rangos: RangoPerfilLitologico[];
+  advertencias: string[];
+  tiene_litologia: boolean;
 }
 
-const PALETA: ReadonlyArray<readonly [number, number, number]> = [
-  [0.85, 0.67, 0.32],
-  [0.68, 0.45, 0.28],
-  [0.56, 0.63, 0.68],
-  [0.82, 0.76, 0.57],
-  [0.48, 0.58, 0.45],
-  [0.72, 0.52, 0.47],
-  [0.58, 0.51, 0.68],
-  [0.42, 0.65, 0.7],
+export class PerfilLitologicoInvalido extends Error {
+  readonly errores: string[];
+  readonly statusCode = 422;
+
+  constructor(errores: string[]) {
+    super(errores.join(" "));
+    this.name = "PerfilLitologicoInvalido";
+    this.errores = errores;
+  }
+}
+
+const ESTILOS: readonly EstiloLitologico[] = [
+  { color: "#D8AB52", gris: 0.72, patron: "puntos" },
+  { color: "#AD7347", gris: 0.52, patron: "horizontal" },
+  { color: "#8F9FAE", gris: 0.62, patron: "diagonal" },
+  { color: "#D1C291", gris: 0.78, patron: "cruz" },
+  { color: "#7A9473", gris: 0.55, patron: "diagonal-inversa" },
+  { color: "#B88578", gris: 0.59, patron: "vertical" },
 ];
 
-function normalizarMaterial(material: string) {
-  return material
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("es");
+const ESTILO_HUECO: EstiloLitologico = { color: "#F5F5F5", gris: 0.95, patron: "cruz" };
+
+export function normalizarMaterial(material: string) {
+  return material.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
 }
 
-export function colorDeMaterial(material: string): readonly [number, number, number] {
+export function estiloDeMaterial(material: string): EstiloLitologico {
   const clave = normalizarMaterial(material);
   let hash = 0;
   for (const caracter of clave) hash = (hash * 31 + caracter.charCodeAt(0)) >>> 0;
-  return PALETA[hash % PALETA.length];
+  return { ...ESTILOS[hash % ESTILOS.length] };
+}
+
+export function colorDeMaterial(material: string): readonly [number, number, number] {
+  return hexARgb(estiloDeMaterial(material).color);
 }
 
 export function calcularPasoEscala(profundidad_m: number) {
@@ -51,141 +91,181 @@ export function calcularPasoEscala(profundidad_m: number) {
   return 100;
 }
 
+function calcularRangos(profundidad_m: number, intervalos: readonly IntervaloPerfilLitologico[]): RangoPerfilLitologico[] {
+  const rangos: RangoPerfilLitologico[] = [];
+  let desde_m = 0;
+  while (desde_m < profundidad_m) {
+    const limiteProfundidad = Math.min(desde_m + 100, profundidad_m);
+    const capas = intervalos.filter((tramo) => tramo.hasta_m > desde_m && tramo.desde_m < limiteProfundidad);
+    const hasta_m = capas.length > 18 ? Math.min(limiteProfundidad, capas[17].hasta_m) : limiteProfundidad;
+    rangos.push({ desde_m, hasta_m });
+    desde_m = hasta_m;
+  }
+  return rangos;
+}
+
+function asignarCarriles(tramos: Array<Omit<TramoPerfilLitologico, "carril_etiqueta">>, profundidad_m: number) {
+  const ultimaEtiqueta = [-Infinity, -Infinity, -Infinity];
+  const separacion = profundidad_m / Math.max(12, Math.min(30, tramos.length));
+  return tramos.map((tramo) => {
+    const centro = (tramo.desde_m + tramo.hasta_m) / 2;
+    let carril = ultimaEtiqueta.findIndex((ultima) => centro - ultima >= separacion);
+    if (carril < 0) carril = ultimaEtiqueta.indexOf(Math.min(...ultimaEtiqueta));
+    ultimaEtiqueta[carril] = centro;
+    return { ...tramo, carril_etiqueta: carril };
+  });
+}
+
 export function crearPerfilLitologico(
   intervalos: readonly IntervaloPerfilLitologico[],
   profundidadFinal_m?: number | null,
+  aportes: readonly AportePerfilLitologico[] = [],
 ): PerfilLitologico | null {
-  const validos = [...intervalos]
-    .filter(
-      (tramo) =>
-        Number.isFinite(tramo.desde_m) &&
-        Number.isFinite(tramo.hasta_m) &&
-        tramo.desde_m >= 0 &&
-        tramo.hasta_m > tramo.desde_m &&
-        tramo.material.trim().length > 0,
-    )
-    .sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
+  const errores: string[] = [];
+  const ordenados = [...intervalos].sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
+  const profundidadDeclarada = profundidadFinal_m != null && Number.isFinite(profundidadFinal_m) && profundidadFinal_m > 0 ? profundidadFinal_m : 0;
+  if (ordenados.length > 0 && profundidadDeclarada === 0) errores.push("La profundidad oficial del pozo es obligatoria para representar la litología.");
+  for (const [indice, tramo] of ordenados.entries()) {
+    if (!Number.isFinite(tramo.desde_m) || tramo.desde_m < 0) errores.push(`Intervalo ${indice + 1}: desdeM debe ser mayor o igual a 0.`);
+    if (!Number.isFinite(tramo.hasta_m) || tramo.hasta_m <= tramo.desde_m) errores.push(`Intervalo ${indice + 1}: hastaM debe ser mayor que desdeM.`);
+    if (!tramo.material.trim()) errores.push(`Intervalo ${indice + 1}: material es obligatorio.`);
+    if (profundidadDeclarada > 0 && tramo.hasta_m > profundidadDeclarada) errores.push(`Intervalo ${indice + 1}: excede la profundidad oficial del pozo.`);
+    if (indice > 0 && tramo.desde_m < ordenados[indice - 1].hasta_m) errores.push(`Los intervalos ${indice} y ${indice + 1} se solapan.`);
+  }
+  if (errores.length) throw new PerfilLitologicoInvalido(errores);
 
-  const profundidadDeclarada =
-    profundidadFinal_m != null && Number.isFinite(profundidadFinal_m) && profundidadFinal_m > 0
-      ? profundidadFinal_m
-      : 0;
-  const profundidad_m = Math.max(profundidadDeclarada, ...validos.map((tramo) => tramo.hasta_m));
+  const profundidad_m = profundidadDeclarada;
   if (profundidad_m <= 0) return null;
 
+  const advertencias: string[] = [];
+  const base: Array<Omit<TramoPerfilLitologico, "carril_etiqueta">> = [];
+  let cursor = 0;
+  for (const tramo of ordenados) {
+    if (tramo.desde_m > cursor) {
+      base.push({ clase: "hueco", desde_m: cursor, hasta_m: tramo.desde_m, material: "Sin datos", descripcion: null, estilo: { ...ESTILO_HUECO } });
+    }
+    base.push({ clase: "litologia", desde_m: tramo.desde_m, hasta_m: tramo.hasta_m, material: tramo.material.trim(), descripcion: tramo.descripcion?.trim() || null, estilo: estiloDeMaterial(tramo.material) });
+    cursor = tramo.hasta_m;
+  }
+  if (cursor < profundidad_m) base.push({ clase: "hueco", desde_m: cursor, hasta_m: profundidad_m, material: "Sin datos", descripcion: null, estilo: { ...ESTILO_HUECO } });
+
+  const aportesValidos = aportes
+    .filter((aporte) => Number.isFinite(aporte.profundidad_m) && aporte.profundidad_m >= 0 && aporte.profundidad_m <= profundidad_m)
+    .map((aporte) => ({ profundidad_m: aporte.profundidad_m }))
+    .sort((a, b) => a.profundidad_m - b.profundidad_m);
+  if (aportesValidos.length !== aportes.length) advertencias.push("Se omitieron aportes fuera de la profundidad representada.");
+
   return {
+    titulo: "Perfil litológico del pozo",
     profundidad_m,
     paso_escala_m: calcularPasoEscala(profundidad_m),
-    tramos: validos.map((tramo) => ({ ...tramo, color: colorDeMaterial(tramo.material) })),
+    tramos: asignarCarriles(base, profundidad_m),
+    aportes: aportesValidos,
+    rangos: calcularRangos(profundidad_m, ordenados),
+    advertencias,
+    tiene_litologia: ordenados.length > 0,
   };
+}
+
+function hexARgb(hex: string): readonly [number, number, number] {
+  return [Number.parseInt(hex.slice(1, 3), 16) / 255, Number.parseInt(hex.slice(3, 5), 16) / 255, Number.parseInt(hex.slice(5, 7), 16) / 255];
 }
 
 function textoSeguro(texto: string) {
   return texto.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
 }
 
-export function dibujarPerfilLitologico(
-  doc: PDFDocument,
-  perfil: PerfilLitologico,
-  font: PDFFont,
-  bold: PDFFont,
-): PDFPage {
-  const page = doc.addPage([595.28, 841.89]);
-  const alto = 650;
-  const ySuperior = 745;
-  const xColumna = 105;
-  const anchoColumna = 115;
-  const yDeProfundidad = (metros: number) => ySuperior - (metros / perfil.profundidad_m) * alto;
+function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: number, ancho: number, alto: number) {
+  const color = rgb(0.25, 0.25, 0.25);
+  const paso = 7;
+  if (patron === "puntos") {
+    for (let py = y + 3; py < y + alto; py += paso) for (let px = x + 3; px < x + ancho; px += paso) page.drawCircle({ x: px, y: py, size: 0.7, color });
+    return;
+  }
+  if (patron === "horizontal" || patron === "cruz") for (let py = y + paso; py < y + alto; py += paso) page.drawLine({ start: { x, y: py }, end: { x: x + ancho, y: py }, thickness: 0.35, color });
+  if (patron === "vertical" || patron === "cruz") for (let px = x + paso; px < x + ancho; px += paso) page.drawLine({ start: { x: px, y }, end: { x: px, y: y + alto }, thickness: 0.35, color });
+  if (patron === "diagonal" || patron === "diagonal-inversa") {
+    for (let offset = -alto; offset < ancho; offset += paso) {
+      const pendiente = patron === "diagonal" ? 1 : -1;
+      const x1 = Math.max(x, x + offset);
+      const x2 = Math.min(x + ancho, x + offset + alto);
+      if (x2 > x1) page.drawLine({ start: { x: x1, y: y + (x1 - x - offset) * pendiente + (pendiente < 0 ? alto : 0) }, end: { x: x2, y: y + (x2 - x - offset) * pendiente + (pendiente < 0 ? alto : 0) }, thickness: 0.35, color });
+    }
+  }
+}
 
-  page.drawText("Perfil litologico", {
-    x: 50,
-    y: 790,
-    size: 18,
-    font: bold,
-    color: rgb(0, 0.2, 0.5),
+export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologico, font: PDFFont, bold: PDFFont): PDFPage[] {
+  return perfil.rangos.map((rango, indice) => {
+    const page = doc.addPage([595.28, 841.89]);
+    const alto = 650;
+    const ySuperior = 735;
+    const xColumna = 90;
+    const anchoColumna = 120;
+    const amplitud = rango.hasta_m - rango.desde_m;
+    const yDe = (metros: number) => ySuperior - ((metros - rango.desde_m) / amplitud) * alto;
+    page.drawText(textoSeguro(perfil.titulo), { x: 45, y: 790, size: 17, font: bold, color: rgb(0, 0.2, 0.5) });
+    page.drawText(`Rango ${formatearMetros(rango.desde_m)}-${formatearMetros(rango.hasta_m)} m | pagina ${indice + 1}/${perfil.rangos.length}`, { x: 45, y: 768, size: 9, font });
+    page.drawRectangle({ x: xColumna, y: ySuperior - alto, width: anchoColumna, height: alto, borderWidth: 1.2, borderColor: rgb(0.1, 0.1, 0.1), color: rgb(0.97, 0.97, 0.97) });
+
+    for (const tramo of perfil.tramos) {
+      const desde = Math.max(tramo.desde_m, rango.desde_m);
+      const hasta = Math.min(tramo.hasta_m, rango.hasta_m);
+      if (hasta <= desde) continue;
+      const y = yDe(hasta);
+      const h = yDe(desde) - y;
+      const [r, g, b] = hexARgb(tramo.estilo.color);
+      page.drawRectangle({ x: xColumna, y, width: anchoColumna, height: h, color: rgb(r, g, b), borderWidth: 0.6, borderColor: rgb(0.15, 0.15, 0.15) });
+      dibujarPatron(page, tramo.estilo.patron, xColumna, y, anchoColumna, h);
+      const centro = Math.max(90, Math.min(730, yDe((desde + hasta) / 2)));
+      const xTexto = 245 + tramo.carril_etiqueta * 92;
+      page.drawLine({ start: { x: xColumna + anchoColumna, y: centro }, end: { x: xTexto - 5, y: centro }, thickness: 0.35, color: rgb(0.4, 0.4, 0.4) });
+      const etiqueta = `${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m ${textoSeguro(tramo.material)}`;
+      const lineas = envolverTexto(etiqueta, font, 7.2, 84);
+      lineas.forEach((linea, numero) => page.drawText(linea, { x: xTexto, y: centro + ((lineas.length - 1) / 2 - numero) * 8 - 3, size: 7.2, font }));
+    }
+
+    const primerTick = Math.ceil(rango.desde_m / perfil.paso_escala_m) * perfil.paso_escala_m;
+    const ticks = new Set([rango.desde_m, rango.hasta_m]);
+    for (let m = primerTick; m < rango.hasta_m; m += perfil.paso_escala_m) ticks.add(m);
+    for (const metros of [...ticks].sort((a, b) => a - b)) {
+      const y = yDe(metros);
+      page.drawLine({ start: { x: xColumna - 6, y }, end: { x: 545, y }, thickness: 0.25, color: rgb(0.68, 0.68, 0.68), dashArray: [2, 3] });
+      page.drawText(`${formatearMetros(metros)} m`, { x: 45, y: y - 3, size: 8, font });
+    }
+    for (const aporte of perfil.aportes.filter((a) => a.profundidad_m >= rango.desde_m && a.profundidad_m <= rango.hasta_m)) {
+      const y = yDe(aporte.profundidad_m);
+      page.drawCircle({ x: xColumna + anchoColumna + 12, y, size: 4, color: rgb(0.05, 0.35, 0.85), borderColor: rgb(0, 0.15, 0.45), borderWidth: 0.7 });
+      page.drawText(`Aporte ${formatearMetros(aporte.profundidad_m)} m`, { x: xColumna + anchoColumna + 20, y: y - 3, size: 7.5, font, color: rgb(0.03, 0.25, 0.65) });
+    }
+    page.drawText("Leyenda: trama + tono = material | azul = aporte de agua | cruz gris = sin datos", { x: 45, y: 55, size: 8, font });
+    return page;
   });
-  page.drawText(`Escala proporcional - profundidad representada: ${perfil.profundidad_m} m`, {
-    x: 50,
-    y: 768,
-    size: 9,
-    font,
-    color: rgb(0.35, 0.35, 0.35),
-  });
+}
 
-  page.drawRectangle({
-    x: xColumna,
-    y: ySuperior - alto,
-    width: anchoColumna,
-    height: alto,
-    borderWidth: 1,
-    borderColor: rgb(0.15, 0.15, 0.15),
-    color: rgb(0.97, 0.97, 0.97),
-  });
+function formatearMetros(valor: number) {
+  return Number.isInteger(valor) ? String(valor) : valor.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
 
-  for (const tramo of perfil.tramos) {
-    const desde = Math.min(tramo.desde_m, perfil.profundidad_m);
-    const hasta = Math.min(tramo.hasta_m, perfil.profundidad_m);
-    if (hasta <= desde) continue;
-    const yHasta = yDeProfundidad(hasta);
-    const [r, g, b] = tramo.color;
-    page.drawRectangle({
-      x: xColumna,
-      y: yHasta,
-      width: anchoColumna,
-      height: yDeProfundidad(desde) - yHasta,
-      color: rgb(r, g, b),
-      borderWidth: 0.35,
-      borderColor: rgb(0.25, 0.25, 0.25),
-    });
+function envolverTexto(texto: string, font: PDFFont, tamano: number, ancho: number) {
+  const lineas: string[] = [];
+  let actual = "";
+  for (const palabraOriginal of texto.split(/\s+/)) {
+    let palabra = palabraOriginal;
+    while (font.widthOfTextAtSize(palabra, tamano) > ancho) {
+      let corte = 1;
+      while (corte < palabra.length && font.widthOfTextAtSize(palabra.slice(0, corte + 1), tamano) <= ancho) corte++;
+      if (actual) lineas.push(actual);
+      lineas.push(palabra.slice(0, corte));
+      palabra = palabra.slice(corte);
+      actual = "";
+    }
+    const candidato = actual ? `${actual} ${palabra}` : palabra;
+    if (font.widthOfTextAtSize(candidato, tamano) <= ancho) actual = candidato;
+    else {
+      if (actual) lineas.push(actual);
+      actual = palabra;
+    }
   }
-
-  for (let metros = 0; metros <= perfil.profundidad_m; metros += perfil.paso_escala_m) {
-    const y = yDeProfundidad(metros);
-    page.drawLine({
-      start: { x: xColumna - 6, y },
-      end: { x: xColumna, y },
-      thickness: 0.6,
-      color: rgb(0.2, 0.2, 0.2),
-    });
-    page.drawText(`${metros} m`, { x: 55, y: y - 3, size: 8, font });
-  }
-  if (perfil.profundidad_m % perfil.paso_escala_m !== 0) {
-    page.drawText(`${perfil.profundidad_m} m`, {
-      x: 55,
-      y: ySuperior - alto - 3,
-      size: 8,
-      font,
-    });
-  }
-
-  page.drawText("Intervalos", { x: 260, y: ySuperior, size: 12, font: bold });
-  let yLeyenda = ySuperior - 22;
-  for (const tramo of perfil.tramos) {
-    if (yLeyenda < 85) break;
-    const [r, g, b] = tramo.color;
-    page.drawRectangle({ x: 260, y: yLeyenda - 2, width: 10, height: 10, color: rgb(r, g, b) });
-    const material = textoSeguro(tramo.material.trim());
-    const etiqueta = `${tramo.desde_m}-${tramo.hasta_m} m  ${material}`;
-    page.drawText(etiqueta.slice(0, 48), { x: 278, y: yLeyenda, size: 9, font });
-    yLeyenda -= 18;
-  }
-  if (perfil.tramos.length === 0) {
-    page.drawText("Sin intervalos litologicos registrados.", {
-      x: 260,
-      y: yLeyenda,
-      size: 9,
-      font,
-      color: rgb(0.45, 0.45, 0.45),
-    });
-  } else if (yLeyenda < 85) {
-    page.drawText("La tabla del informe contiene el detalle completo.", {
-      x: 260,
-      y: 65,
-      size: 8,
-      font,
-      color: rgb(0.45, 0.45, 0.45),
-    });
-  }
-
-  return page;
+  if (actual) lineas.push(actual);
+  return lineas;
 }
