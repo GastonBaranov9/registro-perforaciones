@@ -1,61 +1,101 @@
-import { Component, inject, input, resource, signal } from '@angular/core';
-import { UsuariosCreateService } from '../../../../shared/services/usuarios-create.service';
+import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import {
+  IonButton,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonSpinner,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { RolesListService } from '../../../../shared/services/roles-list.service';
+import { UsuariosCreateService } from '../../../../shared/services/usuarios-create.service';
 import {
   Rol,
   UsuarioCrearBody,
   UsuarioFormulario,
 } from '../../../../shared/types/schemas';
-import { IonContent, IonCard, IonCardContent, ToastController } from '@ionic/angular/standalone';
-import { CommonModule } from '@angular/common';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
 
 @Component({
   selector: 'app-usuarios-create',
-  imports: [CommonModule, IonContent, IonCard, IonCardContent, UsuarioFormComponent],
+  imports: [
+    CommonModule,
+    IonButton,
+    IonCard,
+    IonCardContent,
+    IonContent,
+    IonSpinner,
+    UsuarioFormComponent,
+  ],
   templateUrl: './usuarios-create.page.html',
   styleUrl: './usuarios-create.page.css',
 })
 export class UsuariosCreatePage {
-    public toastController = inject(ToastController)
-
+  public toastController = inject(ToastController);
   public createService: UsuariosCreateService = inject(UsuariosCreateService);
+  private readonly rolesListService = inject(RolesListService);
   public router: Router = inject(Router);
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
- public roles = signal<Rol[]>([
-    { id_rol: 1, nombre: 'administracion', descr: 'Administración' },
-    { id_rol: 2, nombre: 'perforador', descr: 'Técnico de perforación' },
-    { id_rol: 3, nombre: 'propietario', descr: 'Propietario del sitio' }
-  ]);
+  public roles = signal<Rol[]>([]);
+  public cargandoRoles = signal<boolean>(false);
+  public rolesCargados = signal<boolean>(false);
+  public errorCargaRoles = signal<string>('');
 
-async guardarUsuario(usuario: UsuarioFormulario) {
-  const body: UsuarioCrearBody = {
-    email: usuario.email.trim(),
-    nombre: usuario.nombre.trim(),
-    password: usuario.password,
-    activo: usuario.activo,
-    roles: usuario.roles,
-  };
-
-  try {
-    this.disabled.set(true);
-
-    await this.createService.createUsuario(body);
-
-    await this.router.navigate(['/usuarios-list']);
-  } catch (err: any) {
-    const toast = await this.toastController.create({
-      message: err.message ?? 'No se pudo crear el usuario',
-      duration: 2000,
-      position: 'bottom',
-      color: 'danger',
-      animated: true,
-    });
-
-    await toast.present();
-  } finally {
-    this.disabled.set(false);
+  constructor() {
+    void this.cargarRoles();
   }
-}
+
+  public async cargarRoles(): Promise<void> {
+    this.cargandoRoles.set(true);
+    this.rolesCargados.set(false);
+    this.errorCargaRoles.set('');
+    this.roles.set([]);
+
+    try {
+      const roles = await this.rolesListService.getRoles();
+      const rolesSinDuplicados = Array.from(
+        new Map(roles.map((rol) => [rol.id_rol, rol])).values()
+      );
+
+      this.roles.set(rolesSinDuplicados);
+      this.rolesCargados.set(true);
+    } catch {
+      this.errorCargaRoles.set('No se pudo cargar el catálogo de roles.');
+    } finally {
+      this.cargandoRoles.set(false);
+    }
+  }
+
+  async guardarUsuario(usuario: UsuarioFormulario) {
+    const body: UsuarioCrearBody = {
+      email: usuario.email.trim(),
+      nombre: usuario.nombre.trim(),
+      password: usuario.password,
+      activo: usuario.activo,
+      roles: usuario.roles,
+    };
+
+    try {
+      this.disabled.set(true);
+
+      await this.createService.createUsuario(body);
+
+      await this.router.navigate(['/usuarios-list']);
+    } catch (err: any) {
+      const toast = await this.toastController.create({
+        message: err.message ?? 'No se pudo crear el usuario',
+        duration: 2000,
+        position: 'bottom',
+        color: 'danger',
+        animated: true,
+      });
+
+      await toast.present();
+    } finally {
+      this.disabled.set(false);
+    }
+  }
 }
