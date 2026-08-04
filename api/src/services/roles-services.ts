@@ -11,6 +11,10 @@ export async function changeRol(
   try {
     await client.query("BEGIN");
     await client.query(
+      `SELECT id_usuario FROM usuario WHERE id_usuario = $1 FOR UPDATE`,
+      [id_usuario]
+    );
+    await client.query(
       `SELECT pg_advisory_xact_lock($1::integer, $2::integer)`,
       [id_usuario, id_rol]
     );
@@ -31,6 +35,11 @@ export async function changeRol(
         [id_usuario, id_rol]
       );
     }
+
+    await client.query(
+      `UPDATE usuario SET version_sesion = version_sesion + 1 WHERE id_usuario = $1`,
+      [id_usuario]
+    );
 
     await client.query("COMMIT");
   } catch (error) {
@@ -84,37 +93,80 @@ export async function updateRol(
   data: RolBody,
   id_rol: number
 ): Promise<Rol | null> {
-  const exists = await myPool.query(`SELECT 1 FROM rol WHERE id_rol = $1`, [
-    id_rol,
-  ]);
-  if (!exists.rows[0]) return null;
-
-  const sql = `
-    UPDATE rol
-    SET
-      nombre = $2,
-      descr = $3
-    WHERE id_rol = $1
-    RETURNING id_rol, nombre, descr;
-  `;
+  const client = await myPool.connect();
   try {
-    const { rows } = await myPool.query(sql, [id_rol, data.nombre, data.descr]);
+    await client.query("BEGIN");
+    const { rows: actuales } = await client.query<{ nombre: string }>(
+      `SELECT nombre FROM rol WHERE id_rol = $1 FOR UPDATE`,
+      [id_rol]
+    );
+    if (!actuales[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows } = await client.query<Rol>(
+      `
+        UPDATE rol
+        SET nombre = $2, descr = $3
+        WHERE id_rol = $1
+        RETURNING id_rol, nombre, descr;
+      `,
+      [id_rol, data.nombre, data.descr]
+    );
+
+    if (actuales[0].nombre !== data.nombre) {
+      await client.query(
+        `
+          UPDATE usuario
+          SET version_sesion = version_sesion + 1
+          WHERE id_usuario IN (
+            SELECT id_usuario FROM usuario_rol WHERE id_rol = $1
+          );
+        `,
+        [id_rol]
+      );
+    }
+
+    await client.query("COMMIT");
     return rows[0] ?? null;
-  } catch (e: any) {
-    throw e;
+  } catch (error: unknown) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
 export async function deleteRol(id_rol: number): Promise<Boolean> {
-  const { rowCount } = await myPool.query(
-    `
-    DELETE FROM rol
-    WHERE id_rol = $1
-    `,
-    [id_rol]
-  );
-  if (rowCount === 0) throw new err.T05RolNoEncontrado();
-  return (rowCount ?? 0) > 0;
+  const client = await myPool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `SELECT id_rol FROM rol WHERE id_rol = $1 FOR UPDATE`,
+      [id_rol]
+    );
+    if (!rows[0]) throw new err.T05RolNoEncontrado();
+
+    await client.query(
+      `
+        UPDATE usuario
+        SET version_sesion = version_sesion + 1
+        WHERE id_usuario IN (
+          SELECT id_usuario FROM usuario_rol WHERE id_rol = $1
+        );
+      `,
+      [id_rol]
+    );
+    await client.query(`DELETE FROM rol WHERE id_rol = $1`, [id_rol]);
+    await client.query("COMMIT");
+    return true;
+  } catch (error: unknown) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getRolById(id_rol: number): Promise<Rol> {
