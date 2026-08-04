@@ -1,6 +1,16 @@
 ALTER TABLE usuario
   ADD COLUMN IF NOT EXISTS version_sesion INTEGER NOT NULL DEFAULT 1;
 
+ALTER TABLE usuario
+  ALTER COLUMN version_sesion SET DEFAULT 1;
+
+UPDATE usuario
+SET version_sesion = 1
+WHERE version_sesion IS NULL;
+
+ALTER TABLE usuario
+  ALTER COLUMN version_sesion SET NOT NULL;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
