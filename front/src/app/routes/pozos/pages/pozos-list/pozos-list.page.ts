@@ -66,10 +66,6 @@ export class PozosListPage implements OnInit, ViewWillEnter {
 
   async ngOnInit(): Promise<void> {
     await this.cargarPozos();
-    const idUsuario = this.authService.userId();
-    if (idUsuario != null) {
-      this.webSocketService.connect(idUsuario);
-    }
   }
 
   async ionViewWillEnter() {

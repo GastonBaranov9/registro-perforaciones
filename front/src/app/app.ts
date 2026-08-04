@@ -61,7 +61,7 @@ export class App {
 
   public wsConnection = effect(() => {
     if (this.mainStore.user()) {
-      this.webSocketService.connect(this.mainStore.user()!.id_usuario);
+      this.webSocketService.connect();
     }
   });
 }

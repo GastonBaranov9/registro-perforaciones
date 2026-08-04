@@ -1,6 +1,4 @@
 import { type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { Type } from "@fastify/type-provider-typebox";
-import { Usuario } from "../models/schemas.ts";
 import { clientConnections } from "../plugins/websocket.ts";
 import type { FastifyInstance } from "fastify";
 import { isAdmin } from "../services/roles-services.ts";
@@ -12,9 +10,8 @@ const websocketRoute = async function (fastify: FastifyInstance) {
       schema: {
         tags: ["websocket"],
         summary: "Iniciar la conexion con WS",
-        querystring: Type.Pick(Usuario, ["id_usuario"]),
         description:
-          "Ruta para iniciar la conexion con WS. No hay requerimientos de uso",
+          "Ruta autenticada para iniciar la conexion con WS",
       },
       onRequest: [fastify.authenticate],
     },
