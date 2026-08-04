@@ -42,6 +42,7 @@ const authRoutes = async function (fastify: FastifyInstance) {
         {
           sub: user.id_usuario,
           roles,
+          version_sesion: user.version_sesion,
         },
         {
           expiresIn: "10h",

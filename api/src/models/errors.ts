@@ -30,7 +30,7 @@ export const T05UsuarioNoEncontrado = createError(
 );
 export const T05NoAutorizado = createError(
   "ERR4_T05",
-  "Se requiere autenticación para realizar esta acción",
+  "Sesión inválida o no autorizada",
   401,
   Error
 );

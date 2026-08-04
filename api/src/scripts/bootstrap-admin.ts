@@ -44,7 +44,8 @@ if (!adminEmail || !adminName || !adminPassword) {
         DO UPDATE SET
           nombre = EXCLUDED.nombre,
           password = EXCLUDED.password,
-          activo = TRUE
+          activo = TRUE,
+          version_sesion = usuario.version_sesion + 1
         RETURNING id_usuario;
       `,
       [adminEmail, adminName, passwordHash]
@@ -71,7 +72,7 @@ if (!adminEmail || !adminName || !adminPassword) {
 
     await client.query("COMMIT");
 
-    console.log(`Administrador preparado: ${adminEmail}`);
+    console.log("Administrador preparado.");
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("No se pudo preparar el administrador:", error);

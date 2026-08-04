@@ -1,15 +1,37 @@
 import fastifyJwt from "@fastify/jwt";
 import fastifyPlugin from "fastify-plugin";
 import * as err from "../models/errors.ts";
-import { isUsuarioActivo, rolUser } from "../services/auth-services.ts";
+import { getEstadoSesionUsuario, rolUser } from "../services/auth-services.ts";
 import { myPool } from "../db/pool.ts";
+
+export function normalizarEnteroPositivoSeguro(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+
+  if (typeof value === "string" && /^[1-9]\d*$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+export function sesionVigente(
+  estado: { activo: boolean; version_sesion: number } | null,
+  versionToken: number
+): boolean {
+  return Boolean(
+    estado && estado.activo && estado.version_sesion === versionToken
+  );
+}
 
 export default fastifyPlugin(async function (fastify) {
   const secret = process.env.FASTIFY_SECRET;
   if (!secret) throw new err.T05ErrorDesconocido("Falta setear FASTIFY_SECRET");
 
   await fastify.register(fastifyJwt, { secret });
-  const authenticatedRequests = new WeakSet<object>();
+  const authenticatedRequests = new WeakMap<object, { idUsuario: number }>();
 
   fastify.decorate("authenticate", async function (req, rep) {
     if (authenticatedRequests.has(req)) return;
@@ -20,32 +42,23 @@ export default fastifyPlugin(async function (fastify) {
       throw new err.T05NoAutorizado();
     }
 
-    const { sub } = req.user as { sub: unknown };
-    let idUsuario: number;
+    const { sub, version_sesion } = req.user as {
+      sub: unknown;
+      version_sesion: unknown;
+    };
+    const idUsuario = normalizarEnteroPositivoSeguro(sub);
+    const versionToken = normalizarEnteroPositivoSeguro(version_sesion);
 
-    if (typeof sub === "number") {
-      if (!Number.isSafeInteger(sub) || sub <= 0) {
-        throw new err.T05NoAutorizado();
-      }
-
-      idUsuario = sub;
-    } else if (typeof sub === "string" && /^[1-9]\d*$/.test(sub)) {
-      const subNumerico = Number(sub);
-
-      if (!Number.isSafeInteger(subNumerico) || subNumerico <= 0) {
-        throw new err.T05NoAutorizado();
-      }
-
-      idUsuario = subNumerico;
-    } else {
+    if (idUsuario === null || versionToken === null) {
       throw new err.T05NoAutorizado();
     }
 
-    const usuarioActivo = await isUsuarioActivo(idUsuario);
+    const estado = await getEstadoSesionUsuario(idUsuario);
+    if (!sesionVigente(estado, versionToken)) {
+      throw new err.T05NoAutorizado();
+    }
 
-    if (!usuarioActivo) throw new err.T05NoAutorizado();
-
-    authenticatedRequests.add(req);
+    authenticatedRequests.set(req, { idUsuario });
   });
   fastify.decorate("userIsAdmin", async function (req, rep) {
     await fastify.authenticate(req, rep);
@@ -157,12 +170,12 @@ declare module "fastify" {
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
-    payload: { sub: number; roles?: {
+    payload: { sub: number; version_sesion: number; roles?: {
       id_rol: number,
       nombre: string,
       descr: string
     }[] };
-    user: { sub: number; roles?: {
+    user: { sub: number; version_sesion: number; roles?: {
       id_rol: number,
       nombre: string,
       descr: string
