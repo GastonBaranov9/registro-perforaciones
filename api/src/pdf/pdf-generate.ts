@@ -3,6 +3,10 @@ import * as fs from "fs/promises";
 import type { ReportePozo } from "../services/generar-informe-consultas.ts";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
+import {
+  crearPerfilLitologico,
+  dibujarPerfilLitologico,
+} from "./perfil-litologico.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -301,6 +305,14 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     font,
     color: rgb(0.4, 0.4, 0.4),
   });
+
+  const perfilLitologico = crearPerfilLitologico(
+    litologia,
+    reporte.profundidad_final_m,
+  );
+  if (perfilLitologico) {
+    dibujarPerfilLitologico(doc, perfilLitologico, font, bold);
+  }
 
   return doc;
 }
