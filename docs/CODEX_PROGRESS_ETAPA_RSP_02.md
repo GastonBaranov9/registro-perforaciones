@@ -26,9 +26,18 @@
 
 ## Bloques pendientes
 
-- Bloque 3: auditoría de `isPropGuard`.
 - Bloque 4: pruebas automáticas posibles.
 - Bloque 5: auditoría final.
+
+## Bloque 3 — Auditoría de `isPropGuard`
+
+- Estado: corregido y revisado; commit pendiente.
+- Evidencia: el nombre del guard, `userIsPropietario`, `isProp()` y el backend comprueban `propietario`; la comparación con `perforador` provenía del commit inicial y no tenía rutas consumidoras que justificaran otra regla.
+- Cambio: `isPropGuard` acepta `propietario` y rechaza un usuario exclusivamente `perforador`.
+- Pruebas añadidas: propietario permitido y perforador redirigido.
+- Resultados:
+  - `npm run build` en `front`: correcto.
+  - prueba dirigida: bloqueada por la misma importación default preexistente en `intervalo-lit-form.component.spec.ts`.
 
 ## Advertencias conocidas
 

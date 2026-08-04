@@ -70,11 +70,10 @@ export const isPropGuard: CanActivateFn = (route, state) => {
   }
 
   for(const rol of roles){
-    if(rol.nombre==="perforador") return true;
+    if(rol.nombre==="propietario") return true;
   }
   return router.createUrlTree(['/home'], {
     queryParams: { redirectTo: state.url }
   });
 };
-
 
