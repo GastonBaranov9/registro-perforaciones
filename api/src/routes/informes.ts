@@ -35,7 +35,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as {
@@ -64,7 +64,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as {
@@ -96,7 +96,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as {
@@ -127,7 +127,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
       try {

@@ -2,8 +2,7 @@ import fastify from "fastify";
 import type { FastifyInstance, FastifyListenOptions } from "fastify";
 import autoLoad from "@fastify/autoload";
 import { fileURLToPath } from "node:url";
-import path, { dirname, join, resolve } from "node:path";
-import fastifyStatic from "@fastify/static";
+import { dirname, join } from "node:path";
 import type { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 const server: FastifyInstance = fastify({
   logger: true,
@@ -14,7 +13,6 @@ const ListeningOptions: FastifyListenOptions = {
   port: 3000,
 };
 
-const rootDir = dirname(process.argv[1]);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -31,11 +29,6 @@ await server.register(autoLoad, {
   prefix: "/",
 });*/
 
-
-server.register(fastifyStatic, {
-  root: path.join(__dirname, "../public"),
-  prefix: "/public/",
-});
 
 server.get("/", async function (request, reply) {
   return { root: "trueada" };
