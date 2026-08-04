@@ -4,6 +4,7 @@ import * as err from "../models/errors.ts";
 import { getEstadoSesionUsuario, rolUser } from "../services/auth-services.ts";
 import { myPool } from "../db/pool.ts";
 import { SESSION_COOKIE } from "./cookies.ts";
+import { pozoPerteneceAPerforador, pozoPerteneceAUsuario } from "../services/autorizacion-recursos.ts";
 
 export function normalizarEnteroPositivoSeguro(value: unknown): number | null {
   if (typeof value === "number") {
@@ -118,19 +119,16 @@ export default fastifyPlugin(async function (fastify) {
     await (fastify as any).authenticate(req, rep);
     const { sub } = req.user as { sub: number };
     const { id_pozo } = req.params as { id_pozo: number };
-    const isAdmin = await rolUser(sub, "administracion");
-    const { rows } = await myPool.query(
-      `SELECT id_propietario, id_perforador FROM pozo WHERE id_pozo = $1`,
-      [id_pozo]
-    );
-    if (rows.length === 0) throw new err.T05PozoNoEncontrado();
-    const { id_propietario, id_perforador } = rows[0];
-    if (
-      Number(sub) !== Number(id_propietario) &&
-      Number(sub) !== Number(id_perforador) &&
-      !isAdmin
-    )
-      throw new err.T05SinPermiso();
+    if (await rolUser(sub, "administracion")) return;
+    if (await rolUser(sub, "propietario")) {
+      if (!(await pozoPerteneceAUsuario(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
+      return;
+    }
+    if (await rolUser(sub, "perforador")) {
+      if (!(await pozoPerteneceAPerforador(id_pozo, sub))) throw new err.T05SinPermiso();
+      return;
+    }
+    throw new err.T05SinPermiso();
   });
 
   fastify.decorate("IsThisUser", async function (req: any, rep: any) {
