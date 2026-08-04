@@ -25,4 +25,18 @@ describe('UsuarioFormComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('emite los datos actuales al guardar', () => {
+    const emit = spyOn(component.saved, 'emit');
+
+    component.handleSubmit();
+
+    expect(emit).toHaveBeenCalledOnceWith({
+      email: '',
+      nombre: '',
+      password: '',
+      activo: true,
+      roles: [],
+    });
+  });
 });

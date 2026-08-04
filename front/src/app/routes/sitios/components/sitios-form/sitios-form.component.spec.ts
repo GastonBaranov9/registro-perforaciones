@@ -11,6 +11,7 @@ describe('SitiosFormComponent', () => {
   let fixture: ComponentFixture<SitiosFormComponent>;
 
   beforeEach(waitForAsync(() => {
+    spyOn(SitiosFormComponent.prototype, 'getLocation').and.resolveTo();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
       imports: [SitiosFormComponent, IonicModule.forRoot()]
@@ -24,5 +25,9 @@ describe('SitiosFormComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('consulta la ubicacion mediante el adaptador simulado', () => {
+    expect(component.getLocation).toHaveBeenCalled();
   });
 });

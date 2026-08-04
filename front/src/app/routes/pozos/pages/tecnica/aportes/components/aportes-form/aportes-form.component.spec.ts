@@ -25,4 +25,12 @@ describe('AportesFormComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('emite el nivel de aporte recibido', () => {
+    const emit = spyOn(component.saved, 'emit');
+
+    component.handleNivelAporte();
+
+    expect(emit).toHaveBeenCalledOnceWith({ profundidad_m: 10 });
+  });
 });

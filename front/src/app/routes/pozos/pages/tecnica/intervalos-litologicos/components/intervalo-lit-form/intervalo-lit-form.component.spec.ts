@@ -24,4 +24,12 @@ describe('IntervaloLitFormComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('emite el intervalo litologico recibido', () => {
+    const emit = spyOn(component.saved, 'emit');
+
+    component.handleIntervaloLit();
+
+    expect(emit).toHaveBeenCalledOnceWith({ desde_m: 0, hasta_m: 10, material: 'arena' });
+  });
 });
