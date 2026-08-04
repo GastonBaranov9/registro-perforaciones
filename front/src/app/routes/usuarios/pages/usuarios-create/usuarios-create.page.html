@@ -2,16 +2,31 @@
   <ion-card>
     <ion-card-content>
       <h2>Crear nuevo usuario</h2>
-      
-      <app-usuario-form
-  [roles]="this.roles()"
-  [passwordRequired]="true"
-  (saved)="guardarUsuario($event)"
-></app-usuario-form>
+
+      @if (cargandoRoles()) {
+        <p><ion-spinner></ion-spinner> Cargando roles...</p>
+      } @else if (errorCargaRoles()) {
+        <p class="error">{{ errorCargaRoles() }}</p>
+        <ion-button expand="block" fill="outline" (click)="cargarRoles()">
+          RECARGAR
+        </ion-button>
+      } @else if (rolesCargados() && roles().length === 0) {
+        <p class="error">No hay roles disponibles.</p>
+        <ion-button expand="block" fill="outline" (click)="cargarRoles()">
+          RECARGAR
+        </ion-button>
+      } @else if (rolesCargados()) {
+        <app-usuario-form
+          [roles]="roles()"
+          [passwordRequired]="true"
+          (saved)="guardarUsuario($event)"
+        ></app-usuario-form>
+      }
+
       @if (errorMessage()) {
-      <p class="error">
-        {{ errorMessage() }}
-      </p>
+        <p class="error">
+          {{ errorMessage() }}
+        </p>
       }
     </ion-card-content>
   </ion-card>

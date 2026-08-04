@@ -77,4 +77,3 @@ export const isPropGuard: CanActivateFn = (route, state) => {
   });
 };
 
-

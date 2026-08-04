@@ -3,30 +3,39 @@
     <ion-card-content>
       <h2>Editar usuario</h2>
 
-      @if (this.userResource.hasValue()) {
-      <app-usuario-form
-  [user]="this.userResource.value()!"
-  [roles]="this.roles()"
-  [passwordRequired]="false"
-  (saved)="this.handleEdit($event)"
-/>
-      } @else {
-      <p>No hay usuario</p>
+      @if (userResource.isLoading()) {
+        <p><ion-spinner></ion-spinner> Cargando usuario y roles...</p>
+      } @else if (userResource.error()) {
+        <p class="error-message">{{ mensajeErrorCarga() }}</p>
+        <ion-button fill="outline" expand="block" (click)="userResource.reload()">
+          RECARGAR
+        </ion-button>
+      } @else if (userResource.hasValue() && userResource.value().roles.length === 0) {
+        <p class="error-message">No hay roles disponibles.</p>
+        <ion-button fill="outline" expand="block" (click)="userResource.reload()">
+          RECARGAR
+        </ion-button>
+      } @else if (userResource.hasValue()) {
+        <app-usuario-form
+          [user]="userResource.value().usuario"
+          [roles]="userResource.value().roles"
+          [passwordRequired]="false"
+          (saved)="handleEdit($event)"
+        />
+        <ion-button
+          fill="outline"
+          expand="block"
+          (click)="userResource.reload()"
+          [disabled]="disabled()"
+        >
+          RECARGAR
+        </ion-button>
       }
 
-      <ion-button
-        fill="outline"
-        expand="block"
-        (click)="this.userResource.reload()"
-        [disabled]="this.disabled()"
-      >
-        RECARGAR
-      </ion-button>
-
-      @if (this.errorMessage()) {
-      <div class="error-message">
-        {{ this.errorMessage() }}
-      </div>
+      @if (errorMessage()) {
+        <div class="error-message">
+          {{ errorMessage() }}
+        </div>
       }
     </ion-card-content>
   </ion-card>
