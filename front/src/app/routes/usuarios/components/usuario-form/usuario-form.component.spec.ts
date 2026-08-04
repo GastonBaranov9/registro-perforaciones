@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
@@ -9,11 +12,12 @@ describe('UsuarioFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ UsuarioFormComponent ],
-      imports: [IonicModule.forRoot()]
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [UsuarioFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(UsuarioFormComponent);
+    fixture.componentRef.setInput('roles', []);
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));

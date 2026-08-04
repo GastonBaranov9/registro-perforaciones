@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
@@ -9,11 +12,12 @@ describe('SitiosFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ SitiosFormComponent ],
-      imports: [IonicModule.forRoot()]
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [SitiosFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(SitiosFormComponent);
+    fixture.componentRef.setInput('sitio', { departamento: 'Montevideo' });
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));

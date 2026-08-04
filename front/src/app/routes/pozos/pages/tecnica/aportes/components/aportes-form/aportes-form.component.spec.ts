@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
@@ -9,11 +12,12 @@ describe('AportesFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ AportesFormComponent ],
-      imports: [IonicModule.forRoot()]
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      imports: [AportesFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(AportesFormComponent);
+    fixture.componentRef.setInput('nivelAporte', { profundidad_m: 10 });
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));
