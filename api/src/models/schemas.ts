@@ -27,13 +27,14 @@ export const Usuario = Type.Object({
   nombre: Type.String(),
   password: Type.String(),
   activo: Type.Boolean(),
+  version_sesion: Type.Integer({ minimum: 1 }),
   fecha_registro: Type.String({ format: "date-time" }),
   roles: Type.Optional(Type.Array(Rol)),
 });
 
 export type Usuario = Static<typeof Usuario>;
 
-export const UsuarioPublico = Type.Omit(Usuario, ["password"]);
+export const UsuarioPublico = Type.Omit(Usuario, ["password", "version_sesion"]);
 export type UsuarioPublico = Static<typeof UsuarioPublico>;
 
 const PasswordPlanoSchema = Type.String({

@@ -27,6 +27,7 @@ CREATE TABLE usuario (
   nombre          VARCHAR NOT NULL,
   password        VARCHAR NOT NULL,    
   activo          BOOLEAN NOT NULL DEFAULT TRUE,
+  version_sesion  INTEGER NOT NULL DEFAULT 1 CHECK (version_sesion > 0),
   fecha_registro  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

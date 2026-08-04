@@ -5,8 +5,10 @@ import {verifyPassword } from "./password-service.ts";
 
 type AuthenticatedUser = Pick<
   Usuario,
-  "id_usuario" | "email" | "nombre"
+  "id_usuario" | "email" | "nombre" | "version_sesion"
 >;
+
+export type EstadoSesionUsuario = Pick<Usuario, "activo" | "version_sesion">;
 
 
 
@@ -15,7 +17,7 @@ export async function logUser(
   plainPassword: string
 ): Promise<AuthenticatedUser> {
   const sql = `
-    SELECT id_usuario, email, nombre, password
+    SELECT id_usuario, email, nombre, password, version_sesion
     FROM usuario
     WHERE email = $1
       AND activo = TRUE
@@ -24,7 +26,7 @@ export async function logUser(
 
   const { rows } = await myPool.query(sql, [email]);
   const user = rows[0] as
-    | Pick<Usuario, "id_usuario" | "email" | "nombre" | "password">
+    | Pick<Usuario, "id_usuario" | "email" | "nombre" | "password" | "version_sesion">
     | undefined;
 
   if (!user) {
@@ -44,6 +46,7 @@ export async function logUser(
     id_usuario: user.id_usuario,
     email: user.email,
     nombre: user.nombre,
+    version_sesion: user.version_sesion,
   };
 }
 
@@ -65,17 +68,18 @@ export async function rolUser(
   return rows.length > 0;
 }
 
-export async function isUsuarioActivo(id_usuario: number): Promise<boolean> {
+export async function getEstadoSesionUsuario(
+  id_usuario: number
+): Promise<EstadoSesionUsuario | null> {
   const { rows } = await myPool.query(
     `
-      SELECT 1
+      SELECT activo, version_sesion
       FROM usuario
       WHERE id_usuario = $1
-        AND activo = TRUE
       LIMIT 1;
     `,
     [id_usuario]
   );
 
-  return rows.length > 0;
+  return (rows[0] as EstadoSesionUsuario | undefined) ?? null;
 }
