@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import * as fs from "fs/promises";
 import type { ReportePozo } from "../services/generar-informe-consultas.ts";
 import path, { dirname } from "path";
@@ -181,14 +181,16 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   const litologia = reporte.litologia ?? [];
 
   for (const fila of litologia) {
-    if (y < marginBottom + 50) {
+    const lineasMaterial = envolverTextoPdf(String(fila.material), font, 10, pageWidth - colX[2] - marginX);
+    const altoFila = Math.max(14, lineasMaterial.length * 12);
+    if (y < marginBottom + altoFila + 20) {
       nuevaPagina();
       y -= 20;
     }
     page.drawText(`${fila.desde_m}`, { x: colX[0], y, size: 10, font });
     page.drawText(`${fila.hasta_m}`, { x: colX[1], y, size: 10, font });
-    page.drawText(`${fila.material}`, { x: colX[2], y, size: 10, font });
-    y -= 14;
+    lineasMaterial.forEach((linea, indice) => page.drawText(linea, { x: colX[2], y: y - indice * 12, size: 10, font }));
+    y -= altoFila;
   }
 
   y -= 20;
@@ -316,6 +318,22 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   }
 
   return doc;
+}
+
+function envolverTextoPdf(texto: string, font: PDFFont, tamano: number, ancho: number) {
+  const seguro = texto.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+  const lineas: string[] = [];
+  let actual = "";
+  for (const palabra of seguro.split(/\s+/)) {
+    const candidato = actual ? `${actual} ${palabra}` : palabra;
+    if (font.widthOfTextAtSize(candidato, tamano) <= ancho) actual = candidato;
+    else {
+      if (actual) lineas.push(actual);
+      actual = palabra;
+    }
+  }
+  if (actual) lineas.push(actual);
+  return lineas.length ? lineas : ["Sin material"];
 }
 
 export async function generarPDF(reporte: ReportePozo, pozoId: number) {

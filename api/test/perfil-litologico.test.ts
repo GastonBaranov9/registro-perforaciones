@@ -120,7 +120,7 @@ test("el adaptador PDF crea exactamente una página por rango", async () => {
 });
 
 test("el informe completo conserva sus secciones y agrega todas las páginas del perfil", async () => {
-  const litologia = Array.from({ length: 37 }, (_, i) => ({ desde_m: i, hasta_m: i + 1, material: `Estrato ${i}` }));
+  const litologia = Array.from({ length: 37 }, (_, i) => ({ desde_m: i, hasta_m: i + 1, material: i === 0 ? "Arena fina con grava y fragmentos de roca sedimentaria de descripción extensa" : `Estrato ${i}` }));
   const reporte = {
     id_pozo: 7,
     propietario: "Propietario",
