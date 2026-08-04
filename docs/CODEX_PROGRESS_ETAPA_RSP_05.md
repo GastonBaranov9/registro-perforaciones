@@ -62,6 +62,8 @@ La generación PDF se cubre estructuralmente: el mismo preHandler que negó el p
 
 ## Despliegue, rollback y limitaciones
 
+Commits locales de la campaña: `b03ef9e` (pozos/sitios), `7ca1178` (hijos/PDF/WebSocket), `1e48b54` (pruebas/frontend/documentación) y `2ffd33b` (identidad WebSocket desde sesión).
+
 Previo: desplegar API y frontend juntos, conservar `FASTIFY_SECRET`/variables PostgreSQL, cookies seguras en TLS y ejecutar los builds/tests anteriores. No hay SQL de migración. Tras desplegar, verificar login, lista propia, detalle, hijo, PDF, foto y WebSocket con dos cuentas aisladas.
 
 Rollback: revertir los commits RSP-05 en orden inverso y volver a desplegar ambos artefactos; no hay rollback de base. Las fotos existentes permanecen en disco y la API las localiza por `pozo-{id}.ext`.
