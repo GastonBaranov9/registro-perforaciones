@@ -150,12 +150,14 @@
           <ion-button size="large" fill="clear" color="primary" (click)="irADetalle(pozo)">
             <ion-icon slot="icon-only" name="eye"> </ion-icon
           ></ion-button>
+          @if (authService.puedeAdministrarPozos()) {
           <ion-button fill="clear" color="primary" (click)="irAEditar(pozo)"
             ><ion-icon slot="icon-only" name="pencil"> </ion-icon
           ></ion-button>
           <ion-button fill="clear" color="danger" (click)="borrarPozo(pozo)">
             <ion-icon slot="icon-only" name="trash"> </ion-icon>
           </ion-button>
+          }
         </ion-buttons>
       </ion-toolbar>
     </ion-card-content>

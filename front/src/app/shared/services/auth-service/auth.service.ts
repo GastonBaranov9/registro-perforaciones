@@ -57,4 +57,12 @@ export class AuthService {
     const user = this.mainStore.user();
     return user?.id_usuario ?? null;
   }
+
+  public tieneRol(nombre: string): boolean {
+    return this.mainStore.user()?.roles?.some((rol) => rol.nombre === nombre) ?? false;
+  }
+
+  public puedeAdministrarPozos(): boolean {
+    return this.tieneRol('administracion') || this.tieneRol('perforador');
+  }
 }
