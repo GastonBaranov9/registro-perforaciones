@@ -66,10 +66,6 @@ export class PozosListPage implements OnInit, ViewWillEnter {
 
   async ngOnInit(): Promise<void> {
     await this.cargarPozos();
-    const idUsuario = this.authService.userId();
-    if (idUsuario != null) {
-      this.webSocketService.connect(idUsuario);
-    }
   }
 
   async ionViewWillEnter() {
@@ -105,19 +101,31 @@ export class PozosListPage implements OnInit, ViewWillEnter {
     const profMin = this.profundidad_min ?? undefined;
     const sello = this.sello_sanitario ?? undefined;
 
-    const pozos = await this.pozosListService.getListaPozos(
-      caudalMin,
-      caudalMax,
-      profMax,
-      profMin,
-      sello
-    );
-    this.pozos.set(pozos);
+    this.pozos.set([]);
+    try {
+      const pozos = await this.pozosListService.getListaPozos(
+        caudalMin,
+        caudalMax,
+        profMax,
+        profMin,
+        sello
+      );
+      this.pozos.set(pozos);
+    } catch (error) {
+      this.pozos.set([]);
+      throw error;
+    }
   }
 
   public async cargarPozos() {
-    const pozos = await this.pozosListService.getListaPozos();
-    this.pozos.set(pozos);
+    this.pozos.set([]);
+    try {
+      const pozos = await this.pozosListService.getListaPozos();
+      this.pozos.set(pozos);
+    } catch (error) {
+      this.pozos.set([]);
+      throw error;
+    }
   }
 
   irAEditar(pozo: Pozo) {

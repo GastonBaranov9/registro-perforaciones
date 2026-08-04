@@ -37,8 +37,11 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       preHandler: [fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
-      const { id_usuario } = req.params as { id_usuario: number };
+      const { sub: id_usuario } = req.user;
       const data = req.body as NuevoPozo;
+
+      if (!(await isAdmin(id_usuario)) && data.id_perforador !== id_usuario)
+        throw new err.T05SinPermiso();
 
       const isPropietario = await isProp(data.id_propietario);
       const isPerforador = await isPerf(data.id_perforador);
@@ -79,11 +82,14 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
-      const { id_usuario } = req.params as { id_usuario: number };
+      const { sub: id_usuario } = req.user;
       const data = req.body as NuevoPozo;
+
+      if (!(await isAdmin(id_usuario)) && data.id_perforador !== id_usuario)
+        throw new err.T05SinPermiso();
 
       const isPropietario = await isProp(data.id_propietario);
       const isPerforador = await isPerf(data.id_perforador);
@@ -170,7 +176,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       onRequest: [fastify.authenticate],
     },
     async (req, rep) => {
-      const { id_usuario } = req.params as { id_usuario: number };
+      const { sub: id_usuario } = req.user;
       const {
         caudal_min,
         caudal_max,
@@ -251,7 +257,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as {
@@ -291,13 +297,13 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
-      const { id_usuario, id_pozo } = req.params as {
-        id_usuario: number;
+      const { id_pozo } = req.params as {
         id_pozo: number;
       };
+      const { sub: id_usuario } = req.user;
 
       const foto = await (req as any).file?.();
       if (!foto)
@@ -322,7 +328,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const buffer = await foto.toBuffer();
       await fs.writeFile(filePath, buffer);
 
-      const fotoUrl = `/public/${fileName}`;
+      const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
 
       fastify.log.info({ fotoUrl }, "[FOTO] URL que se guarda en BD");
 
@@ -337,6 +343,32 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       );
 
       return rep.code(200).send(pozoActualizado);
+    }
+  );
+
+  fastify.get(
+    "/usuarios/:id_usuario/pozos/:id_pozo/foto",
+    {
+      schema: {
+        summary: "Descargar la foto protegida de un pozo",
+        tags: ["pozos"],
+        params: Type.Object({ id_usuario: Type.Integer(), id_pozo: Type.Integer() }),
+        response: { 404: err.ErrorSchema },
+        security: [{ BearerAuth: [] }],
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+    },
+    async (req, rep) => {
+      const { id_pozo } = req.params as { id_pozo: number };
+      const pozo = await funcPozo.getPozoById(id_pozo);
+      if (!pozo?.foto_url) throw new err.T05PozoNoEncontrado();
+      const matches = await fs.readdir(PUBLIC_DIR);
+      const fileName = matches.find((name) => name.startsWith(`pozo-${id_pozo}.`));
+      if (!fileName) throw new err.T05PozoNoEncontrado();
+      const extension = path.extname(fileName).toLowerCase();
+      const contentType = extension === ".png" ? "image/png" : "image/jpeg";
+      return rep.type(contentType).send(await fs.readFile(path.join(PUBLIC_DIR, fileName)));
     }
   );
 };

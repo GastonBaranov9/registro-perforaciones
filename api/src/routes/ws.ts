@@ -1,6 +1,4 @@
 import { type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { Type } from "@fastify/type-provider-typebox";
-import { Usuario } from "../models/schemas.ts";
 import { clientConnections } from "../plugins/websocket.ts";
 import type { FastifyInstance } from "fastify";
 import { isAdmin } from "../services/roles-services.ts";
@@ -12,15 +10,13 @@ const websocketRoute = async function (fastify: FastifyInstance) {
       schema: {
         tags: ["websocket"],
         summary: "Iniciar la conexion con WS",
-        querystring: Type.Pick(Usuario, ["id_usuario"]),
         description:
-          "Ruta para iniciar la conexion con WS. No hay requerimientos de uso",
+          "Ruta autenticada para iniciar la conexion con WS",
       },
+      onRequest: [fastify.authenticate],
     },
     async (socket, req) => {
-      const { id_usuario } = req.query as {
-        id_usuario: number;
-      };
+      const { sub: id_usuario } = req.user;
       clientConnections.push({
         id_usuario,
         socket: socket,
@@ -29,41 +25,19 @@ const websocketRoute = async function (fastify: FastifyInstance) {
       socket.send(
         JSON.stringify({
           mensaje: "Conectado al servidor",
-          id_usuario: id_usuario,
+          id_usuario,
         })
       );
 
       socket.on("close", () => {
-        clientConnections.splice(id_usuario, 1);
+        const index = clientConnections.findIndex(
+          (connection) => connection.id_usuario === id_usuario && connection.socket === socket
+        );
+        if (index >= 0) clientConnections.splice(index, 1);
       });
 
-      socket.on("message", (msg) => {
-        const wsParseado = JSON.parse(msg);
-        if (wsParseado) {
-          switch (wsParseado.type) {
-            case "Usuario editado":
-              fastify.notifyClient(wsParseado.id_usuario, {
-                type: "Usuario editado",
-              });
-              fastify.notifyAdmin({ type: "Usuario editado" });
-
-              break;
-            case "pozo":
-              fastify.notifyClient(wsParseado.id_usuario, {
-                type: "pozo",
-              });
-            case "editpozo":
-              fastify.notifyClient(wsParseado.id_usuario, {
-                type: "editpozo",
-              });
-
-            case "deletepozo":
-                    fastify.notifyClient(wsParseado.id_usuario, {
-                type: "deletepozo",
-              });
-          }
-        }
-      });
+      // Las notificaciones son exclusivamente de servidor a cliente. No se
+      // aceptan IDs aportados por mensajes del navegador.
     }
   );
 };

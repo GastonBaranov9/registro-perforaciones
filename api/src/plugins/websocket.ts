@@ -15,8 +15,7 @@ export default fastifyPlugin(async function (fastify) {
   fastify.decorate(
     "notifyClient",
      function (id_usuario: number, data: any) {
-      const socketUser = clientConnections.find((u)=>u.id_usuario=id_usuario);
-      console.log({socketUser})
+      const socketUser = clientConnections.find((u) => u.id_usuario === id_usuario);
       if (!socketUser) return;
 
       const socket = socketUser.socket
@@ -30,17 +29,18 @@ export default fastifyPlugin(async function (fastify) {
     fastify.decorate(
     "notifyAdmin",
     function (data: any) {
-      clientConnections.forEach((conection, key)=>{
-        console.log(key, "EKM   ")
-        if("isAdmin" in conection && conection.isAdmin) fastify.notifyClient(key, data)
+      clientConnections.forEach((connection) => {
+        if (connection.isAdmin && connection.id_usuario !== undefined) {
+          fastify.notifyClient(connection.id_usuario, data);
+        }
       })
     }
   );
 
   fastify.decorate("notifyAll",
     function (data:any){
-      clientConnections.forEach((conection, key)=>{
-          fastify.notifyClient(key, data)
+      clientConnections.forEach((connection) => {
+        if (connection.id_usuario !== undefined) fastify.notifyClient(connection.id_usuario, data)
       })
     }
   )

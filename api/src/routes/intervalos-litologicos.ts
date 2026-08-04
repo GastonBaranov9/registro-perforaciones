@@ -36,7 +36,7 @@ const intervalosLitologicosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
       try {
@@ -79,7 +79,7 @@ const intervalosLitologicosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
       try {
@@ -128,7 +128,7 @@ const intervalosLitologicosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
       try {
@@ -175,7 +175,7 @@ const intervalosLitologicosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async (req, rep) => {
       try {
@@ -218,7 +218,7 @@ const intervalosLitologicosRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async (req, rep) => {
       try {

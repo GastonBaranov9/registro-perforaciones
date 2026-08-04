@@ -20,7 +20,10 @@ export async function createPozo(
     VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
     )
-    RETURNING *;
+    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+      metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
   `;
 
   const vals = [
@@ -70,7 +73,10 @@ export async function updatePozo(
     desarrollo          = COALESCE($17::text,    desarrollo),
     revestimiento       = COALESCE($18::text,    revestimiento) -- 👈 string, no array
   WHERE id_pozo = $1
-  RETURNING *;
+  RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+    metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
   `;
 
   const vals = [
@@ -101,7 +107,13 @@ export async function updatePozo(
 // Obtener un pozo específico
 export async function getPozoById(id_pozo: number): Promise<Pozo | null> {
   const { rows } = await myPool.query(
-    "SELECT * FROM public.pozo WHERE id_pozo = $1",
+    `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+      metodo_rocoso, cementacion, desarrollo, revestimiento,
+      CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
+      fecha_creado
+     FROM public.pozo WHERE id_pozo = $1`,
     [id_pozo]
   );
   return rows[0] ?? null;
@@ -124,7 +136,10 @@ export async function updatePozoFoto(
     UPDATE public.pozo
     SET foto_url = $2
     WHERE id_pozo = $1
-    RETURNING *;
+    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+      metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
   `;
 
   const vals = [id_pozo, fotoUrl];
@@ -139,7 +154,13 @@ export async function getAllPozo(
   profundidad_min: number,
   sello_sanitario: boolean
 ) {
-  let query = "SELECT * FROM public.pozo WHERE 1=1 ";
+  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+    metodo_rocoso, cementacion, desarrollo, revestimiento,
+    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
+    fecha_creado
+    FROM public.pozo WHERE 1=1 `;
   const params = [];
   if (caudal_min !== undefined) {
     params.push(caudal_min);
@@ -180,9 +201,15 @@ export async function getPozosByPropietario(
   profundidad_min: number,
   sello_sanitario: boolean
 ): Promise<Pozo[]> {
-  let query = "SELECT * FROM public.pozo WHERE id_propietario = $1 ";
+  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+    metodo_rocoso, cementacion, desarrollo, revestimiento,
+    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
+    fecha_creado
+    FROM public.pozo WHERE id_propietario = $1 `;
 
-  const params: any[] = [id_propietario];
+  const params: Array<number | boolean> = [id_propietario];
 
   if (caudal_min !== undefined) {
     params.push(caudal_min);
@@ -223,9 +250,15 @@ export async function getPozosByPerforador(
   profundidad_min: number,
   sello_sanitario: boolean
 ): Promise<Pozo[]> {
-  let query = " SELECT * FROM public.pozo WHERE id_perforador = $1 ";
+  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+    metodo_rocoso, cementacion, desarrollo, revestimiento,
+    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
+    fecha_creado
+    FROM public.pozo WHERE id_perforador = $1 `;
 
-  const params: any[] = [id_perforador];
+  const params: Array<number | boolean> = [id_perforador];
   if (caudal_min !== undefined) {
     params.push(caudal_min);
     query += ` AND caudal_estimado_lh >= $${params.length} `;

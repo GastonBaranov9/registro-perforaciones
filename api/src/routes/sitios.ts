@@ -5,6 +5,7 @@ import { Usuario, Rol, Sitio } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { SitioBody } from "../models/schemas.ts";
 import * as func from '../services/sitios-service.ts'
+import { rolUser } from "../services/auth-services.ts";
 //intervalo litologico, intervalo de diámetro, revestimiento, cementación, desarrollo y nivel de aporte. Cementacion esta hecho y litologia casi hecho. Anda haciendo alguna otra de esas
 //Otra cosa, de esas cosas hay q ver cuales un pozo puede tener 1 o mas. Así vemos si necesitan id o no.
 
@@ -130,7 +131,10 @@ const sitiosRoutes= async function (
       const {id_sitio} = req.params as {
         id_sitio: number
       }
-      const sitioObtenido = await func.getSitioById(id_sitio)
+      const { sub } = req.user;
+      const sitioObtenido = await rolUser(sub, "propietario")
+        ? await func.getSitioPropioById(id_sitio, sub)
+        : await func.getSitioById(id_sitio)
       if(!sitioObtenido)throw new err.T05SitioNoEncontrado
       return rep.code(200).send(sitioObtenido)
     }
@@ -156,7 +160,10 @@ const sitiosRoutes= async function (
       preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
-      const listaSitios = await func.getAllSitios()
+      const { sub } = req.user;
+      const listaSitios = await rolUser(sub, "propietario")
+        ? await func.getSitiosByPropietario(sub)
+        : await func.getAllSitios()
       return rep.code(200).send(listaSitios)
     }
   );

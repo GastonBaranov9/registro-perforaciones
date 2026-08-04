@@ -15,8 +15,8 @@ export class WebsocketService {
   msgRecargarDeletePozo = signal(false);
   connected = signal(false);
 
-  connect(id_usuario: number) {
-    this.ws = new WebSocket(environment.wsUrl + id_usuario);
+  connect() {
+    this.ws = new WebSocket(environment.wsUrl);
     this.ws.onopen = () => {
       console.log('CONECTADO');
       this.connected.set(true);
