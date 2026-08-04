@@ -1,104 +1,139 @@
-import { Component, effect, inject, input, resource, signal } from '@angular/core';
-import { UsuariosEditService } from '../../../../shared/services/usuarios-edit.service';
+import { CommonModule } from '@angular/common';
+import { Component, inject, input, resource, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { ToastController } from '@ionic/angular';
+import {
+  IonButton,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonSpinner,
+} from '@ionic/angular/standalone';
+import { RolesListService } from '../../../../shared/services/roles-list.service';
+import { UsuariosEditService } from '../../../../shared/services/usuarios-edit.service';
 import {
   Rol,
   UsuarioActualizarBody,
   UsuarioFormulario,
+  UsuarioPublico,
 } from '../../../../shared/types/schemas';
-import {
-  IonContent,
-  IonList,
-  IonItem,
-  IonLabel,
-  IonInput,
-  IonToggle,
-  IonButton,
-  IonCard,
-  IonCardContent,
-} from '@ionic/angular/standalone';
-import { CommonModule, JsonPipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
-import { ToastController } from '@ionic/angular';
+
+type CargaEdicionUsuario = {
+  usuario: UsuarioFormulario;
+  roles: Rol[];
+};
 
 @Component({
   selector: 'app-usuarios-edit',
   imports: [
+    CommonModule,
+    FormsModule,
     IonButton,
     IonCard,
     IonCardContent,
-    FormsModule,
     IonContent,
-    CommonModule,
+    IonSpinner,
     UsuarioFormComponent,
   ],
   templateUrl: './usuarios-edit.page.html',
   styleUrl: './usuarios-edit.page.css',
 })
 export class UsuariosEditPage {
-  public toastController = inject(ToastController)
+  public toastController = inject(ToastController);
   public editService: UsuariosEditService = inject(UsuariosEditService);
+  private readonly rolesListService = inject(RolesListService);
   public id_usuario = input.required<number>();
   private router: Router = inject(Router);
 
-public userResource = resource({
-  params: () => ({ id: this.id_usuario() }),
+  public userResource = resource({
+    params: () => ({ id: this.id_usuario() }),
+    loader: async ({ params }): Promise<CargaEdicionUsuario> => {
+      const [usuario, roles] = await Promise.all([
+        this.editService.getUsuarioById(params.id),
+        this.rolesListService.getRoles(),
+      ]);
 
-  loader: async ({ params }): Promise<UsuarioFormulario> => {
-    const usuario = await this.editService.getUsuarioById(params.id);
-
-    return {
-      email: usuario.email,
-      nombre: usuario.nombre,
-      password: '',
-      activo: usuario.activo,
-      roles: usuario.roles ?? [],
-    };
-  },
-});
-
-  public roles = signal<Rol[]>([
-    { id_rol: 1, nombre: 'administracion', descr: 'Administración' },
-    { id_rol: 2, nombre: 'perforador', descr: 'Técnico de perforación' },
-    { id_rol: 3, nombre: 'propietario', descr: 'Propietario del sitio' },
-  ]);
+      return this.reconciliarCarga(usuario, roles);
+    },
+  });
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
 
-async handleEdit(usuario: UsuarioFormulario) {
-  const body: UsuarioActualizarBody = {
-    email: usuario.email.trim(),
-    nombre: usuario.nombre.trim(),
-    activo: usuario.activo,
-    roles: usuario.roles,
-    ...(usuario.password.length > 0
-      ? { password: usuario.password }
-      : {}),
-  };
+  private reconciliarCarga(usuario: UsuarioPublico, roles: Rol[]): CargaEdicionUsuario {
+    const catalogoPorId = new Map<number, Rol>();
+    for (const rol of roles) {
+      catalogoPorId.set(rol.id_rol, rol);
+    }
+    const catalogoSinDuplicados = Array.from(catalogoPorId.values());
 
-  try {
-    this.disabled.set(true);
+    const rolesUsuarioPorId = new Map<number, Rol>();
+    for (const rol of usuario.roles ?? []) {
+      rolesUsuarioPorId.set(rol.id_rol, rol);
+    }
 
-    await this.editService.editUsuario(
-      this.id_usuario(),
-      body
+    const rolesNoDisponibles = Array.from(rolesUsuarioPorId.keys()).filter(
+      (idRol) => !catalogoPorId.has(idRol)
     );
 
-    await this.router.navigate(['/usuarios-list']);
-  } catch (err: any) {
-    const toast = await this.toastController.create({
-      message: err.message ?? 'No se pudo editar el usuario',
-      duration: 2000,
-      position: 'bottom',
-      color: 'danger',
-      animated: true,
-    });
+    if (rolesNoDisponibles.length > 0) {
+      throw new Error(
+        'La cuenta posee roles que ya no están disponibles en el catálogo.'
+      );
+    }
 
-    await toast.present();
-  } finally {
-    this.disabled.set(false);
+    const rolesSeleccionados = Array.from(rolesUsuarioPorId.keys()).map(
+      (idRol) => catalogoPorId.get(idRol)!
+    );
+
+    return {
+      usuario: {
+        email: usuario.email,
+        nombre: usuario.nombre,
+        password: '',
+        activo: usuario.activo,
+        roles: rolesSeleccionados,
+      },
+      roles: catalogoSinDuplicados,
+    };
   }
-}
+
+  public mensajeErrorCarga(): string {
+    const error = this.userResource.error();
+    return error instanceof Error
+      ? error.message
+      : 'No se pudieron cargar el usuario y el catálogo de roles.';
+  }
+
+  async handleEdit(usuario: UsuarioFormulario) {
+    const body: UsuarioActualizarBody = {
+      email: usuario.email.trim(),
+      nombre: usuario.nombre.trim(),
+      activo: usuario.activo,
+      roles: usuario.roles,
+      ...(usuario.password.length > 0 ? { password: usuario.password } : {}),
+    };
+
+    try {
+      this.disabled.set(true);
+
+      await this.editService.editUsuario(this.id_usuario(), body);
+
+      await this.router.navigate(['/usuarios-list']);
+    } catch (err: any) {
+      const toast = await this.toastController.create({
+        message: err.message ?? 'No se pudo editar el usuario',
+        duration: 2000,
+        position: 'bottom',
+        color: 'danger',
+        animated: true,
+      });
+
+      await toast.present();
+    } finally {
+      this.disabled.set(false);
+    }
+  }
 }
