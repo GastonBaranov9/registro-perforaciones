@@ -1,50 +1,95 @@
-# ETAPA RSP-06 — perfil litológico dinámico
+# ETAPA RSP-06 — auditoría final del perfil litológico dinámico
 
 ## Resultado
 
-El informe PDF incorpora una página final con un perfil litológico vertical generado dinámicamente a partir de los intervalos del pozo. La columna conserva proporción respecto de la profundidad representada, incluye escala métrica adaptativa y una referencia de intervalos con material y color.
+La auditoría detectó que los commits iniciales `89ab80d` y `323db2c` resolvían solamente una página PDF y no la visualización web ni la fuente visual única. La etapa queda completada con un modelo de escena canónico calculado por la API, un adaptador SVG Angular y un adaptador PDF multipágina que consumen ese mismo modelo.
 
-La tabla litológica existente permanece en el informe como detalle completo. No se añadieron dependencias, rutas HTTP, tablas ni migraciones.
+## Matriz de requisitos
 
-## Comportamiento
+Estados: **completo**, **parcial**, **ausente**, **no aplicable por falta real de datos**.
 
-- La profundidad representada es el máximo entre `pozo.profundidad_final_m` y el mayor `hasta_m` válido. Así no se recortan intervalos aunque el dato general esté desactualizado.
-- La escala usa pasos de 2, 5, 10, 25, 50 o 100 metros según la profundidad total.
-- Cada tramo ocupa una altura proporcional a `hasta_m - desde_m`.
-- Los huecos entre intervalos quedan visibles con fondo neutro; no se inventa material para completarlos.
-- Los materiales reciben colores deterministas, insensibles a mayúsculas, espacios y tildes. Un mismo nombre mantiene su color entre informes.
-- Los intervalos se ordenan para la representación sin mutar los datos del reporte.
-- Los registros no finitos, negativos, vacíos o con `hasta_m <= desde_m` se excluyen defensivamente del gráfico. La tabla y las validaciones persistentes siguen siendo la fuente de detalle.
-- Si no hay profundidad ni intervalos válidos, no se agrega una página vacía. Si existe profundidad pero no intervalos, se dibuja la escala y se informa la ausencia de registros.
+| Área | Requisito | Estado | Evidencia |
+|---|---|---:|---|
+| Datos | Intervalos desde PostgreSQL | completo | `getReportePozo` consulta `intervalo_litologico` por `id_pozo`; web y PDF parten de ese reporte. |
+| Datos | Profundidad oficial | completo | `crearPerfilLitologico` exige `pozo.profundidad_final_m`; rechaza una capa que la exceda y no recorta ni amplía silenciosamente. |
+| Datos | Aportes separados del suelo | completo | `nivel_aporte` se consulta aparte; el modelo conserva `aportes[]` fuera de `tramos[]`. |
+| Arquitectura | Función pura testeable | completo | `crearPerfilLitologico`, `estiloDeMaterial` y `calcularPasoEscala`. |
+| Arquitectura | Renderer SVG determinista o equivalente | completo | Angular dibuja SVG declarativo desde el modelo determinista de API. |
+| Arquitectura | Una fuente para web y PDF | completo | `PerfilLitologico` contiene geometría semántica, estilos, patrones, carriles, aportes y rangos; endpoint web y PDF usan la misma función. |
+| Arquitectura | Sin dos diseños divergentes | completo | SVG y `pdf-lib` son adaptadores de salida; no recalculan orden, huecos, estilo, carriles ni paginado. |
+| Web | Componente reutilizable | completo | `PerfilLitologicoComponent` con entradas `idUsuario` e `idPozo`. |
+| Web | Pantalla real del informe | completo | Integrado en `pozos-detail`, junto al botón de generar PDF. |
+| Web | Carga, error y ausencia | completo | Estados explícitos y pruebas Angular. |
+| Web | Responsive | completo | SVG escalable, contenedor con desplazamiento para anchos pequeños y tabla responsive. |
+| Web | Sin `innerHTML` | completo | Plantilla Angular con elementos SVG y bindings seguros. |
+| Web | Alternativa accesible | completo | `title`, `desc`, `aria-label`, leyenda y tabla con `caption`/encabezados. |
+| Web | Aislamiento | completo | `GET .../perfil-litologico` usa `authenticate`, `pozoIsFromUser` y roles de lectura antes de consultar PostgreSQL. |
+| Diseño | Título exacto | completo | “Perfil litológico del pozo” en modelo, web y PDF. |
+| Diseño | Escala 0–profundidad final y marcas | completo | Rangos contiguos cubren desde 0 hasta la profundidad oficial; cada sección repite extremos y marcas automáticas. |
+| Diseño | Alturas proporcionales | completo | Ambos adaptadores aplican una transformación lineal dentro del mismo rango canónico. |
+| Diseño | Intervalo, material y descripción | parcial | Intervalo y material completos; el contrato admite `descripcion`, pero la tabla `intervalo_litologico` no persiste ese campo. Web informa “Sin descripción registrada”; no se inventa contenido. |
+| Diseño | Contornos y líneas guía | completo | Bordes oscuros y guías métricas discontinuas en ambos adaptadores. |
+| Diseño | Evitar superposición fina | completo | Modelo asigna tres carriles y crea rangos con máximo 18 capas o 100 m; la auditoría visual corrigió la primera versión uniforme. |
+| Diseño | Aportes azules | completo | Círculo azul y etiqueta por `nivel_aporte.profundidad_m`. |
+| Diseño | Leyenda | completo | Explica patrón/tono, aporte azul y hueco. |
+| Diseño | Color más patrones y grises | completo | Seis patrones, color determinista y luminancia `gris`; huecos usan cruz gris. |
+| Diseño | Escape SVG | completo | Angular escapa interpolaciones y atributos; el generador visual de auditoría también escapa `&<>"'`. |
+| Validación | `desdeM >= 0`, `hastaM > desdeM`, orden | completo | TypeBox, `CHECK` existente y normalizador puro. |
+| Validación | Solapamientos bloqueados | completo | Altas/ediciones serializan por pozo con `pg_advisory_xact_lock` y usan consulta de intersección; el modelo también rechaza históricos inválidos. |
+| Validación | Huecos explícitos | completo | Se insertan tramos `clase: hueco` “Sin datos”, sin alterar persistencia. |
+| Validación | Sin corrección silenciosa | completo | Datos inválidos, profundidad ausente o excedida producen `PerfilLitologicoInvalido` (422). |
+| Validación | Tipo desconocido estable | completo | Hash normalizado selecciona estilo completo determinista. |
+| PDF | Misma representación | completo | Consume exactamente `PerfilLitologico`; no vuelve a normalizar datos. |
+| PDF | Proporciones sin deformar | completo | Cada página usa transformación lineal por rango. |
+| PDF | Textos sin cortar | completo | Etiquetas y materiales de tabla se envuelven por ancho de fuente; no se truncan con `slice`. |
+| PDF | Multipágina y encabezados | completo | Máximo 100 m/18 capas por rango; título, rango, número de página, escala y leyenda se repiten. |
+| PDF | Capas finas legibles | completo | Segmentación por densidad y carriles compartidos. |
+| PDF | Resto del informe | completo | Prueba genera informe integral y exige páginas base más todas las páginas del perfil. La tabla litológica se conserva. |
+| Pruebas | Mínimo, una capa, submetro | completo | `api/test/perfil-litologico.test.ts`. |
+| Pruebas | Muchas finas, profundo, hueco | completo | Pruebas de rangos, carriles y proporciones. |
+| Pruebas | Solapamiento y desconocido | completo | Rechazo explícito y estilo determinista. |
+| Pruebas | Descripción larga y sin litología | completo | Contrato preservado y estado de ausencia. |
+| Pruebas | Uno/varios aportes | completo | Orden y separación respecto de capas. |
+| Pruebas | PDF multipágina | completo | Cantidad de páginas igual a cantidad de rangos y prueba del informe completo. |
 
-## Seguridad y límites conservados
+## Arquitectura final
 
-El endpoint continúa siendo `GET /usuarios/:id_usuario/pozos/:id_pozo/informe-pdf` y mantiene, antes de consultar el reporte o generar bytes, `authenticate`, `pozoIsFromUser` y `userIsPropietarioOrPerforadorOrAdmin`. El perfil consume exclusivamente `reporte.litologia`, obtenido por `id_pozo` después de esa autorización.
+`getReportePozo` reúne profundidad, litología y aportes desde PostgreSQL después de la autorización. `crearPerfilLitologico` valida y produce un modelo inmutable con tramos reales, huecos, patrones, color, luminancia, carriles, aportes y rangos. `GET .../perfil-litologico` lo entrega a Angular; `crearPDF` entrega el mismo objeto a `dibujarPerfilLitologico`.
 
-No se modificaron el aislamiento de propietarios, la identidad canónica de sesión, CSRF, roles, WebSocket, fotos ni los CRUD de intervalos. Tampoco se introdujo acceso directo a hijos ni se confió en el `id_usuario` de la URL.
+Los adaptadores únicamente transforman unidades: SVG usa `viewBox`; PDF usa puntos. La regla de partición vive en el modelo: una sección abarca como máximo 100 metros y, si hay alta densidad, termina en la capa 18. Los rangos son contiguos y cubren exactamente la profundidad oficial.
 
-## Archivos
+## Inspección visual reproducible
 
-- `api/src/pdf/perfil-litologico.ts`: normalización, escala, color, modelo y dibujo del perfil.
-- `api/src/pdf/pdf-generate.ts`: integración del perfil como página final del informe.
-- `api/test/perfil-litologico.test.ts`: pruebas unitarias y generación real de bytes PDF.
+`api/test/perfil-litologico.visual.ts <directorio>` genera dos HTML/SVG y dos PDF sin base de datos: mínimo, 54 capas finas y PDF multipágina. En la auditoría se generaron en `%TEMP%/rsp06-evidencias`:
 
-## Verificación
+- mínimo: una página, capa de 0,6 m, huecos y un aporte azul;
+- capas finas: cinco rangos canónicos; la primera sección 0–9 m contiene 18 capas de 0,5 m sin superposición de etiquetas;
+- PDF multipágina: cinco páginas y 40.813 bytes;
+- Chrome/Edge headless no rasterizaron el plugin PDF (captura oscura), por lo que la comprobación PDF adicional fue estructural: bytes válidos, páginas cargables por `pdf-lib`, una página por rango y generación integral sin excepción. Los HTML/SVG sí fueron rasterizados e inspeccionados.
 
-- API: build TypeScript correcto.
-- API: 25/25 pruebas correctas con `node --test --experimental-strip-types test/*.test.ts`.
-- Frontend: 84/84 pruebas correctas con ChromeHeadless.
-- Frontend: build de producción correcto.
+La primera captura de capas finas reveló etiquetas superpuestas porque se dividía uniformemente por profundidad. Se cambió el algoritmo a límites por densidad real y una segunda captura confirmó capas y etiquetas separadas. Esto evita declarar una validación visual que solo fuese teórica.
+
+## Seguridad conservada
+
+No cambiaron cookies HttpOnly, CSRF, `version_sesion`, WebSocket ni contratos existentes. Se añadió únicamente una ruta GET. Tanto esa ruta como `informe-pdf` autentican y autorizan el pozo antes de ejecutar `getReportePozo`. Las escrituras litológicas mantienen `id_pozo` en SQL y ahora bloquean solapamientos de forma serializada por pozo.
+
+## Validación final
+
+- API: build correcto; 33/33 pruebas.
+- Frontend: build correcto; 87/87 pruebas.
 - `git diff --check`: correcto.
+- Evidencias visuales reproducibles generadas; mínimo y capas finas inspeccionados.
+- PDF mínimo y multipágina generados y validados estructuralmente.
 
-El build frontend conserva avisos preexistentes de Ionic/Stencils sobre iconos no registrados, un glob vacío y datos de `baseline-browser-mapping` antiguos; no provocan fallos ni pertenecen a esta etapa.
+Los avisos preexistentes de Ionic/Stencils (iconos, menú/modal, glob vacío y `baseline-browser-mapping`) no causan fallos y no pertenecen a esta etapa.
+
+## Limitaciones reales
+
+- `intervalo_litologico` solo contiene `desde_m`, `hasta_m` y `material`: no existe descripción geológica persistida. El contrato ya admite `descripcion: null` para incorporarla sin rediseñar el perfil cuando exista una fuente real.
+- El diseño constructivo se persiste parcialmente en el pozo y en intervalos de diámetro, pero la especificación auditada no define cómo superponerlo al perfil litológico. No se mezcló ni se inventó una convención visual.
+- No se añadió una migración de exclusión PostgreSQL. La API serializa escrituras con advisory lock y consulta de solapamiento; cargas realizadas fuera de la API deben respetar la misma regla.
+- La rasterización automática del PDF no estuvo disponible en Chrome/Edge headless; queda documentada la validación estructural y el generador deja los PDF listos para apertura manual.
 
 ## Despliegue y rollback
 
-Desplegar la API con las mismas variables y secretos actuales. El frontend no requiere cambios funcionales, pero su suite y build se verificaron para descartar regresiones. No hay pasos de base de datos ni datos que migrar.
-
-Para revertir, aplicar `git revert` a los commits locales de RSP-06 en orden inverso y volver a desplegar la API. Los informes se generan bajo demanda, por lo que no hay artefactos persistentes que convertir o eliminar.
-
-## Limitaciones
-
-El perfil representa fielmente los datos recibidos; no corrige solapamientos históricos ni clasifica semánticamente materiales escritos con nombres distintos. Cuando la cantidad de intervalos excede el espacio de la referencia lateral, la tabla previa conserva el detalle completo. La validación de no superposición debe seguir garantizándose en la capa de intervalos y en PostgreSQL.
+Desplegar API y frontend juntos porque el componente web consume la nueva ruta. No hay migraciones ni dependencias nuevas. Para rollback, revertir los commits adicionales de la auditoría en orden inverso y volver a desplegar ambos artefactos.
