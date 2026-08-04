@@ -9,11 +9,23 @@
 - Cambios: carga conjunta de usuario y catálogo, deduplicación y reconciliación por `id_rol`, bloqueo de roles no disponibles y corrección de la condición de carrera usando el error propio del `resource`.
 - Pruebas ejecutadas: `npm run build` en `front` (correcto).
 - Revisión: no quedan escrituras a estado externo desde loaders obsoletos; el mensaje se obtiene de `userResource.error()`.
-- Commit: pendiente.
+- Commit: `e544436` (`feat: cargar roles dinamicamente al editar usuarios`).
+
+## Bloque 2 — Validación frontend de roles
+
+- Estado: implementado y revisado; commit pendiente.
+- Archivos modificados:
+  - `front/src/app/shared/utils/roles-seleccion.ts`
+  - `front/src/app/shared/utils/roles-seleccion.spec.ts`
+  - páginas de creación y edición de usuarios.
+- Cambios: selección no vacía, pertenencia al catálogo, deduplicación y sustitución por objetos canónicos antes de crear o editar.
+- Pruebas definidas: selección vacía, válida, múltiple, duplicada, ajena y edición sin cambios.
+- Resultados:
+  - `npm run build` en `front`: correcto.
+  - prueba Angular dirigida: bloqueada por un error preexistente en `intervalo-lit-form.component.spec.ts` (importación default inexistente); se reintentó fuera del sandbox con el mismo resultado.
 
 ## Bloques pendientes
 
-- Bloque 2: validación frontend del body de roles.
 - Bloque 3: auditoría de `isPropGuard`.
 - Bloque 4: pruebas automáticas posibles.
 - Bloque 5: auditoría final.

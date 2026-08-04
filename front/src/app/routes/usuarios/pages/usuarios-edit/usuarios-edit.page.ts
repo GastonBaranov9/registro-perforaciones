@@ -19,6 +19,7 @@ import {
   UsuarioPublico,
 } from '../../../../shared/types/schemas';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
+import { validarRolesSeleccionados } from '../../../../shared/utils/roles-seleccion';
 
 type CargaEdicionUsuario = {
   usuario: UsuarioFormulario;
@@ -108,16 +109,24 @@ export class UsuariosEditPage {
   }
 
   async handleEdit(usuario: UsuarioFormulario) {
-    const body: UsuarioActualizarBody = {
-      email: usuario.email.trim(),
-      nombre: usuario.nombre.trim(),
-      activo: usuario.activo,
-      roles: usuario.roles,
-      ...(usuario.password.length > 0 ? { password: usuario.password } : {}),
-    };
-
     try {
       this.disabled.set(true);
+
+      if (!this.userResource.hasValue()) {
+        throw new Error('No se pudo validar el catálogo de roles.');
+      }
+
+      const roles = validarRolesSeleccionados(
+        usuario.roles,
+        this.userResource.value().roles
+      );
+      const body: UsuarioActualizarBody = {
+        email: usuario.email.trim(),
+        nombre: usuario.nombre.trim(),
+        activo: usuario.activo,
+        roles,
+        ...(usuario.password.length > 0 ? { password: usuario.password } : {}),
+      };
 
       await this.editService.editUsuario(this.id_usuario(), body);
 

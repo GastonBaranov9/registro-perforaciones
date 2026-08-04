@@ -17,6 +17,7 @@ import {
   UsuarioFormulario,
 } from '../../../../shared/types/schemas';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
+import { validarRolesSeleccionados } from '../../../../shared/utils/roles-seleccion';
 
 @Component({
   selector: 'app-usuarios-create',
@@ -70,16 +71,17 @@ export class UsuariosCreatePage {
   }
 
   async guardarUsuario(usuario: UsuarioFormulario) {
-    const body: UsuarioCrearBody = {
-      email: usuario.email.trim(),
-      nombre: usuario.nombre.trim(),
-      password: usuario.password,
-      activo: usuario.activo,
-      roles: usuario.roles,
-    };
-
     try {
       this.disabled.set(true);
+
+      const roles = validarRolesSeleccionados(usuario.roles, this.roles());
+      const body: UsuarioCrearBody = {
+        email: usuario.email.trim(),
+        nombre: usuario.nombre.trim(),
+        password: usuario.password,
+        activo: usuario.activo,
+        roles,
+      };
 
       await this.createService.createUsuario(body);
 
