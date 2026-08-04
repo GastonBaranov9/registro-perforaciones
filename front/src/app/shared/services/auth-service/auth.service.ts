@@ -15,11 +15,9 @@ export class AuthService {
 
   public async logged(email: string, password: string) {
     try {
-      const { token } = await firstValueFrom(
-        this.httpClient.post<{ token: string }>(this.baseURL, { email, password })
+      await firstValueFrom(
+        this.httpClient.post<{ authenticated: true }>(this.baseURL, { email, password })
       );
-      localStorage.setItem('token', token);
-      this.mainStore.token.set(token);
 
       const user = await firstValueFrom(this.httpClient.get<UsuarioPublico>(this.baseURL));
 
@@ -32,6 +30,14 @@ export class AuthService {
       this.mainStore.clearSession();
       if (err.status === 0) throw new Error(err.message);
       throw err;
+    }
+  }
+
+  public async logout() {
+    try {
+      await firstValueFrom(this.httpClient.post<void>(environment.apiURL + 'logout', null));
+    } finally {
+      this.mainStore.clearSession();
     }
   }
 
