@@ -1,8 +1,5 @@
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { IonicModule } from '@ionic/angular';
-import IntervaloLitFormComponent from './intervalo-lit-form.component';
-
-
+import { IntervaloLitFormComponent } from './intervalo-lit-form.component';
 
 describe('IntervaloLitFormComponent', () => {
   let component: IntervaloLitFormComponent;
@@ -10,11 +7,15 @@ describe('IntervaloLitFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [ IntervaloLitFormComponent ],
-      imports: [IonicModule.forRoot()]
+      imports: [IntervaloLitFormComponent]
     }).compileComponents();
 
     fixture = TestBed.createComponent(IntervaloLitFormComponent);
+    fixture.componentRef.setInput('intervaloLitologico', {
+      desde_m: 0,
+      hasta_m: 1,
+      material: 'arena',
+    });
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));

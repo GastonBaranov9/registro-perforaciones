@@ -23,11 +23,30 @@
 - Resultados:
   - `npm run build` en `front`: correcto.
   - prueba Angular dirigida: bloqueada por un error preexistente en `intervalo-lit-form.component.spec.ts` (importación default inexistente); se reintentó fuera del sandbox con el mismo resultado.
+- Commit: `1185309` (`feat: validar roles seleccionados en usuarios`).
 
 ## Bloques pendientes
 
-- Bloque 4: pruebas automáticas posibles.
 - Bloque 5: auditoría final.
+
+## Bloque 4 — Pruebas automáticas
+
+- Estado: implementado y revisado; commit pendiente.
+- Infraestructura: corregida una importación inválida en un spec y configurados `zone.js`/`zone.js/testing`, ya presentes transitivamente, para el target Karma.
+- Cobertura añadida:
+  - roles y reconciliación: nueve casos puros;
+  - actualización: password ausente y password literal presente, dos casos puros;
+  - guard propietario: propietario permitido y perforador rechazado, dos casos;
+  - password API: longitud mínima, solo blancos y espacios significativos, tres casos.
+- Resultados:
+  - utilidades frontend: 11/11 correctos;
+  - guard: 2/2 correctos;
+  - password API con `node --test`: 3/3 correctos;
+  - build API: correcto;
+  - build frontend: correcto;
+  - suite frontend completa: 65 ejecutados, 15 correctos y 50 fallidos por configuración heredada de specs (principalmente proveedores HTTP ausentes y componentes standalone declarados como NgModule).
+- No ejecutado:
+  - sesiones activas/inactivas y reemplazo de password contra PostgreSQL: requieren aislar/inyectar el pool o una base de pruebas; no se usaron credenciales ni datos reales.
 
 ## Bloque 3 — Auditoría de `isPropGuard`
 
@@ -38,6 +57,7 @@
 - Resultados:
   - `npm run build` en `front`: correcto.
   - prueba dirigida: bloqueada por la misma importación default preexistente en `intervalo-lit-form.component.spec.ts`.
+- Commit: `0438544` (`fix: validar rol propietario en isPropGuard`).
 
 ## Advertencias conocidas
 

@@ -19,7 +19,11 @@ import {
   UsuarioPublico,
 } from '../../../../shared/types/schemas';
 import { UsuarioFormComponent } from '../../components/usuario-form/usuario-form.component';
-import { validarRolesSeleccionados } from '../../../../shared/utils/roles-seleccion';
+import {
+  reconciliarRolesActuales,
+  validarRolesSeleccionados,
+} from '../../../../shared/utils/roles-seleccion';
+import { construirUsuarioActualizarBody } from '../../../../shared/utils/usuario-actualizacion';
 
 type CargaEdicionUsuario = {
   usuario: UsuarioFormulario;
@@ -64,30 +68,7 @@ export class UsuariosEditPage {
   public disabled = signal<boolean>(false);
 
   private reconciliarCarga(usuario: UsuarioPublico, roles: Rol[]): CargaEdicionUsuario {
-    const catalogoPorId = new Map<number, Rol>();
-    for (const rol of roles) {
-      catalogoPorId.set(rol.id_rol, rol);
-    }
-    const catalogoSinDuplicados = Array.from(catalogoPorId.values());
-
-    const rolesUsuarioPorId = new Map<number, Rol>();
-    for (const rol of usuario.roles ?? []) {
-      rolesUsuarioPorId.set(rol.id_rol, rol);
-    }
-
-    const rolesNoDisponibles = Array.from(rolesUsuarioPorId.keys()).filter(
-      (idRol) => !catalogoPorId.has(idRol)
-    );
-
-    if (rolesNoDisponibles.length > 0) {
-      throw new Error(
-        'La cuenta posee roles que ya no están disponibles en el catálogo.'
-      );
-    }
-
-    const rolesSeleccionados = Array.from(rolesUsuarioPorId.keys()).map(
-      (idRol) => catalogoPorId.get(idRol)!
-    );
+    const rolesReconciliados = reconciliarRolesActuales(usuario.roles ?? [], roles);
 
     return {
       usuario: {
@@ -95,9 +76,9 @@ export class UsuariosEditPage {
         nombre: usuario.nombre,
         password: '',
         activo: usuario.activo,
-        roles: rolesSeleccionados,
+        roles: rolesReconciliados.seleccion,
       },
-      roles: catalogoSinDuplicados,
+      roles: rolesReconciliados.catalogo,
     };
   }
 
@@ -120,13 +101,7 @@ export class UsuariosEditPage {
         usuario.roles,
         this.userResource.value().roles
       );
-      const body: UsuarioActualizarBody = {
-        email: usuario.email.trim(),
-        nombre: usuario.nombre.trim(),
-        activo: usuario.activo,
-        roles,
-        ...(usuario.password.length > 0 ? { password: usuario.password } : {}),
-      };
+      const body: UsuarioActualizarBody = construirUsuarioActualizarBody(usuario, roles);
 
       await this.editService.editUsuario(this.id_usuario(), body);
 

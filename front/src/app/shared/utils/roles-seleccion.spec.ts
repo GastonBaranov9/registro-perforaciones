@@ -1,5 +1,8 @@
 import { Rol } from '../types/schemas';
-import { validarRolesSeleccionados } from './roles-seleccion';
+import {
+  reconciliarRolesActuales,
+  validarRolesSeleccionados,
+} from './roles-seleccion';
 
 describe('validarRolesSeleccionados', () => {
   const catalogo: Rol[] = [
@@ -52,5 +55,29 @@ describe('validarRolesSeleccionados', () => {
     expect(resultado.map((rol) => rol.id_rol)).toEqual([10, 20]);
     expect(resultado[0]).toBe(catalogo[0]);
     expect(resultado[1]).toBe(catalogo[1]);
+  });
+});
+
+describe('reconciliarRolesActuales', () => {
+  it('devuelve catálogo y selección vacíos cuando el catálogo está vacío', () => {
+    expect(reconciliarRolesActuales([], [])).toEqual({ catalogo: [], seleccion: [] });
+  });
+
+  it('deduplica y selecciona los objetos del catálogo por id_rol', () => {
+    const canonico: Rol = { id_rol: 8, nombre: 'canonico', descr: 'Canónico' };
+    const obsoleto: Rol = { id_rol: 8, nombre: 'obsoleto', descr: 'Obsoleto' };
+
+    const resultado = reconciliarRolesActuales([obsoleto, { ...obsoleto }], [canonico]);
+
+    expect(resultado.seleccion).toEqual([canonico]);
+    expect(resultado.seleccion[0]).toBe(canonico);
+  });
+
+  it('rechaza un rol actual ausente del catálogo', () => {
+    const rolActual: Rol = { id_rol: 8, nombre: 'ausente', descr: 'Ausente' };
+
+    expect(() => reconciliarRolesActuales([rolActual], [])).toThrowError(
+      'La cuenta posee roles que ya no están disponibles en el catálogo.'
+    );
   });
 });
