@@ -47,6 +47,12 @@ export const T05SinPermiso = createError(
   403,
   Error
 );
+export const T05CsrfInvalido = createError(
+  "ERR_CSRF_T05",
+  "Solicitud rechazada por protecciÃ³n CSRF",
+  403,
+  Error
+);
 
 export const T05DatosIncorrectos = createError(
   "ERR6_T05",

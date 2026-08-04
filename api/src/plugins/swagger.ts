@@ -67,9 +67,10 @@ export default fp<FastifySwaggerOptions>(async (fastify) => {
       components: {
         securitySchemes: {
           BearerAuth: {
-            type: "http",
-            scheme: "bearer",
-            bearerFormat: "JWT",
+            type: "apiKey",
+            in: "cookie",
+            name: "rsp_session",
+            description: "Cookie HttpOnly emitida por POST /login",
           },
         },
       },

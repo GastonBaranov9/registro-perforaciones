@@ -16,6 +16,7 @@ import {
 } from '@ionic/angular/standalone';
 import { DatePipe } from '@angular/common';
 import { Rol } from '../../../../shared/types/schemas';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 
 @Component({
   selector: 'app-usuario-detail',
@@ -37,6 +38,7 @@ import { Rol } from '../../../../shared/types/schemas';
 export class UsuarioDetailPage implements OnInit {
   public mainStore = inject(MainStore);
   public router = inject(Router);
+  private authService = inject(AuthService);
   public usuario = this.mainStore.user();
   public rolesString: string = '';
   ngOnInit() {
@@ -46,7 +48,7 @@ export class UsuarioDetailPage implements OnInit {
   }
 
 public async logOut() {
-  this.mainStore.clearSession();
+  await this.authService.logout();
   await this.router.navigate(['/login']);
 }
 

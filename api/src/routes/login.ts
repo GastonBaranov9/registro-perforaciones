@@ -9,6 +9,12 @@ import * as err from "../models/errors.ts";
 import { logUser } from "../services/auth-services.ts";
 import { getUsuarioById } from "../services/usuarios-service.ts";
 import { getRoles } from "../services/roles-services.ts";
+import { randomBytes } from "node:crypto";
+import {
+  cookieOptions,
+  CSRF_COOKIE,
+  SESSION_COOKIE,
+} from "../plugins/cookies.ts";
 
 const authRoutes = async function (fastify: FastifyInstance) {
   fastify.post(
@@ -21,14 +27,14 @@ const authRoutes = async function (fastify: FastifyInstance) {
         body: UsuarioLogin,
         response: {
           200: Type.Object({
-            token: Type.String(),
+            authenticated: Type.Literal(true),
           }),
             400: err.ErrorSchema,
             401: err.ErrorSchema,
         },
       },
     },
-    async function (req) {
+    async function (req, rep) {
       const { email, password } = req.body as UsuarioLoginData;
 
       const user = await logUser(email, password);
@@ -49,7 +55,28 @@ const authRoutes = async function (fastify: FastifyInstance) {
         }
       );
 
-      return { token };
+      const csrfToken = randomBytes(32).toString("hex");
+      rep.setCookie(SESSION_COOKIE, token, cookieOptions(true));
+      rep.setCookie(CSRF_COOKIE, csrfToken, cookieOptions(false));
+
+      return { authenticated: true as const };
+    }
+  );
+
+  fastify.post(
+    "/logout",
+    {
+      schema: {
+        summary: "Cierre de sesiÃ³n",
+        tags: ["login"],
+        response: { 204: Type.Null() },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async function (_req, rep) {
+      rep.clearCookie(SESSION_COOKIE, { path: "/" });
+      rep.clearCookie(CSRF_COOKIE, { path: "/" });
+      return rep.code(204).send();
     }
   );
 

@@ -56,9 +56,7 @@ export class App {
   private readonly sessionInitialization = effect(() => {
     if (!this.mainStore.initialized()) return;
 
-    if (this.mainStore.token() && !this.mainStore.user()) {
-      this.authService.getUser();
-    }
+    if (!this.mainStore.user()) this.authService.getUser().catch(() => undefined);
   });
 
   public wsConnection = effect(() => {
