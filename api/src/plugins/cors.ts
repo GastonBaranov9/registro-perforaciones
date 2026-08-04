@@ -5,5 +5,7 @@ export default fastifyPlugin(async function (fastify) {
   fastify.register(fastifyCors, {
     origin: ["http://localhost:4200", "https://localhost:4200", "https://localhost"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-CSRF-Token"],
+    credentials: true,
   });
 });

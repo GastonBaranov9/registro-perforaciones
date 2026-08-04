@@ -3,6 +3,7 @@ import fastifyPlugin from "fastify-plugin";
 import * as err from "../models/errors.ts";
 import { getEstadoSesionUsuario, rolUser } from "../services/auth-services.ts";
 import { myPool } from "../db/pool.ts";
+import { SESSION_COOKIE } from "./cookies.ts";
 
 export function normalizarEnteroPositivoSeguro(value: unknown): number | null {
   if (typeof value === "number") {
@@ -30,14 +31,17 @@ export default fastifyPlugin(async function (fastify) {
   const secret = process.env.FASTIFY_SECRET;
   if (!secret) throw new err.T05ErrorDesconocido("Falta setear FASTIFY_SECRET");
 
-  await fastify.register(fastifyJwt, { secret });
+  await fastify.register(fastifyJwt, {
+    secret,
+    cookie: { cookieName: SESSION_COOKIE, signed: false },
+  });
   const authenticatedRequests = new WeakMap<object, { idUsuario: number }>();
 
   fastify.decorate("authenticate", async function (req, rep) {
     if (authenticatedRequests.has(req)) return;
 
     try {
-      await req.jwtVerify();
+      await req.jwtVerify({ onlyCookie: true });
     } catch {
       throw new err.T05NoAutorizado();
     }
