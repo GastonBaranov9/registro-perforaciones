@@ -5,6 +5,8 @@ import {
   calcularPasoEscala,
   crearPerfilLitologico,
   dibujarPerfilLitologico,
+  GEOMETRIA_CANONICA_PERFIL,
+  transformarPuntoCanonicoPdf,
   estiloDeMaterial,
   PerfilLitologicoInvalido,
   resolverColisionesEtiquetas,
@@ -120,6 +122,34 @@ test("resuelve colisiones de etiquetas finas de forma pura y determinista", () =
   assert.ok(primera[1].posicion - primera[0].posicion >= .039);
   assert.ok(primera[2].posicion - primera[1].posicion >= .039);
   assert.deepEqual(entradas.map((x) => x.preferida), [.5,.501,.502]);
+});
+
+test("modelo canónico define lienzo columna carriles y conectores para ambos adaptadores", () => {
+  const entrada = [{desde_m:0,hasta_m:49,material:"Arena"},{desde_m:49,hasta_m:61,material:"Grava"},{desde_m:61,hasta_m:100,material:"Basalto rosado"}];
+  const argumentos = [entrada,100,[{profundidad_m:60}],[{desde_m:0,hasta_m:10,diametro_pulg:6,material_tuberia:"Acero" as const},{desde_m:10,hasta_m:100,diametro_pulg:6,material_tuberia:"Acero" as const}],[{desde_m:50,hasta_m:70,diametro_pulg:6,material_tuberia:"PVC" as const}]] as const;
+  const perfil = crearPerfilLitologico(...argumentos);
+  const repetido = crearPerfilLitologico(...argumentos);
+  assert.ok(perfil); assert.deepEqual(perfil,repetido);
+  assert.deepEqual(perfil.geometria,GEOMETRIA_CANONICA_PERFIL);
+  assert.deepEqual(perfil.geometria.carriles_etiqueta_x,[310,390,470,550]);
+  for (const etiqueta of perfil.etiquetas) {
+    assert.equal(etiqueta.conector.puntos.length,4);
+    const final=etiqueta.conector.puntos.at(-1)!;
+    assert.ok(final.x_normalizada<etiqueta.caja_texto.x_normalizada);
+    assert.ok(Math.abs(final.y_normalizada-(etiqueta.caja_texto.y_normalizada+etiqueta.caja_texto.alto_normalizado/2))<1e-9);
+  }
+  assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:0,y_normalizada:0}),{x:45,y:795});
+  assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:1,y_normalizada:1}),{x:550,y:45});
+});
+
+test("filtro y aporte coincidentes conservan anclajes y conectores separados", () => {
+  const perfil=crearPerfilLitologico([{desde_m:0,hasta_m:59,material:"Arena"},{desde_m:59,hasta_m:100,material:"Basalto rosado"}],100,[{profundidad_m:60}],
+    [{desde_m:0,hasta_m:10,diametro_pulg:6,material_tuberia:"Acero"},{desde_m:10,hasta_m:100,diametro_pulg:6,material_tuberia:"Acero"}],[{desde_m:50,hasta_m:70,diametro_pulg:6,material_tuberia:"PVC"}]);
+  assert.ok(perfil);
+  const filtro=perfil.etiquetas.find((e)=>e.tipo==="filtro")!, aporte=perfil.etiquetas.find((e)=>e.tipo==="aporte")!;
+  assert.notEqual(filtro.posicion_y_normalizada,aporte.posicion_y_normalizada);
+  assert.notEqual(filtro.conector.puntos[0].x_normalizada,aporte.conector.puntos[0].x_normalizada);
+  assert.equal(filtro.profundidad_anclaje_m,60); assert.equal(aporte.profundidad_anclaje_m,60);
 });
 
 test("tubería filtro aporte y litología cercanos reciben carriles y alturas sin solaparse", () => {

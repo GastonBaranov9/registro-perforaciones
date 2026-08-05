@@ -15,12 +15,13 @@ const perfil: PerfilLitologico = {
   tuberias: [{tipo:'tuberia',desde_m:0,hasta_m:20,diametro_pulg:6,material_tuberia:'PVC',material_texto:'PVC',carril_etiqueta:0,geometria:{x_inicio:.3,x_fin:.7,patron:'liso'}}],
   filtros: [{tipo:'filtro',desde_m:10,hasta_m:15,diametro_pulg:6,material_tuberia:'Acero',material_texto:'Acero',carril_etiqueta:0,geometria:{x_inicio:.3,x_fin:.7,patron:'ranuras'}}],
   etiquetas: [
-    {clave:'lit-0-.5',tipo:'litologia',texto:'0–0.5 m · Arena',profundidad_anclaje_m:.25,rango_desde_m:0,posicion_y_normalizada:.1,carril:0,x_anclaje_normalizado:1},
-    {clave:'tub-0-20',tipo:'tuberia',texto:'Tubería PVC · Ø 6 pulg · 0-20 m',profundidad_anclaje_m:10,rango_desde_m:0,posicion_y_normalizada:.45,carril:1,x_anclaje_normalizado:.7},
-    {clave:'fil-10-15',tipo:'filtro',texto:'Filtro ranurado Acero · Ø 6 pulg · 10-15 m',profundidad_anclaje_m:12.5,rango_desde_m:0,posicion_y_normalizada:.65,carril:2,x_anclaje_normalizado:.7},
-    {clave:'apo-7',tipo:'aporte',texto:'Aporte de agua 7 m',profundidad_anclaje_m:7,rango_desde_m:0,posicion_y_normalizada:.35,carril:3,x_anclaje_normalizado:.97},
+    {clave:'lit-0-.5',tipo:'litologia',texto:'0–0.5 m · Arena',profundidad_anclaje_m:.25,rango_desde_m:0,posicion_y_normalizada:.1,carril:0,x_anclaje_normalizado:1,x_texto_normalizado:310/760,conector:{puntos:[{x_normalizada:270/760,y_normalizada:140/820},{x_normalizada:302/760,y_normalizada:140/820}]},caja_texto:{x_normalizada:310/760,y_normalizada:132/820,ancho_normalizado:.2,alto_normalizado:16/820}},
+    {clave:'tub-0-20',tipo:'tuberia',texto:'Tubería PVC · Ø 6 pulg · 0-20 m',profundidad_anclaje_m:10,rango_desde_m:0,posicion_y_normalizada:.45,carril:1,x_anclaje_normalizado:.7,x_texto_normalizado:390/760,conector:{puntos:[{x_normalizada:216/760,y_normalizada:385/820},{x_normalizada:382/760,y_normalizada:385/820}]},caja_texto:{x_normalizada:390/760,y_normalizada:377/820,ancho_normalizado:.3,alto_normalizado:16/820}},
+    {clave:'fil-10-15',tipo:'filtro',texto:'Filtro ranurado Acero · Ø 6 pulg · 10-15 m',profundidad_anclaje_m:12.5,rango_desde_m:0,posicion_y_normalizada:.65,carril:2,x_anclaje_normalizado:.7,x_texto_normalizado:470/760,conector:{puntos:[{x_normalizada:216/760,y_normalizada:525/820},{x_normalizada:462/760,y_normalizada:525/820}]},caja_texto:{x_normalizada:470/760,y_normalizada:517/820,ancho_normalizado:.3,alto_normalizado:16/820}},
+    {clave:'apo-7',tipo:'aporte',texto:'Aporte de agua 7 m',profundidad_anclaje_m:7,rango_desde_m:0,posicion_y_normalizada:.35,carril:3,x_anclaje_normalizado:.97,x_texto_normalizado:550/760,conector:{puntos:[{x_normalizada:265/760,y_normalizada:315/820},{x_normalizada:542/760,y_normalizada:315/820}]},caja_texto:{x_normalizada:550/760,y_normalizada:307/820,ancho_normalizado:.2,alto_normalizado:16/820}},
   ],
   seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
+  geometria:{ancho_logico:760,alto_logico:820,columna:{x:90,y:70,ancho:180,alto:700},x_texto_escala:12,carriles_etiqueta_x:[310,390,470,550],separacion_vertical_normalizada:.055,conector:{salida:12,llegada:8},alto_texto:16},
   rangos: [{ desde_m: 0, hasta_m: 20 }],
   advertencias: [],
   tiene_litologia: true,
@@ -62,6 +63,9 @@ describe('PerfilLitologicoComponent', () => {
     expect(elemento.querySelector('.tuberia-interior')).not.toBeNull();
     expect(elemento.querySelector('pattern#perfil-puntos')).not.toBeNull();
     expect(elemento.querySelector('.marca-escala')).not.toBeNull();
+    expect(elemento.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 760 820');
+    expect(elemento.querySelectorAll('polyline.conector-etiqueta').length).toBe(perfil.etiquetas.length);
+    expect((elemento.querySelector('polyline.conector-etiqueta')?.getAttribute('points') ?? '').split(' ').length).toBeGreaterThanOrEqual(2);
     expect(elemento.querySelector('.guia')).toBeNull();
     const tablaLitologica = elemento.querySelector('table');
     expect(Array.from(tablaLitologica?.querySelectorAll('th') ?? []).map((th) => th.textContent?.trim())).toEqual(['Intervalo', 'Material']);
