@@ -50,7 +50,7 @@ El formulario emite de forma tipada los cambios de profundidad. Los cambios de l
 ## Pruebas y evidencia
 
 - API: 60/60. Incluye fecha `2026-08-05` como `05/08/2026`, un `Date` UTC sin cambio de día, ausencia/inválido, borrador válido con PVC/Acero/filtro/aporte y rechazo de solapamiento/fuera de profundidad.
-- Frontend: 118/118. Incluye debounce, cancelación de solicitud anterior, conservación del borrador inválido y utilidades de fecha.
+- Frontend: 119/119. Incluye debounce, cancelación de solicitud anterior, conservación del borrador inválido, renderizado directo del modelo canónico y utilidades de fecha.
 - Builds API y frontend correctos.
 - El renderer web ya cubre tubería, filtro, aporte, escala, tablas accesibles y modelo directo; no hubo cambios de geometría, etiquetas ni paleta.
 - La inspección responsive se sustenta en el grid de dos columnas y su media query a una columna. No se usaron HTTP/WebSocket reales en specs.
