@@ -119,9 +119,9 @@
         </ion-item>
 
         <ion-item>
-          <ion-label>Fecha creado</ion-label>
+          <ion-label>Fecha de creación</ion-label>
           <ion-label>
-            {{ pozo.fecha_creado | date : 'dd/MM/yyyy' }}
+            {{ formatearInstanteComoFecha(pozo.fecha_creado) }}
           </ion-label>
         </ion-item>
       </ion-list>

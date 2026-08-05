@@ -7,6 +7,7 @@ import {
   crearPerfilLitologico,
   dibujarPerfilLitologico,
 } from "./perfil-litologico.ts";
+import { formatearFechaCalendario } from "../utils/fechas.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -153,8 +154,8 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   drawLine("Propietario", reporte.propietario);
   drawLine("Empresa", reporte.empresa);
   drawLine("Perforador", reporte.perforador);
-  drawLine("Fecha inicio", reporte.fecha_inicio);
-  drawLine("Fecha fin", reporte.fecha_fin);
+  drawLine("Fecha de inicio", formatearFechaCalendario(reporte.fecha_inicio));
+  drawLine("Fecha de finalización", formatearFechaCalendario(reporte.fecha_fin));
 
   if (image) y = Math.min(y, fotoBottom - 18);
   y -= 15;

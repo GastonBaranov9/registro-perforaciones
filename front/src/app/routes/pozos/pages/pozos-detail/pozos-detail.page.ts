@@ -25,6 +25,7 @@ import { PerfilLitologicoComponent } from '../../../../shared/components/perfil-
 import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
 import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
 import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
+import { formatearFechaCalendario } from '../../../../shared/utils/fechas';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -47,6 +48,7 @@ import { AporteListService } from '../../../../shared/services/aportes-service/a
   styleUrl: './pozos-detail.page.css',
 })
 export class PozosDetailPage implements ViewWillEnter {
+  readonly formatearFechaCalendario = formatearFechaCalendario;
   public informeService: PdfGenerate = inject(PdfGenerate);
   public pozoEditService = inject(PozosEditService);
   public ruta = inject(ActivatedRoute);

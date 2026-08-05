@@ -33,13 +33,13 @@
         </ion-item>
 
         <ion-item>
-          <ion-label>Fecha de Incio</ion-label>
-          <ion-label>{{ this.pozo()?.fecha_inicio }}</ion-label>
+          <ion-label>Fecha de inicio</ion-label>
+          <ion-label>{{ formatearFechaCalendario(this.pozo()?.fecha_inicio) }}</ion-label>
         </ion-item>
 
         <ion-item>
-          <ion-label>Fecha de Fin</ion-label>
-          <ion-label>{{ this.pozo()?.fecha_fin }}</ion-label>
+          <ion-label>Fecha de finalización</ion-label>
+          <ion-label>{{ formatearFechaCalendario(this.pozo()?.fecha_fin) }}</ion-label>
         </ion-item>
 
         <ion-item>
