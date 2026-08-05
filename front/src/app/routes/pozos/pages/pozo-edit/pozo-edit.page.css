@@ -1,0 +1,3 @@
+.editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.9fr); gap: 1.5rem; align-items: start; }
+.editor-layout > * { min-width: 0; }
+@media (max-width: 900px) { .editor-layout { grid-template-columns: minmax(0, 1fr); } }

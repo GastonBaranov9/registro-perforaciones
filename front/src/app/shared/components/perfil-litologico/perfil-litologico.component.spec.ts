@@ -111,6 +111,13 @@ describe('PerfilLitologicoComponent', () => {
     expect(fixture.componentInstance.perfil()).toBe(perfil);
   });
 
+  it('reutiliza el renderer con un modelo de vista previa sin consultar datos persistidos', () => {
+    fixture.componentRef.setInput('modelo', perfil);
+    fixture.detectChanges();
+    expect(obtener).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('.etiqueta-tuberia')?.textContent).toContain('PVC');
+  });
+
   it('ignora una respuesta anterior cuando ya existe una recarga más reciente', async () => {
     let resolverAnterior!: (dato: PerfilLitologico) => void;
     let resolverVigente!: (dato: PerfilLitologico) => void;

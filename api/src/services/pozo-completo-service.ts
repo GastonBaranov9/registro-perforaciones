@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
-import type { Pozo, PozoCompletoBody, PozoCompletoUpdateBody } from "../models/schemas.ts";
+import type { PerfilLitologicoVistaPreviaBody, Pozo, PozoCompletoBody, PozoCompletoUpdateBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { validarPersonaPozo } from "./candidatos-pozo-service.ts";
 
@@ -18,8 +18,18 @@ export interface PozoCompletoResultado {
 type Intervalo = { desde_m: number; hasta_m: number };
 
 export function validarPozoCompleto(data: PozoCompletoBody): string[] {
+  return validarDatosTecnicosPozo({
+    profundidad_final_m: data.pozo.profundidad_final_m,
+    intervalos_litologicos: data.intervalos_litologicos,
+    intervalos_diametro: data.intervalos_diametro,
+    intervalos_filtro: data.intervalos_filtro,
+    niveles_aporte: data.niveles_aporte,
+  });
+}
+
+export function validarDatosTecnicosPozo(data: PerfilLitologicoVistaPreviaBody): string[] {
   const errores: string[] = [];
-  const profundidad = data.pozo.profundidad_final_m;
+  const profundidad = data.profundidad_final_m;
   validarIntervalos(data.intervalos_litologicos, "litológico", profundidad, errores);
   validarIntervalos(data.intervalos_diametro, "de diámetro", profundidad, errores);
   validarIntervalos(data.intervalos_filtro ?? [], "de filtro", profundidad, errores);

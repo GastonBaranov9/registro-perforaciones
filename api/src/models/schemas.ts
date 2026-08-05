@@ -267,6 +267,15 @@ export const PozoCompletoBody = Type.Object({
 
 export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
 
+export const PerfilLitologicoVistaPreviaBody = Type.Object({
+  profundidad_final_m: Type.Number({ exclusiveMinimum: 0 }),
+  intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+  intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+  intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+  niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+});
+export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVistaPreviaBody>;
+
 export const PozoCompletoUpdateBody = Type.Intersect([
   Type.Omit(PozoCompletoBody, ["foto"]),
   Type.Object({

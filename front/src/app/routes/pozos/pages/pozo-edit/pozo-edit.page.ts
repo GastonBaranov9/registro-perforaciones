@@ -24,6 +24,8 @@ import { IntervalosFiltroService } from '../../../../shared/services/intervalos-
 import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
 import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
 import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { PerfilLitologicoVistaPreviaComponent } from '../../components/perfil-litologico-vista-previa/perfil-litologico-vista-previa.component';
+import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas';
 @Component({
   selector: 'app-pozo-edit',
   imports: [
@@ -37,6 +39,7 @@ import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-bo
     IonButtons,
     IonBackButton,
     DatosTecnicosBorradorComponent,
+    PerfilLitologicoVistaPreviaComponent,
   ],
   templateUrl: './pozo-edit.page.html',
   styleUrl: './pozo-edit.page.css',
@@ -67,13 +70,14 @@ export class PozoEditPage {
         intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, dato: { desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia } })),
         nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
       };
-      return { pozo, personas, tecnicos };
+      return { pozo: { ...pozo, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, tecnicos };
     },
   });
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
+  public profundidadBorrador = signal<number | undefined>(undefined);
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
     if (this.disabled()) return;

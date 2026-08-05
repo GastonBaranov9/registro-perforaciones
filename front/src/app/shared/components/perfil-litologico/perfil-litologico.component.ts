@@ -8,8 +8,9 @@ import { PerfilLitologico } from '../../types/schemas';
   styleUrl: './perfil-litologico.component.css',
 })
 export class PerfilLitologicoComponent {
-  readonly idUsuario = input.required<number>();
-  readonly idPozo = input.required<number>();
+  readonly idUsuario = input<number | null>(null);
+  readonly idPozo = input<number | null>(null);
+  readonly modelo = input<PerfilLitologico | null | undefined>(undefined);
   readonly versionPerfil = input(0);
   readonly perfil = signal<PerfilLitologico | null>(null);
   readonly cargando = signal(true);
@@ -19,12 +20,24 @@ export class PerfilLitologicoComponent {
 
   constructor() {
     effect(() => {
+      const modelo = this.modelo();
+      if (modelo !== undefined) {
+        ++this.solicitudVigente;
+        this.perfil.set(modelo);
+        this.cargando.set(false);
+        this.error.set('');
+        return;
+      }
       const parametros = { idUsuario: this.idUsuario(), idPozo: this.idPozo(), version: this.versionPerfil() };
+      if (parametros.idUsuario == null || parametros.idPozo == null) return;
       void this.cargar(parametros.idUsuario, parametros.idPozo);
     });
   }
 
-  reintentar() { void this.cargar(this.idUsuario(), this.idPozo()); }
+  reintentar() {
+    const idUsuario = this.idUsuario(); const idPozo = this.idPozo();
+    if (idUsuario != null && idPozo != null) void this.cargar(idUsuario, idPozo);
+  }
 
   private async cargar(idUsuario: number, idPozo: number) {
     const solicitud = ++this.solicitudVigente;

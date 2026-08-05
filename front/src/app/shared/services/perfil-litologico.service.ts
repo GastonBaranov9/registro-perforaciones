@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { PerfilLitologico } from '../types/schemas';
+import { PerfilLitologico, PerfilLitologicoVistaPreviaBody } from '../types/schemas';
 
 @Injectable({ providedIn: 'root' })
 export class PerfilLitologicoService {
@@ -13,6 +13,13 @@ export class PerfilLitologicoService {
       this.http.get<PerfilLitologico | null>(
         `${environment.apiURL}usuarios/${idUsuario}/pozos/${idPozo}/perfil-litologico`,
       ),
+    );
+  }
+
+  vistaPrevia(idUsuario: number, idPozo: number, borrador: PerfilLitologicoVistaPreviaBody) {
+    return this.http.post<PerfilLitologico>(
+      `${environment.apiURL}usuarios/${idUsuario}/pozos/${idPozo}/perfil-litologico/vista-previa`,
+      borrador,
     );
   }
 }

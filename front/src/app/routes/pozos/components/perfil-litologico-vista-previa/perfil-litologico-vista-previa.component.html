@@ -1,0 +1,12 @@
+<section class="vista-previa" aria-labelledby="vista-previa-titulo">
+  <h2 id="vista-previa-titulo">Vista previa del perfil del pozo</h2>
+  @if (cargando()) { <p role="status"><ion-spinner></ion-spinner> Actualizando vista previa…</p> }
+  @if (error()) {
+    <p role="alert">{{ error() }}</p>
+    @if (!error().startsWith('Indique') && !error().includes('Intervalo') && !error().includes('solapan')) {
+      <ion-button type="button" fill="outline" (click)="reintentar()">REINTENTAR</ion-button>
+    }
+  } @else if (perfil()) {
+    <app-perfil-litologico [modelo]="perfil()" />
+  }
+</section>

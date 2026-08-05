@@ -37,6 +37,7 @@ export class PozosFormComponent {
   public crearSitio = output<void>();
   public editarSitio = output<void>();
   public eliminarFotoPersistida = output<void>();
+  public cambiado = output<NuevoPozo>();
 
   public disabled = signal<boolean>(false);
   private authService = inject(AuthService);
@@ -55,6 +56,8 @@ export class PozosFormComponent {
       fotoAccion: this.fotoFile ? 'reemplazar' : (this.eliminarFotoPendiente() ? 'eliminar' : 'conservar'),
     });
   }
+
+  notificarCambio() { this.cambiado.emit({ ...this.pozo() }); }
 
   onCrearSitioClick() {
     this.crearSitio.emit();

@@ -54,7 +54,8 @@
         step="1"
         type="number"
         name="profundidad_final_m"
-        [(ngModel)]="this.pozo().profundidad_final_m"
+          [(ngModel)]="this.pozo().profundidad_final_m"
+          (ngModelChange)="notificarCambio()"
         required
       ></ion-input>
     </ion-item>

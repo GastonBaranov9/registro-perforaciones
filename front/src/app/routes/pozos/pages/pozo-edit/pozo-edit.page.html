@@ -11,17 +11,20 @@
 
         @if (this.pozoResource.hasValue()) {
         @let editor = this.pozoResource.value()!;
-        <app-pozos-form
+        <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
           [guardando]="disabled()"
           (editarSitio)="editarSitio()"
+          (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
         >
           <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [profundidad]="editor.pozo.profundidad_final_m"
             [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" />
-        </app-pozos-form>
+        </app-pozos-form></div>
+        <aside><app-perfil-litologico-vista-previa [idPozo]="id_pozo()"
+          [profundidad]="profundidadBorrador() ?? editor.pozo.profundidad_final_m" [datos]="datosTecnicos()" /></aside></div>
         } @else if (this.pozoResource.isLoading()) {
         <ion-spinner></ion-spinner>
         } @else {
