@@ -1,5 +1,5 @@
 import { DatosTecnicosBorrador } from '../types/schemas';
-import { ordenarDatosTecnicos, validarDatosTecnicos } from './datos-tecnicos-borrador';
+import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from './datos-tecnicos-borrador';
 
 function datos(): DatosTecnicosBorrador {
   return {
@@ -27,5 +27,23 @@ describe('datos técnicos en memoria', () => {
     expect(errores.some((error) => error.includes('solapan'))).toBeTrue();
     expect(errores.filter((error) => error.includes('excede')).length).toBe(2);
     expect(borrador.intervalosLitologicos.length).toBe(2);
+  });
+});
+
+describe('continuidad sugerida de intervalos', () => {
+  it('inicia en cero y continúa desde el último hasta lógico', () => {
+    expect(sugerirInicioSiguienteIntervalo([], 30)).toEqual({ permitido: true, desde_m: 0 });
+    expect(sugerirInicioSiguienteIntervalo([{ desde_m: 10, hasta_m: 20 }, { desde_m: 0, hasta_m: 10 }], 30))
+      .toEqual({ permitido: true, desde_m: 20 });
+  });
+  it('conserva huecos y cambia al eliminar el último intervalo', () => {
+    const intervalos = [{ desde_m: 0, hasta_m: 5 }, { desde_m: 10, hasta_m: 15 }];
+    expect(sugerirInicioSiguienteIntervalo(intervalos, 30)).toEqual({ permitido: true, desde_m: 15 });
+    expect(sugerirInicioSiguienteIntervalo(intervalos.slice(0, 1), 30)).toEqual({ permitido: true, desde_m: 5 });
+  });
+  it('no deduce con solapamiento, rango inválido o profundidad completa', () => {
+    expect(sugerirInicioSiguienteIntervalo([{ desde_m: 0, hasta_m: 10 }, { desde_m: 9, hasta_m: 12 }], 30).permitido).toBeFalse();
+    expect(sugerirInicioSiguienteIntervalo([{ desde_m: 2, hasta_m: 2 }], 30).permitido).toBeFalse();
+    expect(sugerirInicioSiguienteIntervalo([{ desde_m: 0, hasta_m: 30 }], 30).permitido).toBeFalse();
   });
 });

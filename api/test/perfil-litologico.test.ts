@@ -86,7 +86,16 @@ test("aportes de agua quedan separados, ordenados y no crean capas", () => {
   );
   assert.ok(perfil);
   assert.deepEqual(perfil.aportes.map((a) => a.profundidad_m), [4, 15]);
+  assert.ok(perfil.aportes.every((a) => a.tipo === "puntual" && a.geometria.patron === "ondas"));
+  assert.deepEqual(perfil.aportes[0].geometria, { x_inicio: 0.05, x_fin: 0.95, espesor_min_px: 8, patron: "ondas" });
   assert.equal(perfil.tramos.length, 1);
+});
+
+test("aporte sobre capa fina y límite conserva banda localizada determinista", () => {
+  const perfil = crearPerfilLitologico([{ desde_m: 0, hasta_m: 0.5, material: "Limo" }, { desde_m: 0.5, hasta_m: 5, material: "Roca" }], 5, [{ profundidad_m: 0.25 }, { profundidad_m: 0.5 }]);
+  assert.ok(perfil);
+  assert.deepEqual(perfil.aportes.map((a) => [a.desde_m, a.hasta_m]), [[0.25, 0.25], [0.5, 0.5]]);
+  assert.ok(perfil.aportes.every((a) => a.geometria.x_inicio < perfil.seccion_pozo.tuberia_interior_inicio && a.geometria.x_fin > perfil.seccion_pozo.tuberia_interior_fin));
 });
 
 test("pozo profundo y muchas capas finas generan rangos multipágina", () => {

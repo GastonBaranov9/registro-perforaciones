@@ -36,4 +36,16 @@ describe('DatosTecnicosBorradorComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
     expect(component.datos().nivelesAporte.length).toBe(1);
   });
+
+  it('sugiere continuidad editable para litología y diámetro', () => {
+    component.datos.set({
+      intervalosLitologicos: [{ idLocal: 'a', dato: { desde_m: 0, hasta_m: 10, material: 'Arena' } }],
+      intervalosDiametro: [{ idLocal: 'b', dato: { desde_m: 0, hasta_m: 12, diametro_pulg: 8 } }], nivelesAporte: [],
+    });
+    component.agregarLitologia(); component.agregarDiametro();
+    expect(component.datos().intervalosLitologicos[1].dato.desde_m).toBe(10);
+    expect(component.datos().intervalosDiametro[1].dato.desde_m).toBe(12);
+    component.datos().intervalosLitologicos[1].dato.desde_m = 11;
+    expect(component.datos().intervalosLitologicos[1].dato.desde_m).toBe(11);
+  });
 });
