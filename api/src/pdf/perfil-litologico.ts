@@ -12,13 +12,13 @@ export interface AportePerfilLitologico {
 }
 export type MaterialTuberia = "PVC" | "Acero";
 export interface IntervaloConstructivo { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:MaterialTuberia|null; }
-export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"; material_texto:string; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
+export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"; material_texto:string; carril_etiqueta:number; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
 
 export interface AporteRepresentado extends AportePerfilLitologico {
   tipo: "puntual";
   desde_m: number;
   hasta_m: number;
-  geometria: { x_inicio: 0.05; x_fin: 0.95; espesor_min_px: 8; patron: "ondas" };
+  geometria: { x_inicio: 0.03; x_fin: 0.97; espesor_min_px: 12; patron: "ondas" };
 }
 
 export type PatronLitologico = "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
@@ -168,16 +168,18 @@ export function crearPerfilLitologico(
     .filter((aporte) => Number.isFinite(aporte.profundidad_m) && aporte.profundidad_m >= 0 && aporte.profundidad_m <= profundidad_m)
     .map((aporte): AporteRepresentado => ({
       profundidad_m: aporte.profundidad_m, tipo: "puntual", desde_m: aporte.profundidad_m, hasta_m: aporte.profundidad_m,
-      geometria: { x_inicio: 0.05, x_fin: 0.95, espesor_min_px: 8, patron: "ondas" },
+      geometria: { x_inicio: 0.03, x_fin: 0.97, espesor_min_px: 12, patron: "ondas" },
     }))
     .sort((a, b) => a.profundidad_m - b.profundidad_m);
   if (aportesValidos.length !== aportes.length) advertencias.push("Se omitieron aportes fuera de la profundidad representada.");
 
   const maxDiametro = Math.max(1, ...tuberias.map((i) => i.diametro_pulg), ...filtros.map((i) => i.diametro_pulg));
-  const construir = (items: readonly IntervaloConstructivo[], tipo: "tuberia"|"filtro") => items.map((item): TramoConstructivo => {
+  const construir = (items: readonly IntervaloConstructivo[], tipo: "tuberia"|"filtro") => [...items]
+    .sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m)
+    .map((item, indice): TramoConstructivo => {
     const mitad = 0.08 + 0.12 * item.diametro_pulg / maxDiametro;
-    return { ...item, tipo, material_texto:item.material_tuberia ?? "No especificado", geometria:{x_inicio:0.5-mitad,x_fin:0.5+mitad,patron:tipo === "filtro" ? "ranuras" : item.material_tuberia === "Acero" ? "metal" : "liso"} };
-  });
+    return { ...item, tipo, material_texto:item.material_tuberia ?? "No especificado", carril_etiqueta: tipo === "filtro" ? indice % 3 : 0, geometria:{x_inicio:0.5-mitad,x_fin:0.5+mitad,patron:tipo === "filtro" ? "ranuras" : item.material_tuberia === "Acero" ? "metal" : "liso"} };
+    });
 
   return {
     titulo: "Perfil litológico del pozo",
@@ -259,28 +261,20 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawLine({ start: { x: xColumna - 6, y }, end: { x: 545, y }, thickness: 0.25, color: rgb(0.68, 0.68, 0.68), dashArray: [2, 3] });
       page.drawText(`${formatearMetros(metros)} m`, { x: 45, y: y - 3, size: 8, font });
     }
-    for (const aporte of perfil.aportes.filter((a) => a.profundidad_m >= rango.desde_m && a.profundidad_m <= rango.hasta_m)) {
-      const y = yDe(aporte.profundidad_m);
-      const x1 = xColumna + anchoColumna * aporte.geometria.x_inicio;
-      const x2 = xColumna + anchoColumna * aporte.geometria.x_fin;
-      const hBanda = 6;
-      page.drawRectangle({ x: x1, y: y - hBanda / 2, width: x2 - x1, height: hBanda, color: rgb(0.65, 0.84, 0.96), opacity: 0.78, borderColor: rgb(0.02, 0.25, 0.55), borderWidth: 0.6 });
-      for (let x = x1 + 2; x < x2 - 5; x += 9) {
-        page.drawLine({ start: { x, y: y - 1.5 }, end: { x: x + 3, y: y + 1.5 }, thickness: 0.65, color: rgb(0.02, 0.3, 0.65) });
-        page.drawLine({ start: { x: x + 3, y: y + 1.5 }, end: { x: x + 6, y: y - 1.5 }, thickness: 0.65, color: rgb(0.02, 0.3, 0.65) });
-      }
-      page.drawCircle({ x: xColumna + anchoColumna + 8, y, size: 3.4, color: rgb(0.05, 0.35, 0.85), borderColor: rgb(0, 0.15, 0.45), borderWidth: 0.7 });
-      page.drawText(`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`, { x: xColumna + anchoColumna + 15, y: y - 3, size: 7.5, font, color: rgb(0.03, 0.25, 0.65) });
-    }
     for (const tramo of [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m)) {
       const desde=Math.max(tramo.desde_m,rango.desde_m), hasta=Math.min(tramo.hasta_m,rango.hasta_m);
       const x=xColumna+anchoColumna*tramo.geometria.x_inicio, w=anchoColumna*(tramo.geometria.x_fin-tramo.geometria.x_inicio);
       const yy=yDe(hasta), hh=yDe(desde)-yy;
       const acero=tramo.material_tuberia === "Acero";
-      page.drawRectangle({x,y:yy,width:w,height:hh,borderWidth:1.2,borderColor:rgb(0.12,0.12,0.12),color:acero?rgb(0.48,0.51,0.54):rgb(0.93,0.95,0.96),opacity:0.72});
+      const colorTuberia = acero ? rgb(0.48,0.51,0.54) : tramo.material_tuberia === "PVC" ? rgb(0.25,0.61,0.76) : rgb(0.72,0.72,0.72);
+      page.drawRectangle({x,y:yy,width:w,height:hh,borderWidth:1.2,borderColor:rgb(0.12,0.12,0.12),color:colorTuberia,opacity:0.82});
       if (tramo.tipo === "tuberia" && acero) for(let py=yy+4;py<yy+hh;py+=7) page.drawLine({start:{x,y:py},end:{x:x+w,y:py},thickness:.35,color:rgb(.2,.2,.2)});
-      if (tramo.tipo === "filtro") for(let py=yy+4;py<yy+hh;py+=8) { page.drawLine({start:{x:x+2,y:py},end:{x:x+w-2,y:py},thickness:1,color:rgb(.1,.1,.1)}); }
-      if (tramo.tipo === "filtro") page.drawText(`Filtro ${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m`,{x:xColumna+anchoColumna+15,y:Math.max(70,Math.min(740,yy+hh/2)),size:7,font});
+      if (tramo.tipo === "filtro") for(let py=yy+4;py<yy+hh;py+=7) {
+        const ranura = Math.max(3, Math.min(7, w * 0.26));
+        page.drawLine({start:{x:x+1.5,y:py},end:{x:x+1.5+ranura,y:py},thickness:1.5,color:rgb(.05,.05,.05)});
+        page.drawLine({start:{x:x+w-1.5-ranura,y:py},end:{x:x+w-1.5,y:py},thickness:1.5,color:rgb(.05,.05,.05)});
+      }
+      if (tramo.tipo === "filtro") page.drawText(`Filtro ranurado ${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m`,{x:390+tramo.carril_etiqueta*55,y:Math.max(70,Math.min(740,yy+hh/2)),size:6.5,font});
     }
     const extX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_exterior_inicio;
     const extW = anchoColumna * (perfil.seccion_pozo.tuberia_exterior_fin - perfil.seccion_pozo.tuberia_exterior_inicio);
@@ -288,7 +282,20 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
     const intW = anchoColumna * (perfil.seccion_pozo.tuberia_interior_fin - perfil.seccion_pozo.tuberia_interior_inicio);
     page.drawRectangle({ x: extX, y: ySuperior - alto, width: extW, height: alto, borderWidth: 1, borderColor: rgb(0.18, 0.18, 0.18), opacity: 0 });
     page.drawRectangle({ x: intX, y: ySuperior - alto, width: intW, height: alto, borderWidth: 0.7, borderColor: rgb(0.35, 0.35, 0.35), opacity: 0 });
-    page.drawText("Leyenda: PVC claro | Acero tramado | Filtro ranurado | banda ondulada = Aporte de agua", { x: 45, y: 55, size: 8, font });
+    for (const aporte of perfil.aportes.filter((a) => a.profundidad_m >= rango.desde_m && a.profundidad_m <= rango.hasta_m)) {
+      const y = yDe(aporte.profundidad_m);
+      const x1 = xColumna + anchoColumna * aporte.geometria.x_inicio;
+      const x2 = xColumna + anchoColumna * aporte.geometria.x_fin;
+      const hBanda = aporte.geometria.espesor_min_px;
+      page.drawRectangle({ x: x1, y: y - hBanda / 2, width: x2 - x1, height: hBanda, color: rgb(0.16, 0.66, 0.93), opacity: 0.88, borderColor: rgb(0.01, 0.2, 0.55), borderWidth: 1.2 });
+      for (let x = x1 + 1; x < x2 - 6; x += 9) {
+        page.drawLine({ start: { x, y: y - 2.4 }, end: { x: x + 3, y: y + 2.4 }, thickness: 1.05, color: rgb(0, 0.2, 0.58) });
+        page.drawLine({ start: { x: x + 3, y: y + 2.4 }, end: { x: x + 6, y: y - 2.4 }, thickness: 1.05, color: rgb(0, 0.2, 0.58) });
+      }
+      page.drawCircle({ x: xColumna + anchoColumna + 8, y, size: 4.5, color: rgb(0.02, 0.42, 0.92), borderColor: rgb(0, 0.12, 0.4), borderWidth: 1 });
+      page.drawText(`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`, { x: 285, y: y - 3, size: 7.5, font: bold, color: rgb(0.01, 0.2, 0.58) });
+    }
+    page.drawText("Leyenda: PVC celeste | Acero gris tramado | Filtro ranurado | banda azul ondulada = Aporte de agua", { x: 45, y: 55, size: 8, font });
     return page;
   });
 }

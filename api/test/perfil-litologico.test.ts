@@ -87,7 +87,7 @@ test("aportes de agua quedan separados, ordenados y no crean capas", () => {
   assert.ok(perfil);
   assert.deepEqual(perfil.aportes.map((a) => a.profundidad_m), [4, 15]);
   assert.ok(perfil.aportes.every((a) => a.tipo === "puntual" && a.geometria.patron === "ondas"));
-  assert.deepEqual(perfil.aportes[0].geometria, { x_inicio: 0.05, x_fin: 0.95, espesor_min_px: 8, patron: "ondas" });
+  assert.deepEqual(perfil.aportes[0].geometria, { x_inicio: 0.03, x_fin: 0.97, espesor_min_px: 12, patron: "ondas" });
   assert.equal(perfil.tramos.length, 1);
 });
 
@@ -104,6 +104,7 @@ test("modelo constructivo distingue PVC Acero y filtro ranurado con geometría c
     [{desde_m:20,hasta_m:25,diametro_pulg:6,material_tuberia:"Acero"}]);
   assert.ok(perfil); assert.equal(perfil.tuberias[0].geometria.patron,"liso"); assert.equal(perfil.tuberias[1].geometria.patron,"metal");
   assert.equal(perfil.filtros[0].geometria.patron,"ranuras"); assert.equal(perfil.filtros[0].desde_m,20);
+  assert.equal(perfil.filtros[0].carril_etiqueta,0);
   const historico = crearPerfilLitologico([],30,[],[{desde_m:0,hasta_m:30,diametro_pulg:6,material_tuberia:null}],[]);
   assert.equal(historico?.tuberias[0].material_texto,"No especificado");
 });

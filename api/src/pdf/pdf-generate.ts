@@ -313,12 +313,6 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     }
   }
 
-  const fecha = new Date().toLocaleDateString("es-UY", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-
   const perfilLitologico = crearPerfilLitologico(
     litologia,
     reporte.profundidad_final_m,
@@ -328,12 +322,6 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   );
   if (perfilLitologico) {
     dibujarPerfilLitologico(doc, perfilLitologico, font, bold);
-  }
-
-  for (const [indice, pagina] of doc.getPages().entries()) {
-    pagina.drawText(`Generado el ${fecha}  ·  Página ${indice + 1}/${doc.getPageCount()}`, {
-      x: marginX, y: marginBottom - 10, size: 8.5, font, color: rgb(0.4, 0.4, 0.4),
-    });
   }
 
   return doc;

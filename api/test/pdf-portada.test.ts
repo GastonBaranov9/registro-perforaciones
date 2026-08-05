@@ -43,6 +43,13 @@ test("sin foto, foto eliminada y datos largos conservan portada y perfil legible
   assert.ok((await largo.save()).length > 4_000);
 });
 
+test("el PDF no agrega pie de pagina ni texto de generacion", async () => {
+  const doc = await crearPDF(reporte(false), 90601);
+  const contenido = Buffer.from(await doc.save({ useObjectStreams: false })).toString("latin1");
+  assert.doesNotMatch(contenido, /Generado el/i);
+  assert.doesNotMatch(contenido, /47656e657261646f20656c/i);
+});
+
 function tieneImagen(page: PDFPage) {
   const recursos = page.node.Resources();
   const xobjects = recursos?.lookupMaybe(PDFName.of("XObject"), PDFDict);
