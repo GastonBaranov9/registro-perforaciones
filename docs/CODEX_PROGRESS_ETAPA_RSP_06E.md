@@ -62,7 +62,7 @@ El PDF solo cambia lo pedido en RSP-06E: columna Material en tuberías, tabla de
 - Frontend: 109/109; continuidad independiente, validación, editor en memoria, selector, perfil liso/metálico/ranurado y tabla accesible.
 - Builds API y frontend correctos; `git diff --check` correcto.
 
-La prueba PostgreSQL local no pudo ejecutarse: no existe `psql` ni `api/.env` en este workspace y no se proporcionó una conexión local. No se intentó producción ni se expusieron credenciales. La migración sí fue revisada y la atomicidad fue ejercitada con clientes PostgreSQL controlados en las pruebas de servicios.
+La migración se validó contra PostgreSQL 16 local en Docker Compose usando el `.env` de la raíz, sin mostrar credenciales. El catálogo confirmó la columna histórica nullable, los `CHECK` de material y rangos, la PK, la FK `ON DELETE CASCADE` y el índice `(id_pozo, desde_m, hasta_m)`. Una prueba transaccional insertó tuberías PVC y Acero, una tubería histórica con material `NULL` y un filtro coincidente; rechazó material y rango inválidos, verificó la cascada y terminó con `ROLLBACK`. La comprobación posterior confirmó cero registros temporales.
 
 ## Seguridad
 
@@ -76,5 +76,5 @@ Limitaciones reales:
 
 - los históricos seguirán mostrando “No especificado” hasta una edición explícita;
 - la base no tiene un mecanismo general de migraciones automáticas: la aplicación del SQL es una operación de despliegue;
-- no se realizó la prueba PostgreSQL real por ausencia de cliente/configuración local;
+- la migración fue aplicada y validada en PostgreSQL 16 local; la base no registra versiones de migración, por lo que otros entornos deben comprobar el catálogo antes de aplicarla;
 - el catálogo visual geológico y el rediseño general del PDF quedan fuera de RSP-06E.
