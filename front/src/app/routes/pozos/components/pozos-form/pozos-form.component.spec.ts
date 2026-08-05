@@ -25,4 +25,18 @@ describe('PozosFormComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('quitar foto antes de guardar solo limpia la selección local', () => {
+    component.fotoFile = new File(['foto'], 'foto.jpg', { type: 'image/jpeg' });
+    component.fotoBlob = component.fotoFile;
+    component.quitarFotoSeleccionada();
+    expect(component.fotoFile).toBeNull();
+    expect(component.fotoBlob).toBeNull();
+  });
+
+  it('solicita eliminación remota solo para una foto persistida', () => {
+    const emitir = spyOn(component.eliminarFotoPersistida, 'emit');
+    component.solicitarEliminarFotoPersistida();
+    expect(emitir).toHaveBeenCalled();
+  });
 });
