@@ -6,6 +6,8 @@ La auditoría detectó que los commits iniciales `89ab80d` y `323db2c` resolvía
 
 La corrección posterior RSP-06B integra la carga técnica en la creación, normaliza los `NUMERIC` de PostgreSQL que causaban el fallo al generar PDF con capas y añade eliminación segura de fotografías. El detalle completo está en `docs/CODEX_PROGRESS_ETAPA_RSP_06B.md`.
 
+RSP-06C sustituye los IDs manuales por selectores funcionales y extiende el mismo editor técnico a una actualización completa y transaccional. Véase `docs/CODEX_PROGRESS_ETAPA_RSP_06C.md`.
+
 ## Matriz de requisitos
 
 Estados: **completo**, **parcial**, **ausente**, **no aplicable por falta real de datos**.

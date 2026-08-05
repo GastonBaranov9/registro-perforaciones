@@ -15,6 +15,8 @@ La fotografía no es `documento`: la referencia vive en `pozo.foto_url` y el arc
 
 ## Flujo nuevo
 
+> Continuidad: RSP-06C reutiliza este borrador técnico en edición, añade selectores de personas y un PUT compuesto. El cierre actualizado está en `docs/CODEX_PROGRESS_ETAPA_RSP_06C.md`.
+
 La pantalla `pozos-create` contiene datos generales, foto opcional y tres editores en memoria. Cada fila usa `idLocal` (`local-N`) exclusivamente en Angular; el ID nunca viaja al backend ni simula una clave PostgreSQL. Se puede agregar, editar, quitar y revisar antes de enviar.
 
 Las validaciones web y API exigen rangos finitos, `desde >= 0`, `hasta > desde`, límites respecto de profundidad final y ausencia de solapamientos por categoría. Los aportes permanecen separados y se validan como profundidades. Cambiar la profundidad muestra errores y bloquea el envío sin eliminar filas.
