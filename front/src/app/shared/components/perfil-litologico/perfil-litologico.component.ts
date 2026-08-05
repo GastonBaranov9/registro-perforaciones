@@ -55,7 +55,8 @@ export class PerfilLitologicoComponent {
   }
 
   y(metros: number, rango: PerfilLitologico['rangos'][number]) {
-    return 70 + ((metros - rango.desde_m) / (rango.hasta_m - rango.desde_m)) * 700;
+    const geometria = this.perfil()!.geometria;
+    return geometria.columna.y + ((metros - rango.desde_m) / (rango.hasta_m - rango.desde_m)) * geometria.columna.alto;
   }
 
   alto(desde: number, hasta: number, rango: PerfilLitologico['rangos'][number]) {
@@ -80,10 +81,14 @@ export class PerfilLitologicoComponent {
   construccionEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m); }
   etiquetasEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return perfil.etiquetas.filter((etiqueta) => etiqueta.rango_desde_m === rango.desde_m); }
 
-  xAporte(fraccion: number) { return 90 + fraccion * 180; }
+  xAporte(fraccion: number) { const columna=this.perfil()!.geometria.columna; return columna.x + fraccion * columna.ancho; }
   yBandaAporte(profundidad: number, rango: PerfilLitologico['rangos'][number], alto = 8) { return this.y(profundidad, rango) - alto / 2; }
-  xEtiqueta(carril: 0 | 1 | 2 | 3) { return 310 + carril * 60; }
-  yEtiqueta(posicionNormalizada: number) { return 70 + posicionNormalizada * 700; }
+  xEtiqueta(normalizada: number) { return normalizada * this.perfil()!.geometria.ancho_logico; }
+  yEtiqueta(posicionNormalizada: number) { const geometria=this.perfil()!.geometria; return geometria.columna.y + posicionNormalizada * geometria.columna.alto; }
+  puntosConector(etiqueta: PerfilLitologico['etiquetas'][number]) { return etiqueta.conector.puntos.map((p) => `${p.x_normalizada*this.perfil()!.geometria.ancho_logico},${p.y_normalizada*this.perfil()!.geometria.alto_logico}`).join(' '); }
+  xMarca(inicio: boolean) { const columna=this.perfil()!.geometria.columna; return columna.x-(inicio?10:0); }
+  xMarcadorAporte() { const columna=this.perfil()!.geometria.columna; return columna.x+columna.ancho+12; }
+  xTextoEscala() { return this.perfil()!.geometria.x_texto_escala; }
 
   patron(patron: string) {
     return `url(#perfil-${patron})`;

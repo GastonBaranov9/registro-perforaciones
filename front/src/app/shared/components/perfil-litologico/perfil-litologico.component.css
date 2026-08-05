@@ -2,13 +2,13 @@
 .grafico { width: 100%; overflow-x: auto; border: 1px solid #8a8a8a; border-radius: .5rem; background: #fff; }
 .grafico + .grafico { margin-top: 1rem; }
 .grafico h3 { margin: .75rem 1rem 0; font-size: 1rem; }
-svg { display: block; width: 100%; min-width: 620px; height: auto; }
+svg { display: block; width: 100%; max-width: 100%; height: auto; }
 .contorno, .capa { stroke: #151515; stroke-width: 1.2; }
 .contorno { fill: #fafafa; }
 .trama { fill: none; stroke: #303030; stroke-width: 1; }
 .punto { fill: #303030; }
 .marca-escala { stroke: #333; stroke-width: 1.2; }
-.conector-etiqueta { stroke: #555; stroke-width: .8; }
+.conector-etiqueta { fill: none; stroke: #555; stroke-width: .8; stroke-linejoin: round; }
 .escala, .etiqueta, .aporte-texto { font: 12px sans-serif; fill: #111; }
 .etiqueta { font-size: 11px; }
 .aporte { fill: #1473e6; stroke: #052f6d; stroke-width: 1.5; }

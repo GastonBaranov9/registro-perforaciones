@@ -24,6 +24,9 @@ export interface EtiquetaPerfil {
   posicion_y_normalizada: number;
   carril: 0 | 1 | 2 | 3;
   x_anclaje_normalizado: number;
+  x_texto_normalizado: number;
+  conector: { puntos: Array<{ x_normalizada: number; y_normalizada: number }> };
+  caja_texto: { x_normalizada:number; y_normalizada:number; ancho_normalizado:number; alto_normalizado:number };
 }
 
 export interface AporteRepresentado extends AportePerfilLitologico {
@@ -66,9 +69,21 @@ export interface PerfilLitologico {
   filtros: TramoConstructivo[];
   etiquetas: EtiquetaPerfil[];
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
+  geometria: GeometriaCanonicaPerfil;
   rangos: RangoPerfilLitologico[];
   advertencias: string[];
   tiene_litologia: boolean;
+}
+
+export interface GeometriaCanonicaPerfil {
+  ancho_logico: 760;
+  alto_logico: 820;
+  columna: { x: 90; y: 70; ancho: 180; alto: 700 };
+  x_texto_escala: 12;
+  carriles_etiqueta_x: readonly [310, 390, 470, 550];
+  separacion_vertical_normalizada: number;
+  conector: { salida:12; llegada:8 };
+  alto_texto:16;
 }
 
 export class PerfilLitologicoInvalido extends Error {
@@ -92,6 +107,20 @@ const ESTILOS: readonly EstiloLitologico[] = [
 ];
 
 const ESTILO_HUECO: EstiloLitologico = { color: "#F5F5F5", gris: 0.95, patron: "cruz" };
+export const GEOMETRIA_CANONICA_PERFIL: GeometriaCanonicaPerfil = {
+  ancho_logico: 760,
+  alto_logico: 820,
+  columna: { x: 90, y: 70, ancho: 180, alto: 700 },
+  x_texto_escala:12,
+  carriles_etiqueta_x: [310, 390, 470, 550],
+  separacion_vertical_normalizada: 0.055,
+  conector:{salida:12,llegada:8},
+  alto_texto:16,
+};
+
+export function transformarPuntoCanonicoPdf(punto: { x_normalizada:number; y_normalizada:number }) {
+  return { x:45+punto.x_normalizada*505, y:795-punto.y_normalizada*750 };
+}
 
 export function normalizarMaterial(material: string) {
   return material.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
@@ -123,7 +152,7 @@ function calcularRangos(profundidad_m: number, intervalos: readonly IntervaloPer
   while (desde_m < profundidad_m) {
     const limiteProfundidad = Math.min(desde_m + 100, profundidad_m);
     const capas = intervalos.filter((tramo) => tramo.hasta_m > desde_m && tramo.desde_m < limiteProfundidad);
-    const hasta_m = capas.length > 18 ? Math.min(limiteProfundidad, capas[17].hasta_m) : limiteProfundidad;
+    const hasta_m = capas.length > 12 ? Math.min(limiteProfundidad, capas[11].hasta_m) : limiteProfundidad;
     rangos.push({ desde_m, hasta_m });
     desde_m = hasta_m;
   }
@@ -146,7 +175,7 @@ export function resolverColisionesEtiquetas<T extends { preferida: number }>(ent
   if (!entradas.length) return [];
   const ordenadas = [...entradas].sort((a, b) => a.preferida - b.preferida);
   const margen = 0.025;
-  const separacion = Math.min(0.04, (1 - margen * 2) / Math.max(1, ordenadas.length - 1));
+  const separacion = Math.min(GEOMETRIA_CANONICA_PERFIL.separacion_vertical_normalizada, (1 - margen * 2) / Math.max(1, ordenadas.length - 1));
   const posiciones: number[] = [];
   for (const entrada of ordenadas) posiciones.push(Math.max(margen, entrada.preferida, (posiciones.at(-1) ?? -Infinity) + separacion));
   const exceso = Math.max(0, (posiciones.at(-1) ?? 1) - (1 - margen));
@@ -171,7 +200,7 @@ function crearEtiquetas(
   const resultado: EtiquetaPerfil[] = [];
   for (const rango of rangos) {
     const amplitud = rango.hasta_m - rango.desde_m;
-    const candidatas: Array<Omit<EtiquetaPerfil, "posicion_y_normalizada"> & { preferida: number }> = [];
+    const candidatas: Array<Omit<EtiquetaPerfil, "posicion_y_normalizada" | "x_texto_normalizado" | "conector" | "caja_texto"> & { preferida: number }> = [];
     for (const tramo of tramos.filter((item) => item.desde_m < rango.hasta_m && item.hasta_m > rango.desde_m)) {
       const anclaje = (Math.max(tramo.desde_m, rango.desde_m) + Math.min(tramo.hasta_m, rango.hasta_m)) / 2;
       candidatas.push({ clave:`lit-${tramo.desde_m}-${tramo.hasta_m}`,tipo:"litologia",texto:`${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m · ${tramo.material}`,profundidad_anclaje_m:anclaje,rango_desde_m:rango.desde_m,carril:0,x_anclaje_normalizado:1,preferida:(anclaje-rango.desde_m)/amplitud });
@@ -187,7 +216,25 @@ function crearEtiquetas(
     for (const aporte of aportes.filter((item) => item.profundidad_m >= rango.desde_m && item.profundidad_m <= rango.hasta_m)) {
       candidatas.push({ clave:`apo-${aporte.profundidad_m}`,tipo:"aporte",texto:`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`,profundidad_anclaje_m:aporte.profundidad_m,rango_desde_m:rango.desde_m,carril:3,x_anclaje_normalizado:aporte.geometria.x_fin,preferida:(aporte.profundidad_m-rango.desde_m)/amplitud });
     }
-    resultado.push(...resolverColisionesEtiquetas(candidatas).map(({ preferida: _preferida, posicion, ...etiqueta }) => ({ ...etiqueta, posicion_y_normalizada: posicion })));
+    resultado.push(...resolverColisionesEtiquetas(candidatas).map(({ preferida: _preferida, posicion, ...etiqueta }) => {
+      const geometria = GEOMETRIA_CANONICA_PERFIL;
+      const xAnclaje = (geometria.columna.x + geometria.columna.ancho * etiqueta.x_anclaje_normalizado) / geometria.ancho_logico;
+      const yAnclaje = (geometria.columna.y + _preferida * geometria.columna.alto) / geometria.alto_logico;
+      const xTexto = geometria.carriles_etiqueta_x[etiqueta.carril] / geometria.ancho_logico;
+      const yTexto = (geometria.columna.y + posicion * geometria.columna.alto) / geometria.alto_logico;
+      const salida = geometria.conector.salida / geometria.ancho_logico;
+      const llegada = geometria.conector.llegada / geometria.ancho_logico;
+      const altoTexto = geometria.alto_texto / geometria.alto_logico;
+      return { ...etiqueta, posicion_y_normalizada: posicion, x_texto_normalizado: xTexto,
+        conector: { puntos: [
+          { x_normalizada: xAnclaje, y_normalizada: yAnclaje },
+          { x_normalizada: xAnclaje + salida, y_normalizada: yAnclaje },
+          { x_normalizada: xTexto - salida - llegada, y_normalizada: yTexto },
+          { x_normalizada: xTexto - llegada, y_normalizada: yTexto },
+        ] }, caja_texto: { x_normalizada:xTexto, y_normalizada:yTexto-altoTexto/2,
+          ancho_normalizado:Math.min(etiqueta.texto.length*6.2/geometria.ancho_logico,1-xTexto), alto_normalizado:altoTexto },
+      };
+    }));
   }
   return resultado;
 }
@@ -258,6 +305,7 @@ export function crearPerfilLitologico(
     filtros: filtrosConstruidos,
     etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos),
     seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
+    geometria: GEOMETRIA_CANONICA_PERFIL,
     rangos,
     advertencias,
     tiene_litologia: ordenados.length > 0,
@@ -294,10 +342,15 @@ function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: nu
 export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologico, font: PDFFont, bold: PDFFont): PDFPage[] {
   return perfil.rangos.map((rango, indice) => {
     const page = doc.addPage([595.28, 841.89]);
-    const alto = 650;
-    const ySuperior = 735;
-    const xColumna = 90;
-    const anchoColumna = 120;
+    const geometria = perfil.geometria;
+    const xPdf = (xNormalizada: number) => transformarPuntoCanonicoPdf({x_normalizada:xNormalizada,y_normalizada:0}).x;
+    const yPdf = (yNormalizada: number) => transformarPuntoCanonicoPdf({x_normalizada:0,y_normalizada:yNormalizada}).y;
+    const xColumna = xPdf(geometria.columna.x / geometria.ancho_logico);
+    const xFinColumna = xPdf((geometria.columna.x + geometria.columna.ancho) / geometria.ancho_logico);
+    const anchoColumna = xFinColumna - xColumna;
+    const ySuperior = yPdf(geometria.columna.y / geometria.alto_logico);
+    const yInferior = yPdf((geometria.columna.y + geometria.columna.alto) / geometria.alto_logico);
+    const alto = ySuperior - yInferior;
     const amplitud = rango.hasta_m - rango.desde_m;
     const yDe = (metros: number) => ySuperior - ((metros - rango.desde_m) / amplitud) * alto;
     page.drawText(textoSeguro(perfil.titulo), { x: 45, y: 790, size: 17, font: bold, color: rgb(0, 0.2, 0.5) });
@@ -321,7 +374,7 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
     for (const metros of [...ticks].sort((a, b) => a - b)) {
       const y = yDe(metros);
       page.drawLine({ start: { x: xColumna - 6, y }, end: { x: xColumna, y }, thickness: 0.7, color: rgb(0.25, 0.25, 0.25) });
-      page.drawText(`${formatearMetros(metros)} m`, { x: 45, y: y - 3, size: 8, font });
+      page.drawText(`${formatearMetros(metros)} m`, { x: xPdf(geometria.x_texto_escala/geometria.ancho_logico), y: y - 3, size: 8, font });
     }
     for (const tramo of [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m)) {
       const desde=Math.max(tramo.desde_m,rango.desde_m), hasta=Math.min(tramo.hasta_m,rango.hasta_m);
@@ -347,7 +400,7 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       const y = yDe(aporte.profundidad_m);
       const x1 = xColumna + anchoColumna * aporte.geometria.x_inicio;
       const x2 = xColumna + anchoColumna * aporte.geometria.x_fin;
-      const hBanda = aporte.geometria.espesor_min_px;
+      const hBanda = aporte.geometria.espesor_min_px / geometria.alto_logico * 750;
       page.drawRectangle({ x: x1, y: y - hBanda / 2, width: x2 - x1, height: hBanda, color: rgb(0.16, 0.66, 0.93), opacity: 0.88, borderColor: rgb(0.01, 0.2, 0.55), borderWidth: 1.2 });
       for (let x = x1 + 1; x < x2 - 6; x += 9) {
         page.drawLine({ start: { x, y: y - 2.4 }, end: { x: x + 3, y: y + 2.4 }, thickness: 1.05, color: rgb(0, 0.2, 0.58) });
@@ -356,11 +409,10 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawCircle({ x: xColumna + anchoColumna + 8, y, size: 4.5, color: rgb(0.02, 0.42, 0.92), borderColor: rgb(0, 0.12, 0.4), borderWidth: 1 });
     }
     for (const etiqueta of perfil.etiquetas.filter((item) => item.rango_desde_m === rango.desde_m)) {
-      const xAnclaje = xColumna + anchoColumna * etiqueta.x_anclaje_normalizado;
-      const yAnclaje = yDe(etiqueta.profundidad_anclaje_m);
-      const xTexto = 225 + etiqueta.carril * 35;
-      const yTexto = ySuperior - etiqueta.posicion_y_normalizada * alto;
-      page.drawLine({ start:{x:xAnclaje,y:yAnclaje}, end:{x:xTexto-4,y:yTexto}, thickness:0.45, color:rgb(0.32,0.32,0.32) });
+      const xTexto = xPdf(etiqueta.x_texto_normalizado);
+      const yTexto = yPdf((geometria.columna.y + etiqueta.posicion_y_normalizada * geometria.columna.alto) / geometria.alto_logico);
+      const puntos = etiqueta.conector.puntos.map((punto) => ({ x:xPdf(punto.x_normalizada), y:yPdf(punto.y_normalizada) }));
+      for (let punto=1;punto<puntos.length;punto++) page.drawLine({ start:puntos[punto-1], end:puntos[punto], thickness:0.45, color:rgb(0.32,0.32,0.32) });
       page.drawText(textoSeguro(etiqueta.texto), { x:xTexto, y:yTexto-2.5, size:6.2, font:etiqueta.tipo === "aporte" ? bold : font, color:etiqueta.tipo === "aporte" ? rgb(0.01,0.2,0.58) : rgb(0.08,0.08,0.08) });
     }
     page.drawText("Leyenda: PVC celeste | Acero gris tramado | Filtro ranurado | banda azul ondulada = Aporte de agua", { x: 45, y: 55, size: 8, font });
