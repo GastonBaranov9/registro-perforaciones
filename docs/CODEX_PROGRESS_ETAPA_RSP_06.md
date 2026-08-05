@@ -97,3 +97,7 @@ Los avisos preexistentes de Ionic/Stencils (iconos, menú/modal, glob vacío y `
 ## Despliegue y rollback
 
 Desplegar API y frontend juntos porque el componente web consume la nueva ruta. No hay migraciones ni dependencias nuevas. Para rollback, revertir los commits adicionales de la auditoría en orden inverso y volver a desplegar ambos artefactos.
+
+## Continuación RSP-06D
+
+La etapa RSP-06D añadió continuidad sugerida para intervalos, una banda acuífera con geometría compartida web/PDF y una portada A4 que integra la fotografía sin deformarla ni crear una página fotográfica aislada. El detalle técnico, pruebas y evidencias reproducibles se encuentran en `docs/CODEX_PROGRESS_ETAPA_RSP_06D.md`.
