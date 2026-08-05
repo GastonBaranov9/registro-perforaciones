@@ -139,6 +139,8 @@ const informeRoutes = async function (
           reporte.litologia,
           reporte.profundidad_final_m,
           reporte.niveles_aporte,
+          reporte.diametros,
+          reporte.filtros ?? [],
         ),
       );
     },

@@ -47,6 +47,12 @@
           <circle cx="282" [attr.cy]="y(aporte.profundidad_m, rango)" r="5" class="aporte" />
           <text x="294" [attr.y]="y(aporte.profundidad_m, rango) - 5" class="aporte-texto">Aporte de agua {{ aporte.profundidad_m }} m</text>
         }
+        @for (tramo of construccionEnRango(perfil()!, rango); track tramo.tipo + '-' + tramo.desde_m + '-' + tramo.hasta_m) {
+          <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
+            [attr.width]="xAporte(tramo.geometria.x_fin) - xAporte(tramo.geometria.x_inicio)" [attr.height]="alto(tramo.desde_m,tramo.hasta_m,rango)"
+            [class]="'constructivo ' + tramo.geometria.patron" />
+          @if (tramo.tipo === 'filtro') { <text x="294" [attr.y]="y((tramo.desde_m + tramo.hasta_m) / 2, rango)" class="filtro-texto">Filtro {{ tramo.desde_m }}–{{ tramo.hasta_m }} m</text> }
+        }
         <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" y="70"
           [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" height="700" class="tuberia-exterior" />
         <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" y="70"
@@ -70,6 +76,10 @@
           @for (aporte of perfil()!.aportes; track aporte.profundidad_m) { <tr><td>Puntual</td><td>{{ aporte.profundidad_m }} m</td></tr> }
         </tbody></table>
       }
+      <table><caption>Diseño del pozo</caption><thead><tr><th>Tipo</th><th>Intervalo</th><th>Diámetro</th><th>Material</th></tr></thead><tbody>
+        @for (tramo of perfil()!.tuberias; track tramo.desde_m) { <tr><td>Tubería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
+        @for (tramo of perfil()!.filtros; track tramo.desde_m) { <tr><td>Filtro</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
+      </tbody></table>
     </div>
   }
 </section>

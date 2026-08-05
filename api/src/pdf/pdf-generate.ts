@@ -233,6 +233,7 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   page.drawText("Desde (m)", { x: colX[0], y, size: 11, font: bold });
   page.drawText("Hasta (m)", { x: colX[1], y, size: 11, font: bold });
   page.drawText("Diámetro (pulg)", { x: colX[2], y, size: 11, font: bold });
+  page.drawText("Material", { x: colX[3], y, size: 11, font: bold });
   y -= 12;
 
   page.drawLine({
@@ -261,10 +262,26 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
         size: 10,
         font,
       });
+      page.drawText(fila.material_tuberia ?? "No especificado", { x: colX[3], y, size: 10, font });
       y -= 14;
     }
   }
 
+  y -= 20;
+
+  page.drawText("Intervalos de filtro", { x: marginX, y, size: 13, font: bold, color: rgb(0, 0.2, 0.5) });
+  y -= 20;
+  page.drawText("Desde (m)", { x: colX[0], y, size: 10, font: bold });
+  page.drawText("Hasta (m)", { x: colX[1], y, size: 10, font: bold });
+  page.drawText("Diámetro (pulg)", { x: colX[2], y, size: 10, font: bold });
+  page.drawText("Material", { x: colX[3], y, size: 10, font: bold }); y -= 18;
+  const filtros = reporte.filtros ?? [];
+  if (!filtros.length) { page.drawText("Sin registros.", { x: marginX, y, size: 10, font }); y -= 14; }
+  for (const fila of filtros) {
+    if (y < marginBottom + 35) nuevaPagina();
+    page.drawText(String(fila.desde_m),{x:colX[0],y,size:10,font}); page.drawText(String(fila.hasta_m),{x:colX[1],y,size:10,font});
+    page.drawText(String(fila.diametro_pulg),{x:colX[2],y,size:10,font}); page.drawText(fila.material_tuberia,{x:colX[3],y,size:10,font}); y-=14;
+  }
   y -= 20;
 
   page.drawText("Niveles de Aporte", {
@@ -306,6 +323,8 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     litologia,
     reporte.profundidad_final_m,
     reporte.niveles_aporte,
+    reporte.diametros,
+    reporte.filtros ?? [],
   );
   if (perfilLitologico) {
     dibujarPerfilLitologico(doc, perfilLitologico, font, bold);

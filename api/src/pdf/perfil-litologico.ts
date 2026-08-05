@@ -10,6 +10,9 @@ export interface IntervaloPerfilLitologico {
 export interface AportePerfilLitologico {
   profundidad_m: number;
 }
+export type MaterialTuberia = "PVC" | "Acero";
+export interface IntervaloConstructivo { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:MaterialTuberia|null; }
+export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"; material_texto:string; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
 
 export interface AporteRepresentado extends AportePerfilLitologico {
   tipo: "puntual";
@@ -47,6 +50,8 @@ export interface PerfilLitologico {
   paso_escala_m: number;
   tramos: TramoPerfilLitologico[];
   aportes: AporteRepresentado[];
+  tuberias: TramoConstructivo[];
+  filtros: TramoConstructivo[];
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   rangos: RangoPerfilLitologico[];
   advertencias: string[];
@@ -128,6 +133,8 @@ export function crearPerfilLitologico(
   intervalos: readonly IntervaloPerfilLitologico[],
   profundidadFinal_m?: number | null,
   aportes: readonly AportePerfilLitologico[] = [],
+  tuberias: readonly IntervaloConstructivo[] = [],
+  filtros: readonly IntervaloConstructivo[] = [],
 ): PerfilLitologico | null {
   const errores: string[] = [];
   const ordenados = [...intervalos].sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
@@ -166,12 +173,20 @@ export function crearPerfilLitologico(
     .sort((a, b) => a.profundidad_m - b.profundidad_m);
   if (aportesValidos.length !== aportes.length) advertencias.push("Se omitieron aportes fuera de la profundidad representada.");
 
+  const maxDiametro = Math.max(1, ...tuberias.map((i) => i.diametro_pulg), ...filtros.map((i) => i.diametro_pulg));
+  const construir = (items: readonly IntervaloConstructivo[], tipo: "tuberia"|"filtro") => items.map((item): TramoConstructivo => {
+    const mitad = 0.08 + 0.12 * item.diametro_pulg / maxDiametro;
+    return { ...item, tipo, material_texto:item.material_tuberia ?? "No especificado", geometria:{x_inicio:0.5-mitad,x_fin:0.5+mitad,patron:tipo === "filtro" ? "ranuras" : item.material_tuberia === "Acero" ? "metal" : "liso"} };
+  });
+
   return {
     titulo: "Perfil litológico del pozo",
     profundidad_m,
     paso_escala_m: calcularPasoEscala(profundidad_m),
     tramos: asignarCarriles(base, profundidad_m),
     aportes: aportesValidos,
+    tuberias: construir(tuberias, "tuberia"),
+    filtros: construir(filtros, "filtro"),
     seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
     rangos: calcularRangos(profundidad_m, ordenados),
     advertencias,
@@ -257,13 +272,23 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawCircle({ x: xColumna + anchoColumna + 8, y, size: 3.4, color: rgb(0.05, 0.35, 0.85), borderColor: rgb(0, 0.15, 0.45), borderWidth: 0.7 });
       page.drawText(`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`, { x: xColumna + anchoColumna + 15, y: y - 3, size: 7.5, font, color: rgb(0.03, 0.25, 0.65) });
     }
+    for (const tramo of [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m)) {
+      const desde=Math.max(tramo.desde_m,rango.desde_m), hasta=Math.min(tramo.hasta_m,rango.hasta_m);
+      const x=xColumna+anchoColumna*tramo.geometria.x_inicio, w=anchoColumna*(tramo.geometria.x_fin-tramo.geometria.x_inicio);
+      const yy=yDe(hasta), hh=yDe(desde)-yy;
+      const acero=tramo.material_tuberia === "Acero";
+      page.drawRectangle({x,y:yy,width:w,height:hh,borderWidth:1.2,borderColor:rgb(0.12,0.12,0.12),color:acero?rgb(0.48,0.51,0.54):rgb(0.93,0.95,0.96),opacity:0.72});
+      if (tramo.tipo === "tuberia" && acero) for(let py=yy+4;py<yy+hh;py+=7) page.drawLine({start:{x,y:py},end:{x:x+w,y:py},thickness:.35,color:rgb(.2,.2,.2)});
+      if (tramo.tipo === "filtro") for(let py=yy+4;py<yy+hh;py+=8) { page.drawLine({start:{x:x+2,y:py},end:{x:x+w-2,y:py},thickness:1,color:rgb(.1,.1,.1)}); }
+      if (tramo.tipo === "filtro") page.drawText(`Filtro ${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m`,{x:xColumna+anchoColumna+15,y:Math.max(70,Math.min(740,yy+hh/2)),size:7,font});
+    }
     const extX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_exterior_inicio;
     const extW = anchoColumna * (perfil.seccion_pozo.tuberia_exterior_fin - perfil.seccion_pozo.tuberia_exterior_inicio);
     const intX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_interior_inicio;
     const intW = anchoColumna * (perfil.seccion_pozo.tuberia_interior_fin - perfil.seccion_pozo.tuberia_interior_inicio);
     page.drawRectangle({ x: extX, y: ySuperior - alto, width: extW, height: alto, borderWidth: 1, borderColor: rgb(0.18, 0.18, 0.18), opacity: 0 });
     page.drawRectangle({ x: intX, y: ySuperior - alto, width: intW, height: alto, borderWidth: 0.7, borderColor: rgb(0.35, 0.35, 0.35), opacity: 0 });
-    page.drawText("Leyenda: trama + tono = material | banda ondulada = Aporte de agua | cruz gris = sin datos", { x: 45, y: 55, size: 8, font });
+    page.drawText("Leyenda: PVC claro | Acero tramado | Filtro ranurado | banda ondulada = Aporte de agua", { x: 45, y: 55, size: 8, font });
     return page;
   });
 }

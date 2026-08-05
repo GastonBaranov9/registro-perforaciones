@@ -48,6 +48,7 @@ export class PerfilLitologicoComponent implements OnInit {
   aportesEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
     return perfil.aportes.filter((aporte) => aporte.profundidad_m >= rango.desde_m && aporte.profundidad_m <= rango.hasta_m);
   }
+  construccionEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m); }
 
   xAporte(fraccion: number) { return 90 + fraccion * 180; }
   yBandaAporte(profundidad: number, rango: PerfilLitologico['rangos'][number], alto = 8) { return this.y(profundidad, rango) - alto / 2; }
