@@ -4,6 +4,8 @@
 
 La auditoría detectó que los commits iniciales `89ab80d` y `323db2c` resolvían solamente una página PDF y no la visualización web ni la fuente visual única. La etapa queda completada con un modelo de escena canónico calculado por la API, un adaptador SVG Angular y un adaptador PDF multipágina que consumen ese mismo modelo.
 
+La corrección posterior RSP-06B integra la carga técnica en la creación, normaliza los `NUMERIC` de PostgreSQL que causaban el fallo al generar PDF con capas y añade eliminación segura de fotografías. El detalle completo está en `docs/CODEX_PROGRESS_ETAPA_RSP_06B.md`.
+
 ## Matriz de requisitos
 
 Estados: **completo**, **parcial**, **ausente**, **no aplicable por falta real de datos**.
