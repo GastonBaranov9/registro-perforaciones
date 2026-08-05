@@ -23,6 +23,7 @@ function poolFalso(fallarEn?: string) {
     async query(sql: string) {
       consultas.push(sql);
       if (fallarEn && sql.includes(fallarEn)) throw new Error("fallo controlado");
+      if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 10 }] };
       if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
       if (sql.includes("INSERT INTO intervalo_litologico")) return { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: "Arena" }] };
       if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: String(++diam), id_pozo: "101", desde_m: "0", hasta_m: "25", diametro_pulg: "8" }] };

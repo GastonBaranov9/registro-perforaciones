@@ -34,9 +34,11 @@ describe('PozosFormComponent', () => {
     expect(component.fotoBlob).toBeNull();
   });
 
-  it('solicita eliminación remota solo para una foto persistida', () => {
-    const emitir = spyOn(component.eliminarFotoPersistida, 'emit');
+  it('aplaza la eliminación persistida hasta guardar la edición', () => {
     component.solicitarEliminarFotoPersistida();
-    expect(emitir).toHaveBeenCalled();
+    expect(component.eliminarFotoPendiente()).toBeTrue();
+    const emitir = spyOn(component.saved, 'emit');
+    component.handlePozo();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ fotoAccion: 'eliminar' }));
   });
 });
