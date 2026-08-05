@@ -137,10 +137,19 @@ test("modelo canónico define lienzo columna carriles y conectores para ambos ad
     const final=etiqueta.conector.puntos.at(-1)!;
     assert.ok(final.x_normalizada<etiqueta.caja_texto.x_normalizada);
     assert.ok(Math.abs(final.y_normalizada-(etiqueta.caja_texto.y_normalizada+etiqueta.caja_texto.alto_normalizado/2))<1e-9);
+    for (let indice=1;indice<etiqueta.conector.puntos.length;indice++) for (const otra of perfil.etiquetas.filter((item)=>item.clave!==etiqueta.clave)) {
+      assert.equal(segmentoCruzaCaja(etiqueta.conector.puntos[indice-1],etiqueta.conector.puntos[indice],otra.caja_texto),false);
+    }
   }
   assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:0,y_normalizada:0}),{x:45,y:795});
   assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:1,y_normalizada:1}),{x:550,y:45});
 });
+
+function segmentoCruzaCaja(a:{x_normalizada:number;y_normalizada:number},b:{x_normalizada:number;y_normalizada:number},caja:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}) {
+  for(let paso=1;paso<20;paso++) { const t=paso/20,x=a.x_normalizada+(b.x_normalizada-a.x_normalizada)*t,y=a.y_normalizada+(b.y_normalizada-a.y_normalizada)*t;
+    if(x>caja.x_normalizada&&x<caja.x_normalizada+caja.ancho_normalizado&&y>caja.y_normalizada&&y<caja.y_normalizada+caja.alto_normalizado)return true; }
+  return false;
+}
 
 test("filtro y aporte coincidentes conservan anclajes y conectores separados", () => {
   const perfil=crearPerfilLitologico([{desde_m:0,hasta_m:59,material:"Arena"},{desde_m:59,hasta_m:100,material:"Basalto rosado"}],100,[{profundidad_m:60}],
