@@ -31,10 +31,12 @@ export class PozosFormComponent {
   public saved = output<{ pozo: NuevoPozo; foto: File | null }>();
   public crearSitio = output<void>();
   public editarSitio = output<void>();
+  public eliminarFotoPersistida = output<void>();
 
   public disabled = signal<boolean>(false);
   private authService = inject(AuthService);
   public agregareditar = input<boolean>(false);
+  public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
 
   public fotoBlob: File | null = null;
@@ -74,6 +76,15 @@ export class PozosFormComponent {
       this.errorMessage.set(error.message ?? 'Error subiendo foto');
     }
     this.disabled.set(false);
+  }
+
+  quitarFotoSeleccionada() {
+    this.fotoBlob = null;
+    this.fotoFile = null;
+  }
+
+  solicitarEliminarFotoPersistida() {
+    this.eliminarFotoPersistida.emit();
   }
 
 getFoto() {

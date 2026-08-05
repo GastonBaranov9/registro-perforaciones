@@ -65,6 +65,20 @@ export class PozoEditPage {
     }
     this.disabled.set(false);
   }
+  async eliminarFotoPersistida() {
+    const pozo = this.pozoResource.value();
+    if (!pozo?.foto_url || this.disabled()) return;
+    try {
+      this.disabled.set(true);
+      this.errorMessage.set('');
+      await this.fotoPozoService.eliminarFoto(pozo.id_propietario, this.id_pozo());
+      this.pozoResource.reload();
+    } catch (error: unknown) {
+      this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo eliminar la fotografía.');
+    } finally {
+      this.disabled.set(false);
+    }
+  }
   irAtras() {
     this.router.navigate([`pozos-list`]);
   }

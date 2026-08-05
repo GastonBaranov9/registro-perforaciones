@@ -234,6 +234,21 @@ export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
 
+export const FotoNuevaPozo = Type.Object({
+  mime_type: Type.Union([Type.Literal("image/jpeg"), Type.Literal("image/png")]),
+  base64: Type.String({ minLength: 1, maxLength: 7_000_000 }),
+});
+
+export const PozoCompletoBody = Type.Object({
+  pozo: NuevoPozo,
+  intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+  intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+  niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+  foto: Type.Optional(FotoNuevaPozo),
+});
+
+export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
+
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",
   "creado_por",

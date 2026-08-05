@@ -12,11 +12,19 @@
         <app-pozos-form
           [pozo]="nuevoPozo()"
           (saved)="guardarPozo($event)"
-          [id_pozo]="this.id_pozo()"
+          [id_pozo]="null"
           [agregareditar]="false"
+          [guardando]="disabled()"
           (crearSitio)="crearSitio()"
         >
+          <app-datos-tecnicos-borrador
+            [profundidad]="nuevoPozo().profundidad_final_m"
+            [guardando]="disabled()"
+            (cambiado)="datosTecnicos.set($event)"
+          />
         </app-pozos-form>
+
+        @if (disabled()) { <p role="status">Guardando perforación completa…</p> }
 
         @if (errorMessage()) {
         <p class="error">

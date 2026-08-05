@@ -17,10 +17,13 @@ import {
   IonButtons,
   ViewWillEnter,
 } from '@ionic/angular/standalone';
-import { Pozo } from '../../../../shared/types/schemas';
+import { IntervaloDiametroPerforacion, IntervaloLitologico, NivelAporte, Pozo } from '../../../../shared/types/schemas';
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { environment } from '../../../../../environments/environment';
 import { PerfilLitologicoComponent } from '../../../../shared/components/perfil-litologico/perfil-litologico.component';
+import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
+import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
+import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -50,11 +53,18 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
   public id_pozo = Number(this.ruta.snapshot.paramMap.get('id_pozo'));
   public pozo = signal<Pozo | undefined>(undefined);
   public errorMessage = signal<string>('');
+  public litologia = signal<IntervaloLitologico[]>([]);
+  public diametros = signal<IntervaloDiametroPerforacion[]>([]);
+  public aportes = signal<NivelAporte[]>([]);
+  private litologiaService = inject(IntervaloLitologicoListService);
+  private diametroService = inject(IntervaloDiametroListService);
+  private aporteService = inject(AporteListService);
 
   async ngOnInit() {
     const data = await this.pozoEditService.getPozoById(this.id_pozo);
     this.pozo.set(data);
     this.getFoto();
+    await this.cargarTecnicos();
     
   }
 
@@ -63,6 +73,21 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
    const data = await this.pozoEditService.getPozoById(this.id_pozo);
     this.pozo.set(data);
     this.getFoto();
+    await this.cargarTecnicos();
+  }
+  private async cargarTecnicos() {
+    try {
+      const [litologia, diametros, aportes] = await Promise.all([
+        this.litologiaService.getIntervalosLitologicos(this.id_pozo),
+        this.diametroService.getIntervalosDiametros(this.id_pozo),
+        this.aporteService.getNivelesAporte(this.id_pozo),
+      ]);
+      this.litologia.set(litologia);
+      this.diametros.set(diametros);
+      this.aportes.set(aportes);
+    } catch {
+      this.errorMessage.set('No se pudieron cargar todos los datos técnicos.');
+    }
   }
   public irAEditarPozo() {
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);

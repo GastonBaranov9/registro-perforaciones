@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { Estado, NuevoPozo, Pozo, Usuario } from "../models/schemas.ts";
+import { Estado, NuevoPozo, Pozo, PozoCompletoBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
@@ -9,12 +9,47 @@ import fs from "fs/promises";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 import { clientConnections } from "../plugins/websocket.ts";
+import { crearPozoCompleto } from "../services/pozo-completo-service.ts";
+import { eliminarFotoPersistida } from "../services/foto-pozo-service.ts";
+import { randomUUID } from "node:crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "..", "..", "public");
 
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
+  fastify.post(
+    "/usuarios/:id_usuario/pozos/completo",
+    {
+      bodyLimit: 7_500_000,
+      schema: {
+        summary: "Crear un pozo con sus datos técnicos",
+        description: "Crea atómicamente el pozo, litología, diámetros, aportes y fotografía opcional",
+        params: Type.Object({ id_usuario: Type.Integer() }),
+        tags: ["pozos"],
+        body: PozoCompletoBody,
+        response: { 201: Type.Any(), 400: err.ErrorSchema, 403: err.ErrorSchema },
+        security: [{ BearerAuth: [] }],
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.userIsAdminOrPerforador],
+    },
+    async (req, rep) => {
+      const { sub: idUsuarioSesion } = req.user;
+      const data = req.body as PozoCompletoBody;
+      if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion)
+        throw new err.T05SinPermiso();
+      if (!(await isProp(data.pozo.id_propietario)))
+        throw new err.T05DatosIncorrectos("El ID no es de un propietario");
+      if (!(await isPerf(data.pozo.id_perforador)))
+        throw new err.T05DatosIncorrectos("El ID no es de un perforador");
+
+      const resultado = await crearPozoCompleto(idUsuarioSesion, data, PUBLIC_DIR);
+      fastify.notifyClient(data.pozo.id_propietario, { type: "pozo" });
+      return rep.code(201).send(resultado);
+    },
+  );
+
   //Crear pozo (estado inicial: ingresando)
   fastify.post(
     "/usuarios/:id_usuario/pozos",
@@ -309,41 +344,66 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (!foto)
         throw new err.T05DatosIncorrectos("No se recibió archivo de foto");
 
-      const nombreFoto = foto.filename || "foto.jpg";
-      const extension = nombreFoto.includes(".")
-        ? nombreFoto.split(".").pop()
-        : "jpg";
-
-      const fileName = `pozo-${id_pozo}.${extension}`;
-
-      const filePath = path.join(PUBLIC_DIR, fileName);
-
-      fastify.log.info(
-        { nombreFoto, extension, fileName, PUBLIC_DIR, filePath },
-        "[FOTO] Rutas calculadas"
-      );
-
       await fs.mkdir(PUBLIC_DIR, { recursive: true });
 
       const buffer = await foto.toBuffer();
-      await fs.writeFile(filePath, buffer);
+      if (buffer.length === 0 || buffer.length > 5_000_000)
+        throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
+      const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
+      const png = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+      if (!jpeg && !png) throw new err.T05DatosIncorrectos("La fotografía debe ser JPEG o PNG.");
+      const extension = png ? "png" : "jpg";
+      const fileName = `pozo-${id_pozo}.${extension}`;
+      const filePath = path.join(PUBLIC_DIR, fileName);
+      const existentes = await fs.readdir(PUBLIC_DIR);
+      const anterior = existentes.find((nombre) => nombre.startsWith(`pozo-${id_pozo}.`));
+      const papelera = path.join(PUBLIC_DIR, ".trash");
+      const anteriorOriginal = anterior ? path.join(PUBLIC_DIR, anterior) : null;
+      const anteriorAislado = anterior ? path.join(papelera, `${id_pozo}-${randomUUID()}-${anterior}`) : null;
+      if (anteriorOriginal && anteriorAislado) {
+        await fs.mkdir(papelera, { recursive: true });
+        await fs.rename(anteriorOriginal, anteriorAislado);
+      }
+      await fs.writeFile(filePath, buffer, { flag: "wx" });
 
       const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
 
-      fastify.log.info({ fotoUrl }, "[FOTO] URL que se guarda en BD");
-
-      const pozoActualizado = await funcPozo.updatePozoFoto(id_pozo, fotoUrl);
-      if (!pozoActualizado) {
-        throw new err.T05PozoNoEncontrado();
+      let pozoActualizado;
+      try {
+        pozoActualizado = await funcPozo.updatePozoFoto(id_pozo, fotoUrl);
+        if (!pozoActualizado) throw new err.T05PozoNoEncontrado();
+      } catch (error) {
+        await fs.rm(filePath, { force: true });
+        if (anteriorOriginal && anteriorAislado) await fs.rename(anteriorAislado, anteriorOriginal);
+        throw error;
       }
-
-      fastify.log.info(
-        { id_pozo, fotoUrl },
-        "[FOTO] Pozo actualizado correctamente"
-      );
+      if (anteriorAislado) await fs.rm(anteriorAislado, { force: true });
 
       return rep.code(200).send(pozoActualizado);
     }
+  );
+
+  fastify.delete(
+    "/usuarios/:id_usuario/pozos/:id_pozo/foto",
+    {
+      schema: {
+        summary: "Eliminar la fotografía protegida de un pozo",
+        tags: ["pozos"],
+        params: Type.Object({ id_usuario: Type.Integer(), id_pozo: Type.Integer() }),
+        response: { 204: Type.Null(), 404: err.ErrorSchema, 500: err.ErrorSchema },
+        security: [{ BearerAuth: [] }],
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+    },
+    async (req, rep) => {
+      const { id_pozo } = req.params as { id_pozo: number };
+      const pozo = await funcPozo.getPozoById(id_pozo);
+      if (!pozo) throw new err.T05PozoNoEncontrado();
+
+      await eliminarFotoPersistida(id_pozo, PUBLIC_DIR);
+      return rep.code(204).send(null);
+    },
   );
 
   fastify.get(

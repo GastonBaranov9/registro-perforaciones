@@ -154,17 +154,32 @@
       <ion-label>No hay foto</ion-label>
       }@else {
       <ion-img [src]="getFoto()" alt="Imagen del pozo"></ion-img>
+      <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">
+        Eliminar fotografía
+      </ion-button>
       }
-      <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
+      @if (!fotoFile) {
+        <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
+      } @else {
+        <ion-label>Fotografía nueva seleccionada: {{ fotoFile.name }}</ion-label>
+        <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar selección</ion-button>
+      }
     </ion-item>
     }@else{
     <ion-item>
       <ion-label position="stacked">Agregar foto al pozo</ion-label><br>
 
-      <app-foto slot = "end"(fotoTomada)="fotoCapturada($event)"></app-foto> </ion-item
+      @if (!fotoFile) {
+        <app-foto slot="end" (fotoTomada)="fotoCapturada($event)"></app-foto>
+      } @else {
+        <ion-label>Fotografía seleccionada: {{ fotoFile.name }}</ion-label>
+        <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar fotografía</ion-button>
+      }
+    </ion-item
     >}
   </ion-list>
-  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid">
+  <ng-content />
+  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled()">
     GUARDAR POZO
   </ion-button>
 </form>

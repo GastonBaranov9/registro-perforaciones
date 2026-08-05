@@ -1,7 +1,7 @@
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { PozosCreateService } from '../../../../shared/services/pozos-create.service';
 import { Router } from '@angular/router';
-import { NuevoPozo, Sitio } from '../../../../shared/types/schemas';
+import { DatosTecnicosBorrador, NuevoPozo } from '../../../../shared/types/schemas';
 import {
   IonContent,
   IonCard,
@@ -12,8 +12,9 @@ import {
   IonButton,
 } from '@ionic/angular/standalone';
 import { PozosFormComponent } from '../../components/pozos-form/pozos-form.component';
-import { FotoPozoService } from '../../../../shared/services/foto-service/fotoPozo.service';
 import { SitioReturnService } from '../../../../shared/services/sitio-navegar/sitio-navegar';
+import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
+import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 @Component({
   selector: 'app-pozos-create',
   imports: [
@@ -24,7 +25,7 @@ import { SitioReturnService } from '../../../../shared/services/sitio-navegar/si
     IonToolbar,
     IonButtons,
     IonBackButton,
-  
+    DatosTecnicosBorradorComponent,
   ],
   templateUrl: './pozos-create.page.html',
   styleUrl: './pozos-create.page.css',
@@ -34,9 +35,8 @@ export class PozosCreatePage {
   public router: Router = inject(Router);
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
-  public id_pozo = input.required<number>();
-  public fotoPozoService = inject(FotoPozoService);
   public sitioReturn: SitioReturnService = inject(SitioReturnService);
+  public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
 
   public nuevoPozo = signal<NuevoPozo>({
     id_propietario: 0,
@@ -60,23 +60,24 @@ export class PozosCreatePage {
   }
 
   async guardarPozo(data: { pozo: NuevoPozo; foto: File | null }) {
-    console.log(data.pozo);
+    if (this.disabled()) return;
     const id_usuario = data.pozo.id_propietario;
+    const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
+    if (errores.length) {
+      this.errorMessage.set(errores.join(' '));
+      return;
+    }
 
     try {
       this.disabled.set(true);
-      console.log('NUEVO POZO', this.nuevoPozo());
-      const nuevoPozo = await this.createService.createPozo(id_usuario, data.pozo);
-
-      if (data.foto) {
-        await this.fotoPozoService.subirFoto(id_usuario, nuevoPozo.id_pozo, data.foto);
-      }
-      console.log('Pozo creado: ', nuevoPozo);
-      this.router.navigate(['pozos-list']);
-    } catch (err: any) {
-      this.errorMessage.set(err.message);
+      this.errorMessage.set('');
+      const resultado = await this.createService.createPozoCompleto(id_usuario, data.pozo, this.datosTecnicos(), data.foto);
+      await this.router.navigate(['/pozos-detail', resultado.pozo.id_pozo]);
+    } catch (error: unknown) {
+      this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo crear la perforación.');
+    } finally {
+      this.disabled.set(false);
     }
-    this.disabled.set(false);
   }
   irAtras() {
     this.router.navigate([`pozo`]);

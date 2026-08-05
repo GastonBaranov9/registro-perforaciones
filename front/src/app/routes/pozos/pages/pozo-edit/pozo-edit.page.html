@@ -15,7 +15,9 @@
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
+          [guardando]="disabled()"
           (editarSitio)="editarSitio()"
+          (eliminarFotoPersistida)="eliminarFotoPersistida()"
         />
         } @else if (this.pozoResource.isLoading()) {
         <ion-spinner></ion-spinner>

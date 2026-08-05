@@ -1,0 +1,45 @@
+<section class="tecnicos">
+  <h2>Datos técnicos de la perforación</h2>
+  <p>Puede preparar, revisar y corregir estos datos antes de crear el pozo.</p>
+
+  <div class="seccion">
+    <h3>Intervalos litológicos</h3>
+    <button type="button" (click)="agregarLitologia()" [disabled]="guardando()">Agregar intervalo</button>
+    @for (item of datos().intervalosLitologicos; track item.idLocal) {
+      <div class="fila">
+        <label>Desde (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.desde_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Hasta (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Material<input type="text" [(ngModel)]="item.dato.material" (ngModelChange)="notificarEdicion()" /></label>
+        <button type="button" (click)="quitarLitologia(item.idLocal)" [disabled]="guardando()">Eliminar</button>
+      </div>
+    } @empty { <p>Sin intervalos litológicos.</p> }
+  </div>
+
+  <div class="seccion">
+    <h3>Intervalos de diámetro</h3>
+    <button type="button" (click)="agregarDiametro()" [disabled]="guardando()">Agregar intervalo</button>
+    @for (item of datos().intervalosDiametro; track item.idLocal) {
+      <div class="fila">
+        <label>Desde (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.desde_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Hasta (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Diámetro (pulg)<input type="number" min="0.01" step="0.01" [(ngModel)]="item.dato.diametro_pulg" (ngModelChange)="notificarEdicion()" /></label>
+        <button type="button" (click)="quitarDiametro(item.idLocal)" [disabled]="guardando()">Eliminar</button>
+      </div>
+    } @empty { <p>Sin intervalos de diámetro.</p> }
+  </div>
+
+  <div class="seccion">
+    <h3>Aportes de agua</h3>
+    <button type="button" (click)="agregarAporte()" [disabled]="guardando()">Agregar aporte</button>
+    @for (item of datos().nivelesAporte; track item.idLocal) {
+      <div class="fila">
+        <label>Profundidad (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.profundidad_m" (ngModelChange)="notificarEdicion()" /></label>
+        <button type="button" (click)="quitarAporte(item.idLocal)" [disabled]="guardando()">Eliminar</button>
+      </div>
+    } @empty { <p>Sin aportes de agua.</p> }
+  </div>
+
+  @if (errores().length) {
+    <div class="errores" role="alert"><strong>Debe corregir:</strong><ul>@for (error of errores(); track error) { <li>{{ error }}</li> }</ul></div>
+  }
+</section>

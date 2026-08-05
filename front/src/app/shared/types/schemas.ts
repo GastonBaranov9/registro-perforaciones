@@ -56,7 +56,7 @@ export type Pozo = {
   revestimiento?: Revestimiento | null;
   creado_por?: number;
   fecha_creado: string;
-  foto_url: string;
+  foto_url?: string;
 };
 
 export type NuevoPozo = {
@@ -156,6 +156,29 @@ export type NivelAporte = {
 
 export type NivelAporteBody = {
   profundidad_m: number;
+};
+
+export type ElementoBorrador<T> = { idLocal: string; dato: T };
+
+export type DatosTecnicosBorrador = {
+  intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
+  intervalosDiametro: Array<ElementoBorrador<IntervaloDiametroPerforacionBody>>;
+  nivelesAporte: Array<ElementoBorrador<NivelAporteBody>>;
+};
+
+export type PozoCompletoBody = {
+  pozo: NuevoPozo;
+  intervalos_litologicos: IntervaloLitologicoBody[];
+  intervalos_diametro: IntervaloDiametroPerforacionBody[];
+  niveles_aporte: NivelAporteBody[];
+  foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
+};
+
+export type PozoCompletoResultado = {
+  pozo: Pozo;
+  intervalos_litologicos: IntervaloLitologico[];
+  intervalos_diametro: IntervaloDiametroPerforacion[];
+  niveles_aporte: NivelAporte[];
 };
 
 export type PatronLitologico =
