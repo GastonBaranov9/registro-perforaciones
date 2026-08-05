@@ -31,7 +31,7 @@ test("persona inexistente, inactiva o con rol incorrecto es rechazada", async ()
 function updateBody(): PozoCompletoUpdateBody {
   return { pozo: { id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: 40 },
     intervalos_litologicos: [{ desde_m: 0, hasta_m: 15, material: "Arena" }],
-    intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 6 }], niveles_aporte: [{ profundidad_m: 20 }], foto_accion: "conservar" };
+    intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 6, material_tuberia: "PVC" }], intervalos_filtro: [], niveles_aporte: [{ profundidad_m: 20 }], foto_accion: "conservar" };
 }
 
 function poolActualizacion(fallar = false) {
@@ -56,7 +56,7 @@ test("actualización completa reemplaza hijos dentro de una transacción", async
     const resultado = await actualizarPozoCompleto(55, updateBody(), dir, falso.pool as never);
     assert.equal(resultado.intervalos_litologicos[0].id_pozo, 55);
     assert.ok(falso.consultas.some((x) => x === "COMMIT"));
-    assert.equal(falso.consultas.filter((x) => x.startsWith("DELETE FROM")).length, 3);
+    assert.equal(falso.consultas.filter((x) => x.startsWith("DELETE FROM")).length, 4);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 

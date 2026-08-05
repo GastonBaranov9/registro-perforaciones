@@ -98,6 +98,16 @@ test("aporte sobre capa fina y límite conserva banda localizada determinista", 
   assert.ok(perfil.aportes.every((a) => a.geometria.x_inicio < perfil.seccion_pozo.tuberia_interior_inicio && a.geometria.x_fin > perfil.seccion_pozo.tuberia_interior_fin));
 });
 
+test("modelo constructivo distingue PVC Acero y filtro ranurado con geometría compartida", () => {
+  const perfil = crearPerfilLitologico([{desde_m:0,hasta_m:30,material:"Arena"}],30,[],
+    [{desde_m:0,hasta_m:15,diametro_pulg:8,material_tuberia:"PVC"},{desde_m:15,hasta_m:30,diametro_pulg:6,material_tuberia:"Acero"}],
+    [{desde_m:20,hasta_m:25,diametro_pulg:6,material_tuberia:"Acero"}]);
+  assert.ok(perfil); assert.equal(perfil.tuberias[0].geometria.patron,"liso"); assert.equal(perfil.tuberias[1].geometria.patron,"metal");
+  assert.equal(perfil.filtros[0].geometria.patron,"ranuras"); assert.equal(perfil.filtros[0].desde_m,20);
+  const historico = crearPerfilLitologico([],30,[],[{desde_m:0,hasta_m:30,diametro_pulg:6,material_tuberia:null}],[]);
+  assert.equal(historico?.tuberias[0].material_texto,"No especificado");
+});
+
 test("pozo profundo y muchas capas finas generan rangos multipágina", () => {
   const capas = Array.from({ length: 80 }, (_, i) => ({ desde_m: i * 0.5, hasta_m: (i + 1) * 0.5, material: `Material ${i}` }));
   const perfil = crearPerfilLitologico(capas, 420);

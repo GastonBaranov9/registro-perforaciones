@@ -7,7 +7,8 @@ test("convierte NUMERIC de PostgreSQL antes de generar perfil y PDF", async () =
   const respuestas = [
     [{ id_pozo: "7", propietario: "P", empresa: "E", perforador: "R", sitio: "S", profundidad_final_m: "40.5", nivel_estatico_m: "3.2", nivel_dinamico_m: null, caudal_estimado_lh: "500", foto_url: null }],
     [{ desde_m: "0", hasta_m: "10.5", material: "Arena" }, { desde_m: "15", hasta_m: "30", material: "Roca" }],
-    [{ desde_m: "0", hasta_m: "40.5", diametro_pulg: "8" }],
+    [{ desde_m: "0", hasta_m: "40.5", diametro_pulg: "8", material_tuberia: null }],
+    [],
     [{ profundidad_m: "18" }],
   ];
   const db = { async query() { return { rows: respuestas.shift() ?? [] }; } };
@@ -28,7 +29,7 @@ test("PDF posterior a eliminar foto no intenta cargar archivo", async () => {
     metodo_rocoso: null, cementacion: null, desarrollo: null, introduccion: null,
     nombre_archivo: null, foto_url: null,
     litologia: [{ desde_m: 0, hasta_m: 8, material: "Arena" }],
-    diametros: [{ desde_m: 0, hasta_m: 20, diametro_pulg: 6 }],
+    diametros: [{ desde_m: 0, hasta_m: 20, diametro_pulg: 6, material_tuberia: null }], filtros: [],
     niveles_aporte: [{ profundidad_m: 12 }],
   };
   assert.ok((await generarPDFBytes(reporte, 8)).length > 1_000);

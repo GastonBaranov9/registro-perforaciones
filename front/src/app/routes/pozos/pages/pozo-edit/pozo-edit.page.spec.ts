@@ -36,7 +36,7 @@ describe('PozoEditPage', () => {
   });
 
   it('un error mantiene cambios técnicos en memoria', async () => {
-    component.datosTecnicos.set({ intervalosLitologicos: [{ idLocal: 'local-1', dato: { desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], nivelesAporte: [] });
+    component.datosTecnicos.set({ intervalosLitologicos: [{ idLocal: 'local-1', dato: { desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
     spyOn(component.pozoEditService, 'editPozoCompleto').and.rejectWith(new Error('fallo controlado'));
     await component.handleEdit({ pozo: { id_propietario: 2, id_perforador: 3, id_sitio: 4, profundidad_final_m: 10 }, foto: null, fotoAccion: 'conservar' });
     expect(component.datosTecnicos().intervalosLitologicos.length).toBe(1);
