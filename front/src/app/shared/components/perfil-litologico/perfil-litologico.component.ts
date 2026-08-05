@@ -49,6 +49,9 @@ export class PerfilLitologicoComponent implements OnInit {
     return perfil.aportes.filter((aporte) => aporte.profundidad_m >= rango.desde_m && aporte.profundidad_m <= rango.hasta_m);
   }
 
+  xAporte(fraccion: number) { return 90 + fraccion * 180; }
+  yBandaAporte(profundidad: number, rango: PerfilLitologico['rangos'][number], alto = 8) { return this.y(profundidad, rango) - alto / 2; }
+
   patron(patron: string) {
     return `url(#perfil-${patron})`;
   }

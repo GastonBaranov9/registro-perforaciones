@@ -11,6 +11,13 @@ export interface AportePerfilLitologico {
   profundidad_m: number;
 }
 
+export interface AporteRepresentado extends AportePerfilLitologico {
+  tipo: "puntual";
+  desde_m: number;
+  hasta_m: number;
+  geometria: { x_inicio: 0.05; x_fin: 0.95; espesor_min_px: 8; patron: "ondas" };
+}
+
 export type PatronLitologico = "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
 
 export interface EstiloLitologico {
@@ -39,7 +46,8 @@ export interface PerfilLitologico {
   profundidad_m: number;
   paso_escala_m: number;
   tramos: TramoPerfilLitologico[];
-  aportes: AportePerfilLitologico[];
+  aportes: AporteRepresentado[];
+  seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   rangos: RangoPerfilLitologico[];
   advertencias: string[];
   tiene_litologia: boolean;
@@ -151,7 +159,10 @@ export function crearPerfilLitologico(
 
   const aportesValidos = aportes
     .filter((aporte) => Number.isFinite(aporte.profundidad_m) && aporte.profundidad_m >= 0 && aporte.profundidad_m <= profundidad_m)
-    .map((aporte) => ({ profundidad_m: aporte.profundidad_m }))
+    .map((aporte): AporteRepresentado => ({
+      profundidad_m: aporte.profundidad_m, tipo: "puntual", desde_m: aporte.profundidad_m, hasta_m: aporte.profundidad_m,
+      geometria: { x_inicio: 0.05, x_fin: 0.95, espesor_min_px: 8, patron: "ondas" },
+    }))
     .sort((a, b) => a.profundidad_m - b.profundidad_m);
   if (aportesValidos.length !== aportes.length) advertencias.push("Se omitieron aportes fuera de la profundidad representada.");
 
@@ -161,6 +172,7 @@ export function crearPerfilLitologico(
     paso_escala_m: calcularPasoEscala(profundidad_m),
     tramos: asignarCarriles(base, profundidad_m),
     aportes: aportesValidos,
+    seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
     rangos: calcularRangos(profundidad_m, ordenados),
     advertencias,
     tiene_litologia: ordenados.length > 0,
@@ -234,10 +246,24 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
     }
     for (const aporte of perfil.aportes.filter((a) => a.profundidad_m >= rango.desde_m && a.profundidad_m <= rango.hasta_m)) {
       const y = yDe(aporte.profundidad_m);
-      page.drawCircle({ x: xColumna + anchoColumna + 12, y, size: 4, color: rgb(0.05, 0.35, 0.85), borderColor: rgb(0, 0.15, 0.45), borderWidth: 0.7 });
-      page.drawText(`Aporte ${formatearMetros(aporte.profundidad_m)} m`, { x: xColumna + anchoColumna + 20, y: y - 3, size: 7.5, font, color: rgb(0.03, 0.25, 0.65) });
+      const x1 = xColumna + anchoColumna * aporte.geometria.x_inicio;
+      const x2 = xColumna + anchoColumna * aporte.geometria.x_fin;
+      const hBanda = 6;
+      page.drawRectangle({ x: x1, y: y - hBanda / 2, width: x2 - x1, height: hBanda, color: rgb(0.65, 0.84, 0.96), opacity: 0.78, borderColor: rgb(0.02, 0.25, 0.55), borderWidth: 0.6 });
+      for (let x = x1 + 2; x < x2 - 5; x += 9) {
+        page.drawLine({ start: { x, y: y - 1.5 }, end: { x: x + 3, y: y + 1.5 }, thickness: 0.65, color: rgb(0.02, 0.3, 0.65) });
+        page.drawLine({ start: { x: x + 3, y: y + 1.5 }, end: { x: x + 6, y: y - 1.5 }, thickness: 0.65, color: rgb(0.02, 0.3, 0.65) });
+      }
+      page.drawCircle({ x: xColumna + anchoColumna + 8, y, size: 3.4, color: rgb(0.05, 0.35, 0.85), borderColor: rgb(0, 0.15, 0.45), borderWidth: 0.7 });
+      page.drawText(`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`, { x: xColumna + anchoColumna + 15, y: y - 3, size: 7.5, font, color: rgb(0.03, 0.25, 0.65) });
     }
-    page.drawText("Leyenda: trama + tono = material | azul = aporte de agua | cruz gris = sin datos", { x: 45, y: 55, size: 8, font });
+    const extX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_exterior_inicio;
+    const extW = anchoColumna * (perfil.seccion_pozo.tuberia_exterior_fin - perfil.seccion_pozo.tuberia_exterior_inicio);
+    const intX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_interior_inicio;
+    const intW = anchoColumna * (perfil.seccion_pozo.tuberia_interior_fin - perfil.seccion_pozo.tuberia_interior_inicio);
+    page.drawRectangle({ x: extX, y: ySuperior - alto, width: extW, height: alto, borderWidth: 1, borderColor: rgb(0.18, 0.18, 0.18), opacity: 0 });
+    page.drawRectangle({ x: intX, y: ySuperior - alto, width: intW, height: alto, borderWidth: 0.7, borderColor: rgb(0.35, 0.35, 0.35), opacity: 0 });
+    page.drawText("Leyenda: trama + tono = material | banda ondulada = Aporte de agua | cruz gris = sin datos", { x: 45, y: 55, size: 8, font });
     return page;
   });
 }

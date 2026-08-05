@@ -12,11 +12,17 @@ svg { display: block; width: 100%; min-width: 620px; height: auto; }
 .escala, .etiqueta, .aporte-texto { font: 12px sans-serif; fill: #111; }
 .etiqueta { font-size: 11px; }
 .aporte { fill: #1473e6; stroke: #052f6d; stroke-width: 1.5; }
+.banda-aporte { fill: #9bd5f5; fill-opacity: .82; stroke: #064f91; stroke-width: 1; }
+.trama-aporte { stroke: #064f91; stroke-width: .5; }
+.onda-agua { fill: none; stroke: #064f91; stroke-width: 1.2; }
+.tuberia-exterior, .tuberia-interior { fill: none; stroke: #222; pointer-events: none; }
+.tuberia-exterior { stroke-width: 2; }
+.tuberia-interior { stroke-width: 1; stroke-dasharray: 3 2; }
 .aporte-texto { fill: #073b80; font-weight: 600; }
 .leyenda { line-height: 1.5; }
 .muestra-patron, .muestra-aporte { display: inline-block; width: 1rem; height: 1rem; vertical-align: -.15rem; border: 1px solid #111; }
 .muestra-patron { background: repeating-linear-gradient(45deg, #ddd 0 3px, #333 3px 4px); }
-.muestra-aporte { border-radius: 50%; background: #1473e6; }
+.muestra-aporte { background: repeating-linear-gradient(0deg, #9bd5f5 0 3px, #064f91 3px 4px); }
 .advertencia { border-left: 4px solid #9a6700; padding-left: .6rem; }
 .tabla-contenedor { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }

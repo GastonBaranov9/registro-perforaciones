@@ -26,6 +26,7 @@
           <pattern id="perfil-puntos" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
           <pattern id="perfil-horizontal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
           <pattern id="perfil-vertical" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
+          <pattern id="perfil-agua" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q3 1 6 4 T12 4" class="onda-agua" /></pattern>
         </defs>
         @for (tick of ticks(perfil()!, rango); track tick) {
           <line x1="80" [attr.y1]="y(tick, rango)" x2="730" [attr.y2]="y(tick, rango)" class="guia" />
@@ -39,13 +40,21 @@
           <text [attr.x]="306 + tramo.carril_etiqueta * 105" [attr.y]="y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango) + 4" class="etiqueta">{{ etiqueta(tramo) }}</text>
         }
         @for (aporte of aportesEnRango(perfil()!, rango); track aporte.profundidad_m) {
-          <circle cx="282" [attr.cy]="y(aporte.profundidad_m, rango)" r="6" class="aporte" />
-          <text x="294" [attr.y]="y(aporte.profundidad_m, rango) - 5" class="aporte-texto">Aporte {{ aporte.profundidad_m }} m</text>
+          <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango)"
+            [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" height="8" class="banda-aporte" />
+          <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango)"
+            [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" height="8" fill="url(#perfil-agua)" class="trama-aporte" />
+          <circle cx="282" [attr.cy]="y(aporte.profundidad_m, rango)" r="5" class="aporte" />
+          <text x="294" [attr.y]="y(aporte.profundidad_m, rango) - 5" class="aporte-texto">Aporte de agua {{ aporte.profundidad_m }} m</text>
         }
+        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" y="70"
+          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" height="700" class="tuberia-exterior" />
+        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" y="70"
+          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_interior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" height="700" class="tuberia-interior" />
       </svg>
     </div>
     }
-    <p id="perfil-descripcion" class="leyenda"><span class="muestra-patron"></span> El tono y la trama identifican materiales; <span class="muestra-aporte"></span> azul identifica aportes de agua; trama cruzada gris indica huecos sin datos.</p>
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-patron"></span> El tono y la trama identifican materiales; <span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos.</p>
     <div class="tabla-contenedor">
       <table>
         <caption>Detalle accesible del perfil litológico</caption>
@@ -56,6 +65,11 @@
           }
         </tbody>
       </table>
+      @if (perfil()!.aportes.length) {
+        <table><caption>Aportes de agua</caption><thead><tr><th>Tipo</th><th>Profundidad</th></tr></thead><tbody>
+          @for (aporte of perfil()!.aportes; track aporte.profundidad_m) { <tr><td>Puntual</td><td>{{ aporte.profundidad_m }} m</td></tr> }
+        </tbody></table>
+      }
     </div>
   }
 </section>
