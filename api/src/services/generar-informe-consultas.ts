@@ -6,6 +6,10 @@ export interface ReportePozo {
   empresa: string;
   perforador: string;
   sitio: string;
+  departamento?: string;
+  localidad?: string | null;
+  latitud?: string | null;
+  longitud?: string | null;
   fecha_inicio: string | null;
   fecha_fin: string | null;
   profundidad_final_m: number | null;
@@ -16,6 +20,9 @@ export interface ReportePozo {
   metodo_rocoso: string | null;
   cementacion: string | null;
   desarrollo: string | null;
+  sello_sanitario?: boolean | null;
+  pre_filtro?: string | null;
+  revestimiento?: string | null;
   introduccion: string | null;
   nombre_archivo: string | null;
   litologia: {
@@ -45,6 +52,10 @@ export async function getReportePozo(
       p.empresa AS empresa,
       perf.nombre AS perforador,
       s.departamento || COALESCE(' - ' || s.localidad, '') AS sitio,
+      s.departamento,
+      s.localidad,
+      s.latitud,
+      s.longitud,
       p.fecha_inicio,
       p.fecha_fin,
       p.profundidad_final_m,
@@ -55,6 +66,9 @@ export async function getReportePozo(
       p.metodo_rocoso,
       p.cementacion AS cementacion,
       p.desarrollo AS desarrollo,
+      p.sello_sanitario,
+      p.pre_filtro,
+      p.revestimiento,
       NULL::text AS introduccion,  
       doc.nombre_archivo,
       p.foto_url 
@@ -104,7 +118,7 @@ export async function getReportePozo(
     nivel_estatico_m: numeroNullable(pozo.nivel_estatico_m),
     nivel_dinamico_m: numeroNullable(pozo.nivel_dinamico_m),
     caudal_estimado_lh: numeroNullable(pozo.caudal_estimado_lh),
-    litologia: litRows.map((l: any) => ({
+    litologia: (litRows as Record<string, unknown>[]).map((l) => ({
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
       material: l.material,
@@ -117,7 +131,7 @@ export async function getReportePozo(
     })),
     filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero" })),
 
-    niveles_aporte: aporteRows.map((a: any) => ({
+    niveles_aporte: (aporteRows as Record<string, unknown>[]).map((a) => ({
       profundidad_m: Number(a.profundidad_m),
     })),
   } as ReportePozo;
