@@ -7,6 +7,7 @@ import {
   dibujarPerfilLitologico,
   estiloDeMaterial,
   PerfilLitologicoInvalido,
+  resolverColisionesEtiquetas,
 } from "../src/pdf/perfil-litologico.ts";
 import { crearPDF } from "../src/pdf/pdf-generate.ts";
 
@@ -105,8 +106,29 @@ test("modelo constructivo distingue PVC Acero y filtro ranurado con geometría c
   assert.ok(perfil); assert.equal(perfil.tuberias[0].geometria.patron,"liso"); assert.equal(perfil.tuberias[1].geometria.patron,"metal");
   assert.equal(perfil.filtros[0].geometria.patron,"ranuras"); assert.equal(perfil.filtros[0].desde_m,20);
   assert.equal(perfil.filtros[0].carril_etiqueta,0);
+  assert.match(perfil.etiquetas.find((e) => e.tipo === "tuberia")?.texto ?? "", /Tubería PVC · Ø 8 pulg · 0-15 m/);
+  assert.match(perfil.etiquetas.find((e) => e.tipo === "filtro")?.texto ?? "", /Filtro ranurado Acero · Ø 6 pulg · 20-25 m/);
+  assert.deepEqual(new Set(perfil.etiquetas.filter((e) => e.tipo !== "litologia").map((e) => e.carril)), new Set([1, 2]));
   const historico = crearPerfilLitologico([],30,[],[{desde_m:0,hasta_m:30,diametro_pulg:6,material_tuberia:null}],[]);
   assert.equal(historico?.tuberias[0].material_texto,"No especificado");
+});
+
+test("resuelve colisiones de etiquetas finas de forma pura y determinista", () => {
+  const entradas = [{id:"a",preferida:.5},{id:"b",preferida:.501},{id:"c",preferida:.502}];
+  const primera = resolverColisionesEtiquetas(entradas);
+  assert.deepEqual(primera, resolverColisionesEtiquetas(entradas));
+  assert.ok(primera[1].posicion - primera[0].posicion >= .039);
+  assert.ok(primera[2].posicion - primera[1].posicion >= .039);
+  assert.deepEqual(entradas.map((x) => x.preferida), [.5,.501,.502]);
+});
+
+test("tubería filtro aporte y litología cercanos reciben carriles y alturas sin solaparse", () => {
+  const perfil = crearPerfilLitologico([{desde_m:0,hasta_m:49,material:"Arena"},{desde_m:49,hasta_m:61,material:"Grava"},{desde_m:61,hasta_m:100,material:"Roca"}],100,[{profundidad_m:60}],
+    [{desde_m:0,hasta_m:100,diametro_pulg:6,material_tuberia:"PVC"}],[{desde_m:50,hasta_m:70,diametro_pulg:6,material_tuberia:"PVC"}]);
+  assert.ok(perfil);
+  assert.deepEqual(new Set(perfil.etiquetas.map((e) => e.carril)),new Set([0,1,2,3]));
+  const posiciones=[...perfil.etiquetas].sort((a,b)=>a.posicion_y_normalizada-b.posicion_y_normalizada);
+  assert.ok(posiciones.slice(1).every((actual,indice)=>actual.posicion_y_normalizada-posiciones[indice].posicion_y_normalizada>=.039));
 });
 
 test("pozo profundo y muchas capas finas generan rangos multipágina", () => {

@@ -24,4 +24,13 @@ describe('PozosDetailPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('invalida el perfil cada vez que Ionic vuelve a mostrar el detalle', async () => {
+    spyOn(component.pozoEditService, 'getPozoById').and.rejectWith(new Error('sin red'));
+    await component.ionViewWillEnter();
+    await component.ionViewWillEnter();
+    expect(component.versionPerfil()).toBe(2);
+    expect(component.pozo()).toBeUndefined();
+    expect(component.errorMessage()).toContain('detalle actualizado');
+  });
 });

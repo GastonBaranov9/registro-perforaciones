@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, resource, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -46,7 +46,7 @@ import { AporteListService } from '../../../../shared/services/aportes-service/a
   templateUrl: './pozos-detail.page.html',
   styleUrl: './pozos-detail.page.css',
 })
-export class PozosDetailPage implements OnInit, ViewWillEnter {
+export class PozosDetailPage implements ViewWillEnter {
   public informeService: PdfGenerate = inject(PdfGenerate);
   public pozoEditService = inject(PozosEditService);
   public ruta = inject(ActivatedRoute);
@@ -58,25 +58,24 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
   public diametros = signal<IntervaloDiametroPerforacion[]>([]);
   public aportes = signal<NivelAporte[]>([]);
   public filtros = signal<IntervaloFiltro[]>([]);
+  public versionPerfil = signal(0);
   private litologiaService = inject(IntervaloLitologicoListService);
   private diametroService = inject(IntervaloDiametroListService);
   private aporteService = inject(AporteListService);
   private filtroService = inject(IntervalosFiltroService);
 
-  async ngOnInit() {
-    const data = await this.pozoEditService.getPozoById(this.id_pozo);
-    this.pozo.set(data);
-    this.getFoto();
-    await this.cargarTecnicos();
-    
-  }
-
   async ionViewWillEnter(){
-    
-   const data = await this.pozoEditService.getPozoById(this.id_pozo);
-    this.pozo.set(data);
-    this.getFoto();
-    await this.cargarTecnicos();
+    this.versionPerfil.update((version) => version + 1);
+    this.errorMessage.set('');
+    try {
+      const data = await this.pozoEditService.getPozoById(this.id_pozo);
+      this.pozo.set(data);
+      this.getFoto();
+      await this.cargarTecnicos();
+    } catch {
+      this.pozo.set(undefined);
+      this.errorMessage.set('No se pudo recargar el detalle actualizado.');
+    }
   }
   private async cargarTecnicos() {
     try {

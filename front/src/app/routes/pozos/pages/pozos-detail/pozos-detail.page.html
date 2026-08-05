@@ -1,4 +1,8 @@
 <ion-content>
+  @if (errorMessage()) {
+    <p role="alert">{{ errorMessage() }}</p>
+    <ion-button type="button" (click)="ionViewWillEnter()">Reintentar carga</ion-button>
+  }
   @if (!this.pozo()) {
   <p>Pozo no encontrado</p>
   }@else {
@@ -90,6 +94,7 @@
       <app-perfil-litologico
         [idUsuario]="pozo()!.id_propietario"
         [idPozo]="id_pozo"
+        [versionPerfil]="versionPerfil()"
       />
       <section>
         <h2>Resumen técnico</h2>

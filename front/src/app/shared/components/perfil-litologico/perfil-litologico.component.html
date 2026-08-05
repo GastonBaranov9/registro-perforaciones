@@ -4,6 +4,7 @@
     <p role="status">Cargando perfil litológico…</p>
   } @else if (error()) {
     <p role="alert">{{ error() }}</p>
+    <button type="button" (click)="reintentar()">Reintentar</button>
   } @else if (!perfil()) {
     <p>No hay profundidad ni litología registradas para representar.</p>
   } @else {
@@ -16,7 +17,7 @@
     @for (rango of perfil()!.rangos; track rango.desde_m) {
     <div class="grafico" tabindex="0" aria-describedby="perfil-descripcion">
       <h3>Profundidad {{ rango.desde_m }}–{{ rango.hasta_m }} m · sección {{ $index + 1 }}/{{ perfil()!.rangos.length }}</h3>
-      <svg viewBox="0 0 900 820" role="img" [attr.aria-label]="'Perfil litológico desde ' + rango.desde_m + ' hasta ' + rango.hasta_m + ' metros'">
+      <svg viewBox="0 0 760 820" role="img" [attr.aria-label]="'Perfil litológico desde ' + rango.desde_m + ' hasta ' + rango.hasta_m + ' metros'">
         <title>Perfil litológico del pozo</title>
         <desc>Capas proporcionales desde {{ rango.desde_m }} hasta {{ rango.hasta_m }} metros, con aportes de agua indicados en azul.</desc>
         <defs>
@@ -30,15 +31,13 @@
           <pattern id="perfil-ranuras" width="18" height="12" patternUnits="userSpaceOnUse"><path d="M1 3H7M11 9H17" class="ranura-filtro" /></pattern>
         </defs>
         @for (tick of ticks(perfil()!, rango); track tick) {
-          <line x1="80" [attr.y1]="y(tick, rango)" x2="870" [attr.y2]="y(tick, rango)" class="guia" />
+          <line x1="80" [attr.y1]="y(tick, rango)" x2="90" [attr.y2]="y(tick, rango)" class="marca-escala" />
           <text x="12" [attr.y]="y(tick, rango) + 4" class="escala">{{ tick }} m</text>
         }
         <rect x="90" y="70" width="180" height="700" class="contorno" />
         @for (tramo of tramosEnRango(perfil()!, rango); track tramo.desde_m + '-' + tramo.hasta_m) {
           <rect x="90" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" width="180" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="tramo.estilo.color" class="capa" />
           <rect x="90" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" width="180" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="patron(tramo.estilo.patron)" class="capa trama-capa" />
-          <polyline [attr.points]="'270,' + y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango) + ' ' + (300 + tramo.carril_etiqueta * 105) + ',' + y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango)" class="conector" />
-          <text [attr.x]="306 + tramo.carril_etiqueta * 105" [attr.y]="y(((tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m) + (tramo.hasta_m > rango.hasta_m ? rango.hasta_m : tramo.hasta_m)) / 2, rango) + 4" class="etiqueta">{{ etiqueta(tramo) }}</text>
         }
         @for (tramo of construccionEnRango(perfil()!, rango); track tramo.tipo + '-' + tramo.desde_m + '-' + tramo.hasta_m) {
           <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
@@ -48,7 +47,6 @@
             <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
               [attr.width]="xAporte(tramo.geometria.x_fin) - xAporte(tramo.geometria.x_inicio)" [attr.height]="alto(tramo.desde_m,tramo.hasta_m,rango)"
               fill="url(#perfil-ranuras)" class="ranurado-filtro" />
-            <text [attr.x]="620 + tramo.carril_etiqueta * 55" [attr.y]="y((tramo.desde_m + tramo.hasta_m) / 2, rango)" class="filtro-texto">Filtro ranurado {{ tramo.desde_m }}–{{ tramo.hasta_m }} m</text>
           }
         }
         <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" y="70"
@@ -61,7 +59,14 @@
           <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango, aporte.geometria.espesor_min_px)"
             [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" [attr.height]="aporte.geometria.espesor_min_px" fill="url(#perfil-agua)" class="trama-aporte" />
           <circle cx="282" [attr.cy]="y(aporte.profundidad_m, rango)" r="7" class="aporte" />
-          <text x="445" [attr.y]="y(aporte.profundidad_m, rango) - 7" class="aporte-texto">Aporte de agua {{ aporte.profundidad_m }} m</text>
+        }
+        @for (etiqueta of etiquetasEnRango(perfil()!, rango); track etiqueta.clave) {
+          <line [attr.x1]="xAporte(etiqueta.x_anclaje_normalizado)" [attr.y1]="y(etiqueta.profundidad_anclaje_m, rango)"
+            [attr.x2]="xEtiqueta(etiqueta.carril) - 8" [attr.y2]="yEtiqueta(etiqueta.posicion_y_normalizada)" class="conector-etiqueta" />
+        }
+        @for (etiqueta of etiquetasEnRango(perfil()!, rango); track etiqueta.clave) {
+          <text [attr.x]="xEtiqueta(etiqueta.carril)" [attr.y]="yEtiqueta(etiqueta.posicion_y_normalizada) + 4"
+            [class]="'etiqueta etiqueta-' + etiqueta.tipo">{{ etiqueta.texto }}</text>
         }
       </svg>
     </div>
@@ -70,10 +75,10 @@
     <div class="tabla-contenedor">
       <table>
         <caption>Detalle accesible del perfil litológico</caption>
-        <thead><tr><th>Intervalo</th><th>Material</th><th>Descripción</th></tr></thead>
+        <thead><tr><th scope="col">Intervalo</th><th scope="col">Material</th></tr></thead>
         <tbody>
           @for (tramo of perfil()!.tramos; track tramo.desde_m + '-' + tramo.hasta_m) {
-            <tr><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.material }}</td><td>{{ tramo.descripcion || 'Sin descripción registrada' }}</td></tr>
+            <tr><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.material }}</td></tr>
           }
         </tbody>
       </table>

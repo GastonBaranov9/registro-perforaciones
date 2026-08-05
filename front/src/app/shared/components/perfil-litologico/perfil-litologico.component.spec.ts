@@ -14,6 +14,12 @@ const perfil: PerfilLitologico = {
   aportes: [{ profundidad_m: 7, tipo: 'puntual', desde_m: 7, hasta_m: 7, geometria: { x_inicio: 0.03, x_fin: 0.97, espesor_min_px: 12, patron: 'ondas' } }],
   tuberias: [{tipo:'tuberia',desde_m:0,hasta_m:20,diametro_pulg:6,material_tuberia:'PVC',material_texto:'PVC',carril_etiqueta:0,geometria:{x_inicio:.3,x_fin:.7,patron:'liso'}}],
   filtros: [{tipo:'filtro',desde_m:10,hasta_m:15,diametro_pulg:6,material_tuberia:'Acero',material_texto:'Acero',carril_etiqueta:0,geometria:{x_inicio:.3,x_fin:.7,patron:'ranuras'}}],
+  etiquetas: [
+    {clave:'lit-0-.5',tipo:'litologia',texto:'0–0.5 m · Arena',profundidad_anclaje_m:.25,rango_desde_m:0,posicion_y_normalizada:.1,carril:0,x_anclaje_normalizado:1},
+    {clave:'tub-0-20',tipo:'tuberia',texto:'Tubería PVC · Ø 6 pulg · 0-20 m',profundidad_anclaje_m:10,rango_desde_m:0,posicion_y_normalizada:.45,carril:1,x_anclaje_normalizado:.7},
+    {clave:'fil-10-15',tipo:'filtro',texto:'Filtro ranurado Acero · Ø 6 pulg · 10-15 m',profundidad_anclaje_m:12.5,rango_desde_m:0,posicion_y_normalizada:.65,carril:2,x_anclaje_normalizado:.7},
+    {clave:'apo-7',tipo:'aporte',texto:'Aporte de agua 7 m',profundidad_anclaje_m:7,rango_desde_m:0,posicion_y_normalizada:.35,carril:3,x_anclaje_normalizado:.97},
+  ],
   seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
   rangos: [{ desde_m: 0, hasta_m: 20 }],
   advertencias: [],
@@ -46,7 +52,8 @@ describe('PerfilLitologicoComponent', () => {
     expect(elemento.querySelector('.constructivo.ranuras')).not.toBeNull();
     expect(elemento.querySelector('.constructivo.material-pvc')).not.toBeNull();
     expect(elemento.querySelector('.ranurado-filtro')).not.toBeNull();
-    expect(elemento.querySelector('.filtro-texto')?.textContent).toContain('Filtro ranurado');
+    expect(elemento.querySelector('.etiqueta-filtro')?.textContent).toContain('Filtro ranurado Acero');
+    expect(elemento.querySelector('.etiqueta-tuberia')?.textContent).toContain('Tubería PVC · Ø 6 pulg');
     expect(elemento.querySelector('.aporte')).not.toBeNull();
     expect(elemento.querySelector('.banda-aporte')).not.toBeNull();
     const filtro = elemento.querySelector('.ranurado-filtro');
@@ -54,6 +61,11 @@ describe('PerfilLitologicoComponent', () => {
     expect(filtro && aporte && Boolean(filtro.compareDocumentPosition(aporte) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTrue();
     expect(elemento.querySelector('.tuberia-interior')).not.toBeNull();
     expect(elemento.querySelector('pattern#perfil-puntos')).not.toBeNull();
+    expect(elemento.querySelector('.marca-escala')).not.toBeNull();
+    expect(elemento.querySelector('.guia')).toBeNull();
+    const tablaLitologica = elemento.querySelector('table');
+    expect(Array.from(tablaLitologica?.querySelectorAll('th') ?? []).map((th) => th.textContent?.trim())).toEqual(['Intervalo', 'Material']);
+    expect(tablaLitologica?.textContent).not.toContain('Sin descripción registrada');
     expect(elemento.innerHTML).not.toContain('[object Object]');
   });
 
@@ -72,5 +84,42 @@ describe('PerfilLitologicoComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain('No se pudo cargar');
     expect(fixture.componentInstance.perfil()).toBeNull();
+  });
+
+  it('vuelve a consultar al cambiar la versión y muestra el modelo confirmado por API', async () => {
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const actualizado: PerfilLitologico = { ...perfil,
+      tuberias: [{ ...perfil.tuberias[0], material_tuberia:'Acero', material_texto:'Acero', diametro_pulg:8, geometria:{...perfil.tuberias[0].geometria,patron:'metal'} }],
+      etiquetas: perfil.etiquetas.map((item) => item.tipo === 'tuberia' ? {...item,texto:'Tubería Acero · Ø 8 pulg · 0-20 m'} : item),
+    };
+    obtener.and.resolveTo(actualizado);
+    fixture.componentRef.setInput('versionPerfil', 1);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(obtener).toHaveBeenCalledTimes(2);
+    expect(fixture.nativeElement.querySelector('.etiqueta-tuberia')?.textContent).toContain('Acero · Ø 8 pulg');
+    expect(fixture.nativeElement.querySelector('.constructivo.material-acero')).not.toBeNull();
+  });
+
+  it('permite reintentar una recarga fallida sin mostrar el perfil anterior', async () => {
+    obtener.and.rejectWith(new Error('fallo'));
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.perfil()).toBeNull();
+    obtener.and.resolveTo(perfil);
+    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(obtener).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.perfil()).toBe(perfil);
+  });
+
+  it('ignora una respuesta anterior cuando ya existe una recarga más reciente', async () => {
+    let resolverAnterior!: (dato: PerfilLitologico) => void;
+    let resolverVigente!: (dato: PerfilLitologico) => void;
+    obtener.and.returnValues(new Promise<PerfilLitologico>((resolve) => resolverAnterior = resolve), new Promise<PerfilLitologico>((resolve) => resolverVigente = resolve));
+    fixture.detectChanges();
+    fixture.componentRef.setInput('versionPerfil', 1); fixture.detectChanges();
+    const vigente = {...perfil, titulo:'Perfil litológico del pozo' as const, tuberias:[]};
+    resolverVigente(vigente); await fixture.whenStable(); fixture.detectChanges();
+    resolverAnterior(perfil); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.perfil()).toBe(vigente);
   });
 });

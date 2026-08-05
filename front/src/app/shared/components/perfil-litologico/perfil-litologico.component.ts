@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, input, signal } from '@angular/core';
 import { PerfilLitologicoService } from '../../services/perfil-litologico.service';
 import { PerfilLitologico } from '../../types/schemas';
 
@@ -7,21 +7,37 @@ import { PerfilLitologico } from '../../types/schemas';
   templateUrl: './perfil-litologico.component.html',
   styleUrl: './perfil-litologico.component.css',
 })
-export class PerfilLitologicoComponent implements OnInit {
+export class PerfilLitologicoComponent {
   readonly idUsuario = input.required<number>();
   readonly idPozo = input.required<number>();
+  readonly versionPerfil = input(0);
   readonly perfil = signal<PerfilLitologico | null>(null);
   readonly cargando = signal(true);
   readonly error = signal('');
   private readonly service = inject(PerfilLitologicoService);
+  private solicitudVigente = 0;
 
-  async ngOnInit() {
+  constructor() {
+    effect(() => {
+      const parametros = { idUsuario: this.idUsuario(), idPozo: this.idPozo(), version: this.versionPerfil() };
+      void this.cargar(parametros.idUsuario, parametros.idPozo);
+    });
+  }
+
+  reintentar() { void this.cargar(this.idUsuario(), this.idPozo()); }
+
+  private async cargar(idUsuario: number, idPozo: number) {
+    const solicitud = ++this.solicitudVigente;
+    this.cargando.set(true);
+    this.error.set('');
+    this.perfil.set(null);
     try {
-      this.perfil.set(await this.service.getPerfil(this.idUsuario(), this.idPozo()));
+      const perfil = await this.service.getPerfil(idUsuario, idPozo);
+      if (solicitud === this.solicitudVigente) this.perfil.set(perfil);
     } catch {
-      this.error.set('No se pudo cargar el perfil litológico.');
+      if (solicitud === this.solicitudVigente) this.error.set('No se pudo cargar el perfil litológico actualizado.');
     } finally {
-      this.cargando.set(false);
+      if (solicitud === this.solicitudVigente) this.cargando.set(false);
     }
   }
 
@@ -49,15 +65,15 @@ export class PerfilLitologicoComponent implements OnInit {
     return perfil.aportes.filter((aporte) => aporte.profundidad_m >= rango.desde_m && aporte.profundidad_m <= rango.hasta_m);
   }
   construccionEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m); }
+  etiquetasEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return perfil.etiquetas.filter((etiqueta) => etiqueta.rango_desde_m === rango.desde_m); }
 
   xAporte(fraccion: number) { return 90 + fraccion * 180; }
   yBandaAporte(profundidad: number, rango: PerfilLitologico['rangos'][number], alto = 8) { return this.y(profundidad, rango) - alto / 2; }
+  xEtiqueta(carril: 0 | 1 | 2 | 3) { return 310 + carril * 60; }
+  yEtiqueta(posicionNormalizada: number) { return 70 + posicionNormalizada * 700; }
 
   patron(patron: string) {
     return `url(#perfil-${patron})`;
   }
 
-  etiqueta(tramo: PerfilLitologico['tramos'][number]) {
-    return `${tramo.desde_m}–${tramo.hasta_m} m · ${tramo.material}`;
-  }
 }

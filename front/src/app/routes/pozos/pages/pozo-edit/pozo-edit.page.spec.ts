@@ -42,4 +42,11 @@ describe('PozoEditPage', () => {
     expect(component.datosTecnicos().intervalosLitologicos.length).toBe(1);
     expect(component.errorMessage()).toContain('fallo controlado');
   });
+
+  it('después de actualizar navega al detalle reutilizable que invalida el perfil', async () => {
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({} as never);
+    const navegar = spyOn(component.router, 'navigate').and.resolveTo(true);
+    await component.handleEdit({ pozo: { id_propietario:2,id_perforador:3,id_sitio:4,profundidad_final_m:20 }, foto:null, fotoAccion:'conservar' });
+    expect(navegar).toHaveBeenCalledOnceWith(['/pozos-detail', 1]);
+  });
 });
