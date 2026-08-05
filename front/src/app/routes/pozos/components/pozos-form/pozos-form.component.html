@@ -5,17 +5,8 @@
       <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>
     </ion-item>
 
-    <ion-item>
-      <ion-label position="stacked">ID Propietario</ion-label>
-      <ion-input
-        min="0"
-        step="1"
-        type="number"
-        name="id_propietario"
-        [(ngModel)]="this.pozo().id_propietario"
-        required
-      ></ion-input>
-    </ion-item>
+    <app-selector-persona-pozo etiqueta="Propietario" [candidatos]="propietarios()"
+      [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
     <ion-item>
       <ion-label position="stacked">ID Sitio</ion-label>
@@ -31,6 +22,7 @@
         type="button"
         *ngIf="!agregareditar(); else editarSitioBtn"
         (click)="onCrearSitioClick()"
+        [disabled]="!propietarioValido()"
       >
         Crear Sitio
       </ion-button>
@@ -42,17 +34,8 @@
       </ng-template>
     </ion-item>
 
-    <ion-item>
-      <ion-label position="stacked">ID Perforador</ion-label>
-      <ion-input
-        min="0"
-        step="1"
-        type="number"
-        name="id_perforador"
-        [(ngModel)]="this.pozo().id_perforador"
-        required
-      ></ion-input>
-    </ion-item>
+    <app-selector-persona-pozo etiqueta="Perforador" [candidatos]="perforadores()"
+      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadores().length === 1" />
 
     <ion-item>
       <ion-label position="stacked">Fecha de inicio</ion-label>
@@ -150,8 +133,8 @@
     @if(this.agregareditar()===true){
     <ion-item>
       <ion-label position="stacked">Cambiar foto al pozo</ion-label><br>
-      @if (!getFoto()) {
-      <ion-label>No hay foto</ion-label>
+      @if (!getFoto() || eliminarFotoPendiente()) {
+      <ion-label>{{ eliminarFotoPendiente() ? 'La foto actual se eliminará al guardar.' : 'No hay foto' }}</ion-label>
       }@else {
       <ion-img [src]="getFoto()" alt="Imagen del pozo"></ion-img>
       <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">
@@ -163,6 +146,9 @@
       } @else {
         <ion-label>Fotografía nueva seleccionada: {{ fotoFile.name }}</ion-label>
         <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar selección</ion-button>
+      }
+      @if (eliminarFotoPendiente() || fotoFile) {
+        <ion-button type="button" fill="clear" (click)="cancelarCambioFoto()">Cancelar cambio</ion-button>
       }
     </ion-item>
     }@else{
@@ -179,7 +165,7 @@
     >}
   </ion-list>
   <ng-content />
-  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled()">
+  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled() || !catalogosDisponibles() || !personasValidas()">
     GUARDAR POZO
   </ion-button>
 </form>

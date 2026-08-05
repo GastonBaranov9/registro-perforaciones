@@ -249,6 +249,23 @@ export const PozoCompletoBody = Type.Object({
 
 export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
 
+export const PozoCompletoUpdateBody = Type.Intersect([
+  Type.Omit(PozoCompletoBody, ["foto"]),
+  Type.Object({
+    foto_accion: Type.Union([Type.Literal("conservar"), Type.Literal("eliminar"), Type.Literal("reemplazar")]),
+    foto: Type.Optional(FotoNuevaPozo),
+  }),
+]);
+export type PozoCompletoUpdateBody = Static<typeof PozoCompletoUpdateBody>;
+
+export const CandidatoPozo = Type.Object({
+  id_usuario: Type.Integer(),
+  nombre: Type.String(),
+  email: Type.String({ format: "email" }),
+  roles: Type.Array(Type.String()),
+});
+export type CandidatoPozo = Static<typeof CandidatoPozo>;
+
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",
   "creado_por",

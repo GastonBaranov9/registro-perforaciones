@@ -1,0 +1,17 @@
+<section class="selector" [attr.aria-label]="etiqueta()">
+  <ion-label>{{ etiqueta() }}</ion-label>
+  @if (actual(); as persona) { <ion-text><p>Seleccionado: {{ persona.nombre }} — {{ persona.email }} <small>#{{ persona.id_usuario }}</small></p></ion-text> }
+  @else if (seleccionado()) { <ion-text color="danger"><p>La selección actual ya no está activa o perdió el rol requerido. Elija otra persona.</p></ion-text> }
+  <ion-input [label]="'Buscar ' + etiqueta().toLowerCase()" labelPlacement="stacked" type="search"
+    [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event ?? '')" [disabled]="deshabilitado()"></ion-input>
+  <ion-list>
+    @for (persona of filtrados(); track persona.id_usuario) {
+      <ion-item>
+        <ion-label><strong>{{ persona.nombre }}</strong><p>{{ persona.email }} · #{{ persona.id_usuario }}</p></ion-label>
+        <ion-button type="button" slot="end" [fill]="seleccionado() === persona.id_usuario ? 'solid' : 'outline'"
+          (click)="elegir(persona.id_usuario)" [disabled]="deshabilitado()"
+          [attr.aria-label]="'Seleccionar ' + persona.nombre + ', ' + persona.email">Seleccionar</ion-button>
+      </ion-item>
+    } @empty { <ion-item><ion-label>No hay coincidencias.</ion-label></ion-item> }
+  </ion-list>
+</section>

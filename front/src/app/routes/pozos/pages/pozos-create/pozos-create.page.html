@@ -9,8 +9,10 @@
       <ion-card-content>
         <h2>Crear nueva perforación</h2>
 
+        @if (catalogos(); as personas) {
         <app-pozos-form
           [pozo]="nuevoPozo()"
+          [propietarios]="personas.propietarios" [perforadores]="personas.perforadores" [catalogosDisponibles]="true"
           (saved)="guardarPozo($event)"
           [id_pozo]="null"
           [agregareditar]="false"
@@ -23,6 +25,8 @@
             (cambiado)="datosTecnicos.set($event)"
           />
         </app-pozos-form>
+        } @else if (cargandoCatalogos()) { <p role="status">Cargando personas disponiblesâ€¦</p> }
+        @else { <p>No fue posible cargar los selectores.</p><ion-button type="button" (click)="cargarCatalogos()">REINTENTAR</ion-button> }
 
         @if (disabled()) { <p role="status">Guardando perforación completa…</p> }
 

@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { PozosCreateService } from '../../../../shared/services/pozos-create.service';
 import { Router } from '@angular/router';
-import { DatosTecnicosBorrador, NuevoPozo } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, CatalogosPersonasPozo, DatosTecnicosBorrador, NuevoPozo } from '../../../../shared/types/schemas';
 import {
   IonContent,
   IonCard,
@@ -15,6 +15,7 @@ import { PozosFormComponent } from '../../components/pozos-form/pozos-form.compo
 import { SitioReturnService } from '../../../../shared/services/sitio-navegar/sitio-navegar';
 import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
 import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
 @Component({
   selector: 'app-pozos-create',
   imports: [
@@ -25,6 +26,7 @@ import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-bo
     IonToolbar,
     IonButtons,
     IonBackButton,
+    IonButton,
     DatosTecnicosBorradorComponent,
   ],
   templateUrl: './pozos-create.page.html',
@@ -36,6 +38,9 @@ export class PozosCreatePage {
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
   public sitioReturn: SitioReturnService = inject(SitioReturnService);
+  public candidatosService = inject(CandidatosPozoService);
+  public catalogos = signal<CatalogosPersonasPozo | null>(null);
+  public cargandoCatalogos = signal(true);
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
 
   public nuevoPozo = signal<NuevoPozo>({
@@ -44,7 +49,7 @@ export class PozosCreatePage {
     id_perforador: 0,
   });
 
-  ionViewWillEnter() {
+  async ionViewWillEnter() {
     const sitio = this.sitioReturn.sitioCreado();
 
     console.log('sitio devuelto al crear pozo:', sitio);
@@ -57,9 +62,20 @@ export class PozosCreatePage {
 
       this.sitioReturn.sitioCreado.set(null);
     }
+    if (!this.catalogos()) await this.cargarCatalogos();
   }
 
-  async guardarPozo(data: { pozo: NuevoPozo; foto: File | null }) {
+  async cargarCatalogos() {
+    try {
+      this.cargandoCatalogos.set(true); this.errorMessage.set('');
+      const catalogos = await this.candidatosService.obtener();
+      this.catalogos.set(catalogos);
+      if (catalogos.perforadores.length === 1) this.nuevoPozo.update((p) => ({ ...p, id_perforador: catalogos.perforadores[0].id_usuario }));
+    } catch (error: unknown) { this.errorMessage.set(error instanceof Error ? error.message : 'No se pudieron cargar las personas.'); }
+    finally { this.cargandoCatalogos.set(false); }
+  }
+
+  async guardarPozo(data: { pozo: NuevoPozo; foto: File | null; fotoAccion?: AccionFotoEdicion }) {
     if (this.disabled()) return;
     const id_usuario = data.pozo.id_propietario;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);

@@ -1,4 +1,4 @@
-import { Component, input, output, signal } from '@angular/core';
+import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
@@ -12,9 +12,22 @@ import { ordenarDatosTecnicos, validarDatosTecnicos } from '../../../../shared/u
 export class DatosTecnicosBorradorComponent {
   readonly profundidad = input<number | undefined>();
   readonly guardando = input(false);
+  readonly inicial = input<DatosTecnicosBorrador | null>(null);
   readonly cambiado = output<DatosTecnicosBorrador>();
   readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
   private siguienteId = 1;
+  private inicializado = false;
+
+  constructor() {
+    effect(() => {
+      const inicial = this.inicial();
+      if (inicial && !this.inicializado) {
+        this.inicializado = true;
+        this.datos.set(ordenarDatosTecnicos(inicial));
+        this.cambiado.emit(this.datos());
+      }
+    });
+  }
 
   agregarLitologia() { this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: 0, hasta_m: 1, material: '' })] }); }
   agregarDiametro() { this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: 0, hasta_m: 1, diametro_pulg: 1 })] }); }

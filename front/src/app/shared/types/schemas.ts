@@ -174,6 +174,14 @@ export type PozoCompletoBody = {
   foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
 };
 
+export type CandidatoPozo = { id_usuario: number; nombre: string; email: string; roles: string[] };
+export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
+export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
+export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto'> & {
+  foto_accion: AccionFotoEdicion;
+  foto?: PozoCompletoBody['foto'];
+};
+
 export type PozoCompletoResultado = {
   pozo: Pozo;
   intervalos_litologicos: IntervaloLitologico[];

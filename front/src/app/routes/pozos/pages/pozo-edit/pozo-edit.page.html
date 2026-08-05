@@ -10,19 +10,22 @@
         <h2>Editar pozo</h2>
 
         @if (this.pozoResource.hasValue()) {
+        @let editor = this.pozoResource.value()!;
         <app-pozos-form
-          [pozo]="this.pozoResource.value()!"
+          [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
           [guardando]="disabled()"
           (editarSitio)="editarSitio()"
-          (eliminarFotoPersistida)="eliminarFotoPersistida()"
-        />
+        >
+          <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [profundidad]="editor.pozo.profundidad_final_m"
+            [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" />
+        </app-pozos-form>
         } @else if (this.pozoResource.isLoading()) {
         <ion-spinner></ion-spinner>
         } @else {
-        <p>No hay pozo</p>
+        <p>{{ pozoResource.error() || 'No hay pozo' }}</p>
         }
 
         <ion-button
