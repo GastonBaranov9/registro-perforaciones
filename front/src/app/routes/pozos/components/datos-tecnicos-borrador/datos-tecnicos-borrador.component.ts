@@ -1,7 +1,7 @@
 import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
-import { ordenarDatosTecnicos, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 
 @Component({
   selector: 'app-datos-tecnicos-borrador',
@@ -17,6 +17,7 @@ export class DatosTecnicosBorradorComponent {
   readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
   private siguienteId = 1;
   private inicializado = false;
+  readonly errorAgregar = signal('');
 
   constructor() {
     effect(() => {
@@ -29,8 +30,18 @@ export class DatosTecnicosBorradorComponent {
     });
   }
 
-  agregarLitologia() { this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: 0, hasta_m: 1, material: '' })] }); }
-  agregarDiametro() { this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: 0, hasta_m: 1, diametro_pulg: 1 })] }); }
+  agregarLitologia() {
+    const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
+    if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
+    this.errorAgregar.set('');
+    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, material: '' })] });
+  }
+  agregarDiametro() {
+    const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());
+    if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
+    this.errorAgregar.set('');
+    this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1 })] });
+  }
   agregarAporte() { this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] }); }
   quitarLitologia(id: string) { this.actualizar({ ...this.datos(), intervalosLitologicos: this.datos().intervalosLitologicos.filter((item) => item.idLocal !== id) }); }
   quitarDiametro(id: string) { this.actualizar({ ...this.datos(), intervalosDiametro: this.datos().intervalosDiametro.filter((item) => item.idLocal !== id) }); }

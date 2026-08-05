@@ -1,5 +1,27 @@
 import { DatosTecnicosBorrador } from '../types/schemas';
 
+export type SugerenciaIntervalo = { permitido: true; desde_m: number } | { permitido: false; mensaje: string };
+
+export function sugerirInicioSiguienteIntervalo(
+  intervalos: ReadonlyArray<{ desde_m: number; hasta_m: number }>,
+  profundidad?: number,
+): SugerenciaIntervalo {
+  if (intervalos.length === 0) return { permitido: true, desde_m: 0 };
+  const ordenados = [...intervalos].sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
+  for (const [indice, intervalo] of ordenados.entries()) {
+    if (!Number.isFinite(intervalo.desde_m) || intervalo.desde_m < 0 || !Number.isFinite(intervalo.hasta_m) || intervalo.hasta_m <= intervalo.desde_m)
+      return { permitido: false, mensaje: 'Corrija los intervalos inválidos antes de agregar otro.' };
+    if (profundidad != null && intervalo.hasta_m > profundidad)
+      return { permitido: false, mensaje: `Corrija los intervalos que exceden ${profundidad} m antes de agregar otro.` };
+    if (indice > 0 && intervalo.desde_m < ordenados[indice - 1].hasta_m)
+      return { permitido: false, mensaje: 'Corrija el solapamiento antes de agregar otro intervalo.' };
+  }
+  const desde_m = ordenados[ordenados.length - 1].hasta_m;
+  if (profundidad != null && desde_m >= profundidad)
+    return { permitido: false, mensaje: 'El último intervalo ya alcanza la profundidad final.' };
+  return { permitido: true, desde_m };
+}
+
 export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?: number): string[] {
   const errores: string[] = [];
   validarIntervalos(datos.intervalosLitologicos.map((item) => item.dato), 'litológico', profundidad, errores);
