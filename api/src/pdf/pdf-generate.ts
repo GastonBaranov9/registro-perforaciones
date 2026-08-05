@@ -33,15 +33,12 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
 
   if (reporte.foto_url) {
     try {
-      let rel = reporte.foto_url;
-      rel = rel.replace(/^https?:\/\/[^/]+/, "");
-      rel = rel.replace(/^\/api\//, "/");
-      rel = rel.replace(/^\//, "");
-      rel = rel.replace(/^public\//, "");
-
-      const filePath = path.join(PUBLIC_DIR, rel);
-      console.log("foto_url:", reporte.foto_url);
-      console.log("filePath final:", filePath);
+      const archivos = await fs.readdir(PUBLIC_DIR);
+      const nombre = archivos.find((archivo) =>
+        /^pozo-\d+\.(?:jpe?g|png)$/i.test(archivo) && archivo.startsWith(`pozo-${pozoId}.`),
+      );
+      if (!nombre) throw new Error("La referencia de foto no tiene un archivo asociado");
+      const filePath = path.join(PUBLIC_DIR, nombre);
 
       await fs.access(filePath);
       const imgBytes = await fs.readFile(filePath);
@@ -58,15 +55,15 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
       } else if (isJpeg) {
         image = await doc.embedJpg(imgBytes);
       } else {
-        console.log("Formato de imagen no soportado:", filePath);
+        throw new Error("Formato de fotografía no soportado");
       }
 
       if (image) {
         imgWidth = 180;
         imgHeight = (image.height / image.width) * imgWidth;
       }
-    } catch (e) {
-      console.log("No se pudo cargar foto:", e);
+    } catch (error) {
+      console.warn("No se pudo incorporar la fotografía referenciada al PDF", error);
     }
   }
 

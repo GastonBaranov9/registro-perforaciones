@@ -33,7 +33,8 @@ export interface ReportePozo {
 }
 
 export async function getReportePozo(
-  id_pozo: number
+  id_pozo: number,
+  db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<ReportePozo | null> {
   const sql = `
     SELECT
@@ -63,10 +64,10 @@ export async function getReportePozo(
     WHERE p.id_pozo = $1;
   `;
 
-  const { rows } = await myPool.query(sql, [id_pozo]);
+  const { rows } = await db.query(sql, [id_pozo]);
   if (rows.length === 0) return null;
 
-  const pozo = rows[0];
+  const pozo = rows[0] as Record<string, unknown>;
 
   const litologiaSql = `
     SELECT desde_m, hasta_m, material
@@ -75,7 +76,7 @@ export async function getReportePozo(
     ORDER BY desde_m;
   `;
 
-  const { rows: litRows } = await myPool.query(litologiaSql, [id_pozo]);
+  const { rows: litRows } = await db.query(litologiaSql, [id_pozo]);
 
   const diamSql = `
     SELECT desde_m, hasta_m, diametro_pulg
@@ -83,7 +84,7 @@ export async function getReportePozo(
     WHERE id_pozo = $1
     ORDER BY desde_m;
   `;
-  const { rows: diamRows } = await myPool.query(diamSql, [id_pozo]);
+  const { rows: diamRows } = await db.query(diamSql, [id_pozo]);
 
   const aporteSql = `
     SELECT profundidad_m
@@ -91,10 +92,15 @@ export async function getReportePozo(
     WHERE id_pozo = $1
     ORDER BY profundidad_m;
   `;
-  const { rows: aporteRows } = await myPool.query(aporteSql, [id_pozo]);
+  const { rows: aporteRows } = await db.query(aporteSql, [id_pozo]);
 
   return {
     ...pozo,
+    id_pozo: Number(pozo.id_pozo),
+    profundidad_final_m: numeroNullable(pozo.profundidad_final_m),
+    nivel_estatico_m: numeroNullable(pozo.nivel_estatico_m),
+    nivel_dinamico_m: numeroNullable(pozo.nivel_dinamico_m),
+    caudal_estimado_lh: numeroNullable(pozo.caudal_estimado_lh),
     litologia: litRows.map((l: any) => ({
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
@@ -110,4 +116,8 @@ export async function getReportePozo(
       profundidad_m: Number(a.profundidad_m),
     })),
   } as ReportePozo;
+}
+
+function numeroNullable(valor: unknown): number | null {
+  return valor === null || valor === undefined ? null : Number(valor);
 }

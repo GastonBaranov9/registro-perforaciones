@@ -142,12 +142,12 @@ export function crearPerfilLitologico(
   let cursor = 0;
   for (const tramo of ordenados) {
     if (tramo.desde_m > cursor) {
-      base.push({ clase: "hueco", desde_m: cursor, hasta_m: tramo.desde_m, material: "Sin datos", descripcion: null, estilo: { ...ESTILO_HUECO } });
+      base.push({ clase: "hueco", desde_m: cursor, hasta_m: tramo.desde_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO } });
     }
     base.push({ clase: "litologia", desde_m: tramo.desde_m, hasta_m: tramo.hasta_m, material: tramo.material.trim(), descripcion: tramo.descripcion?.trim() || null, estilo: estiloDeMaterial(tramo.material) });
     cursor = tramo.hasta_m;
   }
-  if (cursor < profundidad_m) base.push({ clase: "hueco", desde_m: cursor, hasta_m: profundidad_m, material: "Sin datos", descripcion: null, estilo: { ...ESTILO_HUECO } });
+  if (cursor < profundidad_m) base.push({ clase: "hueco", desde_m: cursor, hasta_m: profundidad_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO } });
 
   const aportesValidos = aportes
     .filter((aporte) => Number.isFinite(aporte.profundidad_m) && aporte.profundidad_m >= 0 && aporte.profundidad_m <= profundidad_m)
