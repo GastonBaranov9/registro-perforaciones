@@ -29,6 +29,11 @@
         required
       ></ion-input>
     </ion-item>
+    <ion-item>
+      <ion-select label="Material de tubería" name="material_tuberia" [(ngModel)]="intervaloDiametro().material_tuberia" required>
+        <ion-select-option value="PVC">PVC</ion-select-option><ion-select-option value="Acero">Acero</ion-select-option>
+      </ion-select>
+    </ion-item>
   </ion-list>
 
   <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid">

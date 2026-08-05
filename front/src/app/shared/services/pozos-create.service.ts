@@ -35,6 +35,7 @@ export class PozosCreateService {
       pozo,
       intervalos_litologicos: tecnicos.intervalosLitologicos.map((item) => ({ ...item.dato })),
       intervalos_diametro: tecnicos.intervalosDiametro.map((item) => ({ ...item.dato })),
+      intervalos_filtro: tecnicos.intervalosFiltro.map((item) => ({ ...item.dato })),
       niveles_aporte: tecnicos.nivelesAporte.map((item) => ({ ...item.dato })),
     };
     if (foto) body.foto = await convertirFoto(foto);

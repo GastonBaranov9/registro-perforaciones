@@ -30,6 +30,7 @@ export class IntervalosDiametrosCreatePage implements OnInit {
     desde_m: 0,
     hasta_m: 0,
     diametro_pulg: 0,
+    material_tuberia: 'PVC',
   });
 
   async ngOnInit() {

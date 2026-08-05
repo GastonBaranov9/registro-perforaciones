@@ -140,13 +140,20 @@ export type IntervaloDiametroPerforacion = {
   desde_m: number;
   hasta_m: number;
   diametro_pulg: number;
+  material_tuberia: MaterialTuberia | null;
 };
+
+export type MaterialTuberia = 'PVC' | 'Acero';
 
 export type IntervaloDiametroPerforacionBody = {
   desde_m: number;
   hasta_m: number;
   diametro_pulg: number;
+  material_tuberia: MaterialTuberia | '';
 };
+
+export type IntervaloFiltroBody = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | '' };
+export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia };
 
 export type NivelAporte = {
   id_nivel_aporte: number;
@@ -163,6 +170,7 @@ export type ElementoBorrador<T> = { idLocal: string; dato: T };
 export type DatosTecnicosBorrador = {
   intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
   intervalosDiametro: Array<ElementoBorrador<IntervaloDiametroPerforacionBody>>;
+  intervalosFiltro: Array<ElementoBorrador<IntervaloFiltroBody>>;
   nivelesAporte: Array<ElementoBorrador<NivelAporteBody>>;
 };
 
@@ -170,6 +178,7 @@ export type PozoCompletoBody = {
   pozo: NuevoPozo;
   intervalos_litologicos: IntervaloLitologicoBody[];
   intervalos_diametro: IntervaloDiametroPerforacionBody[];
+  intervalos_filtro: IntervaloFiltroBody[];
   niveles_aporte: NivelAporteBody[];
   foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
 };
@@ -186,6 +195,7 @@ export type PozoCompletoResultado = {
   pozo: Pozo;
   intervalos_litologicos: IntervaloLitologico[];
   intervalos_diametro: IntervaloDiametroPerforacion[];
+  intervalos_filtro: IntervaloFiltro[];
   niveles_aporte: NivelAporte[];
 };
 
@@ -211,6 +221,8 @@ export type PerfilLitologico = {
     carril_etiqueta: number;
   }>;
   aportes: Array<{ profundidad_m: number; tipo: 'puntual'; desde_m: number; hasta_m: number; geometria: { x_inicio: 0.05; x_fin: 0.95; espesor_min_px: 8; patron: 'ondas' } }>;
+  tuberias: Array<{tipo:'tuberia';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
+  filtros: Array<{tipo:'filtro';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   rangos: Array<{ desde_m: number; hasta_m: number }>;
   advertencias: string[];

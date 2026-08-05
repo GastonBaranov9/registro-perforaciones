@@ -41,7 +41,7 @@ export class PozosCreatePage {
   public candidatosService = inject(CandidatosPozoService);
   public catalogos = signal<CatalogosPersonasPozo | null>(null);
   public cargandoCatalogos = signal(true);
-  public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
+  public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
 
   public nuevoPozo = signal<NuevoPozo>({
     id_propietario: 0,

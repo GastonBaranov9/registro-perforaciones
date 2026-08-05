@@ -26,6 +26,9 @@ export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?:
   const errores: string[] = [];
   validarIntervalos(datos.intervalosLitologicos.map((item) => item.dato), 'litológico', profundidad, errores);
   validarIntervalos(datos.intervalosDiametro.map((item) => item.dato), 'de diámetro', profundidad, errores);
+  validarIntervalos(datos.intervalosFiltro.map((item) => item.dato), 'de filtro', profundidad, errores);
+  datos.intervalosDiametro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`); });
+  datos.intervalosFiltro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`); });
   datos.nivelesAporte.forEach((item, indice) => {
     if (!Number.isFinite(item.dato.profundidad_m) || item.dato.profundidad_m < 0)
       errores.push(`Aporte ${indice + 1}: profundidad inválida.`);
@@ -58,6 +61,7 @@ export function ordenarDatosTecnicos(datos: DatosTecnicosBorrador): DatosTecnico
   return {
     intervalosLitologicos: [...datos.intervalosLitologicos].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     intervalosDiametro: [...datos.intervalosDiametro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
+    intervalosFiltro: [...datos.intervalosFiltro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     nivelesAporte: [...datos.nivelesAporte].sort((a, b) => a.dato.profundidad_m - b.dato.profundidad_m),
   };
 }

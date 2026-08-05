@@ -42,6 +42,7 @@ export class PozosEditService {
       pozo,
       intervalos_litologicos: tecnicos.intervalosLitologicos.map((x) => ({ ...x.dato })),
       intervalos_diametro: tecnicos.intervalosDiametro.map((x) => ({ ...x.dato })),
+      intervalos_filtro: tecnicos.intervalosFiltro.map((x) => ({ ...x.dato })),
       niveles_aporte: tecnicos.nivelesAporte.map((x) => ({ ...x.dato })),
       foto_accion: fotoAccion,
     };

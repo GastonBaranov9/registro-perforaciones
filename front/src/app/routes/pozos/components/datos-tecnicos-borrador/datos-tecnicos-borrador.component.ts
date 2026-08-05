@@ -1,6 +1,6 @@
 import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
+import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 
 @Component({
@@ -14,7 +14,7 @@ export class DatosTecnicosBorradorComponent {
   readonly guardando = input(false);
   readonly inicial = input<DatosTecnicosBorrador | null>(null);
   readonly cambiado = output<DatosTecnicosBorrador>();
-  readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
+  readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   private siguienteId = 1;
   private inicializado = false;
   readonly errorAgregar = signal('');
@@ -40,11 +40,18 @@ export class DatosTecnicosBorradorComponent {
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1 })] });
+    this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC' })] });
+  }
+  agregarFiltro() {
+    const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosFiltro.map((x) => x.dato), this.profundidad());
+    if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
+    this.errorAgregar.set('');
+    this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC' })] });
   }
   agregarAporte() { this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] }); }
   quitarLitologia(id: string) { this.actualizar({ ...this.datos(), intervalosLitologicos: this.datos().intervalosLitologicos.filter((item) => item.idLocal !== id) }); }
   quitarDiametro(id: string) { this.actualizar({ ...this.datos(), intervalosDiametro: this.datos().intervalosDiametro.filter((item) => item.idLocal !== id) }); }
+  quitarFiltro(id: string) { this.actualizar({ ...this.datos(), intervalosFiltro: this.datos().intervalosFiltro.filter((item) => item.idLocal !== id) }); }
   quitarAporte(id: string) { this.actualizar({ ...this.datos(), nivelesAporte: this.datos().nivelesAporte.filter((item) => item.idLocal !== id) }); }
   notificarEdicion() { this.actualizar(this.datos()); }
   errores() { return validarDatosTecnicos(this.datos(), this.profundidad()); }

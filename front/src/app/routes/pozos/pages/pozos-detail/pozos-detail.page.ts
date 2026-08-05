@@ -17,7 +17,8 @@ import {
   IonButtons,
   ViewWillEnter,
 } from '@ionic/angular/standalone';
-import { IntervaloDiametroPerforacion, IntervaloLitologico, NivelAporte, Pozo } from '../../../../shared/types/schemas';
+import { IntervaloDiametroPerforacion, IntervaloFiltro, IntervaloLitologico, NivelAporte, Pozo } from '../../../../shared/types/schemas';
+import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { environment } from '../../../../../environments/environment';
 import { PerfilLitologicoComponent } from '../../../../shared/components/perfil-litologico/perfil-litologico.component';
@@ -56,9 +57,11 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
   public litologia = signal<IntervaloLitologico[]>([]);
   public diametros = signal<IntervaloDiametroPerforacion[]>([]);
   public aportes = signal<NivelAporte[]>([]);
+  public filtros = signal<IntervaloFiltro[]>([]);
   private litologiaService = inject(IntervaloLitologicoListService);
   private diametroService = inject(IntervaloDiametroListService);
   private aporteService = inject(AporteListService);
+  private filtroService = inject(IntervalosFiltroService);
 
   async ngOnInit() {
     const data = await this.pozoEditService.getPozoById(this.id_pozo);
@@ -77,13 +80,15 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
   }
   private async cargarTecnicos() {
     try {
-      const [litologia, diametros, aportes] = await Promise.all([
+      const [litologia, diametros, filtros, aportes] = await Promise.all([
         this.litologiaService.getIntervalosLitologicos(this.id_pozo),
         this.diametroService.getIntervalosDiametros(this.id_pozo),
+        this.filtroService.listar(this.id_pozo),
         this.aporteService.getNivelesAporte(this.id_pozo),
       ]);
       this.litologia.set(litologia);
       this.diametros.set(diametros);
+      this.filtros.set(filtros);
       this.aportes.set(aportes);
     } catch {
       this.errorMessage.set('No se pudieron cargar todos los datos técnicos.');

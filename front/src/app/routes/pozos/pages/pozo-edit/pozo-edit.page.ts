@@ -20,6 +20,7 @@ import { SitioReturnService } from '../../../../shared/services/sitio-navegar/si
 import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
 import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
 import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
+import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
 import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
 import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
 import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
@@ -48,20 +49,22 @@ export class PozoEditPage {
   private candidatos = inject(CandidatosPozoService);
   private litologia = inject(IntervaloLitologicoListService);
   private diametros = inject(IntervaloDiametroListService);
+  private filtros = inject(IntervalosFiltroService);
   private aportes = inject(AporteListService);
 
   public sitioReturn: SitioReturnService = inject(SitioReturnService);
   public pozoResource = resource({
     params: () => ({ idPozo: this.id_pozo() }),
     loader: async ({ params }) => {
-      const [pozo, personas, litologia, diametros, aportes] = await Promise.all([
+      const [pozo, personas, litologia, diametros, filtros, aportes] = await Promise.all([
         this.pozoEditService.getPozoById(params.idPozo), this.candidatos.obtener(),
-        this.litologia.getIntervalosLitologicos(params.idPozo), this.diametros.getIntervalosDiametros(params.idPozo),
+        this.litologia.getIntervalosLitologicos(params.idPozo), this.diametros.getIntervalosDiametros(params.idPozo), this.filtros.listar(params.idPozo),
         this.aportes.getNivelesAporte(params.idPozo),
       ]);
       const tecnicos: DatosTecnicosBorrador = {
         intervalosLitologicos: litologia.map((x) => ({ idLocal: `persistido-lit-${x.id_intervalo_litologico}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, material: x.material } })),
-        intervalosDiametro: diametros.map((x) => ({ idLocal: `persistido-dia-${x.id_intervalo_diametro_perforacion}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, diametro_pulg: x.diametro_pulg } })),
+        intervalosDiametro: diametros.map((x) => ({ idLocal: `persistido-dia-${x.id_intervalo_diametro_perforacion}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, diametro_pulg: x.diametro_pulg, material_tuberia: x.material_tuberia ?? '' } })),
+        intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, dato: { desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia } })),
         nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
       };
       return { pozo, personas, tecnicos };
@@ -70,7 +73,7 @@ export class PozoEditPage {
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
-  public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [] });
+  public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
     if (this.disabled()) return;
