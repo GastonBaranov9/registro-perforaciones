@@ -101,3 +101,7 @@ Desplegar API y frontend juntos porque el componente web consume la nueva ruta. 
 ## Continuación RSP-06D
 
 La etapa RSP-06D añadió continuidad sugerida para intervalos, una banda acuífera con geometría compartida web/PDF y una portada A4 que integra la fotografía sin deformarla ni crear una página fotográfica aislada. El detalle técnico, pruebas y evidencias reproducibles se encuentran en `docs/CODEX_PROGRESS_ETAPA_RSP_06D.md`.
+
+## Continuación RSP-06E
+
+RSP-06E incorporó materiales PVC/Acero, intervalos de filtro opcionales y el diseño constructivo compartido en web/PDF. La migración, históricos y contratos están documentados en `docs/CODEX_PROGRESS_ETAPA_RSP_06E.md`.
