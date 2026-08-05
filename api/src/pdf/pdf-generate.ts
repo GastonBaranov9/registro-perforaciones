@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 import * as fs from "fs/promises";
 import type { ReportePozo } from "../services/generar-informe-consultas.ts";
 import path, { dirname } from "path";
@@ -25,11 +25,10 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   const pageHeight = 841.89;
 
   let page = doc.addPage([pageWidth, pageHeight]);
+  const portada = page;
   let y = pageHeight - marginTop;
 
-  let image: any | null = null;
-  let imgWidth = 0;
-  let imgHeight = 0;
+  let image: PDFImage | null = null;
 
   if (reporte.foto_url) {
     try {
@@ -58,10 +57,6 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
         throw new Error("Formato de fotografía no soportado");
       }
 
-      if (image) {
-        imgWidth = 180;
-        imgHeight = (image.height / image.width) * imgWidth;
-      }
     } catch (error) {
       console.warn("No se pudo incorporar la fotografía referenciada al PDF", error);
     }
@@ -70,6 +65,10 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   const nuevaPagina = () => {
     page = doc.addPage([pageWidth, pageHeight]);
     y = pageHeight - marginTop;
+    page.drawText("Informe de Perforación", { x: marginX, y: pageHeight - 38, size: 9, font: bold, color: rgb(0, 0.2, 0.5) });
+    page.drawText(`Pozo ${pozoId}`, { x: pageWidth - marginX - 55, y: pageHeight - 38, size: 8.5, font });
+    page.drawLine({ start: { x: marginX, y: pageHeight - 45 }, end: { x: pageWidth - marginX, y: pageHeight - 45 }, thickness: 0.5, color: rgb(0.6, 0.65, 0.72) });
+    y -= 6;
   };
 
   page.drawText("Informe de Perforación", {
@@ -97,6 +96,22 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   });
   y -= 20;
 
+  const fotoTop = y + 8;
+  const fotoBottom = fotoTop - 218;
+  if (image) {
+    const xFoto = 365;
+    const anchoCaja = pageWidth - marginX - xFoto;
+    const altoCaja = 218;
+    page.drawRectangle({ x: xFoto, y: fotoBottom, width: anchoCaja, height: altoCaja, color: rgb(0.98, 0.985, 0.99), borderColor: rgb(0.55, 0.62, 0.7), borderWidth: 0.8 });
+    const anchoUtil = anchoCaja - 16;
+    const altoUtil = altoCaja - 32;
+    const escala = Math.min(anchoUtil / image.width, altoUtil / image.height);
+    const ancho = image.width * escala;
+    const alto = image.height * escala;
+    page.drawImage(image, { x: xFoto + (anchoCaja - ancho) / 2, y: fotoBottom + 24 + (altoUtil - alto) / 2, width: ancho, height: alto });
+    page.drawText("Fotografía de la perforación", { x: xFoto + 8, y: fotoBottom + 9, size: 7.5, font, color: rgb(0.35, 0.4, 0.45) });
+  }
+
   const drawLine = (label: string, value?: string | number | null) => {
     const safeVal =
       value === null || value === undefined || value === ""
@@ -105,21 +120,33 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     const color =
       safeVal === "No especificado" ? rgb(0.5, 0.5, 0.5) : rgb(0, 0, 0);
 
-    page.drawText(`${label}: `, {
-      x: marginX,
-      y,
-      size: 11,
-      font: bold,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(safeVal, {
-      x: marginX + 120,
-      y,
-      size: 11,
-      font,
-      color,
-    });
-    y -= 16;
+    let anchoValor = image && page === portada && y > fotoBottom
+      ? 175
+      : pageWidth - marginX * 2 - 120;
+    let lineas = envolverTextoPdf(safeVal, font, 10, anchoValor);
+    if (y - Math.max(16, lineas.length * 11 + 3) < marginBottom) {
+      nuevaPagina();
+      anchoValor = pageWidth - marginX * 2 - 120;
+      lineas = envolverTextoPdf(safeVal, font, 10, anchoValor);
+    }
+
+    let primeraLinea = true;
+    while (lineas.length) {
+      if (y < marginBottom + 16) nuevaPagina();
+      page.drawText(primeraLinea ? `${label}: ` : `${label} (cont.): `, {
+        x: marginX,
+        y,
+        size: 11,
+        font: bold,
+        color: rgb(0, 0, 0),
+      });
+      const disponibles = Math.max(1, Math.floor((y - marginBottom) / 11));
+      const bloque = lineas.splice(0, disponibles);
+      bloque.forEach((linea, indice) => page.drawText(linea, { x: marginX + 120, y: y - indice * 11, size: 10, font, color }));
+      y -= Math.max(16, bloque.length * 11 + 3);
+      primeraLinea = false;
+      if (lineas.length) nuevaPagina();
+    }
   };
 
   drawLine("Ubicación", reporte.sitio);
@@ -129,6 +156,7 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   drawLine("Fecha inicio", reporte.fecha_inicio);
   drawLine("Fecha fin", reporte.fecha_fin);
 
+  if (image) y = Math.min(y, fotoBottom - 18);
   y -= 15;
 
   page.drawText("Características Constructivas", {
@@ -150,6 +178,7 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
   drawLine("Desarrollo", reporte.desarrollo);
 
   y -= 25;
+  if (y < marginBottom + 40) nuevaPagina();
 
   page.drawText("Intervalos Litológicos", {
     x: marginX,
@@ -273,38 +302,6 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     year: "numeric",
   });
 
-  if (image) {
-    if (y - imgHeight < marginBottom + 40) {
-      nuevaPagina();
-    }
-
-    page.drawText("Fotografía de perforación", {
-      x: marginX,
-      y,
-      size: 13,
-      font: bold,
-      color: rgb(0, 0.2, 0.5),
-    });
-    y -= 20;
-
-    page.drawImage(image, {
-      x: marginX,
-      y: y - imgHeight,
-      width: imgWidth,
-      height: imgHeight,
-    });
-
-    y -= imgHeight + 20;
-  }
-
-  page.drawText(`Generado el ${fecha}`, {
-    x: marginX,
-    y: marginBottom - 10,
-    size: 9,
-    font,
-    color: rgb(0.4, 0.4, 0.4),
-  });
-
   const perfilLitologico = crearPerfilLitologico(
     litologia,
     reporte.profundidad_final_m,
@@ -314,6 +311,12 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number) {
     dibujarPerfilLitologico(doc, perfilLitologico, font, bold);
   }
 
+  for (const [indice, pagina] of doc.getPages().entries()) {
+    pagina.drawText(`Generado el ${fecha}  ·  Página ${indice + 1}/${doc.getPageCount()}`, {
+      x: marginX, y: marginBottom - 10, size: 8.5, font, color: rgb(0.4, 0.4, 0.4),
+    });
+  }
+
   return doc;
 }
 
@@ -321,7 +324,23 @@ function envolverTextoPdf(texto: string, font: PDFFont, tamano: number, ancho: n
   const seguro = texto.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
   const lineas: string[] = [];
   let actual = "";
+  const palabras: string[] = [];
   for (const palabra of seguro.split(/\s+/)) {
+    if (font.widthOfTextAtSize(palabra, tamano) <= ancho) {
+      palabras.push(palabra);
+      continue;
+    }
+    let fragmento = "";
+    for (const caracter of palabra) {
+      const candidato = fragmento + caracter;
+      if (fragmento && font.widthOfTextAtSize(candidato, tamano) > ancho) {
+        palabras.push(fragmento);
+        fragmento = caracter;
+      } else fragmento = candidato;
+    }
+    if (fragmento) palabras.push(fragmento);
+  }
+  for (const palabra of palabras) {
     const candidato = actual ? `${actual} ${palabra}` : palabra;
     if (font.widthOfTextAtSize(candidato, tamano) <= ancho) actual = candidato;
     else {
