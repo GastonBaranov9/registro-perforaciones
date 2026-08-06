@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS
   intervalo_filtro,
   intervalo_diametro_perforacion,
   intervalo_litologico,
+  catalogo_litologia,
   pozo,
   perforador,
   empresa,

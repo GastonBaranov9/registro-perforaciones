@@ -132,6 +132,7 @@ export const IntervaloLitologico = Type.Object({
   desde_m: Type.Number(),
   hasta_m: Type.Number(),
   material: Type.String(),
+  id_litologia: Type.Union([Type.Integer(), Type.Null()]),
 });
 
 export type IntervaloLitologico = Static<typeof IntervaloLitologico>;
@@ -214,9 +215,38 @@ export const bodyIntervaloLitologico = Type.Object({
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   material: Type.String({ minLength: 1 }),
+  id_litologia: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
+
+export const FamiliasLitologia = ["basalto", "suelo", "arenisca", "arcilla_arena", "tosca", "gravilla", "granito", "otro"] as const;
+export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite"] as const;
+export const FamiliaLitologia = Type.Union(FamiliasLitologia.map((valor) => Type.Literal(valor)));
+export type FamiliaLitologia = Static<typeof FamiliaLitologia>;
+export const PatronCatalogoLitologia = Type.Union(PatronesLitologia.map((valor) => Type.Literal(valor)));
+export type PatronCatalogoLitologia = Static<typeof PatronCatalogoLitologia>;
+const ColorLitologia = Type.String({ pattern: "^#[0-9A-F]{6}$" });
+const CodigoLitologia = Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z][a-z0-9_]*$" });
+export const LitologiaPublica = Type.Object({
+  id_litologia: Type.Integer(), codigo: CodigoLitologia, nombre: Type.String(), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, activo: Type.Boolean(), orden: Type.Integer(),
+});
+export type LitologiaPublica = Static<typeof LitologiaPublica>;
+export const LitologiaCatalogo = Type.Intersect([LitologiaPublica, Type.Object({
+  es_inicial: Type.Boolean(), creado_en: Type.String({ format: "date-time" }), actualizado_en: Type.String({ format: "date-time" }),
+})]);
+export type LitologiaCatalogo = Static<typeof LitologiaCatalogo>;
+export const LitologiaCrearBody = Type.Object({
+  codigo: CodigoLitologia, nombre: Type.String({ minLength: 1, maxLength: 120 }), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, orden: Type.Integer({ minimum: 0 }),
+});
+export type LitologiaCrearBody = Static<typeof LitologiaCrearBody>;
+export const LitologiaActualizarBody = Type.Object({
+  nombre: Type.String({ minLength: 1, maxLength: 120 }), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, orden: Type.Integer({ minimum: 0 }),
+});
+export type LitologiaActualizarBody = Static<typeof LitologiaActualizarBody>;
 
 
 export const IntervaloDiametroPerforacionBody = Type.Object({
