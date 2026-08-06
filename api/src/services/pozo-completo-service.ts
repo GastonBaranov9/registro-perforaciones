@@ -6,6 +6,7 @@ import { myPool } from "../db/pool.ts";
 import type { PerfilLitologicoVistaPreviaBody, Pozo, PozoCompletoBody, PozoCompletoUpdateBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { validarPersonaPozo } from "./candidatos-pozo-service.ts";
+import { aislarFotoExistente, decodificarFotoBase64, purgarFotoConfirmada, restaurarFotoAislada, type FotoAislada, type LoggerPurga } from "./foto-archivo-service.ts";
 
 export interface PozoCompletoResultado {
   pozo: Pozo;
@@ -141,6 +142,7 @@ export async function actualizarPozoCompleto(
   data: PozoCompletoUpdateBody,
   directorioFotos: string,
   pool: Pick<Pool, "connect"> = myPool,
+  opciones: { logger?: LoggerPurga; eliminarPostCommit?: (ruta: string) => Promise<void> } = {},
 ): Promise<PozoCompletoResultado> {
   const errores = validarPozoCompleto(data);
   if (data.foto_accion === "reemplazar" && !data.foto) errores.push("Debe adjuntar la fotografía de reemplazo.");
@@ -148,10 +150,10 @@ export async function actualizarPozoCompleto(
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
 
   const client = await pool.connect();
-  let original: string | null = null;
-  let aislado: string | null = null;
+  let fotoAislada: FotoAislada | null = null;
   let nuevo: string | null = null;
   let temporalNuevo: string | null = null;
+  let resultado: PozoCompletoResultado;
   try {
     await client.query("BEGIN");
     const { rows: bloqueado } = await client.query("SELECT id_pozo FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
@@ -186,15 +188,7 @@ export async function actualizarPozoCompleto(
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
-      const archivos = await fs.readdir(directorioFotos);
-      const nombre = archivos.find((x) => /^pozo-\d+\.(?:jpe?g|png)$/i.test(x) && x.startsWith(`pozo-${idPozo}.`));
-      if (nombre) {
-        original = path.join(directorioFotos, nombre);
-        const papelera = path.join(directorioFotos, ".trash");
-        await fs.mkdir(papelera, { recursive: true });
-        aislado = path.join(papelera, `${idPozo}-${randomUUID()}-${nombre}`);
-        await fs.rename(original, aislado);
-      }
+      fotoAislada = await aislarFotoExistente(idPozo, directorioFotos);
       if (data.foto_accion === "reemplazar" && data.foto) {
         const foto = decodificarFoto(data.foto);
         nuevo = path.join(directorioFotos, `pozo-${idPozo}.${foto.extension}`);
@@ -210,18 +204,19 @@ export async function actualizarPozoCompleto(
       await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, pozo.foto_url]);
     }
     await client.query("COMMIT");
-    if (aislado) await fs.rm(aislado, { force: true });
-    return { pozo, ...hijos };
+    resultado = { pozo, ...hijos };
   } catch (error) {
     await client.query("ROLLBACK");
     if (temporalNuevo) await fs.rm(temporalNuevo, { force: true });
     if (nuevo) await fs.rm(nuevo, { force: true });
-    if (original && aislado) {
-      try { await fs.rename(aislado, original); }
+    if (fotoAislada) {
+      try { await restaurarFotoAislada(fotoAislada); }
       catch (restauracion) { throw new err.T05ErrorDesconocido("Falló la actualización y no se pudo restaurar la fotografía anterior.", { cause: restauracion }); }
     }
     throw error;
   } finally { client.release(); }
+  await purgarFotoConfirmada(fotoAislada, idPozo, "actualizar_pozo_completo", opciones.logger, opciones.eliminarPostCommit);
+  return resultado;
 }
 
 async function insertarHijos(client: PoolClient, idPozo: number, data: PozoCompletoBody) {
@@ -270,13 +265,7 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
 }
 
 function decodificarFoto(foto: NonNullable<PozoCompletoBody["foto"]>) {
-  const buffer = Buffer.from(foto.base64, "base64");
-  if (buffer.length === 0 || buffer.length > 5_000_000) throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
-  const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-  const png = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  if ((foto.mime_type === "image/jpeg" && !jpeg) || (foto.mime_type === "image/png" && !png))
-    throw new err.T05DatosIncorrectos("El contenido de la fotografía no coincide con su tipo.");
-  return { buffer, extension: foto.mime_type === "image/png" ? "png" : "jpg" };
+  return decodificarFotoBase64(foto.base64, foto.mime_type);
 }
 
 function numeroOpcional(valor: unknown): number | undefined { return valor == null ? undefined : Number(valor); }

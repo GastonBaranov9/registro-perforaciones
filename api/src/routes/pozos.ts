@@ -11,8 +11,8 @@ import { fileURLToPath } from "url";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
 import { eliminarFotoPersistida } from "../services/foto-pozo-service.ts";
-import { randomUUID } from "node:crypto";
 import { listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
+import { aislarFotoExistente, purgarFotoConfirmada, restaurarFotoAislada, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,7 +76,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const { id_pozo } = req.params as { id_pozo: number };
       const data = req.body as PozoCompletoUpdateBody;
       if (!(await isAdmin(req.user.sub)) && data.pozo.id_perforador !== req.user.sub) throw new err.T05SinPermiso();
-      const resultado = await actualizarPozoCompleto(id_pozo, data, PUBLIC_DIR);
+      const resultado = await actualizarPozoCompleto(id_pozo, data, PUBLIC_DIR, undefined, { logger: req.log });
       fastify.notifyClient(resultado.pozo.id_propietario, { type: "pozo" });
       return rep.code(200).send(resultado);
     },
@@ -381,21 +381,11 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const buffer = await foto.toBuffer();
       if (buffer.length === 0 || buffer.length > 5_000_000)
         throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
-      const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-      const png = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-      if (!jpeg && !png) throw new err.T05DatosIncorrectos("La fotografía debe ser JPEG o PNG.");
-      const extension = png ? "png" : "jpg";
+      const validada = validarFotoBuffer(buffer, foto.mimetype);
+      const extension = validada.extension;
       const fileName = `pozo-${id_pozo}.${extension}`;
       const filePath = path.join(PUBLIC_DIR, fileName);
-      const existentes = await fs.readdir(PUBLIC_DIR);
-      const anterior = existentes.find((nombre) => nombre.startsWith(`pozo-${id_pozo}.`));
-      const papelera = path.join(PUBLIC_DIR, ".trash");
-      const anteriorOriginal = anterior ? path.join(PUBLIC_DIR, anterior) : null;
-      const anteriorAislado = anterior ? path.join(papelera, `${id_pozo}-${randomUUID()}-${anterior}`) : null;
-      if (anteriorOriginal && anteriorAislado) {
-        await fs.mkdir(papelera, { recursive: true });
-        await fs.rename(anteriorOriginal, anteriorAislado);
-      }
+      const anterior = await aislarFotoExistente(id_pozo,PUBLIC_DIR);
       await fs.writeFile(filePath, buffer, { flag: "wx" });
 
       const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
@@ -406,10 +396,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         if (!pozoActualizado) throw new err.T05PozoNoEncontrado();
       } catch (error) {
         await fs.rm(filePath, { force: true });
-        if (anteriorOriginal && anteriorAislado) await fs.rename(anteriorAislado, anteriorOriginal);
+        await restaurarFotoAislada(anterior);
         throw error;
       }
-      if (anteriorAislado) await fs.rm(anteriorAislado, { force: true });
+      await purgarFotoConfirmada(anterior,id_pozo,"reemplazar_foto_multipart",req.log);
 
       return rep.code(200).send(pozoActualizado);
     }
@@ -433,7 +423,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const pozo = await funcPozo.getPozoById(id_pozo);
       if (!pozo) throw new err.T05PozoNoEncontrado();
 
-      await eliminarFotoPersistida(id_pozo, PUBLIC_DIR);
+      await eliminarFotoPersistida(id_pozo, PUBLIC_DIR, undefined, { logger: req.log });
       return rep.code(204).send(null);
     },
   );
