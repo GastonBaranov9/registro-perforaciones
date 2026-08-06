@@ -61,8 +61,25 @@ export async function obtenerMapaEstatico(
     const maxBytes = configuracion.maxBytes ?? 2_000_000;
     const anunciado = Number(respuesta.headers.get("content-length"));
     if (Number.isFinite(anunciado) && anunciado > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
-    const bytes = new Uint8Array(await respuesta.arrayBuffer());
-    if (bytes.length > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
+    if (!respuesta.body) return { estado: "no-disponible", motivo: "Respuesta sin cuerpo" };
+    const reader = respuesta.body.getReader();
+    const fragmentos: Uint8Array[] = []; let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value?.byteLength) continue;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel("Imagen excesiva").catch(() => undefined);
+          controlador.abort();
+          return { estado: "no-disponible", motivo: "Imagen excesiva" };
+        }
+        fragmentos.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(total); let desplazamiento = 0;
+    for (const fragmento of fragmentos) { bytes.set(fragmento, desplazamiento); desplazamiento += fragmento.byteLength; }
     const png = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
     const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
     if ((tipo === "image/png" && !png) || (tipo === "image/jpeg" && !jpeg)) return { estado: "no-disponible", motivo: "Firma de imagen no válida" };
