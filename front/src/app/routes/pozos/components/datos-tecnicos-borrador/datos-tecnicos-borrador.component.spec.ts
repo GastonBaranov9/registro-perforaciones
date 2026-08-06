@@ -13,6 +13,17 @@ describe('DatosTecnicosBorradorComponent', () => {
     fixture.detectChanges();
   });
 
+  it('muestra las etiquetas técnicas con codificación UTF-8 correcta', () => {
+    component.agregarDiametro();
+    fixture.detectChanges();
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Datos técnicos');
+    expect(texto).toContain('Intervalos litológicos');
+    expect(texto).toContain('Intervalos de diámetro');
+    expect(texto).toContain('Diámetro');
+    expect(texto).toContain('Material de tubería');
+  });
+
   it('agrega, edita y quita las tres categorías en memoria', () => {
     component.agregarLitologia();
     component.agregarDiametro();
