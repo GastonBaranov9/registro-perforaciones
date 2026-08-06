@@ -126,13 +126,23 @@ export type IntervaloLitologico = {
   desde_m: number;
   hasta_m: number;
   material: string;
+  id_litologia: number | null;
 };
 
 export type IntervaloLitologicoBody = {
   desde_m: number;
   hasta_m: number;
   material: string;
+  id_litologia?: number;
 };
+
+export const familiasLitologia = ['basalto','suelo','arenisca','arcilla_arena','tosca','gravilla','granito','otro'] as const;
+export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite'] as const;
+export type FamiliaLitologia = (typeof familiasLitologia)[number];
+export type PatronCatalogoLitologia = (typeof patronesLitologia)[number];
+export type LitologiaPublica = { id_litologia:number;codigo:string;nombre:string;familia:FamiliaLitologia;color:string;patron:PatronCatalogoLitologia;activo:boolean;orden:number };
+export type LitologiaCrearBody = Omit<LitologiaPublica,'id_litologia'|'activo'>;
+export type LitologiaActualizarBody = Pick<LitologiaPublica,'nombre'|'familia'|'color'|'patron'|'orden'>;
 
 export type IntervaloDiametroPerforacion = {
   id_intervalo_diametro_perforacion: number;
@@ -223,6 +233,7 @@ export type PerfilLitologico = {
     descripcion: string | null;
     estilo: { color: string; gris: number; patron: PatronLitologico };
     carril_etiqueta: number;
+    litologia?: {id_litologia:number;nombre:string;color:string;patron:PatronCatalogoLitologia;activa:boolean}|null;
   }>;
   aportes: Array<{ profundidad_m: number; tipo: 'puntual'; desde_m: number; hasta_m: number; geometria: { x_inicio: 0.03; x_fin: 0.97; espesor_min_px: 12; patron: 'ondas' } }>;
   tuberias: Array<{tipo:'tuberia';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;

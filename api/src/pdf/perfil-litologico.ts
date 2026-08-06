@@ -5,6 +5,11 @@ export interface IntervaloPerfilLitologico {
   hasta_m: number;
   material: string;
   descripcion?: string | null;
+  id_litologia?: number | null;
+  litologia_nombre?: string | null;
+  litologia_color?: string | null;
+  litologia_patron?: PatronCatalogoLitologia | null;
+  litologia_activa?: boolean | null;
 }
 
 export interface AportePerfilLitologico {
@@ -37,6 +42,7 @@ export interface AporteRepresentado extends AportePerfilLitologico {
 }
 
 export type PatronLitologico = "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
+export type PatronCatalogoLitologia = "basalt"|"basalt_fractured"|"organic"|"sandstone_fine"|"sandstone_medium"|"sandstone_coarse"|"clay"|"sandy_clay"|"tosca"|"gravel_fine"|"gravel_coarse"|"granite";
 
 export interface EstiloLitologico {
   color: string;
@@ -52,6 +58,7 @@ export interface TramoPerfilLitologico {
   descripcion: string | null;
   estilo: EstiloLitologico;
   carril_etiqueta: number;
+  litologia: { id_litologia:number; nombre:string; color:string; patron:PatronCatalogoLitologia; activa:boolean } | null;
 }
 
 export interface RangoPerfilLitologico {
@@ -107,6 +114,9 @@ const ESTILOS: readonly EstiloLitologico[] = [
 ];
 
 const ESTILO_HUECO: EstiloLitologico = { color: "#F5F5F5", gris: 0.95, patron: "cruz" };
+const PATRON_VISUAL: Record<PatronCatalogoLitologia, PatronLitologico> = {
+  basalt:"diagonal",basalt_fractured:"cruz",organic:"horizontal",sandstone_fine:"puntos",sandstone_medium:"diagonal-inversa",sandstone_coarse:"cruz",clay:"horizontal",sandy_clay:"diagonal",tosca:"vertical",gravel_fine:"puntos",gravel_coarse:"cruz",granite:"diagonal-inversa",
+};
 export const GEOMETRIA_CANONICA_PERFIL: GeometriaCanonicaPerfil = {
   ancho_logico: 760,
   alto_logico: 820,
@@ -131,6 +141,10 @@ export function estiloDeMaterial(material: string): EstiloLitologico {
   let hash = 0;
   for (const caracter of clave) hash = (hash * 31 + caracter.charCodeAt(0)) >>> 0;
   return { ...ESTILOS[hash % ESTILOS.length] };
+}
+
+export function estiloDeCatalogo(color: string, patron: PatronCatalogoLitologia): EstiloLitologico {
+  const [r,g,b]=hexARgb(color); return {color,patron:PATRON_VISUAL[patron],gris:0.2126*r+0.7152*g+0.0722*b};
 }
 
 export function colorDeMaterial(material: string): readonly [number, number, number] {
@@ -267,12 +281,13 @@ export function crearPerfilLitologico(
   let cursor = 0;
   for (const tramo of ordenados) {
     if (tramo.desde_m > cursor) {
-      base.push({ clase: "hueco", desde_m: cursor, hasta_m: tramo.desde_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO } });
+      base.push({ clase: "hueco", desde_m: cursor, hasta_m: tramo.desde_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO }, litologia:null });
     }
-    base.push({ clase: "litologia", desde_m: tramo.desde_m, hasta_m: tramo.hasta_m, material: tramo.material.trim(), descripcion: tramo.descripcion?.trim() || null, estilo: estiloDeMaterial(tramo.material) });
+    const catalogada=tramo.id_litologia!=null&&tramo.litologia_nombre&&tramo.litologia_color&&tramo.litologia_patron?{id_litologia:tramo.id_litologia,nombre:tramo.litologia_nombre,color:tramo.litologia_color,patron:tramo.litologia_patron,activa:tramo.litologia_activa===true}:null;
+    base.push({ clase: "litologia", desde_m: tramo.desde_m, hasta_m: tramo.hasta_m, material: tramo.material.trim(), descripcion: tramo.descripcion?.trim() || null, estilo: catalogada?estiloDeCatalogo(catalogada.color,catalogada.patron):estiloDeMaterial(tramo.material),litologia:catalogada });
     cursor = tramo.hasta_m;
   }
-  if (cursor < profundidad_m) base.push({ clase: "hueco", desde_m: cursor, hasta_m: profundidad_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO } });
+  if (cursor < profundidad_m) base.push({ clase: "hueco", desde_m: cursor, hasta_m: profundidad_m, material: "Sin información litológica", descripcion: null, estilo: { ...ESTILO_HUECO },litologia:null });
 
   const aportesValidos = aportes
     .filter((aporte) => Number.isFinite(aporte.profundidad_m) && aporte.profundidad_m >= 0 && aporte.profundidad_m <= profundidad_m)

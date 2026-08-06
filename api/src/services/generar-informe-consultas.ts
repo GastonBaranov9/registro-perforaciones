@@ -1,4 +1,5 @@
 import { myPool } from "../db/pool.ts";
+import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 export interface ReportePozo {
   id_pozo: number;
@@ -25,11 +26,7 @@ export interface ReportePozo {
   revestimiento?: string | null;
   introduccion: string | null;
   nombre_archivo: string | null;
-  litologia: {
-    desde_m: number;
-    hasta_m: number;
-    material: string;
-  }[];
+  litologia: Array<IntervaloPerfilLitologico & Record<string, unknown>>;
   foto_url: string | null;
   diametros: {
     desde_m: number;
@@ -86,10 +83,9 @@ export async function getReportePozo(
   const pozo = rows[0] as Record<string, unknown>;
 
   const litologiaSql = `
-    SELECT desde_m, hasta_m, material
-    FROM public.intervalo_litologico
-    WHERE id_pozo = $1
-    ORDER BY desde_m;
+    SELECT i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
+    FROM public.intervalo_litologico i LEFT JOIN public.catalogo_litologia c ON c.id_litologia=i.id_litologia
+    WHERE i.id_pozo = $1 ORDER BY i.desde_m;
   `;
 
   const { rows: litRows } = await db.query(litologiaSql, [id_pozo]);
@@ -122,6 +118,7 @@ export async function getReportePozo(
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
       material: l.material,
+      id_litologia:l.id_litologia==null?null:Number(l.id_litologia),litologia_nombre:l.litologia_nombre==null?null:String(l.litologia_nombre),litologia_color:l.litologia_color==null?null:String(l.litologia_color),litologia_patron:l.litologia_patron==null?null:String(l.litologia_patron) as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia|null,litologia_activa:l.litologia_activa==null?null:Boolean(l.litologia_activa),
     })),
     diametros: (diamRows as Record<string, unknown>[]).map((d) => ({
       desde_m: Number(d.desde_m),
