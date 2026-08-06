@@ -25,7 +25,7 @@
             (cambiado)="datosTecnicos.set($event)"
           />
         </app-pozos-form>
-        } @else if (cargandoCatalogos()) { <p role="status">Cargando personas disponiblesâ€¦</p> }
+        } @else if (cargandoCatalogos()) { <p role="status">Cargando personas disponibles…</p> }
         @else { <p>No fue posible cargar los selectores.</p><ion-button type="button" (click)="cargarCatalogos()">REINTENTAR</ion-button> }
 
         @if (disabled()) { <p role="status">Guardando perforación completa…</p> }
