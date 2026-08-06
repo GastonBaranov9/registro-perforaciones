@@ -6,7 +6,7 @@ LANGUAGE SQL
 IMMUTABLE
 STRICT
 PARALLEL SAFE
-RETURN lower(translate(btrim(regexp_replace(valor, '\\s+', ' ', 'g')), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'));
+RETURN lower(translate(btrim(regexp_replace(valor, '\s+', ' ', 'g')), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'));
 
 CREATE TABLE catalogo_litologia (
   id_litologia BIGSERIAL PRIMARY KEY,
