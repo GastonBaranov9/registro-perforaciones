@@ -13,10 +13,11 @@ const GRIS = rgb(0.34, 0.39, 0.44);
 const PUBLIC_DIR = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
 
 export interface OpcionesPDF { directorioFotos?: string; mapa?: ConfiguracionMapa; fetchMapa?: typeof fetch }
-export interface DiagnosticoPDF { paginas: { tipo: string; bloques: string[] }[] }
+export interface DiagnosticoTabla { titulo:string; alturaEncabezado:number; alturasFilas:number[]; alturaCompleta:number; posicionFinal:number; paginas:number[] }
+export interface DiagnosticoPDF { paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number }
 
 class FlujoPDF {
-  page!: PDFPage; y = 0; readonly diagnostico: DiagnosticoPDF = { paginas: [] };
+  page!: PDFPage; y = 0; readonly diagnostico: DiagnosticoPDF = { paginas: [], tablas: [] };
   readonly margen = 48; readonly inferior = 52;
   readonly doc: PDFDocument; readonly font: PDFFont; readonly bold: PDFFont;
   constructor(doc: PDFDocument, font: PDFFont, bold: PDFFont) { this.doc=doc; this.font=font; this.bold=bold; }
@@ -43,22 +44,36 @@ class FlujoPDF {
     this.y -= Math.max(24, lineas.length * 15 + 5);
   }
   tabla(titulo: string, columnas: { titulo:string; ancho:number; valor:(fila:Record<string, unknown>)=>string }[], filas: Record<string, unknown>[]) {
-    if (!filas.length) { this.titulo(titulo, 20); this.texto("Sin registros"); return; }
-    const encabezado = () => {
-      this.reservar(54); this.marcar(`tabla:${titulo}`);
-      this.page.drawText(titulo, {x:this.margen,y:this.y,size:17,font:this.bold,color:AZUL}); this.y-=24;
-      let x=this.margen; for(const c of columnas){this.page.drawText(c.titulo,{x:x+5,y:this.y,size:11,font:this.bold});x+=c.ancho;} this.y-=18;
-      this.page.drawLine({start:{x:this.margen,y:this.y+5},end:{x:A4[0]-this.margen,y:this.y+5},thickness:.7,color:rgb(.55,.6,.65)});
+    if (!filas.length) { this.y-=10; this.titulo(titulo, 20); this.texto("Sin registros"); this.y-=8; return; }
+    const linea=14, padding=6;
+    const celdas=filas.map(fila=>columnas.map(c=>envolver(c.valor(fila),this.font,11,c.ancho-padding*2)));
+    const altos=celdas.map(c=>Math.max(...c.map(l=>l.length))*linea+padding*2);
+    const encabezados=columnas.map(c=>envolver(c.titulo,this.bold,11,c.ancho-padding*2));
+    const altoEncabezado=Math.max(...encabezados.map(l=>l.length))*linea+padding*2;
+    const paginas:number[]=[]; let alturaCompleta=0;
+    const dibujarEncabezado=(conTitulo:boolean,altoPrimeraFila:number)=>{
+      const altoTitulo=conTitulo?38:0;
+      this.reservar(altoTitulo+altoEncabezado+altoPrimeraFila);
+      if(conTitulo){this.y-=10;this.page.drawText(titulo,{x:this.margen,y:this.y,size:17,font:this.bold,color:AZUL});this.y-=28;alturaCompleta+=38;}
+      this.marcar(`tabla:${titulo}`); paginas.push(this.diagnostico.paginas.length-1);
+      const superior=this.y; let x=this.margen;
+      encabezados.forEach((lineas,i)=>{lineas.forEach((texto,j)=>this.page.drawText(texto,{x:x+padding,y:superior-padding-11-j*linea,size:11,font:this.bold,color:GRIS}));x+=columnas[i].ancho;});
+      this.y=superior-altoEncabezado;
+      this.page.drawLine({start:{x:this.margen,y:this.y},end:{x:A4[0]-this.margen,y:this.y},thickness:.7,color:rgb(.55,.6,.65)});
+      alturaCompleta+=altoEncabezado;
     };
-    encabezado();
-    for (const fila of filas) {
-      const celdas=columnas.map(c=>envolver(c.valor(fila),this.font,11,c.ancho-10));
-      const alto=Math.max(25,...celdas.map(l=>l.length*14+8));
-      if(this.y-alto<this.inferior){this.pagina();encabezado();}
-      let x=this.margen; celdas.forEach((lineas,i)=>{lineas.forEach((linea,j)=>this.page.drawText(linea,{x:x+5,y:this.y-j*14,size:11,font:this.font}));x+=columnas[i].ancho;});
-      this.y-=alto; this.page.drawLine({start:{x:this.margen,y:this.y+5},end:{x:A4[0]-this.margen,y:this.y+5},thickness:.35,color:rgb(.82,.84,.86)});
-    }
-    this.y-=14;
+    dibujarEncabezado(true,altos[0]);
+    celdas.forEach((fila,indice)=>{
+      const alto=altos[indice];
+      if(this.y-alto<this.inferior){this.pagina();dibujarEncabezado(false,alto);}
+      const superior=this.y; let x=this.margen;
+      fila.forEach((lineas,i)=>{lineas.forEach((texto,j)=>this.page.drawText(texto,{x:x+padding,y:superior-padding-11-j*linea,size:11,font:this.font}));x+=columnas[i].ancho;});
+      this.y=superior-alto;
+      this.page.drawLine({start:{x:this.margen,y:this.y},end:{x:A4[0]-this.margen,y:this.y},thickness:.35,color:rgb(.82,.84,.86)});
+      alturaCompleta+=alto;
+    });
+    this.y-=18;
+    this.diagnostico.tablas.push({titulo,alturaEncabezado:altoEncabezado,alturasFilas:altos,alturaCompleta,posicionFinal:this.y,paginas:[...new Set(paginas)]});
   }
   texto(texto:string){const lineas=envolver(texto,this.font,12,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
 }
@@ -94,9 +109,36 @@ function dibujarPortada(f:FlujoPDF,r:ReportePozo,id:number,image:PDFImage|null){
   else {p.drawRectangle({x:48,y:330,width:499,height:240,color:rgb(.97,.98,.99),borderColor:rgb(.78,.81,.84),borderWidth:.8});p.drawText("Fotografía no registrada",{x:205,y:445,size:14,font:f.font,color:GRIS});}
   p.drawText("Propietario",{x:48,y:154,size:11.5,font:f.bold,color:GRIS});envolver(r.propietario,f.font,14,499).slice(0,2).forEach((l,i)=>p.drawText(l,{x:48,y:132-i*17,size:14,font:f.font}));if(r.empresa)p.drawText(r.empresa,{x:48,y:91,size:11.5,font:f.font,color:GRIS});}
 
-async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longitud:number}|null,mapa:Awaited<ReturnType<typeof obtenerMapaEstatico>>){f.pagina("ubicacion");f.marcar("ubicacion");const p=f.page;p.drawText("Ubicación y resumen del pozo",{x:48,y:772,size:20,font:f.bold,color:AZUL});let y=735;const dato=(e:string,v:string)=>{p.drawText(e,{x:48,y,size:11.5,font:f.bold,color:GRIS});p.drawText(v,{x:175,y,size:12,font:f.font});y-=25;};dato("Departamento",r.departamento||"No especificado");dato("Localidad",r.localidad||"No especificada");dato("Coordenadas",c?`${c.latitud.toFixed(6)}, ${c.longitud.toFixed(6)}`:"No registradas");
-  const caja={x:48,y:340,w:499,h:285};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,color:rgb(.97,.98,.99),borderColor:rgb(.72,.76,.8),borderWidth:.8});if(mapa.estado==="disponible"){try{const img=mapa.tipo==="image/png"?await f.doc.embedPng(mapa.bytes):await f.doc.embedJpg(mapa.bytes);const e=Math.min(caja.w/img.width,caja.h/img.height);p.drawImage(img,{x:caja.x+(caja.w-img.width*e)/2,y:caja.y+(caja.h-img.height*e)/2,width:img.width*e,height:img.height*e});p.drawRectangle({x:48,y:340,width:499,height:18,color:rgb(1,1,1),opacity:.82});p.drawText(mapa.atribucion,{x:54,y:346,size:10.5,font:f.font,color:GRIS});}catch{p.drawText("Mapa no disponible",{x:220,y:480,size:14,font:f.font,color:GRIS});}}else p.drawText("Mapa no disponible",{x:220,y:480,size:14,font:f.font,color:GRIS});
-  y=305;dato("Perforador",r.perforador||"No especificado");dato("Fecha de inicio",formatearFechaCalendario(r.fecha_inicio));dato("Fecha de finalización",formatearFechaCalendario(r.fecha_fin));dato("Profundidad final",unidad(r.profundidad_final_m,"m"));}
+async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longitud:number}|null,mapa:Awaited<ReturnType<typeof obtenerMapaEstatico>>){
+  f.pagina("ubicacion"); f.marcar("ubicacion"); const p=f.page;
+  p.drawText("Ubicación y resumen del pozo",{x:48,y:772,size:20,font:f.bold,color:AZUL});
+  let y=735;
+  const dato=(e:string,v:string)=>{p.drawText(e,{x:48,y,size:11.5,font:f.bold,color:GRIS});p.drawText(v,{x:175,y,size:12,font:f.font});y-=25;};
+  dato("Departamento",r.departamento||"No especificado"); dato("Localidad",r.localidad||"No especificada");
+  dato("Coordenadas",c?`${c.latitud.toFixed(6)}, ${c.longitud.toFixed(6)}`:"No registradas");
+  const mapaImagen=mapa.estado==="disponible"?mapa:null;
+  let mapaDisponible=mapaImagen!==null;
+  if(mapaImagen){
+    const caja={x:48,y:340,w:499,h:285};
+    try{
+      const img=mapaImagen.tipo==="image/png"?await f.doc.embedPng(mapaImagen.bytes):await f.doc.embedJpg(mapaImagen.bytes);
+      p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,color:rgb(.97,.98,.99),borderColor:rgb(.72,.76,.8),borderWidth:.8});
+      const escala=Math.min(caja.w/img.width,caja.h/img.height);
+      p.drawImage(img,{x:caja.x+(caja.w-img.width*escala)/2,y:caja.y+(caja.h-img.height*escala)/2,width:img.width*escala,height:img.height*escala});
+      p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:18,color:rgb(1,1,1),opacity:.82});
+      p.drawText(mapaImagen.atribucion,{x:54,y:346,size:10.5,font:f.font,color:GRIS}); y=305;
+    }catch{mapaDisponible=false;}
+  }
+  if(!mapaDisponible){
+    const alto=72, superior=y-4, inferior=superior-alto; f.diagnostico.fallbackMapaAlto=alto;
+    p.drawRectangle({x:48,y:inferior,width:499,height:alto,color:rgb(.97,.98,.99),borderColor:rgb(.72,.76,.8),borderWidth:.8});
+    p.drawText("Mapa no disponible",{x:62,y:superior-27,size:14,font:f.bold,color:GRIS});
+    const motivo=mapa.estado==="no-disponible"?mapa.motivo:"La imagen del proveedor no pudo procesarse";
+    p.drawText(motivo,{x:62,y:superior-50,size:10.5,font:f.font,color:GRIS}); y=inferior-30;
+  }
+  dato("Perforador",r.perforador||"No especificado"); dato("Fecha de inicio",formatearFechaCalendario(r.fecha_inicio));
+  dato("Fecha de finalización",formatearFechaCalendario(r.fecha_fin)); dato("Profundidad final",unidad(r.profundidad_final_m,"m"));
+}
 
 async function cargarFoto(doc:PDFDocument,r:ReportePozo,id:number,dir:string){if(!r.foto_url)return null;try{const nombres=await fs.readdir(dir);const nombre=nombres.find(n=>n.startsWith(`pozo-${id}.`)&&/^pozo-\d+\.(?:jpe?g|png)$/i.test(n));if(!nombre)return null;const bytes=await fs.readFile(path.join(dir,nombre));if(bytes.length>5_000_000)return null;if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)return await doc.embedPng(bytes);if(bytes[0]===0xff&&bytes[1]===0xd8)return await doc.embedJpg(bytes);}catch{return null;}return null;}
 function envolver(texto:string,font:PDFFont,size:number,width:number){const limpio=texto.replace(/[^\x20-\x7E\xA0-\xFF]/g,"?").trim();const palabras:string[]=[];for(const palabra of (limpio||"No especificado").split(/\s+/)){if(font.widthOfTextAtSize(palabra,size)<=width){palabras.push(palabra);continue;}let fragmento="";for(const caracter of palabra){const candidato=fragmento+caracter;if(fragmento&&font.widthOfTextAtSize(candidato,size)>width){palabras.push(fragmento);fragmento=caracter;}else fragmento=candidato;}if(fragmento)palabras.push(fragmento);}const lineas:string[]=[];let actual="";for(const palabra of palabras){const candidato=actual?`${actual} ${palabra}`:palabra;if(font.widthOfTextAtSize(candidato,size)<=width)actual=candidato;else{if(actual)lineas.push(actual);actual=palabra;}}if(actual)lineas.push(actual);return lineas;}
