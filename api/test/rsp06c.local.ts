@@ -33,14 +33,14 @@ try {
   const creado = await crearPozoCompleto(idsUsuarios[2], {
     pozo: { id_propietario: idsUsuarios[0], id_perforador: idsUsuarios[2], id_sitio: Number(sitio.rows[0].id_sitio), empresa: "TEMPORAL RSP06C", profundidad_final_m: 80 },
     intervalos_litologicos: [{ desde_m: 0, hasta_m: 20, material: "Arena" }, { desde_m: 25, hasta_m: 80, material: "Roca" }],
-    intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 8 }, { desde_m: 40, hasta_m: 80, diametro_pulg: 6 }],
+    intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 8, material_tuberia: "Acero" }, { desde_m: 40, hasta_m: 80, diametro_pulg: 6, material_tuberia: "PVC" }],
     niveles_aporte: [{ profundidad_m: 30 }], foto: { mime_type: "image/png", base64: png },
   }, fotos);
   idPozo = creado.pozo.id_pozo;
   const actualizado = await actualizarPozoCompleto(idPozo, {
     pozo: { ...creado.pozo, id_propietario: idsUsuarios[1], id_perforador: idsUsuarios[3], empresa: "TEMPORAL RSP06C EDITADO", profundidad_final_m: 90 },
     intervalos_litologicos: [{ desde_m: 0, hasta_m: 18, material: "Arena fina" }, { desde_m: 30, hasta_m: 90, material: "Basalto" }],
-    intervalos_diametro: [{ desde_m: 0, hasta_m: 90, diametro_pulg: 6 }], niveles_aporte: [{ profundidad_m: 45 }],
+    intervalos_diametro: [{ desde_m: 0, hasta_m: 90, diametro_pulg: 6, material_tuberia: "PVC" }], niveles_aporte: [{ profundidad_m: 45 }],
     foto_accion: "reemplazar", foto: { mime_type: "image/png", base64: png },
   }, fotos);
   assert.equal(actualizado.intervalos_litologicos.length, 2);

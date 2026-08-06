@@ -55,10 +55,11 @@ El diagnóstico registra altura de encabezado, alturas de filas, altura completa
 - Frontend: 123 pruebas correctas en Chrome, sin HTTP real en specs de selección.
 - Fotografía: apertura del input, cancelación, JPEG, PNG, tipo, firma, 5 MB, vista previa, reemplazo, cancelación y acción de eliminación.
 - Persistencia: creación atómica, rollback sin huérfanos, reemplazo, eliminación y PDF sin foto.
+- PostgreSQL local: creación con PNG, PDF, edición/reemplazo, PDF actualizado, eliminación, PDF sin foto, rollback y limpieza final correctos mediante `rsp06c.local.ts`.
 - PDF/mapa: configuración y fallos simulados, fallback de 72 pt, filas medidas, filtros vacíos/con datos y multipágina.
 - `api/test/rsp06gb.visual.ts` genera tres PDF reproducibles en `%TEMP%\rsp06gb-evidencias`.
 
-Edge headless no rasterizó el contenido del visor PDF y produjo capturas en blanco; por eso no se declara inspección visual de esas capturas. Los PDF se dejan para revisión manual y la validación automatizada registrada es estructural. Karma sí ejecutó los componentes en Chrome real, pero no puede automatizar el diálogo nativo del sistema operativo ni una sesión autenticada completa con PostgreSQL.
+Edge headless no rasterizó el contenido del visor PDF y produjo capturas en blanco; por eso no se declara inspección visual de esas capturas. Los PDF se dejan para revisión manual y la validación automatizada registrada es estructural. Karma sí ejecutó los componentes en Chrome real, pero no puede automatizar el diálogo nativo del sistema operativo; la persistencia completa se verificó directamente contra PostgreSQL local.
 
 ## Seguridad, rollback y limitaciones
 
