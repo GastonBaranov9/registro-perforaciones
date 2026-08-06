@@ -34,3 +34,22 @@ test("mapa distingue configuración ausente, plantilla, clave, timeout y firma",
   assert.deepEqual(timeout,{estado:"no-disponible",motivo:"Tiempo de espera agotado"});
   assert.deepEqual(await obtenerMapaEstatico(c,config,async()=>new Response(new Uint8Array([1,2,3]),{headers:{"content-type":"image/png"}})),{estado:"no-disponible",motivo:"Firma de imagen no válida"});
 });
+
+test("mapa limita incrementalmente streams sin Content-Length",async()=>{
+  const c={latitud:-31,longitud:-57};const config={plantillaUrl:"https://maps.example/{latitud}/{longitud}",hostPermitido:"maps.example",atribucion:"Proveedor",maxBytes:12};
+  const firma=Uint8Array.from([137,80,78,71,13,10,26,10]);
+  const menor=new ReadableStream<Uint8Array>({start(controlador){controlador.enqueue(firma);controlador.enqueue(Uint8Array.from([1,2]));controlador.close();}});
+  assert.equal((await obtenerMapaEstatico(c,config,async()=>new Response(menor,{headers:{"content-type":"image/png"}}))).estado,"disponible");
+  const exacto=new ReadableStream<Uint8Array>({start(controlador){controlador.enqueue(firma);controlador.enqueue(new Uint8Array(4));controlador.close();}});
+  assert.equal((await obtenerMapaEstatico(c,config,async()=>new Response(exacto,{headers:{"content-type":"image/png"}}))).estado,"disponible");
+  let cancelado=false,abortado=false;
+  const excesivo=new ReadableStream<Uint8Array>({start(controlador){controlador.enqueue(firma);controlador.enqueue(new Uint8Array(5));},cancel(){cancelado=true;}});
+  const resultado=await obtenerMapaEstatico(c,config,async(_url,init)=>{init?.signal?.addEventListener("abort",()=>{abortado=true;});return new Response(excesivo,{headers:{"content-type":"image/png"}});});
+  assert.deepEqual(resultado,{estado:"no-disponible",motivo:"Imagen excesiva"});assert.equal(cancelado,true);assert.equal(abortado,true);
+});
+
+test("un stream de mapa excesivo conserva el PDF con fallback compacto",async()=>{
+  const stream=new ReadableStream<Uint8Array>({start(controlador){controlador.enqueue(Uint8Array.from([137,80,78,71,13,10,26,10]));controlador.enqueue(new Uint8Array(10));}});
+  const {diagnostico}=await crearPDFConDiagnostico(base(),77,{mapa:{plantillaUrl:"https://maps.example/{latitud}/{longitud}",hostPermitido:"maps.example",atribucion:"Proveedor",maxBytes:12},fetchMapa:async()=>new Response(stream,{headers:{"content-type":"image/png"}})});
+  assert.equal(diagnostico.fallbackMapaAlto,72);
+});

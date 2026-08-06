@@ -48,4 +48,21 @@ describe('DatosTecnicosBorradorComponent', () => {
     component.datos().intervalosLitologicos[1].dato.desde_m = 11;
     expect(component.datos().intervalosLitologicos[1].dato.desde_m).toBe(11);
   });
+
+  it('sincroniza una nueva versión inicial sin marcar dirty', () => {
+    const primero = { intervalosLitologicos: [{ idLocal:'a',dato:{desde_m:0,hasta_m:5,material:'Arena'} }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] };
+    const segundo = { intervalosLitologicos: [{ idLocal:'b',dato:{desde_m:0,hasta_m:8,material:'Basalto'} }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [{idLocal:'c',dato:{profundidad_m:4}}] };
+    const cambios=spyOn(component.cambiado,'emit');
+    fixture.componentRef.setInput('inicial',primero);fixture.detectChanges();TestBed.flushEffects();
+    fixture.componentRef.setInput('inicial',segundo);fixture.detectChanges();TestBed.flushEffects();
+    expect(component.datos()).toEqual(segundo);expect(component.dirty()).toBeFalse();expect(cambios).toHaveBeenCalledWith(segundo);
+  });
+
+  it('preserva cambios locales hasta recibir descarte confirmado', () => {
+    const inicial = { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] };
+    fixture.componentRef.setInput('inicial',inicial);fixture.detectChanges();TestBed.flushEffects();component.agregarAporte();
+    const remoto = { ...inicial, nivelesAporte:[{idLocal:'remoto',dato:{profundidad_m:9}}] };
+    fixture.componentRef.setInput('inicial',remoto);fixture.detectChanges();TestBed.flushEffects();expect(component.datos().nivelesAporte[0].dato.profundidad_m).toBe(0);
+    fixture.componentRef.setInput('versionDescartar',1);fixture.detectChanges();TestBed.flushEffects();expect(component.datos()).toEqual(remoto);expect(component.dirty()).toBeFalse();
+  });
 });

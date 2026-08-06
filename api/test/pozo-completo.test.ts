@@ -93,7 +93,7 @@ test("filtros opcionales validan material profundidad y solapamiento por categor
 test("un fallo de hijo revierte el padre y no deja fotografía", async () => {
   const falso = poolFalso("INSERT INTO intervalo_diametro");
   const data = body();
-  data.foto = { mime_type: "image/png", base64: Buffer.from([0x89, 0x50, 0x4e, 0x47, 1]).toString("base64") };
+  data.foto = { mime_type: "image/png", base64: Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,1]).toString("base64") };
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06b-"));
   try {
     await assert.rejects(() => crearPozoCompleto(30, data, dir, falso.pool as never));

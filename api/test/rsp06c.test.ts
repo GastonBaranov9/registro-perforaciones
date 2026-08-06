@@ -78,13 +78,28 @@ test("profundidad reducida y solapamiento se rechazan antes de borrar hijos", as
 test("actualización conserva, elimina y reemplaza fotografía sin aceptar nombres del cliente", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06c-foto-"));
   try {
-    await fs.writeFile(path.join(dir, "pozo-55.jpg"), Buffer.from([0xff, 0xd8, 1]));
+    await fs.writeFile(path.join(dir, "pozo-55.jpg"), Buffer.from([0xff, 0xd8, 0xff, 1]));
     await actualizarPozoCompleto(55, { ...updateBody(), foto_accion: "conservar" }, dir, poolActualizacion().pool as never);
     assert.ok((await fs.readdir(dir)).includes("pozo-55.jpg"));
     await actualizarPozoCompleto(55, { ...updateBody(), foto_accion: "eliminar" }, dir, poolActualizacion().pool as never);
     assert.equal((await fs.readdir(dir)).some((x) => x.startsWith("pozo-55.")), false);
-    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1]).toString("base64");
+    const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,1]).toString("base64");
     await actualizarPozoCompleto(55, { ...updateBody(), foto_accion: "reemplazar", foto: { mime_type: "image/png", base64: png } }, dir, poolActualizacion().pool as never);
     assert.ok((await fs.readdir(dir)).includes("pozo-55.png"));
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("una purga fallida después de COMMIT conserva la actualización confirmada", async () => {
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06gc-postcommit-")); const falso=poolActualizacion();
+  const avisos:Array<Record<string,unknown>>=[];
+  try{
+    await fs.writeFile(path.join(dir,"pozo-55.jpg"),Buffer.from([0xff,0xd8,0xff,1]));
+    const png=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,1]).toString("base64");
+    const resultado=await actualizarPozoCompleto(55,{...updateBody(),foto_accion:"reemplazar",foto:{mime_type:"image/png",base64:png}},dir,falso.pool as never,{logger:{warn(datos){avisos.push(datos);}},eliminarPostCommit:async()=>{const error=Object.assign(new Error("controlado"),{code:"EACCES"});throw error;}});
+    assert.equal(resultado.pozo.foto_url,"/usuarios/2/pozos/55/foto");
+    assert.ok((await fs.readdir(dir)).includes("pozo-55.png"));
+    assert.ok((await fs.readdir(path.join(dir,".trash"))).length===1);
+    assert.equal(falso.consultas.filter(x=>x==="COMMIT").length,1);assert.equal(falso.consultas.includes("ROLLBACK"),false);
+    assert.deepEqual(avisos,[{id_pozo:55,operacion:"actualizar_pozo_completo",etapa:"post_commit",codigo:"EACCES"}]);
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });

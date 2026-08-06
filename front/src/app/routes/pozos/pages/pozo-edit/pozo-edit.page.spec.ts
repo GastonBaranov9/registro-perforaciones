@@ -49,4 +49,14 @@ describe('PozoEditPage', () => {
     await component.handleEdit({ pozo: { id_propietario:2,id_perforador:3,id_sitio:4,profundidad_final_m:20 }, foto:null, fotoAccion:'conservar' });
     expect(navegar).toHaveBeenCalledOnceWith(['/pozos-detail', 1]);
   });
+
+  it('cancelar recarga con dirty conserva el borrador local', () => {
+    component.borradorDirty.set(true);spyOn(window,'confirm').and.returnValue(false);const recargar=spyOn(component.pozoResource,'reload');const version=component.versionDescartar();
+    component.recargar();expect(recargar).not.toHaveBeenCalled();expect(component.borradorDirty()).toBeTrue();expect(component.versionDescartar()).toBe(version);
+  });
+
+  it('confirmar recarga descarta dirty y solicita datos remotos nuevos', () => {
+    component.borradorDirty.set(true);spyOn(window,'confirm').and.returnValue(true);const recargar=spyOn(component.pozoResource,'reload');const version=component.versionDescartar();
+    component.recargar();expect(recargar).toHaveBeenCalledTimes(1);expect(component.borradorDirty()).toBeFalse();expect(component.versionDescartar()).toBe(version+1);
+  });
 });

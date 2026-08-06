@@ -37,3 +37,11 @@ test("si falla la base restaura el archivo aislado", async () => {
     assert.equal(await fs.readFile(archivo, "utf8"), "foto");
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+test("purga fallida posterior a eliminar no revierte ni informa fallo lógico",async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06gc-eliminar-"));const archivo=path.join(dir,"pozo-11.png");
+  await fs.writeFile(archivo,"foto");const avisos:Array<Record<string,unknown>>=[];
+  const db={async query(){return{rows:[{id_pozo:11}]};}};
+  try{const resultado=await eliminarFotoPersistida(11,dir,db,{logger:{warn(datos){avisos.push(datos);}},eliminarPostCommit:async()=>{throw Object.assign(new Error("controlado"),{code:"EPERM"});}});assert.deepEqual(resultado,{archivoExistia:true});assert.equal(await fs.stat(archivo).then(()=>true,()=>false),false);assert.equal((await fs.readdir(path.join(dir,".trash"))).length,1);assert.deepEqual(avisos,[{id_pozo:11,operacion:"eliminar_foto",etapa:"post_commit",codigo:"EPERM"}]);}
+  finally{await fs.rm(dir,{recursive:true,force:true});}
+});
