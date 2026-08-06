@@ -34,7 +34,7 @@ function updateBody(): PozoCompletoUpdateBody {
     intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 6, material_tuberia: "PVC" }], intervalos_filtro: [], niveles_aporte: [{ profundidad_m: 20 }], foto_accion: "conservar" };
 }
 
-function poolActualizacion(fallar = false) {
+function poolActualizacion(fallar = false, rechazarLitologia = false) {
   const consultas: string[] = [];
   const client = { async query(sql: string) {
     consultas.push(sql);
@@ -42,7 +42,7 @@ function poolActualizacion(fallar = false) {
     if (sql.includes("SELECT id_pozo FROM pozo")) return { rows: [{ id_pozo: 55 }] };
     if (sql.includes("UPDATE pozo SET id_propietario")) return { rows: [{ id_pozo: 55, id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: "40", foto_url: "/foto" }] };
     if (fallar && sql.includes("INSERT INTO intervalo_diametro")) throw new Error("fallo intermedio");
-    if (sql.includes("INSERT INTO intervalo_litologico")) return { rows: [{ id_intervalo_litologico: 7, id_pozo: 55, desde_m: "0", hasta_m: "15", material: "Arena" }] };
+    if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: 7, id_pozo: 55, desde_m: "0", hasta_m: "15", material: "Arena", id_litologia: 7 }] };
     if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: 8, id_pozo: 55, desde_m: "0", hasta_m: "40", diametro_pulg: "6" }] };
     if (sql.includes("INSERT INTO nivel_aporte")) return { rows: [{ id_nivel_aporte: 9, id_pozo: 55, profundidad_m: "20" }] };
     return { rows: [] };
@@ -58,6 +58,18 @@ test("actualización completa reemplaza hijos dentro de una transacción", async
     assert.ok(falso.consultas.some((x) => x === "COMMIT"));
     assert.equal(falso.consultas.filter((x) => x.startsWith("DELETE FROM")).length, 4);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("actualización completa acepta una litología activa identificada",async()=>{
+  const falso=poolActualizacion();const data=updateBody();data.intervalos_litologicos[0].id_litologia=7;const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06h-r1-edit-ok-"));
+  try { const resultado=await actualizarPozoCompleto(55,data,dir,falso.pool as never);assert.equal(resultado.intervalos_litologicos[0].id_litologia,7);assert.ok(falso.consultas.includes("COMMIT")); }
+  finally { await fs.rm(dir,{recursive:true,force:true}); }
+});
+
+for(const caso of ["inexistente","inactiva"] as const)test(`actualización completa rechaza litología ${caso} con 400 y conserva estado previo`,async()=>{
+  const falso=poolActualizacion(false,true);const data=updateBody();data.intervalos_litologicos[0].id_litologia=999;const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06h-r1-edit-rechazo-"));
+  try { await fs.writeFile(path.join(dir,"pozo-55.jpg"),Buffer.from([0xff,0xd8,0xff,1]));await assert.rejects(()=>actualizarPozoCompleto(55,data,dir,falso.pool as never),(error:unknown)=>{assert.ok(error instanceof Error);assert.equal((error as Error&{statusCode?:number}).statusCode,400);assert.doesNotMatch(error.name,/TypeError/);return true;});assert.ok(falso.consultas.includes("ROLLBACK"));assert.ok(!falso.consultas.includes("COMMIT"));assert.ok(falso.consultas.some((sql)=>sql.startsWith("DELETE FROM")));assert.deepEqual(await fs.readdir(dir),["pozo-55.jpg"]); }
+  finally { await fs.rm(dir,{recursive:true,force:true}); }
 });
 
 test("fallo intermedio revierte datos generales e hijos", async () => {

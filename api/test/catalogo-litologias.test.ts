@@ -22,6 +22,11 @@ test("la migración enlaza por igualdad normalizada y conserva material y descon
   assert.doesNotMatch(migracion,/id_litologia BIGINT NOT NULL/);
 });
 
+test("la normalización SQL usa una sola barra para compactar separaciones",()=>{
+  assert.match(migracion,/regexp_replace\(valor, '\\s\+', ' ', 'g'\)/);
+  assert.doesNotMatch(migracion,/regexp_replace\(valor, '\\\\s\+'/);
+});
+
 test("errores duplicados del catálogo son 409 y no filtran detalle SQL",()=>{
   const traducido=traducirErrorCatalogo(Object.assign(new Error("constraint secreta"),{code:"23505"})) as Error&{statusCode:number};
   assert.equal(traducido.statusCode,409);assert.doesNotMatch(traducido.message,/constraint secreta/);
