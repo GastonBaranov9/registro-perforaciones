@@ -4,7 +4,7 @@ import { IonButton, IonCol, IonRow, IonGrid, ViewWillEnter, IonCard, IonCardHead
 import { Router } from '@angular/router';
 import { Pozo } from '../../../../shared/types/schemas';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
-import { DatePipe } from '@angular/common';
+import { formatearInstanteComoFecha } from '../../../../shared/utils/fechas';
 import { ToastController } from '@ionic/angular';
 import { FormsModule } from '@angular/forms';
 import { WebsocketService } from '../../../../shared/services/websocket.service';
@@ -17,7 +17,6 @@ import { logoIonic } from 'ionicons/icons'
   selector: 'app-pozos-list',
   imports: [
     FormsModule,
-    DatePipe,
     IonButton,
     IonCard,
     IonCardHeader,
@@ -43,6 +42,7 @@ import { logoIonic } from 'ionicons/icons'
   styleUrl: './pozos-list.page.css',
 })
 export class PozosListPage implements OnInit, ViewWillEnter {
+  readonly formatearInstanteComoFecha = formatearInstanteComoFecha;
 
     constructor() {
     addIcons({ logoIonic });

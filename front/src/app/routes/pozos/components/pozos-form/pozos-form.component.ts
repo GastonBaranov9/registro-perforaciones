@@ -1,11 +1,11 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NuevoPozo } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonDatetime, IonItemDivider } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
-import { FotoComponent } from '../../../fotos/components/foto/foto.component';
-import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
+import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
 
 @Component({
   selector: 'app-pozos-form',
@@ -22,30 +22,41 @@ import { environment } from '../../../../../environments/environment';
     FormsModule,
     FotoComponent,
     IonImg,
+    SelectorPersonaPozoComponent,
 ],
 })
 export class PozosFormComponent {
   public pozo = input.required<NuevoPozo>();
   public id_pozo = input<number | null>(null);
+  public propietarios = input<CandidatoPozo[]>([]);
+  public perforadores = input<CandidatoPozo[]>([]);
+  public catalogosDisponibles = input(false);
 
-  public saved = output<{ pozo: NuevoPozo; foto: File | null }>();
+  public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearSitio = output<void>();
   public editarSitio = output<void>();
+  public eliminarFotoPersistida = output<void>();
+  public cambiado = output<NuevoPozo>();
 
   public disabled = signal<boolean>(false);
-  private authService = inject(AuthService);
   public agregareditar = input<boolean>(false);
+  public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
 
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
+  public fotoVistaPrevia = signal<string | null>(null);
+  public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
     this.saved.emit({
       pozo: this.pozo(),
       foto: this.fotoFile,
+      fotoAccion: this.fotoFile ? 'reemplazar' : (this.eliminarFotoPendiente() ? 'eliminar' : 'conservar'),
     });
   }
+
+  notificarCambio() { this.cambiado.emit({ ...this.pozo() }); }
 
   onCrearSitioClick() {
     this.crearSitio.emit();
@@ -55,26 +66,34 @@ export class PozosFormComponent {
     this.editarSitio.emit();
   }
 
-  async fotoCapturada(fotoWebPath: string) {
-    try {
-      this.disabled.set(true);
-      const response = await fetch(fotoWebPath);
-      const blob = await response.blob();
-
-      this.fotoBlob = new File([blob], 'pozo-foto.jpg', {
-        type: blob.type || 'image/jpeg',
-      });
-
-      this.fotoFile = this.fotoBlob;
-
-      const idUsuario = this.authService.userId();
-      if (!idUsuario) throw new Error();
-    } catch (error: any) {
-      console.error('Error subiendo la foto:', error);
-      this.errorMessage.set(error.message ?? 'Error subiendo foto');
-    }
-    this.disabled.set(false);
+  fotoCapturada(foto: FotoSeleccionada) {
+    this.fotoBlob = foto.archivo;
+    this.fotoFile = foto.archivo;
+    this.fotoVistaPrevia.set(foto.vistaPrevia);
+    this.eliminarFotoPendiente.set(false);
+    this.errorMessage.set('');
   }
+
+  quitarFotoSeleccionada() {
+    this.fotoBlob = null;
+    this.fotoFile = null;
+    this.fotoVistaPrevia.set(null);
+  }
+
+  cancelarCambioFoto() {
+    this.quitarFotoSeleccionada();
+    this.eliminarFotoPendiente.set(false);
+  }
+
+  solicitarEliminarFotoPersistida() {
+    this.eliminarFotoPendiente.set(true);
+    this.quitarFotoSeleccionada();
+  }
+  personasValidas() {
+    return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)) &&
+      this.perforadores().some((p) => p.id_usuario === Number(this.pozo().id_perforador));
+  }
+  propietarioValido() { return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)); }
 
 getFoto() {
   const foto = this.pozo()?.foto_url;

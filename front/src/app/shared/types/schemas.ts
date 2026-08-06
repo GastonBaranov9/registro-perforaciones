@@ -56,7 +56,7 @@ export type Pozo = {
   revestimiento?: Revestimiento | null;
   creado_por?: number;
   fecha_creado: string;
-  foto_url: string;
+  foto_url?: string;
 };
 
 export type NuevoPozo = {
@@ -140,13 +140,20 @@ export type IntervaloDiametroPerforacion = {
   desde_m: number;
   hasta_m: number;
   diametro_pulg: number;
+  material_tuberia: MaterialTuberia | null;
 };
+
+export type MaterialTuberia = 'PVC' | 'Acero';
 
 export type IntervaloDiametroPerforacionBody = {
   desde_m: number;
   hasta_m: number;
   diametro_pulg: number;
+  material_tuberia: MaterialTuberia | '';
 };
+
+export type IntervaloFiltroBody = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | '' };
+export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia };
 
 export type NivelAporte = {
   id_nivel_aporte: number;
@@ -156,4 +163,74 @@ export type NivelAporte = {
 
 export type NivelAporteBody = {
   profundidad_m: number;
+};
+
+export type ElementoBorrador<T> = { idLocal: string; dato: T };
+
+export type DatosTecnicosBorrador = {
+  intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
+  intervalosDiametro: Array<ElementoBorrador<IntervaloDiametroPerforacionBody>>;
+  intervalosFiltro: Array<ElementoBorrador<IntervaloFiltroBody>>;
+  nivelesAporte: Array<ElementoBorrador<NivelAporteBody>>;
+};
+
+export type PozoCompletoBody = {
+  pozo: NuevoPozo;
+  intervalos_litologicos: IntervaloLitologicoBody[];
+  intervalos_diametro: IntervaloDiametroPerforacionBody[];
+  intervalos_filtro: IntervaloFiltroBody[];
+  niveles_aporte: NivelAporteBody[];
+  foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
+};
+
+export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'foto'> & {
+  profundidad_final_m: number;
+};
+
+export type CandidatoPozo = { id_usuario: number; nombre: string; email: string; roles: string[] };
+export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
+export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
+export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto'> & {
+  foto_accion: AccionFotoEdicion;
+  foto?: PozoCompletoBody['foto'];
+};
+
+export type PozoCompletoResultado = {
+  pozo: Pozo;
+  intervalos_litologicos: IntervaloLitologico[];
+  intervalos_diametro: IntervaloDiametroPerforacion[];
+  intervalos_filtro: IntervaloFiltro[];
+  niveles_aporte: NivelAporte[];
+};
+
+export type PatronLitologico =
+  | 'diagonal'
+  | 'diagonal-inversa'
+  | 'cruz'
+  | 'puntos'
+  | 'horizontal'
+  | 'vertical';
+
+export type PerfilLitologico = {
+  titulo: 'Perfil litológico del pozo';
+  profundidad_m: number;
+  paso_escala_m: number;
+  tramos: Array<{
+    clase: 'litologia' | 'hueco';
+    desde_m: number;
+    hasta_m: number;
+    material: string;
+    descripcion: string | null;
+    estilo: { color: string; gris: number; patron: PatronLitologico };
+    carril_etiqueta: number;
+  }>;
+  aportes: Array<{ profundidad_m: number; tipo: 'puntual'; desde_m: number; hasta_m: number; geometria: { x_inicio: 0.03; x_fin: 0.97; espesor_min_px: 12; patron: 'ondas' } }>;
+  tuberias: Array<{tipo:'tuberia';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
+  filtros: Array<{tipo:'filtro';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
+  etiquetas: Array<{clave:string;tipo:'litologia'|'tuberia'|'filtro'|'aporte';texto:string;profundidad_anclaje_m:number;rango_desde_m:number;posicion_y_normalizada:number;carril:0|1|2|3;x_anclaje_normalizado:number;x_texto_normalizado:number;conector:{puntos:Array<{x_normalizada:number;y_normalizada:number}>};caja_texto:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}}>;
+  seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
+  geometria: { ancho_logico:760;alto_logico:820;columna:{x:90;y:70;ancho:180;alto:700};x_texto_escala:12;carriles_etiqueta_x:readonly [310,390,470,550];separacion_vertical_normalizada:number;conector:{salida:12;llegada:8};alto_texto:16 };
+  rangos: Array<{ desde_m: number; hasta_m: number }>;
+  advertencias: string[];
+  tiene_litologia: boolean;
 };

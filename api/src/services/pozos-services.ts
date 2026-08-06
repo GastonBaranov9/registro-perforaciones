@@ -130,7 +130,8 @@ export async function deletePozo(id_pozo: number): Promise<boolean> {
 
 export async function updatePozoFoto(
   id_pozo: number,
-  fotoUrl: string
+  fotoUrl: string,
+  db: Pick<typeof myPool,"query"> = myPool,
 ): Promise<Pozo | null> {
   const sql = `
     UPDATE public.pozo
@@ -144,7 +145,7 @@ export async function updatePozoFoto(
 
   const vals = [id_pozo, fotoUrl];
 
-  const { rows } = await myPool.query(sql, vals);
+  const { rows } = await db.query(sql, vals);
   return (rows[0] as Pozo) ?? null;
 }
 export async function getAllPozo(

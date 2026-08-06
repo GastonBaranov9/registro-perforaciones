@@ -136,12 +136,16 @@ export const IntervaloLitologico = Type.Object({
 
 export type IntervaloLitologico = Static<typeof IntervaloLitologico>;
 
+export const MaterialTuberia = Type.Union([Type.Literal("PVC"), Type.Literal("Acero")]);
+export type MaterialTuberia = Static<typeof MaterialTuberia>;
+
 export const IntervaloDiametroPerforacion = Type.Object({
   id_intervalo_diametro_perforacion: Type.Integer(),
   id_pozo: Type.Integer(),
   desde_m: Type.Number(),
   hasta_m: Type.Number(),
   diametro_pulg: Type.Number(),
+  material_tuberia: Type.Union([MaterialTuberia, Type.Null()]),
 });
 
 export type IntervaloDiametroPerforacion = Static<
@@ -206,22 +210,36 @@ export type InformeAntes = Static<typeof Informe>;
 export const InformeBody = Type.Omit(InformeAntes, ["id_informe", "id_pozo"]);
 export type InformeBody = Static<typeof InformeBody>;
 
-export const bodyIntervaloLitologico = Type.Omit(IntervaloLitologico, [
-  "id_intervalo_litologico",
-  "id_pozo",
-]);
+export const bodyIntervaloLitologico = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }),
+  hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  material: Type.String({ minLength: 1 }),
+});
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
 
 
-export const IntervaloDiametroPerforacionBody = Type.Omit(
-  IntervaloDiametroPerforacion,
-  ["id_pozo", "id_intervalo_diametro_perforacion"]
-);
+export const IntervaloDiametroPerforacionBody = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }),
+  hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  diametro_pulg: Type.Number({ exclusiveMinimum: 0 }),
+  material_tuberia: MaterialTuberia,
+});
 
 export type IntervaloDiametroPerforacionBody = Static<
   typeof IntervaloDiametroPerforacionBody
 >;
+
+export const IntervaloFiltro = Type.Object({
+  id_intervalo_filtro: Type.Integer(), id_pozo: Type.Integer(),
+  desde_m: Type.Number(), hasta_m: Type.Number(), diametro_pulg: Type.Number(), material_tuberia: MaterialTuberia,
+});
+export type IntervaloFiltro = Static<typeof IntervaloFiltro>;
+export const IntervaloFiltroBody = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }), hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  diametro_pulg: Type.Number({ exclusiveMinimum: 0 }), material_tuberia: MaterialTuberia,
+});
+export type IntervaloFiltroBody = Static<typeof IntervaloFiltroBody>;
 
 export const NivelAporteBody = Type.Pick(NivelAporte, ["profundidad_m"]);
 export type NivelAporteBody = Static<typeof NivelAporteBody>;
@@ -232,6 +250,48 @@ export type SitioBody = Static<typeof SitioBody>;
 export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
+
+export const FotoNuevaPozo = Type.Object({
+  mime_type: Type.Union([Type.Literal("image/jpeg"), Type.Literal("image/png")]),
+  base64: Type.String({ minLength: 1, maxLength: 7_000_000 }),
+});
+
+export const PozoCompletoBody = Type.Object({
+  pozo: NuevoPozo,
+  intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+  intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+  intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+  niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+  foto: Type.Optional(FotoNuevaPozo),
+});
+
+export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
+
+export const PerfilLitologicoVistaPreviaBody = Type.Object({
+  profundidad_final_m: Type.Number({ exclusiveMinimum: 0 }),
+  intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+  intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+  intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+  niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+});
+export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVistaPreviaBody>;
+
+export const PozoCompletoUpdateBody = Type.Intersect([
+  Type.Omit(PozoCompletoBody, ["foto"]),
+  Type.Object({
+    foto_accion: Type.Union([Type.Literal("conservar"), Type.Literal("eliminar"), Type.Literal("reemplazar")]),
+    foto: Type.Optional(FotoNuevaPozo),
+  }),
+]);
+export type PozoCompletoUpdateBody = Static<typeof PozoCompletoUpdateBody>;
+
+export const CandidatoPozo = Type.Object({
+  id_usuario: Type.Integer(),
+  nombre: Type.String(),
+  email: Type.String({ format: "email" }),
+  roles: Type.Array(Type.String()),
+});
+export type CandidatoPozo = Static<typeof CandidatoPozo>;
 
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",

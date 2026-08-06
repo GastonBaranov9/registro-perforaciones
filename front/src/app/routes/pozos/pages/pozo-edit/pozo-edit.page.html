@@ -10,23 +10,31 @@
         <h2>Editar pozo</h2>
 
         @if (this.pozoResource.hasValue()) {
-        <app-pozos-form
-          [pozo]="this.pozoResource.value()!"
+        @let editor = this.pozoResource.value()!;
+        <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
+          [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
+          [guardando]="disabled()"
           (editarSitio)="editarSitio()"
-        />
+          (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
+        >
+          <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [versionDescartar]="versionDescartar()" [profundidad]="editor.pozo.profundidad_final_m"
+            [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
+        </app-pozos-form></div>
+        <aside><app-perfil-litologico-vista-previa [idPozo]="id_pozo()"
+          [profundidad]="profundidadBorrador() ?? editor.pozo.profundidad_final_m" [datos]="datosTecnicos()" /></aside></div>
         } @else if (this.pozoResource.isLoading()) {
         <ion-spinner></ion-spinner>
         } @else {
-        <p>No hay pozo</p>
+        <p>{{ pozoResource.error() || 'No hay pozo' }}</p>
         }
 
         <ion-button
           fill="outline"
           expand="block"
-          (click)="this.pozoResource.reload()"
+          (click)="recargar()"
           [disabled]="this.disabled()"
         >
           RECARGAR

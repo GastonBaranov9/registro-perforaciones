@@ -25,4 +25,38 @@ describe('PozoEditPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('bloquea doble envío y conserva el borrador mientras guarda', async () => {
+    let resolver!: (valor: unknown) => void;
+    const pendiente = new Promise((resolve) => { resolver = resolve; });
+    const editar = spyOn(component.pozoEditService, 'editPozoCompleto').and.returnValue(pendiente as never);
+    const dato = { pozo: { id_propietario: 2, id_perforador: 3, id_sitio: 4 }, foto: null, fotoAccion: 'conservar' as const };
+    const primero = component.handleEdit(dato); await component.handleEdit(dato);
+    expect(editar).toHaveBeenCalledTimes(1); resolver({}); await primero;
+  });
+
+  it('un error mantiene cambios técnicos en memoria', async () => {
+    component.datosTecnicos.set({ intervalosLitologicos: [{ idLocal: 'local-1', dato: { desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.rejectWith(new Error('fallo controlado'));
+    await component.handleEdit({ pozo: { id_propietario: 2, id_perforador: 3, id_sitio: 4, profundidad_final_m: 10 }, foto: null, fotoAccion: 'conservar' });
+    expect(component.datosTecnicos().intervalosLitologicos.length).toBe(1);
+    expect(component.errorMessage()).toContain('fallo controlado');
+  });
+
+  it('después de actualizar navega al detalle reutilizable que invalida el perfil', async () => {
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({} as never);
+    const navegar = spyOn(component.router, 'navigate').and.resolveTo(true);
+    await component.handleEdit({ pozo: { id_propietario:2,id_perforador:3,id_sitio:4,profundidad_final_m:20 }, foto:null, fotoAccion:'conservar' });
+    expect(navegar).toHaveBeenCalledOnceWith(['/pozos-detail', 1]);
+  });
+
+  it('cancelar recarga con dirty conserva el borrador local', () => {
+    component.borradorDirty.set(true);spyOn(window,'confirm').and.returnValue(false);const recargar=spyOn(component.pozoResource,'reload');const version=component.versionDescartar();
+    component.recargar();expect(recargar).not.toHaveBeenCalled();expect(component.borradorDirty()).toBeTrue();expect(component.versionDescartar()).toBe(version);
+  });
+
+  it('confirmar recarga descarta dirty y solicita datos remotos nuevos', () => {
+    component.borradorDirty.set(true);spyOn(window,'confirm').and.returnValue(true);const recargar=spyOn(component.pozoResource,'reload');const version=component.versionDescartar();
+    component.recargar();expect(recargar).toHaveBeenCalledTimes(1);expect(component.borradorDirty()).toBeFalse();expect(component.versionDescartar()).toBe(version+1);
+  });
 });

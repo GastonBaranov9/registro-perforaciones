@@ -125,7 +125,7 @@ export default fastifyPlugin(async function (fastify) {
       return;
     }
     if (await rolUser(sub, "perforador")) {
-      if (!(await pozoPerteneceAPerforador(id_pozo, sub))) throw new err.T05SinPermiso();
+      if (!(await pozoPerteneceAPerforador(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
       return;
     }
     throw new err.T05SinPermiso();

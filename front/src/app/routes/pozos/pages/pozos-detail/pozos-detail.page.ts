@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, resource, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -17,9 +17,15 @@ import {
   IonButtons,
   ViewWillEnter,
 } from '@ionic/angular/standalone';
-import { Pozo } from '../../../../shared/types/schemas';
+import { IntervaloDiametroPerforacion, IntervaloFiltro, IntervaloLitologico, NivelAporte, Pozo } from '../../../../shared/types/schemas';
+import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { environment } from '../../../../../environments/environment';
+import { PerfilLitologicoComponent } from '../../../../shared/components/perfil-litologico/perfil-litologico.component';
+import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
+import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
+import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
+import { formatearFechaCalendario } from '../../../../shared/utils/fechas';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -36,11 +42,13 @@ import { environment } from '../../../../../environments/environment';
     IonImg,
     IonToolbar,
     IonButtons,
+    PerfilLitologicoComponent,
   ],
   templateUrl: './pozos-detail.page.html',
   styleUrl: './pozos-detail.page.css',
 })
-export class PozosDetailPage implements OnInit, ViewWillEnter {
+export class PozosDetailPage implements ViewWillEnter {
+  readonly formatearFechaCalendario = formatearFechaCalendario;
   public informeService: PdfGenerate = inject(PdfGenerate);
   public pozoEditService = inject(PozosEditService);
   public ruta = inject(ActivatedRoute);
@@ -48,19 +56,44 @@ export class PozosDetailPage implements OnInit, ViewWillEnter {
   public id_pozo = Number(this.ruta.snapshot.paramMap.get('id_pozo'));
   public pozo = signal<Pozo | undefined>(undefined);
   public errorMessage = signal<string>('');
-
-  async ngOnInit() {
-    const data = await this.pozoEditService.getPozoById(this.id_pozo);
-    this.pozo.set(data);
-    this.getFoto();
-    
-  }
+  public litologia = signal<IntervaloLitologico[]>([]);
+  public diametros = signal<IntervaloDiametroPerforacion[]>([]);
+  public aportes = signal<NivelAporte[]>([]);
+  public filtros = signal<IntervaloFiltro[]>([]);
+  public versionPerfil = signal(0);
+  private litologiaService = inject(IntervaloLitologicoListService);
+  private diametroService = inject(IntervaloDiametroListService);
+  private aporteService = inject(AporteListService);
+  private filtroService = inject(IntervalosFiltroService);
 
   async ionViewWillEnter(){
-    
-   const data = await this.pozoEditService.getPozoById(this.id_pozo);
-    this.pozo.set(data);
-    this.getFoto();
+    this.versionPerfil.update((version) => version + 1);
+    this.errorMessage.set('');
+    try {
+      const data = await this.pozoEditService.getPozoById(this.id_pozo);
+      this.pozo.set(data);
+      this.getFoto();
+      await this.cargarTecnicos();
+    } catch {
+      this.pozo.set(undefined);
+      this.errorMessage.set('No se pudo recargar el detalle actualizado.');
+    }
+  }
+  private async cargarTecnicos() {
+    try {
+      const [litologia, diametros, filtros, aportes] = await Promise.all([
+        this.litologiaService.getIntervalosLitologicos(this.id_pozo),
+        this.diametroService.getIntervalosDiametros(this.id_pozo),
+        this.filtroService.listar(this.id_pozo),
+        this.aporteService.getNivelesAporte(this.id_pozo),
+      ]);
+      this.litologia.set(litologia);
+      this.diametros.set(diametros);
+      this.filtros.set(filtros);
+      this.aportes.set(aportes);
+    } catch {
+      this.errorMessage.set('No se pudieron cargar todos los datos técnicos.');
+    }
   }
   public irAEditarPozo() {
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);

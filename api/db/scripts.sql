@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS
   transicion,
   estado,
   nivel_aporte,
+  intervalo_filtro,
   intervalo_diametro_perforacion,
   intervalo_litologico,
   pozo,
@@ -106,8 +107,21 @@ CREATE TABLE intervalo_diametro_perforacion (
   desde_m                           NUMERIC NOT NULL,
   hasta_m                           NUMERIC NOT NULL,
   diametro_pulg                     NUMERIC NOT NULL,
+  material_tuberia                  VARCHAR(5),
+  CHECK (material_tuberia IS NULL OR material_tuberia IN ('PVC', 'Acero')),
   CHECK (hasta_m > desde_m)
 );
+
+CREATE TABLE intervalo_filtro (
+  id_intervalo_filtro BIGSERIAL PRIMARY KEY,
+  id_pozo             BIGINT NOT NULL REFERENCES pozo(id_pozo) ON DELETE CASCADE,
+  desde_m             NUMERIC NOT NULL CHECK (desde_m >= 0),
+  hasta_m             NUMERIC NOT NULL,
+  diametro_pulg       NUMERIC NOT NULL CHECK (diametro_pulg > 0),
+  material_tuberia    VARCHAR(5) NOT NULL CHECK (material_tuberia IN ('PVC', 'Acero')),
+  CHECK (hasta_m > desde_m)
+);
+CREATE INDEX intervalo_filtro_pozo_profundidad_idx ON intervalo_filtro (id_pozo, desde_m, hasta_m);
 
 CREATE TABLE nivel_aporte (
   id_nivel_aporte BIGSERIAL PRIMARY KEY,

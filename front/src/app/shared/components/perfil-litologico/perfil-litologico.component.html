@@ -1,0 +1,95 @@
+<section class="perfil" aria-labelledby="perfil-titulo">
+  <h2 id="perfil-titulo">Perfil litológico del pozo</h2>
+  @if (cargando()) {
+    <p role="status">Cargando perfil litológico…</p>
+  } @else if (error()) {
+    <p role="alert">{{ error() }}</p>
+    <button type="button" (click)="reintentar()">Reintentar</button>
+  } @else if (!perfil()) {
+    <p>No hay profundidad ni litología registradas para representar.</p>
+  } @else {
+    @if (!perfil()!.tiene_litologia) {
+      <p>No hay intervalos litológicos registrados.</p>
+    }
+    @for (advertencia of perfil()!.advertencias; track advertencia) {
+      <p class="advertencia">{{ advertencia }}</p>
+    }
+    @for (rango of perfil()!.rangos; track rango.desde_m) {
+    <div class="grafico" tabindex="0" aria-describedby="perfil-descripcion">
+      <h3>Profundidad {{ rango.desde_m }}–{{ rango.hasta_m }} m · sección {{ $index + 1 }}/{{ perfil()!.rangos.length }}</h3>
+      <svg [attr.viewBox]="'0 0 ' + perfil()!.geometria.ancho_logico + ' ' + perfil()!.geometria.alto_logico" role="img" [attr.aria-label]="'Perfil litológico desde ' + rango.desde_m + ' hasta ' + rango.hasta_m + ' metros'">
+        <title>Perfil litológico del pozo</title>
+        <desc>Capas proporcionales desde {{ rango.desde_m }} hasta {{ rango.hasta_m }} metros, con aportes de agua indicados en azul.</desc>
+        <defs>
+          <pattern id="perfil-diagonal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 2L2-2M0 8L8 0M6 10L10 6" class="trama" /></pattern>
+          <pattern id="perfil-diagonal-inversa" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 6L2 10M0 0L8 8M6-2L10 2" class="trama" /></pattern>
+          <pattern id="perfil-cruz" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8M4 0V8" class="trama" /></pattern>
+          <pattern id="perfil-puntos" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
+          <pattern id="perfil-horizontal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
+          <pattern id="perfil-vertical" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
+          <pattern id="perfil-agua" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q3 1 6 4 T12 4" class="onda-agua" /></pattern>
+          <pattern id="perfil-ranuras" width="18" height="12" patternUnits="userSpaceOnUse"><path d="M1 3H7M11 9H17" class="ranura-filtro" /></pattern>
+        </defs>
+        @for (tick of ticks(perfil()!, rango); track tick) {
+          <line [attr.x1]="xMarca(true)" [attr.y1]="y(tick, rango)" [attr.x2]="xMarca(false)" [attr.y2]="y(tick, rango)" class="marca-escala" />
+          <text [attr.x]="xTextoEscala()" [attr.y]="y(tick, rango) + 4" class="escala">{{ tick }} m</text>
+        }
+        <rect [attr.x]="perfil()!.geometria.columna.x" [attr.y]="perfil()!.geometria.columna.y" [attr.width]="perfil()!.geometria.columna.ancho" [attr.height]="perfil()!.geometria.columna.alto" class="contorno" />
+        @for (tramo of tramosEnRango(perfil()!, rango); track tramo.desde_m + '-' + tramo.hasta_m) {
+          <rect [attr.x]="perfil()!.geometria.columna.x" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" [attr.width]="perfil()!.geometria.columna.ancho" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="tramo.estilo.color" class="capa" />
+          <rect [attr.x]="perfil()!.geometria.columna.x" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)" [attr.width]="perfil()!.geometria.columna.ancho" [attr.height]="alto(tramo.desde_m, tramo.hasta_m, rango)" [attr.fill]="patron(tramo.estilo.patron)" class="capa trama-capa" />
+        }
+        @for (tramo of construccionEnRango(perfil()!, rango); track tramo.tipo + '-' + tramo.desde_m + '-' + tramo.hasta_m) {
+          <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
+            [attr.width]="xAporte(tramo.geometria.x_fin) - xAporte(tramo.geometria.x_inicio)" [attr.height]="alto(tramo.desde_m,tramo.hasta_m,rango)"
+            [class]="'constructivo ' + tramo.geometria.patron + ' material-' + (tramo.material_tuberia === 'Acero' ? 'acero' : tramo.material_tuberia === 'PVC' ? 'pvc' : 'no-especificado')" />
+          @if (tramo.tipo === 'filtro') {
+            <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
+              [attr.width]="xAporte(tramo.geometria.x_fin) - xAporte(tramo.geometria.x_inicio)" [attr.height]="alto(tramo.desde_m,tramo.hasta_m,rango)"
+              fill="url(#perfil-ranuras)" class="ranurado-filtro" />
+          }
+        }
+        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" [attr.y]="perfil()!.geometria.columna.y"
+          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" [attr.height]="perfil()!.geometria.columna.alto" class="tuberia-exterior" />
+        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" [attr.y]="perfil()!.geometria.columna.y"
+          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_interior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" [attr.height]="perfil()!.geometria.columna.alto" class="tuberia-interior" />
+        @for (aporte of aportesEnRango(perfil()!, rango); track aporte.profundidad_m) {
+          <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango, aporte.geometria.espesor_min_px)"
+            [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" [attr.height]="aporte.geometria.espesor_min_px" class="banda-aporte" />
+          <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango, aporte.geometria.espesor_min_px)"
+            [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" [attr.height]="aporte.geometria.espesor_min_px" fill="url(#perfil-agua)" class="trama-aporte" />
+          <circle [attr.cx]="xMarcadorAporte()" [attr.cy]="y(aporte.profundidad_m, rango)" r="7" class="aporte" />
+        }
+        @for (etiqueta of etiquetasEnRango(perfil()!, rango); track etiqueta.clave) {
+          <polyline [attr.points]="puntosConector(etiqueta)" class="conector-etiqueta" />
+        }
+        @for (etiqueta of etiquetasEnRango(perfil()!, rango); track etiqueta.clave) {
+          <text [attr.x]="xEtiqueta(etiqueta.x_texto_normalizado)" [attr.y]="yEtiqueta(etiqueta.posicion_y_normalizada) + 4"
+            [class]="'etiqueta etiqueta-' + etiqueta.tipo">{{ etiqueta.texto }}</text>
+        }
+      </svg>
+    </div>
+    }
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-patron"></span> El tono y la trama identifican materiales; <span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos.</p>
+    <div class="tabla-contenedor">
+      <table>
+        <caption>Detalle accesible del perfil litológico</caption>
+        <thead><tr><th scope="col">Intervalo</th><th scope="col">Material</th></tr></thead>
+        <tbody>
+          @for (tramo of perfil()!.tramos; track tramo.desde_m + '-' + tramo.hasta_m) {
+            <tr><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.material }}</td></tr>
+          }
+        </tbody>
+      </table>
+      @if (perfil()!.aportes.length) {
+        <table><caption>Aportes de agua</caption><thead><tr><th>Tipo</th><th>Profundidad</th></tr></thead><tbody>
+          @for (aporte of perfil()!.aportes; track aporte.profundidad_m) { <tr><td>Puntual</td><td>{{ aporte.profundidad_m }} m</td></tr> }
+        </tbody></table>
+      }
+      <table><caption>Diseño del pozo</caption><thead><tr><th>Tipo</th><th>Intervalo</th><th>Diámetro</th><th>Material</th></tr></thead><tbody>
+        @for (tramo of perfil()!.tuberias; track tramo.desde_m) { <tr><td>Tubería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
+        @for (tramo of perfil()!.filtros; track tramo.desde_m) { <tr><td>Filtro</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
+      </tbody></table>
+    </div>
+  }
+</section>

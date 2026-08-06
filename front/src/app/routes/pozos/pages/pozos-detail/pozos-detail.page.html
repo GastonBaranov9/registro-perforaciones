@@ -1,4 +1,8 @@
 <ion-content>
+  @if (errorMessage()) {
+    <p role="alert">{{ errorMessage() }}</p>
+    <ion-button type="button" (click)="ionViewWillEnter()">Reintentar carga</ion-button>
+  }
   @if (!this.pozo()) {
   <p>Pozo no encontrado</p>
   }@else {
@@ -29,13 +33,13 @@
         </ion-item>
 
         <ion-item>
-          <ion-label>Fecha de Incio</ion-label>
-          <ion-label>{{ this.pozo()?.fecha_inicio }}</ion-label>
+          <ion-label>Fecha de inicio</ion-label>
+          <ion-label>{{ formatearFechaCalendario(this.pozo()?.fecha_inicio) }}</ion-label>
         </ion-item>
 
         <ion-item>
-          <ion-label>Fecha de Fin</ion-label>
-          <ion-label>{{ this.pozo()?.fecha_fin }}</ion-label>
+          <ion-label>Fecha de finalización</ion-label>
+          <ion-label>{{ formatearFechaCalendario(this.pozo()?.fecha_fin) }}</ion-label>
         </ion-item>
 
         <ion-item>
@@ -87,6 +91,22 @@
           }
         </ion-item>
       </ion-list>
+      <app-perfil-litologico
+        [idUsuario]="pozo()!.id_propietario"
+        [idPozo]="id_pozo"
+        [versionPerfil]="versionPerfil()"
+      />
+      <section>
+        <h2>Resumen técnico</h2>
+        <h3>Litología</h3>
+        @for (item of litologia(); track item.id_intervalo_litologico) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.material }}</p> } @empty { <p>Sin intervalos litológicos.</p> }
+        <h3>Diámetros</h3>
+        @for (item of diametros(); track item.id_intervalo_diametro_perforacion) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.diametro_pulg }} pulg · {{ item.material_tuberia || 'No especificado' }}</p> } @empty { <p>Sin intervalos de diámetro.</p> }
+        <h3>Intervalos de filtro</h3>
+        @for (item of filtros(); track item.id_intervalo_filtro) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.diametro_pulg }} pulg · {{ item.material_tuberia }}</p> } @empty { <p>Este pozo no tiene intervalos de filtro registrados.</p> }
+        <h3>Aportes de agua</h3>
+        @for (item of aportes(); track item.id_nivel_aporte) { <p>{{ item.profundidad_m }} m</p> } @empty { <p>Sin aportes registrados.</p> }
+      </section>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-button color="primary" (click)="irAEditarPozo()"> Editar </ion-button>

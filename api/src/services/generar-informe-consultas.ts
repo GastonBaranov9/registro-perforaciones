@@ -6,6 +6,10 @@ export interface ReportePozo {
   empresa: string;
   perforador: string;
   sitio: string;
+  departamento?: string;
+  localidad?: string | null;
+  latitud?: string | null;
+  longitud?: string | null;
   fecha_inicio: string | null;
   fecha_fin: string | null;
   profundidad_final_m: number | null;
@@ -16,6 +20,9 @@ export interface ReportePozo {
   metodo_rocoso: string | null;
   cementacion: string | null;
   desarrollo: string | null;
+  sello_sanitario?: boolean | null;
+  pre_filtro?: string | null;
+  revestimiento?: string | null;
   introduccion: string | null;
   nombre_archivo: string | null;
   litologia: {
@@ -28,12 +35,15 @@ export interface ReportePozo {
     desde_m: number;
     hasta_m: number;
     diametro_pulg: number;
+    material_tuberia: "PVC" | "Acero" | null;
   }[];
+  filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero" }[];
   niveles_aporte: { profundidad_m: number }[];
 }
 
 export async function getReportePozo(
-  id_pozo: number
+  id_pozo: number,
+  db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<ReportePozo | null> {
   const sql = `
     SELECT
@@ -42,6 +52,10 @@ export async function getReportePozo(
       p.empresa AS empresa,
       perf.nombre AS perforador,
       s.departamento || COALESCE(' - ' || s.localidad, '') AS sitio,
+      s.departamento,
+      s.localidad,
+      s.latitud,
+      s.longitud,
       p.fecha_inicio,
       p.fecha_fin,
       p.profundidad_final_m,
@@ -52,6 +66,9 @@ export async function getReportePozo(
       p.metodo_rocoso,
       p.cementacion AS cementacion,
       p.desarrollo AS desarrollo,
+      p.sello_sanitario,
+      p.pre_filtro,
+      p.revestimiento,
       NULL::text AS introduccion,  
       doc.nombre_archivo,
       p.foto_url 
@@ -63,10 +80,10 @@ export async function getReportePozo(
     WHERE p.id_pozo = $1;
   `;
 
-  const { rows } = await myPool.query(sql, [id_pozo]);
+  const { rows } = await db.query(sql, [id_pozo]);
   if (rows.length === 0) return null;
 
-  const pozo = rows[0];
+  const pozo = rows[0] as Record<string, unknown>;
 
   const litologiaSql = `
     SELECT desde_m, hasta_m, material
@@ -75,15 +92,16 @@ export async function getReportePozo(
     ORDER BY desde_m;
   `;
 
-  const { rows: litRows } = await myPool.query(litologiaSql, [id_pozo]);
+  const { rows: litRows } = await db.query(litologiaSql, [id_pozo]);
 
   const diamSql = `
-    SELECT desde_m, hasta_m, diametro_pulg
+    SELECT desde_m, hasta_m, diametro_pulg, material_tuberia
     FROM public.intervalo_diametro_perforacion
     WHERE id_pozo = $1
     ORDER BY desde_m;
   `;
-  const { rows: diamRows } = await myPool.query(diamSql, [id_pozo]);
+  const { rows: diamRows } = await db.query(diamSql, [id_pozo]);
+  const { rows: filtroRows } = await db.query(`SELECT desde_m,hasta_m,diametro_pulg,material_tuberia FROM public.intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m`, [id_pozo]);
 
   const aporteSql = `
     SELECT profundidad_m
@@ -91,23 +109,34 @@ export async function getReportePozo(
     WHERE id_pozo = $1
     ORDER BY profundidad_m;
   `;
-  const { rows: aporteRows } = await myPool.query(aporteSql, [id_pozo]);
+  const { rows: aporteRows } = await db.query(aporteSql, [id_pozo]);
 
   return {
     ...pozo,
-    litologia: litRows.map((l: any) => ({
+    id_pozo: Number(pozo.id_pozo),
+    profundidad_final_m: numeroNullable(pozo.profundidad_final_m),
+    nivel_estatico_m: numeroNullable(pozo.nivel_estatico_m),
+    nivel_dinamico_m: numeroNullable(pozo.nivel_dinamico_m),
+    caudal_estimado_lh: numeroNullable(pozo.caudal_estimado_lh),
+    litologia: (litRows as Record<string, unknown>[]).map((l) => ({
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
       material: l.material,
     })),
-    diametros: diamRows.map((d: any) => ({
+    diametros: (diamRows as Record<string, unknown>[]).map((d) => ({
       desde_m: Number(d.desde_m),
       hasta_m: Number(d.hasta_m),
       diametro_pulg: Number(d.diametro_pulg),
+      material_tuberia: d.material_tuberia == null ? null : String(d.material_tuberia) as "PVC" | "Acero",
     })),
+    filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero" })),
 
-    niveles_aporte: aporteRows.map((a: any) => ({
+    niveles_aporte: (aporteRows as Record<string, unknown>[]).map((a) => ({
       profundidad_m: Number(a.profundidad_m),
     })),
   } as ReportePozo;
+}
+
+function numeroNullable(valor: unknown): number | null {
+  return valor === null || valor === undefined ? null : Number(valor);
 }
