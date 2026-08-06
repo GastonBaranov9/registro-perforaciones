@@ -1,10 +1,9 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonDatetime, IonItemDivider } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
-import { FotoComponent } from '../../../fotos/components/foto/foto.component';
-import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
 
@@ -40,13 +39,13 @@ export class PozosFormComponent {
   public cambiado = output<NuevoPozo>();
 
   public disabled = signal<boolean>(false);
-  private authService = inject(AuthService);
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
 
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
+  public fotoVistaPrevia = signal<string | null>(null);
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
@@ -67,31 +66,18 @@ export class PozosFormComponent {
     this.editarSitio.emit();
   }
 
-  async fotoCapturada(fotoWebPath: string) {
-    try {
-      this.disabled.set(true);
-      const response = await fetch(fotoWebPath);
-      const blob = await response.blob();
-
-      this.fotoBlob = new File([blob], 'pozo-foto.jpg', {
-        type: blob.type || 'image/jpeg',
-      });
-
-      this.fotoFile = this.fotoBlob;
-      this.eliminarFotoPendiente.set(false);
-
-      const idUsuario = this.authService.userId();
-      if (!idUsuario) throw new Error();
-    } catch (error: unknown) {
-      console.error('Error subiendo la foto:', error);
-      this.errorMessage.set(error instanceof Error ? error.message : 'Error subiendo foto');
-    }
-    this.disabled.set(false);
+  fotoCapturada(foto: FotoSeleccionada) {
+    this.fotoBlob = foto.archivo;
+    this.fotoFile = foto.archivo;
+    this.fotoVistaPrevia.set(foto.vistaPrevia);
+    this.eliminarFotoPendiente.set(false);
+    this.errorMessage.set('');
   }
 
   quitarFotoSeleccionada() {
     this.fotoBlob = null;
     this.fotoFile = null;
+    this.fotoVistaPrevia.set(null);
   }
 
   cancelarCambioFoto() {

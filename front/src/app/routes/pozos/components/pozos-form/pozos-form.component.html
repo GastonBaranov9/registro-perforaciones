@@ -143,8 +143,9 @@
       </ion-button>
       }
       @if (!fotoFile) {
-        <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
+      <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
       } @else {
+        <ion-img [src]="fotoVistaPrevia()" alt="Vista previa de la nueva fotografía"></ion-img>
         <ion-label>Fotografía nueva seleccionada: {{ fotoFile.name }}</ion-label>
         <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar selección</ion-button>
       }
@@ -159,6 +160,7 @@
       @if (!fotoFile) {
         <app-foto slot="end" (fotoTomada)="fotoCapturada($event)"></app-foto>
       } @else {
+        <ion-img [src]="fotoVistaPrevia()" alt="Vista previa de la fotografía seleccionada"></ion-img>
         <ion-label>Fotografía seleccionada: {{ fotoFile.name }}</ion-label>
         <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar fotografía</ion-button>
       }
