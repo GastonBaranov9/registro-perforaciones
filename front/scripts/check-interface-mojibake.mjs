@@ -4,13 +4,18 @@ import path from 'node:path';
 const raiz = path.resolve('src/app');
 const extensiones = new Set(['.html', '.ts']);
 const patrones = [
-  /Ã[\u0080-\u00bf]/u,
-  /Â[\u0080-\u00bf]/u,
-  /â(?:€|€™|€œ|€|€“|€”|€¦)/u,
+  /Ã(?:ƒ|‚|„|…|†|‡|ˆ|‰|Š|‹|Œ|Ž|‘|’|“|”|•|–|—|˜|™|š|›|œ|ž|Ÿ|[\u0080-\u00bf])/u,
+  /Â(?:[\u0080-\u00bf]|Ã)/u,
+  /â(?:€|€™|€œ|€|€“|€”|€¦|„¢)/u,
   /ðŸ/u,
   /�/u,
 ];
 const errores = [];
+export function contieneMojibake(texto) { return patrones.some((patron) => patron.test(texto)); }
+
+for (const muestra of ['perforaciÃ³n', 'Datos tÃƒÂ©cnicos']) {
+  if (!contieneMojibake(muestra)) throw new Error(`El verificador no detectó la muestra: ${muestra}`);
+}
 
 async function revisarDirectorio(directorio) {
   for (const entrada of await readdir(directorio, { withFileTypes: true })) {
@@ -20,7 +25,7 @@ async function revisarDirectorio(directorio) {
     } else if (extensiones.has(path.extname(entrada.name)) && !entrada.name.endsWith('.spec.ts')) {
       const contenido = await readFile(ruta, 'utf8');
       contenido.split(/\r?\n/u).forEach((linea, indice) => {
-        if (patrones.some((patron) => patron.test(linea))) {
+        if (contieneMojibake(linea)) {
           errores.push(`${path.relative(process.cwd(), ruta)}:${indice + 1}`);
         }
       });

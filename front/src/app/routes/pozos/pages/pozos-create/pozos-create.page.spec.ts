@@ -25,6 +25,12 @@ describe('PozosCreatePage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('renderiza los textos de creación en español correcto', () => {
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Crear nueva perforación');
+    expect(texto).not.toContain('perforaciÃ³n');
+  });
+
   it('envía una sola vez y navega al detalle', async () => {
     component.nuevoPozo.set({ id_propietario: 1, id_sitio: 2, id_perforador: 3, profundidad_final_m: 20 });
     let resolver!: (value: { pozo: { id_pozo: number } }) => void;
