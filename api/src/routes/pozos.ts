@@ -10,9 +10,9 @@ import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
-import { eliminarFotoPersistida } from "../services/foto-pozo-service.ts";
+import { eliminarFotoPersistida, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
 import { listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
-import { purgarFotoConfirmada, reemplazarFotoReversible, validarFotoBuffer } from "../services/foto-archivo-service.ts";
+import { validarFotoBuffer } from "../services/foto-archivo-service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -383,14 +383,13 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
       const validada = validarFotoBuffer(buffer, foto.mimetype);
       const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
-      const { resultado: pozoActualizado, anterior } = await reemplazarFotoReversible(
-        id_pozo, PUBLIC_DIR, validada, async (url) => {
-          const actualizado = await funcPozo.updatePozoFoto(id_pozo, url);
+      const pozoActualizado = await reemplazarFotoPersistida(
+        id_pozo, PUBLIC_DIR, validada, fotoUrl, async (client,url) => {
+          const actualizado = await funcPozo.updatePozoFoto(id_pozo, url,client);
           if (!actualizado) throw new err.T05PozoNoEncontrado();
           return actualizado;
-        }, fotoUrl,
+        },undefined,{logger:req.log},
       );
-      await purgarFotoConfirmada(anterior,id_pozo,"reemplazar_foto_multipart",req.log);
 
       return rep.code(200).send(pozoActualizado);
     }

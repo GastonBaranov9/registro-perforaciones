@@ -156,9 +156,9 @@ export async function actualizarPozoCompleto(
   let resultado: PozoCompletoResultado;
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
     const { rows: bloqueado } = await client.query("SELECT id_pozo FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
     if (!bloqueado[0]) throw new err.T05PozoNoEncontrado();
-    await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
     await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
 
