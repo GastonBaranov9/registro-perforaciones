@@ -41,4 +41,24 @@ describe('PozosFormComponent', () => {
     component.handlePozo();
     expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ fotoAccion: 'eliminar' }));
   });
+  it('seleccionar una foto conserva archivo y vista previa para creación o reemplazo', () => {
+    const archivo = new File(['foto'], 'pozo.jpg', { type: 'image/jpeg' });
+    component.fotoCapturada({ archivo, vistaPrevia: 'data:image/jpeg;base64,/9j/' });
+    expect(component.fotoFile).toBe(archivo);
+    expect(component.fotoVistaPrevia()).toContain('data:image/jpeg');
+    const emitir = spyOn(component.saved, 'emit');
+    component.handlePozo();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ fotoAccion: 'reemplazar', foto: archivo }));
+  });
+
+  it('cancelar reemplazo restaura la decisión de conservar la foto persistida', () => {
+    component.eliminarFotoPendiente.set(true);
+    component.fotoCapturada({ archivo: new File(['foto'], 'pozo.jpg', { type: 'image/jpeg' }), vistaPrevia: 'data:image/jpeg;base64,/9j/' });
+    component.cancelarCambioFoto();
+    const emitir = spyOn(component.saved, 'emit');
+    component.handlePozo();
+    expect(component.fotoFile).toBeNull();
+    expect(component.fotoVistaPrevia()).toBeNull();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ fotoAccion: 'conservar' }));
+  });
 });

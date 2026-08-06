@@ -10,12 +10,27 @@ test("portada ubicación y páginas técnicas contienen bloques reales sin títu
 
 test("tablas extensas continúan sin páginas vacías",async()=>{const r=base();r.litologia=Array.from({length:90},(_,i)=>({desde_m:i,hasta_m:i+1,material:`Material técnico extenso ${i}`}));r.profundidad_final_m=90;const {diagnostico}=await crearPDFConDiagnostico(r,77,{mapa:{}});assert.ok(diagnostico.paginas.length>4);assert.ok(diagnostico.paginas.every(p=>p.bloques.length>0));});
 
+test("filas se miden con padding y encabezados permanecen con al menos una fila",async()=>{const r=base();r.litologia[0].material="Material de descripción deliberadamente larga que debe envolverse en más de una línea sin tocar sus bordes";const {diagnostico}=await crearPDFConDiagnostico(r,77,{mapa:{}});assert.ok(diagnostico.tablas.length>=3);for(const tabla of diagnostico.tablas){assert.ok(tabla.alturaEncabezado>=26);assert.ok(tabla.alturasFilas.every(alto=>alto>=26));assert.ok(tabla.alturaCompleta>=tabla.alturaEncabezado+tabla.alturasFilas.reduce((a,b)=>a+b,0));assert.ok(tabla.paginas.length>=1);}});
+
+test("filtros vacíos son compactos y el fallback de mapa no reserva media página",async()=>{const r=base();r.filtros=[];const {diagnostico}=await crearPDFConDiagnostico(r,77,{mapa:{}});assert.equal(diagnostico.fallbackMapaAlto,72);assert.ok(diagnostico.fallbackMapaAlto<100);assert.equal(diagnostico.tablas.some(t=>t.titulo==="Intervalos de filtro"),false);});
+
 test("coordenadas distinguen latitud longitud y rechazan rangos inválidos",()=>{assert.deepEqual(leerCoordenadas("-31.2","-57.9"),{latitud:-31.2,longitud:-57.9});assert.equal(leerCoordenadas("91","0"),null);assert.equal(leerCoordenadas(null,"0"),null);});
 
 test("mapa valida host redirección tipo tamaño y permite imagen configurada",async()=>{const c={latitud:-31,longitud:-57};const config={plantillaUrl:"https://maps.example/static?lat={latitud}&lon={longitud}&key={apiKey}",hostPermitido:"maps.example",clave:"secreto",atribucion:"Datos del proveedor",maxBytes:20};
-  const imagen=await obtenerMapaEstatico(c,config,async()=>new Response(new Uint8Array([137,80,78,71]),{status:200,headers:{"content-type":"image/png"}}));assert.equal(imagen.estado,"disponible");
+  const imagen=await obtenerMapaEstatico(c,config,async()=>new Response(new Uint8Array([137,80,78,71,13,10,26,10]),{status:200,headers:{"content-type":"image/png"}}));assert.equal(imagen.estado,"disponible");
   assert.equal((await obtenerMapaEstatico(c,{...config,hostPermitido:"otro.example"})).estado,"no-disponible");
   assert.equal((await obtenerMapaEstatico(c,config,async()=>new Response(null,{status:302}))).estado,"no-disponible");
   assert.equal((await obtenerMapaEstatico(c,config,async()=>new Response("texto",{headers:{"content-type":"text/plain"}}))).estado,"no-disponible");
   assert.equal((await obtenerMapaEstatico(c,config,async()=>new Response(new Uint8Array(30),{headers:{"content-type":"image/png"}}))).estado,"no-disponible");
+});
+
+test("mapa distingue configuración ausente, plantilla, clave, timeout y firma",async()=>{const c={latitud:-31,longitud:-57};
+  assert.deepEqual(await obtenerMapaEstatico(c,{}),{estado:"no-disponible",motivo:"Proveedor de mapa no configurado"});
+  const baseConfig={plantillaUrl:"https://maps.example/static",hostPermitido:"maps.example",atribucion:"Proveedor"};
+  assert.equal((await obtenerMapaEstatico(c,baseConfig)).estado,"no-disponible");
+  assert.deepEqual(await obtenerMapaEstatico(c,{...baseConfig,plantillaUrl:"https://maps.example/{latitud}/{longitud}?key={apiKey}"}),{estado:"no-disponible",motivo:"Clave de mapa ausente"});
+  const config={...baseConfig,plantillaUrl:"https://maps.example/{latitud}/{longitud}",timeoutMs:1};
+  const timeout=await obtenerMapaEstatico(c,config,(_url,init)=>new Promise((_resolve,reject)=>init?.signal?.addEventListener("abort",()=>reject(new DOMException("Abortado","AbortError")))));
+  assert.deepEqual(timeout,{estado:"no-disponible",motivo:"Tiempo de espera agotado"});
+  assert.deepEqual(await obtenerMapaEstatico(c,config,async()=>new Response(new Uint8Array([1,2,3]),{headers:{"content-type":"image/png"}})),{estado:"no-disponible",motivo:"Firma de imagen no válida"});
 });
