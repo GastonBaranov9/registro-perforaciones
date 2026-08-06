@@ -13,19 +13,30 @@ export class DatosTecnicosBorradorComponent {
   readonly profundidad = input<number | undefined>();
   readonly guardando = input(false);
   readonly inicial = input<DatosTecnicosBorrador | null>(null);
+  readonly versionDescartar = input(0);
   readonly cambiado = output<DatosTecnicosBorrador>();
+  readonly estadoSucio = output<boolean>();
   readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   private siguienteId = 1;
-  private inicializado = false;
+  readonly dirty = signal(false);
+  private ultimoInicial: DatosTecnicosBorrador | null = null;
+  private ultimaVersionDescartar = 0;
   readonly errorAgregar = signal('');
 
   constructor() {
     effect(() => {
       const inicial = this.inicial();
-      if (inicial && !this.inicializado) {
-        this.inicializado = true;
+      const version = this.versionDescartar();
+      const cambioRemoto = inicial !== this.ultimoInicial;
+      const descarteConfirmado = version !== this.ultimaVersionDescartar;
+      if (!cambioRemoto && !descarteConfirmado) return;
+      if (inicial && (!this.dirty() || descarteConfirmado)) {
+        this.ultimoInicial = inicial;
+        this.ultimaVersionDescartar = version;
         this.datos.set(ordenarDatosTecnicos(inicial));
         this.cambiado.emit(this.datos());
+        this.dirty.set(false);
+        this.estadoSucio.emit(false);
       }
     });
   }
@@ -57,5 +68,5 @@ export class DatosTecnicosBorradorComponent {
   errores() { return validarDatosTecnicos(this.datos(), this.profundidad()); }
 
   private local<T>(dato: T): ElementoBorrador<T> { return { idLocal: `local-${this.siguienteId++}`, dato }; }
-  private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); }
+  private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }
 }

@@ -20,8 +20,8 @@
           (editarSitio)="editarSitio()"
           (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
         >
-          <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [profundidad]="editor.pozo.profundidad_final_m"
-            [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" />
+          <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [versionDescartar]="versionDescartar()" [profundidad]="editor.pozo.profundidad_final_m"
+            [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
         </app-pozos-form></div>
         <aside><app-perfil-litologico-vista-previa [idPozo]="id_pozo()"
           [profundidad]="profundidadBorrador() ?? editor.pozo.profundidad_final_m" [datos]="datosTecnicos()" /></aside></div>
@@ -34,7 +34,7 @@
         <ion-button
           fill="outline"
           expand="block"
-          (click)="this.pozoResource.reload()"
+          (click)="recargar()"
           [disabled]="this.disabled()"
         >
           RECARGAR

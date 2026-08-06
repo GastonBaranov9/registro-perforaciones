@@ -78,6 +78,8 @@ export class PozoEditPage {
   public disabled = signal<boolean>(false);
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   public profundidadBorrador = signal<number | undefined>(undefined);
+  public borradorDirty = signal(false);
+  public versionDescartar = signal(0);
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
     if (this.disabled()) return;
@@ -86,9 +88,16 @@ export class PozoEditPage {
     try {
       this.disabled.set(true);
       await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, this.datosTecnicos(), data.foto, data.fotoAccion);
+      this.borradorDirty.set(false);
       await this.router.navigate(['/pozos-detail', this.id_pozo()]);
     } catch (error: unknown) { this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo actualizar.'); }
     finally { this.disabled.set(false); }
+  }
+  recargar(): void {
+    if (this.borradorDirty() && !window.confirm('Hay cambios técnicos sin guardar. ¿Desea descartarlos y recargar?')) return;
+    this.borradorDirty.set(false);
+    this.versionDescartar.update((version) => version + 1);
+    this.pozoResource.reload();
   }
   async eliminarFotoPersistida() {
     const pozo = this.pozoResource.value()?.pozo;
