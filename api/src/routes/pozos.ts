@@ -12,7 +12,7 @@ import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
 import { eliminarFotoPersistida } from "../services/foto-pozo-service.ts";
 import { listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
-import { aislarFotoExistente, purgarFotoConfirmada, restaurarFotoAislada, validarFotoBuffer } from "../services/foto-archivo-service.ts";
+import { purgarFotoConfirmada, reemplazarFotoReversible, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -382,23 +382,14 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (buffer.length === 0 || buffer.length > 5_000_000)
         throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
       const validada = validarFotoBuffer(buffer, foto.mimetype);
-      const extension = validada.extension;
-      const fileName = `pozo-${id_pozo}.${extension}`;
-      const filePath = path.join(PUBLIC_DIR, fileName);
-      const anterior = await aislarFotoExistente(id_pozo,PUBLIC_DIR);
-      await fs.writeFile(filePath, buffer, { flag: "wx" });
-
       const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
-
-      let pozoActualizado;
-      try {
-        pozoActualizado = await funcPozo.updatePozoFoto(id_pozo, fotoUrl);
-        if (!pozoActualizado) throw new err.T05PozoNoEncontrado();
-      } catch (error) {
-        await fs.rm(filePath, { force: true });
-        await restaurarFotoAislada(anterior);
-        throw error;
-      }
+      const { resultado: pozoActualizado, anterior } = await reemplazarFotoReversible(
+        id_pozo, PUBLIC_DIR, validada, async (url) => {
+          const actualizado = await funcPozo.updatePozoFoto(id_pozo, url);
+          if (!actualizado) throw new err.T05PozoNoEncontrado();
+          return actualizado;
+        }, fotoUrl,
+      );
       await purgarFotoConfirmada(anterior,id_pozo,"reemplazar_foto_multipart",req.log);
 
       return rep.code(200).send(pozoActualizado);

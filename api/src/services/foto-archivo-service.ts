@@ -7,6 +7,11 @@ export const MAX_FOTO_BYTES = 5_000_000;
 export type MimeFoto = "image/jpeg" | "image/png";
 export interface LoggerPurga { warn(datos: Record<string, unknown>, mensaje: string): void }
 export interface FotoAislada { original: string; aislado: string }
+export interface DependenciasReemplazoFoto {
+  escribir?: (ruta: string, contenido: Buffer) => Promise<void>;
+  promover?: (origen: string, destino: string) => Promise<void>;
+  eliminar?: (ruta: string) => Promise<void>;
+}
 
 export function validarFotoBuffer(buffer: Buffer, mime?: string): { buffer: Buffer; extension: "jpg" | "png"; mime: MimeFoto } {
   if (mime !== undefined && mime !== "image/jpeg" && mime !== "image/png") throw new err.T05DatosIncorrectos("La fotografía debe ser JPEG o PNG.");
@@ -40,6 +45,36 @@ export async function aislarFotoExistente(idPozo: number, directorio: string): P
 }
 
 export async function restaurarFotoAislada(foto: FotoAislada | null): Promise<void> { if (foto) await fs.rename(foto.aislado, foto.original); }
+
+export async function reemplazarFotoReversible<T>(
+  idPozo: number,
+  directorio: string,
+  foto: { buffer: Buffer; extension: "jpg" | "png" },
+  confirmar: (fotoUrl: string) => Promise<T>,
+  fotoUrl: string,
+  dependencias: DependenciasReemplazoFoto = {},
+): Promise<{ resultado: T; anterior: FotoAislada | null }> {
+  const escribir = dependencias.escribir ?? ((ruta, contenido) => fs.writeFile(ruta, contenido, { flag: "wx" }));
+  const promover = dependencias.promover ?? ((origen, destino) => fs.rename(origen, destino));
+  const eliminar = dependencias.eliminar ?? ((ruta) => fs.rm(ruta, { force: true }));
+  await fs.mkdir(directorio, { recursive: true });
+  const staging = path.join(directorio, ".trash", `.staging-${idPozo}-${randomUUID()}`);
+  const destino = path.join(directorio, `pozo-${idPozo}.${foto.extension}`);
+  let anterior: FotoAislada | null = null;
+  let promovida = false;
+  try {
+    await fs.mkdir(path.dirname(staging), { recursive: true });
+    await escribir(staging, foto.buffer);
+    anterior = await aislarFotoExistente(idPozo, directorio);
+    await promover(staging, destino);
+    promovida = true;
+    return { resultado: await confirmar(fotoUrl), anterior };
+  } catch (error) {
+    try { await eliminar(promovida ? destino : staging); } catch { /* la restauración tiene prioridad */ }
+    await restaurarFotoAislada(anterior);
+    throw error;
+  }
+}
 
 export async function purgarFotoConfirmada(foto: FotoAislada | null,idPozo:number,operacion:string,logger?:LoggerPurga,eliminar:(ruta:string)=>Promise<void>=(ruta)=>fs.rm(ruta,{force:true})):Promise<boolean>{
   if(!foto)return true;
