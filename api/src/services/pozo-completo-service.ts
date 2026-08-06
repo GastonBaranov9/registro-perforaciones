@@ -83,14 +83,7 @@ export async function crearPozoCompleto(
     const filtros = [] as PozoCompletoResultado["intervalos_filtro"];
 
     for (const intervalo of data.intervalos_litologicos) {
-      const { rows } = await client.query(
-        `INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
-         SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia FROM (SELECT 1) base LEFT JOIN catalogo_litologia c ON c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4)))
-         WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL
-         RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,
-        [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material,intervalo.id_litologia??null],
-      );
-      litologia.push(numerizarLitologia(rows[0]));
+      litologia.push(await insertarIntervaloLitologico(client, idPozo, intervalo));
     }
     for (const intervalo of data.intervalos_diametro) {
       const { rows } = await client.query(
@@ -226,8 +219,7 @@ async function insertarHijos(client: PoolClient, idPozo: number, data: PozoCompl
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];
   const intervalos_filtro: PozoCompletoResultado["intervalos_filtro"] = [];
   for (const i of data.intervalos_litologicos) {
-    const { rows } = await client.query(`INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia) SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia FROM (SELECT 1) base LEFT JOIN catalogo_litologia c ON c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4))) WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`, [idPozo,i.desde_m,i.hasta_m,i.material,i.id_litologia??null]);
-    intervalos_litologicos.push(numerizarLitologia(rows[0]));
+    intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, i));
   }
   for (const i of data.intervalos_diametro) {
     const { rows } = await client.query(`INSERT INTO intervalo_diametro_perforacion (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia) VALUES ($1,$2,$3,$4,$5) RETURNING id_intervalo_diametro_perforacion,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia]);
@@ -242,6 +234,27 @@ async function insertarHijos(client: PoolClient, idPozo: number, data: PozoCompl
     niveles_aporte.push(numerizarAporte(rows[0]));
   }
   return { intervalos_litologicos, intervalos_diametro, intervalos_filtro, niveles_aporte };
+}
+
+async function insertarIntervaloLitologico(
+  client: PoolClient,
+  idPozo: number,
+  intervalo: PozoCompletoBody["intervalos_litologicos"][number],
+): Promise<PozoCompletoResultado["intervalos_litologicos"][number]> {
+  const { rows } = await client.query(
+    `INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
+     SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia
+     FROM (SELECT 1) base
+     LEFT JOIN catalogo_litologia c ON c.activo
+       AND (($5::bigint IS NOT NULL AND c.id_litologia=$5)
+         OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4)))
+     WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL
+     RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,
+    [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, intervalo.id_litologia ?? null],
+  );
+  const fila = rows[0] as Record<string, unknown> | undefined;
+  if (!fila) throw new err.T05DatosIncorrectos("La litología indicada no existe o no está activa.");
+  return numerizarLitologia(fila);
 }
 
 async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCompletoBody): Promise<Pozo> {
