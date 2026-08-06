@@ -34,9 +34,13 @@ export async function obtenerMapaEstatico(
   configuracion: ConfiguracionMapa,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ResultadoMapa> {
-  if (!configuracion.plantillaUrl || !configuracion.hostPermitido || !configuracion.atribucion?.trim()) {
-    return { estado: "no-disponible", motivo: "Proveedor no configurado" };
+  if (!configuracion.plantillaUrl?.trim() || !configuracion.hostPermitido?.trim() || !configuracion.atribucion?.trim()) {
+    return { estado: "no-disponible", motivo: "Proveedor de mapa no configurado" };
   }
+  if (!configuracion.plantillaUrl.includes("{latitud}") || !configuracion.plantillaUrl.includes("{longitud}"))
+    return { estado: "no-disponible", motivo: "Plantilla de mapa incompleta" };
+  if (configuracion.plantillaUrl.includes("{apiKey}") && !configuracion.clave?.trim())
+    return { estado: "no-disponible", motivo: "Clave de mapa ausente" };
   const valor = (numero: number) => encodeURIComponent(numero.toFixed(6));
   const urlTexto = configuracion.plantillaUrl
     .replaceAll("{latitud}", valor(coordenadas.latitud))
@@ -44,7 +48,7 @@ export async function obtenerMapaEstatico(
     .replaceAll("{apiKey}", encodeURIComponent(configuracion.clave ?? ""));
   let url: URL;
   try { url = new URL(urlTexto); } catch { return { estado: "no-disponible", motivo: "URL inválida" }; }
-  if (url.protocol !== "https:" || url.hostname !== configuracion.hostPermitido || url.username || url.password) {
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.toLowerCase() || url.username || url.password) {
     return { estado: "no-disponible", motivo: "Proveedor no permitido" };
   }
   const controlador = new AbortController();
@@ -59,7 +63,12 @@ export async function obtenerMapaEstatico(
     if (Number.isFinite(anunciado) && anunciado > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
     const bytes = new Uint8Array(await respuesta.arrayBuffer());
     if (bytes.length > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
+    const png = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if ((tipo === "image/png" && !png) || (tipo === "image/jpeg" && !jpeg)) return { estado: "no-disponible", motivo: "Firma de imagen no válida" };
     return { estado: "disponible", bytes, tipo, atribucion: configuracion.atribucion };
-  } catch { return { estado: "no-disponible", motivo: "Proveedor no disponible" }; }
+  } catch (error: unknown) {
+    return { estado: "no-disponible", motivo: error instanceof Error && error.name === "AbortError" ? "Tiempo de espera agotado" : "Proveedor no disponible" };
+  }
   finally { clearTimeout(timeout); }
 }
