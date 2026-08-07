@@ -9,6 +9,7 @@ test("traduce restricciones PostgreSQL reales a error seguro 400",()=>{const tra
 test("conserva errores inesperados para el manejador 500",()=>{const inesperado=new Error("fallo inesperado");assert.equal(traducirErrorPostgres(inesperado),inesperado);});
 test("una edición histórica sin FK no vincula por coincidencia aproximada",()=>{
   const fuente=fs.readFileSync(new URL("../src/services/intervalos-litologicos-services.ts",import.meta.url),"utf8");
-  assert.match(fuente,/WHEN \$6::bigint IS NULL THEN actual\.id_litologia/);
-  assert.doesNotMatch(fuente,/WHEN \$6::bigint IS NULL AND litologia_normalizar\(actual\.material\)/);
+  assert.match(fuente,/vigente AS \(SELECT id_litologia FROM intervalo_litologico[\s\S]*FOR UPDATE/);
+  assert.match(fuente,/c\.activo OR c\.id_litologia=v\.id_litologia/);
+  assert.doesNotMatch(fuente,/litologia_normalizar\(actual\.material\)/);
 });

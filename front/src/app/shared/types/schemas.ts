@@ -134,6 +134,7 @@ export type IntervaloLitologico = {
 };
 
 export type IntervaloLitologicoBody = {
+  id_intervalo_litologico?: number;
   desde_m: number;
   hasta_m: number;
   material: string;

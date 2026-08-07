@@ -174,11 +174,14 @@ export async function actualizarPozoCompleto(
     );
     const pozo = { ...rows[0], id_pozo: idPozo, profundidad_final_m: numeroOpcional(rows[0].profundidad_final_m) } as Pozo;
 
+    const { rows: litologiasOriginales } = await client.query<{ id_intervalo_litologico: number; id_litologia: number | null }>(
+      "SELECT id_intervalo_litologico,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const originales = new Map(litologiasOriginales.map((fila) => [Number(fila.id_intervalo_litologico), fila.id_litologia == null ? null : Number(fila.id_litologia)]));
     await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
-    const hijos = await insertarHijos(client, idPozo, data);
+    const hijos = await insertarHijos(client, idPozo, data, originales);
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
@@ -213,13 +216,14 @@ export async function actualizarPozoCompleto(
   return resultado;
 }
 
-async function insertarHijos(client: PoolClient, idPozo: number, data: PozoCompletoBody) {
+async function insertarHijos(client: PoolClient, idPozo: number, data: PozoCompletoBody, originales?: Map<number, number | null>) {
   const intervalos_litologicos: PozoCompletoResultado["intervalos_litologicos"] = [];
   const intervalos_diametro: PozoCompletoResultado["intervalos_diametro"] = [];
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];
   const intervalos_filtro: PozoCompletoResultado["intervalos_filtro"] = [];
   for (const i of data.intervalos_litologicos) {
-    intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, i));
+    const originalId = originales === undefined ? undefined : (i.id_intervalo_litologico == null ? null : (originales.has(i.id_intervalo_litologico) ? originales.get(i.id_intervalo_litologico) ?? null : null));
+    intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, i, originalId));
   }
   for (const i of data.intervalos_diametro) {
     const { rows } = await client.query(`INSERT INTO intervalo_diametro_perforacion (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia) VALUES ($1,$2,$3,$4,$5) RETURNING id_intervalo_diametro_perforacion,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia]);
@@ -240,17 +244,22 @@ async function insertarIntervaloLitologico(
   client: PoolClient,
   idPozo: number,
   intervalo: PozoCompletoBody["intervalos_litologicos"][number],
+  originalId?: number | null,
 ): Promise<PozoCompletoResultado["intervalos_litologicos"][number]> {
+  const idEnviado = intervalo.id_litologia ?? (originalId == null ? null : originalId);
+  const esCreacion = originalId === undefined;
   const { rows } = await client.query(
-    `INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
+    `WITH elegida AS (SELECT id_litologia,nombre FROM catalogo_litologia c
+       WHERE (($5::bigint IS NOT NULL AND c.id_litologia=$5
+         AND (c.activo OR ($6::bigint IS NOT NULL AND c.id_litologia=$6)))
+       OR ($5::bigint IS NULL AND $7::boolean AND c.activo AND c.nombre_normalizado=litologia_normalizar($4)))
+       FOR SHARE)
+     INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
      SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia
-     FROM (SELECT 1) base
-     LEFT JOIN catalogo_litologia c ON c.activo
-       AND (($5::bigint IS NOT NULL AND c.id_litologia=$5)
-         OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4)))
-     WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL
+     FROM (SELECT 1) base LEFT JOIN elegida c ON TRUE
+     WHERE ($5::bigint IS NULL AND NOT $7::boolean) OR c.id_litologia IS NOT NULL
      RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,
-    [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, intervalo.id_litologia ?? null],
+    [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, idEnviado, originalId ?? null, esCreacion],
   );
   const fila = rows[0] as Record<string, unknown> | undefined;
   if (!fila) throw new err.T05DatosIncorrectos("La litología indicada no existe o no está activa.");
