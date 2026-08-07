@@ -1,6 +1,7 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 import { PerfilLitologicoService } from '../../services/perfil-litologico.service';
 import { PerfilLitologico } from '../../types/schemas';
+import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from '../../../../../../recursos/litologia-patrones';
 
 @Component({
   selector: 'app-perfil-litologico',
@@ -8,6 +9,10 @@ import { PerfilLitologico } from '../../types/schemas';
   styleUrl: './perfil-litologico.component.css',
 })
 export class PerfilLitologicoComponent {
+  private static siguienteId = 0;
+  private readonly instanceNumber = ++PerfilLitologicoComponent.siguienteId;
+  readonly patternPrefix = this.instanceNumber === 1 ? 'perfil' : `perfil-${this.instanceNumber}`;
+  readonly patronKeys = PATRONES_LITOLOGICOS;
   readonly idUsuario = input<number | null>(null);
   readonly idPozo = input<number | null>(null);
   readonly modelo = input<PerfilLitologico | null | undefined>(undefined);
@@ -74,6 +79,10 @@ export class PerfilLitologicoComponent {
   tramosEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
     return perfil.tramos.filter((tramo) => tramo.desde_m < rango.hasta_m && tramo.hasta_m > rango.desde_m);
   }
+  litologiasPresentes(perfil: PerfilLitologico) {
+    const vistos = new Set<number>();
+    return perfil.tramos.filter((tramo) => tramo.litologia && !vistos.has(tramo.litologia.id_litologia) && (vistos.add(tramo.litologia.id_litologia), true));
+  }
 
   aportesEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
     return perfil.aportes.filter((aporte) => aporte.profundidad_m >= rango.desde_m && aporte.profundidad_m <= rango.hasta_m);
@@ -91,7 +100,11 @@ export class PerfilLitologicoComponent {
   xTextoEscala() { return this.perfil()!.geometria.x_texto_escala; }
 
   patron(patron: string) {
-    return `url(#perfil-${patron})`;
+    return `url(#${this.patronId(patron)})`;
   }
+
+  patronId(patron: string) { return `${this.patternPrefix}-${patron}`; }
+  patronSpec(patron: PatronCatalogo) { return especificacionPatron(patron); }
+  patronForma(patron: PatronCatalogo) { return ESPECIFICACION_PATRON[patron].forma; }
 
 }

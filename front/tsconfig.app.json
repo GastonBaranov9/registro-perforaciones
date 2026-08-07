@@ -6,9 +6,8 @@
     "outDir": "./out-tsc/app",
     "types": []
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
+  "files": ["../recursos/litologia-patrones.ts"],
   "exclude": [
     "src/**/*.spec.ts"
   ]

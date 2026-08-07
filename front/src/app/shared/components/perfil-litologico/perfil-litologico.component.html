@@ -21,12 +21,27 @@
         <title>Perfil litológico del pozo</title>
         <desc>Capas proporcionales desde {{ rango.desde_m }} hasta {{ rango.hasta_m }} metros, con aportes de agua indicados en azul.</desc>
         <defs>
-          <pattern id="perfil-diagonal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 2L2-2M0 8L8 0M6 10L10 6" class="trama" /></pattern>
-          <pattern id="perfil-diagonal-inversa" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 6L2 10M0 0L8 8M6-2L10 2" class="trama" /></pattern>
-          <pattern id="perfil-cruz" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8M4 0V8" class="trama" /></pattern>
-          <pattern id="perfil-puntos" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
-          <pattern id="perfil-horizontal" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
-          <pattern id="perfil-vertical" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
+          @for (clave of patronKeys; track clave) {
+            <pattern [attr.id]="patronId(clave)" [attr.width]="patronSpec(clave).paso" [attr.height]="patronSpec(clave).paso" patternUnits="userSpaceOnUse">
+              @switch (patronForma(clave)) {
+                @case ('angular') { <path d="M1 4L5 2L9 5" class="trama" /> }
+                @case ('fractura') { <path d="M1 9L9 1M1 4L5 2L9 5" class="trama fractura" /> }
+                @case ('organica') { <path d="M1 3L4 8L8 2" class="trama organica" /> }
+                @case ('grano') { <circle [attr.cx]="patronSpec(clave).paso / 2" [attr.cy]="patronSpec(clave).paso / 2" [attr.r]="patronSpec(clave).tamano" class="punto" /> }
+                @case ('laminar') { <path d="M0 4H10" class="trama laminar" /> }
+                @case ('hibrido') { <path d="M0 4H10" class="trama laminar" /><circle cx="8" cy="7" [attr.r]="patronSpec(clave).tamano * .65" class="punto" /> }
+                @case ('nodulo') { <ellipse [attr.cx]="patronSpec(clave).paso / 2" [attr.cy]="patronSpec(clave).paso / 2" [attr.rx]="patronSpec(clave).tamano" [attr.ry]="patronSpec(clave).tamano * .8" class="nodo" /> }
+                @case ('canto') { <ellipse [attr.cx]="patronSpec(clave).paso / 2" [attr.cy]="patronSpec(clave).paso / 2" [attr.rx]="patronSpec(clave).tamano" [attr.ry]="patronSpec(clave).tamano * .7" class="nodo" /> }
+                @case ('cristalino') { <path d="M2 5H8M5 2V8M3 3L7 7" class="trama cristalino" /> }
+              }
+            </pattern>
+          }
+          <pattern [attr.id]="patronId('diagonal')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 2L2-2M0 8L8 0M6 10L10 6" class="trama" /></pattern>
+          <pattern [attr.id]="patronId('diagonal-inversa')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M-2 6L2 10M0 0L8 8M6-2L10 2" class="trama" /></pattern>
+          <pattern [attr.id]="patronId('cruz')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8M4 0V8" class="trama" /></pattern>
+          <pattern [attr.id]="patronId('puntos')" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
+          <pattern [attr.id]="patronId('horizontal')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
+          <pattern [attr.id]="patronId('vertical')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
           <pattern id="perfil-agua" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q3 1 6 4 T12 4" class="onda-agua" /></pattern>
           <pattern id="perfil-ranuras" width="18" height="12" patternUnits="userSpaceOnUse"><path d="M1 3H7M11 9H17" class="ranura-filtro" /></pattern>
         </defs>
@@ -70,7 +85,14 @@
       </svg>
     </div>
     }
-    <p id="perfil-descripcion" class="leyenda"><span class="muestra-patron"></span> El tono y la trama identifican materiales; <span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos.</p>
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos.</p>
+    @if (litologiasPresentes(perfil()!).length) {
+      <div class="leyenda-litologias" aria-label="Leyenda de litologías presentes">
+        @for (tramo of litologiasPresentes(perfil()!); track tramo.litologia!.id_litologia) {
+          <span class="entrada-leyenda"><svg class="muestra-litologia" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="16" [attr.fill]="tramo.estilo.color" /><rect width="24" height="16" [attr.fill]="patron(tramo.estilo.patron)" /></svg>{{ tramo.litologia!.nombre }}</span>
+        }
+      </div>
+    }
     <div class="tabla-contenedor">
       <table>
         <caption>Detalle accesible del perfil litológico</caption>

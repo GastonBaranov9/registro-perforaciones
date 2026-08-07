@@ -218,7 +218,9 @@ export type PozoCompletoResultado = {
   niveles_aporte: NivelAporte[];
 };
 
-export type PatronLitologico =
+import type { PatronCatalogo } from '../../../../../recursos/litologia-patrones';
+
+export type PatronLitologico = PatronCatalogo
   | 'diagonal'
   | 'diagonal-inversa'
   | 'cruz'

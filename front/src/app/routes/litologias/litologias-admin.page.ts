@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonItem, IonLabel } from '@ionic/angular/standalone';
 import { familiasLitologia, LitologiaActualizarBody, LitologiaCrearBody, LitologiaPublica, patronesLitologia } from '../../shared/types/schemas';
 import { LitologiasService } from '../../shared/services/litologias.service';
+import { especificacionPatron, type PatronCatalogo } from '../../../../../recursos/litologia-patrones';
 
 type Formulario = LitologiaCrearBody & { activo?: boolean };
 
@@ -61,6 +62,8 @@ export class LitologiasAdminPage {
   }
   actualizarCampo<K extends keyof Formulario>(campo: K, valor: Formulario[K]) { this.formulario.update((f) => ({ ...f, [campo]: campo === 'color' && typeof valor === 'string' ? valor.toUpperCase() as Formulario[K] : valor })); }
   actualizarOrden(valor: string) { this.actualizarCampo('orden', Number(valor)); }
+  patronSpec(patron: PatronCatalogo) { return especificacionPatron(patron); }
+  patronForma(patron: PatronCatalogo) { return especificacionPatron(patron).forma; }
   private vacio(): Formulario { return { codigo: '', nombre: '', familia: 'otro', color: '#6B625A', patron: 'granite', orden: 0 }; }
   private mensaje(e: unknown): string { const x = e as { error?: { message?: string }; message?: string }; return x.error?.message ?? x.message ?? 'No se pudo completar la operación.'; }
 }
