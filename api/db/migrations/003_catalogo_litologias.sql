@@ -21,7 +21,8 @@ CREATE TABLE catalogo_litologia (
   es_inicial BOOLEAN NOT NULL DEFAULT FALSE,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT catalogo_litologia_nombre_normalizado_uq UNIQUE (nombre_normalizado)
+  CONSTRAINT catalogo_litologia_nombre_normalizado_uq UNIQUE (nombre_normalizado),
+  CONSTRAINT catalogo_litologia_nombre_normalizado_no_vacio CHECK (nombre_normalizado <> '')
 );
 
 INSERT INTO catalogo_litologia (codigo,nombre,familia,color,patron,orden,es_inicial) VALUES

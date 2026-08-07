@@ -14,6 +14,7 @@ export class SelectorLitologiaComponent {
   readonly seleccionado = input<number | null | undefined>(null);
   readonly materialHistorico = input('');
   readonly deshabilitado = input(false);
+  readonly requerirSeleccion = input(false);
   readonly seleccionadoChange = output<number | null>();
   readonly nombreChange = output<string>();
   readonly opciones = signal<LitologiaPublica[]>([]);

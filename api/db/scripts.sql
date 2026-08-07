@@ -150,6 +150,10 @@ CREATE TABLE informe (
   generado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- La instalaciÃ³n fresca reutiliza la definiciÃ³n canÃ³nica del catÃ¡logo y su FK.
+-- Las migraciones 001/002 ya quedan incorporadas en las tablas creadas arriba.
+\ir migrations/003_catalogo_litologias.sql
+
 
 
 -- Los roles, permisos, usuarios iniciales y datos de demostración

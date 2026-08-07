@@ -1,11 +1,11 @@
 <div class="selector-litologia">
   <label>Buscar litología
-    <input type="search" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" placeholder="Nombre o familia" [disabled]="deshabilitado() || cargando()" />
+    <input type="search" [ngModel]="busqueda()" [ngModelOptions]="{standalone: true}" (ngModelChange)="busqueda.set($event)" placeholder="Nombre o familia" [disabled]="deshabilitado() || cargando()" />
   </label>
   @if (cargando()) { <p role="status">Cargando litologías…</p> }
   @else if (error()) { <p role="alert">{{ error() }}</p><button type="button" (click)="reintentar()">REINTENTAR</button> }
   @else {
-    <select [ngModel]="seleccionado() ?? ''" (ngModelChange)="seleccionar($event)" [disabled]="deshabilitado()" required>
+    <select [ngModel]="seleccionado() ?? ''" [ngModelOptions]="{standalone: true}" (ngModelChange)="seleccionar($event)" [disabled]="deshabilitado()" required>
       <option value="">Seleccione una litología activa</option>
       @for (opcion of opcionesFiltradas(); track opcion.id_litologia) {
         <option [value]="opcion.id_litologia">{{ opcion.nombre }} — {{ opcion.familia }}{{ opcion.activo ? '' : ' — Inactiva — uso histórico' }}</option>

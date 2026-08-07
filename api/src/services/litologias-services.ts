@@ -5,6 +5,10 @@ import type { LitologiaActualizarBody, LitologiaCrearBody, LitologiaCatalogo, Li
 const columnasPublicas = "id_litologia,codigo,nombre,familia,color,patron,activo,orden";
 const columnasAdmin = `${columnasPublicas},es_inicial,creado_en,actualizado_en`;
 
+function nombreNormalizadoVacio(nombre: string): boolean {
+  return nombre.trim().replace(/\s+/gu, " ").normalize("NFD").replace(/[\u0300-\u036f]/gu, "").trim().length === 0;
+}
+
 export async function listarLitologias(incluirInactivas = false): Promise<LitologiaPublica[]> {
   const { rows } = await myPool.query<LitologiaPublica>(`SELECT ${columnasPublicas} FROM catalogo_litologia WHERE activo OR $1::boolean ORDER BY orden,nombre`, [incluirInactivas]);
   return rows;
@@ -16,6 +20,7 @@ export async function obtenerLitologia(id: number): Promise<LitologiaPublica | n
 }
 
 export async function crearLitologia(data: LitologiaCrearBody): Promise<LitologiaCatalogo> {
+  if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
   try {
     const { rows } = await myPool.query<LitologiaCatalogo>(`INSERT INTO catalogo_litologia (codigo,nombre,familia,color,patron,orden,es_inicial) VALUES ($1,btrim($2),$3,$4,$5,$6,FALSE) RETURNING ${columnasAdmin}`,[data.codigo,data.nombre,data.familia,data.color,data.patron,data.orden]);
     return rows[0];
@@ -23,6 +28,7 @@ export async function crearLitologia(data: LitologiaCrearBody): Promise<Litologi
 }
 
 export async function actualizarLitologia(id: number, data: LitologiaActualizarBody): Promise<LitologiaCatalogo | null> {
+  if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
   try {
     const { rows } = await myPool.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET nombre=btrim($2),familia=$3,color=$4,patron=$5,orden=$6,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,data.nombre,data.familia,data.color,data.patron,data.orden]);
     return rows[0] ?? null;

@@ -12,14 +12,21 @@ import { SelectorLitologiaComponent } from '../../../../../../../shared/componen
 })
 export class IntervaloLitFormComponent {
   public intervaloLitologico = input.required<IntervaloLitologicoBody>();
+  public requerirSeleccion = input(false);
   public saved = output<IntervaloLitologicoBody>();
 
   handleIntervaloLit() {
+    if (this.requerirSeleccion() && this.intervaloLitologico().id_litologia == null) return;
     this.saved.emit(this.intervaloLitologico());
   }
 
   seleccionar(id: number | null, nombre: string) {
     this.intervaloLitologico().id_litologia = id ?? undefined;
     if (id != null) this.intervaloLitologico().material = nombre;
+  }
+
+  seleccionarDesdeControl(valor: string | number | null) {
+    const id = valor === '' || valor == null ? null : Number(valor);
+    this.seleccionar(Number.isFinite(id) ? id : null, this.intervaloLitologico().material);
   }
 }
