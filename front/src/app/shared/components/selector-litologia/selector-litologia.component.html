@@ -14,5 +14,6 @@
     @if (seleccionada(); as opcion) { <span class="muestra" [style.background-color]="opcion.color" title="Color de catálogo"></span> }
     @if (!seleccionado() && materialHistorico()) { <p class="historico">Material histórico sin vínculo: {{ materialHistorico() }}</p> }
     @if (seleccionada()?.activo === false) { <p class="historico">Inactiva — uso histórico. Seleccione una activa para reemplazarla.</p> }
+    @if (requerirSeleccion() && !seleccionado()) { <p class="error" role="alert">Selecciona una litologia para el intervalo.</p> }
   }
 </div>

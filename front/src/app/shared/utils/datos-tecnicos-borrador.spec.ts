@@ -4,8 +4,8 @@ import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecn
 function datos(): DatosTecnicosBorrador {
   return {
     intervalosLitologicos: [
-      { idLocal: 'b', dato: { desde_m: 10, hasta_m: 20, material: 'Roca' } },
-      { idLocal: 'a', dato: { desde_m: 0, hasta_m: 5, material: 'Arena' } },
+      { idLocal: 'b', dato: { desde_m: 10, hasta_m: 20, material: 'Roca', id_litologia: 2 } },
+      { idLocal: 'a', dato: { desde_m: 0, hasta_m: 5, material: 'Arena', id_litologia: 1 } },
     ],
     intervalosDiametro: [],
     intervalosFiltro: [],
@@ -28,6 +28,33 @@ describe('datos técnicos en memoria', () => {
     expect(errores.some((error) => error.includes('solapan'))).toBeTrue();
     expect(errores.filter((error) => error.includes('excede')).length).toBe(2);
     expect(borrador.intervalosLitologicos.length).toBe(2);
+  });
+});
+
+describe('litologias nuevas e historicas', () => {
+  it('exige seleccion en intervalos nuevos y la recupera al elegir una activa', () => {
+    const borrador = datos();
+    borrador.intervalosLitologicos = [
+      { idLocal: 'nuevo', dato: { desde_m: 0, hasta_m: 5, material: '' } },
+    ];
+    expect(validarDatosTecnicos(borrador, 20).join(' ')).toContain('selecciona una');
+    borrador.intervalosLitologicos[0].dato.id_litologia = 4;
+    borrador.intervalosLitologicos[0].dato.material = 'Basalto';
+    expect(validarDatosTecnicos(borrador, 20)).toEqual([]);
+    borrador.intervalosLitologicos[0].dato.id_litologia = undefined;
+    borrador.intervalosLitologicos[0].dato.material = '';
+    expect(validarDatosTecnicos(borrador, 20).length).toBeGreaterThan(0);
+  });
+
+  it('permite historico inactivo y historico sin FK con material', () => {
+    const borrador = datos();
+    borrador.intervalosLitologicos = [
+      { idLocal: 'inactivo', dato: { id_intervalo_litologico: 10, desde_m: 0, hasta_m: 5, material: 'Arcilla historica', id_litologia: 99 } },
+      { idLocal: 'sin-fk', dato: { id_intervalo_litologico: 11, desde_m: 5, hasta_m: 10, material: 'Material legado' } },
+    ];
+    expect(validarDatosTecnicos(borrador, 20)).toEqual([]);
+    borrador.intervalosLitologicos[1].dato.id_litologia = 4;
+    expect(validarDatosTecnicos(borrador, 20)).toEqual([]);
   });
 });
 
