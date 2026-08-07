@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { crearPerfilLitologico, dibujarPerfilLitologico } from '../src/pdf/perfil-litologico.ts';
-import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS } from '../../recursos/litologia-patrones.ts';
+import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS } from '../src/pdf/litologia-patrones.ts';
 
 const destino = process.argv[2];
 if (!destino) throw new Error('Uso: node rsp06hc.visual.ts <directorio-salida>');

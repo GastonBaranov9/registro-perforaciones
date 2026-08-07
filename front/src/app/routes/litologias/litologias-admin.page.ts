@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonItem, IonLabel } from '@ionic/angular/standalone';
 import { familiasLitologia, LitologiaActualizarBody, LitologiaCrearBody, LitologiaPublica, patronesLitologia } from '../../shared/types/schemas';
 import { LitologiasService } from '../../shared/services/litologias.service';
-import { especificacionPatron, type PatronCatalogo } from '../../../../../recursos/litologia-patrones';
+import { especificacionPatron, type PatronCatalogo } from '../../shared/canonical/litologia-patrones';
 
 type Formulario = LitologiaCrearBody & { activo?: boolean };
 

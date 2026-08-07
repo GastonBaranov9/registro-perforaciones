@@ -16,7 +16,7 @@ function body(): PozoCompletoBody {
   };
 }
 
-function poolFalso(fallarEn?: string, rechazarLitologia = false) {
+function poolFalso(fallarEn?: string, rechazarLitologia = false, legacySinVinculo = false) {
   const consultas: string[] = [];
   let lit = 0;
   let diam = 0;
@@ -27,7 +27,7 @@ function poolFalso(fallarEn?: string, rechazarLitologia = false) {
       if (fallarEn && sql.includes(fallarEn)) throw new Error("fallo controlado");
       if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 10 }] };
       if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
-      if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: "Arena", id_litologia: "7" }] };
+      if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: legacySinVinculo ? "  Histórico\t" : "Arena", id_litologia: legacySinVinculo ? null : "7" }] };
       if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: String(++diam), id_pozo: "101", desde_m: "0", hasta_m: "25", diametro_pulg: "8" }] };
       if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC" }] };
       if (sql.includes("INSERT INTO nivel_aporte")) return { rows: [{ id_nivel_aporte: "1", id_pozo: "101", profundidad_m: "18" }] };
@@ -48,6 +48,18 @@ test("crea pozo y todos sus hijos en una sola transacción", async () => {
     assert.equal(resultado.intervalos_diametro.length, 2);
     assert.equal(resultado.niveles_aporte.length, 1);
     assert.ok(falso.consultas.includes("BEGIN"));
+    assert.ok(falso.consultas.includes("COMMIT"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("creación completa legacy sin ID conserva material desconocido y FK NULL", async () => {
+  const falso = poolFalso(undefined, false, true); const data = body();
+  data.intervalos_litologicos = [{ desde_m: 0, hasta_m: 10, material: "  Histórico\t" }];
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06c-r1-legacy-"));
+  try {
+    const resultado = await crearPozoCompleto(30, data, dir, falso.pool as never);
+    assert.equal(resultado.intervalos_litologicos[0].id_litologia, null);
+    assert.equal(resultado.intervalos_litologicos[0].material, "  Histórico\t");
     assert.ok(falso.consultas.includes("COMMIT"));
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

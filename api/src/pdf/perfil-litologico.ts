@@ -1,6 +1,6 @@
 import { rgb, type PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
 import { closePath, clip, endPath, lineTo, moveTo, popGraphicsState, pushGraphicsState } from "pdf-lib";
-import { PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from "../../../recursos/litologia-patrones.ts";
+import { PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from "./litologia-patrones.ts";
 
 export interface IntervaloPerfilLitologico {
   desde_m: number;
@@ -140,6 +140,12 @@ export function estiloDeMaterial(material: string): EstiloLitologico {
   let hash = 0;
   for (const caracter of clave) hash = (hash * 31 + caracter.charCodeAt(0)) >>> 0;
   return { ...ESTILOS[hash % ESTILOS.length] };
+}
+
+export interface EntradaLeyendaLitologica {
+  clave: string;
+  nombre: string;
+  estilo: EstiloLitologico;
 }
 
 export function estiloDeCatalogo(color: string, patron: PatronCatalogoLitologia): EstiloLitologico {
@@ -387,7 +393,8 @@ function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: nu
 }
 
 export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologico, font: PDFFont, bold: PDFFont): PDFPage[] {
-  return perfil.rangos.map((rango, indice) => {
+  const entradasLeyenda = obtenerEntradasLeyendaLitologica(perfil);
+  const paginasPerfil = perfil.rangos.map((rango, indice) => {
     const page = doc.addPage([595.28, 841.89]);
     const geometria = perfil.geometria;
     const xPdf = (xNormalizada: number) => transformarPuntoCanonicoPdf({x_normalizada:xNormalizada,y_normalizada:0}).x;
@@ -463,20 +470,44 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawText(textoSeguro(etiqueta.texto), { x:xTexto, y:yTexto-2.5, size:6.2, font:etiqueta.tipo === "aporte" ? bold : font, color:etiqueta.tipo === "aporte" ? rgb(0.01,0.2,0.58) : rgb(0.08,0.08,0.08) });
     }
     if (indice === 0) {
-      const presentes = perfil.tramos.filter((tramo, posicion, todos) => tramo.litologia && todos.findIndex((otro) => otro.litologia?.id_litologia === tramo.litologia?.id_litologia) === posicion);
       page.drawText("Litologías presentes", { x: 45, y: 42, size: 6.2, font: bold, color: rgb(.12, .12, .12) });
-      presentes.forEach((tramo, posicion) => {
-        const columna = posicion % 3; const fila = Math.floor(posicion / 3);
-        const x = 45 + columna * 175; const y = 30 - fila * 13;
-        const [r,g,b] = hexARgb(tramo.estilo.color);
-        page.drawRectangle({ x, y, width: 12, height: 7, color: rgb(r,g,b), borderColor: rgb(.1,.1,.1), borderWidth: .35 });
-        dibujarPatron(page, tramo.estilo.patron, x, y, 12, 7);
-        page.drawText(textoSeguro(tramo.litologia!.nombre), { x: x + 15, y: y + 1, size: 5.2, font });
-      });
+      entradasLeyenda.slice(0, 6).forEach((entrada, posicion) => dibujarEntradaLeyenda(page, entrada, posicion % 3, Math.floor(posicion / 3), font));
     }
     page.drawText("PVC celeste | Acero gris tramado | Filtro ranurado | banda azul ondulada = Aporte de agua", { x: 45, y: 8, size: 6.5, font });
     return page;
   });
+  const paginasLeyenda: PDFPage[] = [];
+  for (let inicio = 6; inicio < entradasLeyenda.length; inicio += 24) {
+    const page = doc.addPage([595.28, 841.89]);
+    page.drawText("Leyenda litológica (continuación)", { x: 45, y: 790, size: 16, font: bold, color: rgb(0, .2, .5) });
+    entradasLeyenda.slice(inicio, inicio + 24).forEach((entrada, posicion) => {
+      const columna = posicion % 3; const fila = Math.floor(posicion / 3);
+      const x = 48 + columna * 175; const y = 755 - fila * 28;
+      dibujarEntradaLeyenda(page, entrada, columna, fila, font, x, y);
+    });
+    paginasLeyenda.push(page);
+  }
+  return [...paginasPerfil, ...paginasLeyenda];
+}
+
+export function obtenerEntradasLeyendaLitologica(perfil: PerfilLitologico): EntradaLeyendaLitologica[] {
+  const resultado: EntradaLeyendaLitologica[] = [];
+  const vistas = new Set<string>();
+  for (const tramo of perfil.tramos) {
+    if (tramo.clase !== "litologia") continue;
+    const clave = tramo.litologia ? `catalogo-${tramo.litologia.id_litologia}` : `fallback-${tramo.material}`;
+    if (vistas.has(clave)) continue;
+    vistas.add(clave);
+    resultado.push({ clave, nombre: tramo.litologia?.nombre ?? tramo.material, estilo: tramo.estilo });
+  }
+  return resultado;
+}
+
+function dibujarEntradaLeyenda(page: PDFPage, entrada: EntradaLeyendaLitologica, columna: number, fila: number, font: PDFFont, xBase = 45 + columna * 175, yBase = 30 - fila * 13) {
+  const [r,g,b] = hexARgb(entrada.estilo.color);
+  page.drawRectangle({ x: xBase, y: yBase, width: 12, height: 7, color: rgb(r,g,b), borderColor: rgb(.1,.1,.1), borderWidth: .35 });
+  dibujarPatron(page, entrada.estilo.patron, xBase, yBase, 12, 7);
+  page.drawText(textoSeguro(entrada.nombre), { x: xBase + 15, y: yBase + 1, size: 5.2, font });
 }
 
 function formatearMetros(valor: number) {

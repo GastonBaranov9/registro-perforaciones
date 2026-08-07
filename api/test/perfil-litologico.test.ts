@@ -186,7 +186,7 @@ test("adapta las marcas automáticas", () => {
   assert.equal(calcularPasoEscala(600), 100);
 });
 
-test("el adaptador PDF crea exactamente una página por rango", async () => {
+test("el adaptador PDF conserva las páginas del perfil y pagina la leyenda", async () => {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -195,8 +195,9 @@ test("el adaptador PDF crea exactamente una página por rango", async () => {
   assert.ok(perfil);
   const paginas = dibujarPerfilLitologico(doc, perfil, font, bold);
   const bytes = await doc.save();
-  assert.equal(paginas.length, perfil.rangos.length);
-  assert.equal(doc.getPageCount(), perfil.rangos.length);
+  const paginasLeyenda = Math.ceil(Math.max(0, capas.length - 6) / 24);
+  assert.equal(paginas.length, perfil.rangos.length + paginasLeyenda);
+  assert.equal(doc.getPageCount(), perfil.rangos.length + paginasLeyenda);
   assert.ok(bytes.length > 2_000);
 });
 

@@ -257,7 +257,7 @@ async function insertarIntervaloLitologico(
      INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
      SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia
      FROM (SELECT 1) base LEFT JOIN elegida c ON TRUE
-     WHERE ($5::bigint IS NULL AND NOT $7::boolean) OR c.id_litologia IS NOT NULL
+     WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL
      RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,
     [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, idEnviado, originalId ?? null, esCreacion],
   );

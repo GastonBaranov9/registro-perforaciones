@@ -1,7 +1,7 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 import { PerfilLitologicoService } from '../../services/perfil-litologico.service';
 import { PerfilLitologico } from '../../types/schemas';
-import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from '../../../../../../recursos/litologia-patrones';
+import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from '../../canonical/litologia-patrones';
 
 @Component({
   selector: 'app-perfil-litologico',

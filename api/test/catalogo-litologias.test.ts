@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { crearPerfilLitologico, dibujarPerfilLitologico, estiloDeCatalogo } from "../src/pdf/perfil-litologico.ts";
+import { crearPerfilLitologico, dibujarPerfilLitologico, estiloDeCatalogo, obtenerEntradasLeyendaLitologica } from "../src/pdf/perfil-litologico.ts";
 import { PDFDocument } from "pdf-lib";
 import { traducirErrorCatalogo } from "../src/services/litologias-services.ts";
-import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS } from "../../recursos/litologia-patrones.ts";
+import { ESPECIFICACION_PATRON, PATRONES_LITOLOGICOS } from "../src/pdf/litologia-patrones.ts";
 
 const migracion=fs.readFileSync(new URL("../db/migrations/003_catalogo_litologias.sql",import.meta.url),"utf8");
 const semillas=[...migracion.matchAll(/^\('([a-z0-9_]+)','([^']+)','([^']+)','(#[0-9A-F]{6})','([a-z_]+)',(\d+),TRUE\)[,;]$/gm)];
@@ -49,5 +49,23 @@ test("las 12 claves tienen modelo compartido y render PDF disponible",async()=>{
     assert.ok(perfil); assert.equal(perfil.tramos[0].estilo.patron,patron); assert.ok(ESPECIFICACION_PATRON[patron].paso>0);
     const doc=await PDFDocument.create(); const font=await doc.embedFont('Helvetica');
     dibujarPerfilLitologico(doc,perfil,font,font); assert.equal(doc.getPageCount(),1);
+  }
+});
+
+test("web y PDF conservan el contrato de patrones byte a byte",()=>{
+  const api=fs.readFileSync(new URL("../src/pdf/litologia-patrones.ts",import.meta.url),"utf8").replace(/\r\n/g,"\n");
+  const web=fs.readFileSync(new URL("../../front/src/app/shared/canonical/litologia-patrones.ts",import.meta.url),"utf8").replace(/\r\n/g,"\n");
+  assert.equal(web,api);
+});
+
+test("la leyenda PDF conserva 1, 9, 10, 15 y 29 litologías sin coordenadas negativas",async()=>{
+  for (const cantidad of [1, 9, 10, 15, 29]) {
+    const intervalos = Array.from({ length: cantidad }, (_, indice) => ({ desde_m: indice, hasta_m: indice + 1, material: `Litología ${indice}`, id_litologia: indice + 1, litologia_nombre: `Litología ${indice}`, litologia_color: "#A98B72", litologia_patron: PATRONES_LITOLOGICOS[indice % PATRONES_LITOLOGICOS.length], litologia_activa: true }));
+    const perfil = crearPerfilLitologico(intervalos, cantidad)!;
+    assert.equal(obtenerEntradasLeyendaLitologica(perfil).length, cantidad);
+    const doc = await PDFDocument.create(); const font = await doc.embedFont('Helvetica'); const bold = await doc.embedFont('Helvetica-Bold');
+    const paginas = dibujarPerfilLitologico(doc, perfil, font, bold);
+    assert.equal(paginas.length, perfil.rangos.length + (cantidad > 6 ? Math.ceil((cantidad - 6) / 24) : 0));
+    assert.ok(paginas.every((page) => page.getSize().height === 841.89));
   }
 });

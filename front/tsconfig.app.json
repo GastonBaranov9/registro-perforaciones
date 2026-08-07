@@ -7,7 +7,7 @@
     "types": []
   },
   "include": ["src/**/*.ts"],
-  "files": ["../recursos/litologia-patrones.ts"],
+  "files": ["src/app/shared/canonical/litologia-patrones.ts"],
   "exclude": [
     "src/**/*.spec.ts"
   ]
