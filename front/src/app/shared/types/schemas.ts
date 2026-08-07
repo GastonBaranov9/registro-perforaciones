@@ -127,6 +127,10 @@ export type IntervaloLitologico = {
   hasta_m: number;
   material: string;
   id_litologia: number | null;
+  litologia_nombre?: string | null;
+  litologia_color?: string | null;
+  litologia_patron?: PatronCatalogoLitologia | null;
+  litologia_activa?: boolean | null;
 };
 
 export type IntervaloLitologicoBody = {

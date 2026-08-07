@@ -2,10 +2,11 @@ import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
 
 @Component({
   selector: 'app-datos-tecnicos-borrador',
-  imports: [FormsModule],
+  imports: [FormsModule, SelectorLitologiaComponent],
   templateUrl: './datos-tecnicos-borrador.component.html',
   styleUrl: './datos-tecnicos-borrador.component.css',
 })
@@ -46,6 +47,11 @@ export class DatosTecnicosBorradorComponent {
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
     this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, material: '' })] });
+  }
+  seleccionarLitologia(item: IntervaloLitologicoBody, id: number | null, nombre: string) {
+    item.id_litologia = id ?? undefined;
+    if (id != null) item.material = nombre;
+    this.notificarEdicion();
   }
   agregarDiametro() {
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());

@@ -1,0 +1,36 @@
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-header><ion-card-title>Administración de litologías</ion-card-title></ion-card-header>
+    <ion-card-content>
+      <p>Las entradas se desactivan; no existe borrado definitivo.</p>
+      <div class="filtros">
+        <label>Buscar <input type="search" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" /></label>
+        <label>Familia <select [ngModel]="familia()" (ngModelChange)="familia.set($event)"><option value="">Todas</option>@for (f of familias; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+        <label>Estado <select [ngModel]="estado()" (ngModelChange)="estado.set($event)"><option value="todas">Todas</option><option value="activas">Activas</option><option value="inactivas">Inactivas</option></select></label>
+      </div>
+      <ion-button type="button" (click)="nuevo()">Nueva litología</ion-button>
+      @if (cargando()) { <p role="status">Cargando catálogo…</p> } @else if (error()) { <p role="alert">{{ error() }}</p><ion-button type="button" (click)="cargar()">REINTENTAR</ion-button> }
+      @for (litologia of filtradas(); track litologia.id_litologia) {
+        <ion-item>
+          <span class="muestra" [style.background-color]="litologia.color"></span>
+          <ion-label><strong>{{ litologia.nombre }}</strong> · {{ litologia.familia }} · orden {{ litologia.orden }}<br><small>{{ litologia.activo ? 'Activa' : 'Inactiva — uso histórico' }}</small></ion-label>
+          <ion-button (click)="editar(litologia)">Editar</ion-button><ion-button [color]="litologia.activo ? 'danger' : 'success'" (click)="cambiarEstado(litologia)">{{ litologia.activo ? 'Desactivar' : 'Activar' }}</ion-button>
+        </ion-item>
+      }
+    </ion-card-content>
+  </ion-card>
+  <ion-card>
+    <ion-card-header><ion-card-title>{{ editando() == null ? 'Crear' : 'Editar' }} entrada</ion-card-title></ion-card-header>
+    <ion-card-content>
+      <div class="formulario">
+        <label>Código <input [ngModel]="formulario().codigo" (ngModelChange)="actualizarCampo('codigo', $event)" [disabled]="editando() != null" required /></label>
+        <label>Nombre <input [ngModel]="formulario().nombre" (ngModelChange)="actualizarCampo('nombre', $event)" required /></label>
+        <label>Familia <select [ngModel]="formulario().familia" (ngModelChange)="actualizarCampo('familia', $event)">@for (f of familias; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+        <label>Color <input type="color" [ngModel]="formulario().color" (ngModelChange)="actualizarCampo('color', $event)" /></label>
+        <label>Patrón <select [ngModel]="formulario().patron" (ngModelChange)="actualizarCampo('patron', $event)">@for (p of patrones; track p) { <option [value]="p">{{ p }}</option> }</select></label>
+        <label>Orden <input type="number" min="0" [ngModel]="formulario().orden" (ngModelChange)="actualizarOrden($event)" /></label>
+      </div>
+      <ion-button (click)="guardar()" [disabled]="guardando()">GUARDAR</ion-button><ion-button fill="outline" (click)="nuevo()">CANCELAR</ion-button>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

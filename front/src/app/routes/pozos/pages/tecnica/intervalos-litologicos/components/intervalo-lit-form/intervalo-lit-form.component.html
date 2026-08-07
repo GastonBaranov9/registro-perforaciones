@@ -21,13 +21,10 @@
     </ion-item>
 
     <ion-item>
-      <ion-label position="stacked">Material: </ion-label>
-      <ion-input
-        type="text"
-        name="material"
-        [(ngModel)]="this.intervaloLitologico().material"
-        required
-      ></ion-input>
+      <ion-label position="stacked">Litología: </ion-label>
+      <app-selector-litologia [seleccionado]="intervaloLitologico().id_litologia" [materialHistorico]="intervaloLitologico().material"
+        (seleccionadoChange)="seleccionar($event, intervaloLitologico().material)"
+        (nombreChange)="seleccionar(intervaloLitologico().id_litologia ?? null, $event)" />
     </ion-item>
   </ion-list>
 

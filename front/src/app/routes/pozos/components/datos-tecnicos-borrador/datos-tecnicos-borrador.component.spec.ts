@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { DatosTecnicosBorradorComponent } from './datos-tecnicos-borrador.component';
 
 describe('DatosTecnicosBorradorComponent', () => {
@@ -6,7 +8,7 @@ describe('DatosTecnicosBorradorComponent', () => {
   let component: DatosTecnicosBorradorComponent;
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [DatosTecnicosBorradorComponent] }).compileComponents();
+    await TestBed.configureTestingModule({ imports: [DatosTecnicosBorradorComponent], providers: [provideHttpClient(), provideHttpClientTesting()] }).compileComponents();
     fixture = TestBed.createComponent(DatosTecnicosBorradorComponent);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('profundidad', 30);

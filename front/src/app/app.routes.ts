@@ -236,4 +236,10 @@ export const routes: Routes = [
         .UsuariosListPage,
     title: 'usuarios-list',
   },
+  {
+    path: 'litologias-admin',
+    canActivate: [isloggedGuard, isAdminGuard],
+    loadComponent: async () => (await import('./routes/litologias/litologias-admin.page')).LitologiasAdminPage,
+    title: 'Administración de litologías',
+  },
 ];
