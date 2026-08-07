@@ -27,7 +27,7 @@ export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number
   let fila:Record<string,unknown>|undefined;
   try{
     const {rows}=await myPool.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($2::integer,606)), elegida AS (SELECT id_litologia,nombre FROM catalogo_litologia WHERE activo AND (($6::bigint IS NOT NULL AND id_litologia=$6) OR ($6::bigint IS NULL AND nombre_normalizado=litologia_normalizar($5))))
-      UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,material=COALESCE(e.nombre,$5),id_litologia=CASE WHEN e.id_litologia IS NOT NULL THEN e.id_litologia WHEN $6::bigint IS NULL AND litologia_normalizar(actual.material)=litologia_normalizar($5) THEN actual.id_litologia ELSE NULL END FROM bloqueo CROSS JOIN pozo p LEFT JOIN elegida e ON TRUE
+      UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,material=COALESCE(e.nombre,$5),id_litologia=CASE WHEN e.id_litologia IS NOT NULL THEN e.id_litologia WHEN $6::bigint IS NULL THEN actual.id_litologia ELSE NULL END FROM bloqueo CROSS JOIN pozo p LEFT JOIN elegida e ON TRUE
       WHERE actual.id_intervalo_litologico=$1 AND actual.id_pozo=$2 AND p.id_pozo=$2
       AND ($6::bigint IS NULL OR e.id_litologia IS NOT NULL)
       AND (p.profundidad_final_m IS NULL OR $4<=p.profundidad_final_m)
