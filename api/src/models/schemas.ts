@@ -227,7 +227,7 @@ export const FamiliaLitologia = Type.Union(FamiliasLitologia.map((valor) => Type
 export type FamiliaLitologia = Static<typeof FamiliaLitologia>;
 export const PatronCatalogoLitologia = Type.Union(PatronesLitologia.map((valor) => Type.Literal(valor)));
 export type PatronCatalogoLitologia = Static<typeof PatronCatalogoLitologia>;
-const ColorLitologia = Type.String({ pattern: "^#[0-9A-F]{6}$" });
+const ColorLitologia = Type.String({ pattern: "^#[0-9A-Fa-f]{6}$" });
 const CodigoLitologia = Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z][a-z0-9_]*$" });
 export const LitologiaPublica = Type.Object({
   id_litologia: Type.Integer(), codigo: CodigoLitologia, nombre: Type.String(), familia: FamiliaLitologia,

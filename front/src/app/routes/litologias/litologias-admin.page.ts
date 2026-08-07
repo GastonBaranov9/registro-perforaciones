@@ -59,7 +59,7 @@ export class LitologiasAdminPage {
     catch (e: unknown) { this.error.set(this.mensaje(e)); }
     finally { this.cargando.set(false); }
   }
-  actualizarCampo<K extends keyof Formulario>(campo: K, valor: Formulario[K]) { this.formulario.update((f) => ({ ...f, [campo]: valor })); }
+  actualizarCampo<K extends keyof Formulario>(campo: K, valor: Formulario[K]) { this.formulario.update((f) => ({ ...f, [campo]: campo === 'color' && typeof valor === 'string' ? valor.toUpperCase() as Formulario[K] : valor })); }
   actualizarOrden(valor: string) { this.actualizarCampo('orden', Number(valor)); }
   private vacio(): Formulario { return { codigo: '', nombre: '', familia: 'otro', color: '#6B625A', patron: 'granite', orden: 0 }; }
   private mensaje(e: unknown): string { const x = e as { error?: { message?: string }; message?: string }; return x.error?.message ?? x.message ?? 'No se pudo completar la operación.'; }

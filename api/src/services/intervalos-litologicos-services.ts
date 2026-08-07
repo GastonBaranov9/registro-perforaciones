@@ -8,10 +8,10 @@ export async function createIntervaloLitologico(idPozo:number,data:DatoLitologic
   await validarRangoContraPozo(idPozo,data);
   let fila:Record<string,unknown>|undefined;
   try{
-    const {rows}=await myPool.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($1::integer,606))
+    const {rows}=await myPool.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($1::integer,606)), catalogo AS (SELECT c.id_litologia,c.nombre FROM catalogo_litologia c WHERE c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4))) FOR SHARE)
       INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
       SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia FROM bloqueo JOIN pozo p ON p.id_pozo=$1
-      LEFT JOIN catalogo_litologia c ON c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4)))
+      LEFT JOIN catalogo c ON TRUE
       WHERE (p.profundidad_final_m IS NULL OR $3<=p.profundidad_final_m)
       AND ($5::bigint IS NULL OR c.id_litologia IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM intervalo_litologico i WHERE i.id_pozo=$1 AND i.desde_m<$3 AND i.hasta_m>$2)
