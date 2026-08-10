@@ -15,7 +15,7 @@ export async function createIntervaloLitologico(idPozo:number,data:DatoLitologic
       WHERE (p.profundidad_final_m IS NULL OR $3<=p.profundidad_final_m)
       AND ($5::bigint IS NULL OR c.id_litologia IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM intervalo_litologico i WHERE i.id_pozo=$1 AND i.desde_m<$3 AND i.hasta_m>$2)
-      RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,[idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
+      RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_activa`,[idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
     fila=rows[0];
   }catch(error:unknown){throw traducirErrorPostgres(error);}
   if(!fila)throw new err.T05DatosIncorrectos("El intervalo se solapa o excede la profundidad final.");
@@ -27,12 +27,12 @@ export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number
   let fila:Record<string,unknown>|undefined;
   try{
     const {rows}=await myPool.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($2::integer,606)), vigente AS (SELECT id_litologia FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2 FOR UPDATE), elegida AS (SELECT c.id_litologia,c.nombre FROM vigente v JOIN catalogo_litologia c ON $6::bigint IS NOT NULL AND c.id_litologia=$6 AND (c.activo OR c.id_litologia=v.id_litologia) FOR SHARE)
-      UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,material=COALESCE(e.nombre,$5),id_litologia=COALESCE(e.id_litologia,actual.id_litologia) FROM bloqueo CROSS JOIN pozo p LEFT JOIN elegida e ON TRUE
+      UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,material=CASE WHEN $6::bigint IS NULL AND vigente.id_litologia IS NOT NULL THEN (SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=vigente.id_litologia) ELSE COALESCE(e.nombre,$5) END,id_litologia=CASE WHEN $6::bigint IS NULL THEN actual.id_litologia ELSE e.id_litologia END FROM bloqueo CROSS JOIN pozo p CROSS JOIN vigente LEFT JOIN elegida e ON TRUE
       WHERE actual.id_intervalo_litologico=$1 AND actual.id_pozo=$2 AND p.id_pozo=$2
       AND ($6::bigint IS NULL OR e.id_litologia IS NOT NULL)
       AND (p.profundidad_final_m IS NULL OR $4<=p.profundidad_final_m)
       AND NOT EXISTS (SELECT 1 FROM intervalo_litologico otro WHERE otro.id_pozo=$2 AND otro.id_intervalo_litologico<>$1 AND otro.desde_m<$4 AND otro.hasta_m>$3)
-      RETURNING actual.id_intervalo_litologico,actual.id_pozo,actual.desde_m,actual.hasta_m,actual.material,actual.id_litologia`,[idIntervalo,idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
+      RETURNING actual.id_intervalo_litologico,actual.id_pozo,actual.desde_m,actual.hasta_m,actual.material,actual.id_litologia,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_activa`,[idIntervalo,idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
     fila=rows[0];
   }catch(error:unknown){throw traducirErrorPostgres(error);}
   if(!fila){

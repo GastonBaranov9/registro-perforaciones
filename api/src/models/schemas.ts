@@ -133,6 +133,10 @@ export const IntervaloLitologico = Type.Object({
   hasta_m: Type.Number(),
   material: Type.String(),
   id_litologia: Type.Union([Type.Integer(), Type.Null()]),
+  litologia_nombre: Type.Union([Type.String(), Type.Null()]),
+  litologia_color: Type.Union([Type.String(), Type.Null()]),
+  litologia_patron: Type.Union([Type.String(), Type.Null()]),
+  litologia_activa: Type.Union([Type.Boolean(), Type.Null()]),
 });
 
 export type IntervaloLitologico = Static<typeof IntervaloLitologico>;
