@@ -26,6 +26,16 @@ describe('PozosFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('oculta el alta mientras hay propietario y vuelve a mostrarla al limpiar', () => {
+    expect(component.propietarioSeleccionado()).toBeTrue();
+    component.limpiarPropietario();
+    expect(component.propietarioSeleccionado()).toBeFalse();
+    const emitir = spyOn(component.crearPropietario, 'emit');
+    component.propietarioNuevo.nombre = 'Operativo';
+    component.registrarPropietario();
+    expect(emitir).toHaveBeenCalledWith({ nombre: 'Operativo' });
+  });
+
   it('quitar foto antes de guardar solo limpia la selección local', () => {
     component.fotoFile = new File(['foto'], 'foto.jpg', { type: 'image/jpeg' });
     component.fotoBlob = component.fotoFile;

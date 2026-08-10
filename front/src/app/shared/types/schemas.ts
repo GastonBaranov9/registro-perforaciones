@@ -58,7 +58,7 @@ export type Pozo = {
   fecha_creado: string;
   foto_url?: string;
   propietario_nombre?: string;
-  propietario_email?: string;
+  propietario_email?: string | null;
   perforador_nombre?: string;
   perforador_email?: string;
   sitio?: Sitio;
@@ -210,7 +210,7 @@ export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'f
   profundidad_final_m: number;
 };
 
-export type CandidatoPozo = { id_usuario: number; nombre: string; email: string; roles: string[] };
+export type CandidatoPozo = { id_usuario: number; nombre: string; email?: string; roles: string[] };
 export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
 export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
 export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 'sitio_nuevo'> & {
@@ -228,7 +228,7 @@ export type PozoCompletoResultado = {
   niveles_aporte: NivelAporte[];
 };
 
-export type PropietarioOperativoCrearBody = { nombre: string; email: string };
+export type PropietarioOperativoCrearBody = { nombre: string };
 
 import type { PatronCatalogo } from '../canonical/litologia-patrones';
 

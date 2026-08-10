@@ -52,7 +52,8 @@ export class PozosFormComponent {
   public ubicacionPrecision = signal<number | null>(null);
   public ubicacionError = signal('');
   public capturandoUbicacion = signal(false);
-  public propietarioNuevo = { nombre: '', email: '' };
+  public propietarioNuevo = { nombre: '' };
+  propietarioSeleccionado() { return Number(this.pozo().id_propietario) > 0; }
   sitioActual() { return this.sitios().find((sitio) => sitio.id_sitio === Number(this.pozo().id_sitio)) ?? null; }
 
   public fotoBlob: File | null = null;
@@ -84,8 +85,13 @@ export class PozosFormComponent {
   }
 
   registrarPropietario() {
-    const nombre = this.propietarioNuevo.nombre.trim(); const email = this.propietarioNuevo.email.trim();
-    if (nombre && email) this.crearPropietario.emit({ nombre, email });
+    const nombre = this.propietarioNuevo.nombre.trim();
+    if (nombre) this.crearPropietario.emit({ nombre });
+  }
+
+  limpiarPropietario() {
+    this.pozo().id_propietario = 0;
+    this.notificarCambio();
   }
 
   onEditarSitioClick() {

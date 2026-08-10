@@ -8,15 +8,17 @@
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
-    @if (!agregareditar()) {
+    @if (propietarioSeleccionado()) {
+      <ion-button type="button" fill="clear" (click)="limpiarPropietario()" [disabled]="guardando()">CAMBIAR</ion-button>
+    }
+
+    @if (!agregareditar() && !propietarioSeleccionado()) {
       <fieldset class="propietario-nuevo">
-        <legend>Crear nuevo propietario</legend>
+        <legend>Registrar propietario</legend>
         <ion-item><ion-input label="Nombre" labelPlacement="stacked" name="propietario_nuevo_nombre"
           [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" name="propietario_nuevo_email"
-          [(ngModel)]="propietarioNuevo.email" [ngModelOptions]="{standalone: true}" /></ion-item>
         <ion-button type="button" fill="outline" (click)="registrarPropietario()"
-          [disabled]="guardando() || !propietarioNuevo.nombre.trim() || !propietarioNuevo.email.trim()">CREAR PROPIETARIO</ion-button>
+          [disabled]="guardando() || !propietarioNuevo.nombre.trim()">REGISTRAR PROPIETARIO</ion-button>
       </fieldset>
     }
 
