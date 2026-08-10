@@ -120,9 +120,9 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
     { titulo:"Niveles de aporte", filas:r.niveles_aporte, columnas:[{titulo:"Profundidad",ancho:499,valor:x=>`${numero(x.profundidad_m)} m`}] },
   ];
   const ajustes: AjusteTecnico[] = [
-    {fuente:10.2,linea:12.5,padding:4,separacion:7},
-    {fuente:9.7,linea:11.8,padding:3,separacion:5},
-    {fuente:9,linea:11,padding:2.5,separacion:3},
+    {fuente:10.2,linea:12.5,padding:4,separacion:9},
+    {fuente:9.7,linea:11.8,padding:3,separacion:7},
+    {fuente:9,linea:11,padding:2.5,separacion:5},
   ];
   const altoGeneral=medirDatosGenerales(f,generales);
   const disponible=A4[1]-62-f.inferior-altoGeneral;
