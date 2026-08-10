@@ -18,7 +18,6 @@ import { FotoPozoService } from '../../../../shared/services/foto-service/fotoPo
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { SitioReturnService } from '../../../../shared/services/sitio-navegar/sitio-navegar';
 import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
-import { SitiosListService } from '../../../../shared/services/sitios-list.service';
 import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
 import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
 import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
@@ -28,6 +27,7 @@ import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-bo
 import { PerfilLitologicoVistaPreviaComponent } from '../../components/perfil-litologico-vista-previa/perfil-litologico-vista-previa.component';
 import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas';
 import { mensajeHumano } from '../../../../shared/utils/errores';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 @Component({
   selector: 'app-pozo-edit',
   imports: [
@@ -52,7 +52,7 @@ export class PozoEditPage {
   public id_pozo = input.required<number>();
   public fotoPozoService = inject(FotoPozoService);
   private candidatos = inject(CandidatosPozoService);
-  private sitiosService = inject(SitiosListService);
+  public authService = inject(AuthService);
   buscarPropietarios = (texto: string) => this.candidatos.buscar('propietario', texto);
   buscarPerforadores = (texto: string) => this.candidatos.buscar('perforador', texto);
   private litologia = inject(IntervaloLitologicoListService);
@@ -64,20 +64,26 @@ export class PozoEditPage {
   public pozoResource = resource({
     params: () => ({ idPozo: this.id_pozo() }),
     loader: async ({ params }) => {
-      const [pozo, personasBase, litologia, diametros, filtros, aportes, sitios] = await Promise.all([
+      const [pozo, personasBase, litologia, diametros, filtros, aportes] = await Promise.all([
         this.pozoEditService.getPozoById(params.idPozo), this.candidatos.obtener(),
         this.litologia.getIntervalosLitologicos(params.idPozo), this.diametros.getIntervalosDiametros(params.idPozo), this.filtros.listar(params.idPozo),
-        this.aportes.getNivelesAporte(params.idPozo), this.sitiosService.getAllSitios().catch(() => [] as Sitio[]),
+        this.aportes.getNivelesAporte(params.idPozo),
       ]);
-      const propietario = personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : await this.candidatos.obtenerPorId('propietario', pozo.id_propietario);
-      const personas = propietario ? { ...personasBase, propietarios: [propietario, ...personasBase.propietarios] } : personasBase;
+      const [propietario, perforador] = await Promise.all([
+        personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
+        personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
+      ]);
+      const personas = {
+        propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
+        perforadores: perforador ? [perforador, ...personasBase.perforadores] : personasBase.perforadores,
+      };
       const tecnicos: DatosTecnicosBorrador = {
         intervalosLitologicos: litologia.map((x) => ({ idLocal: `persistido-lit-${x.id_intervalo_litologico}`, dato: { id_intervalo_litologico: x.id_intervalo_litologico, desde_m: x.desde_m, hasta_m: x.hasta_m, material: x.material, id_litologia: x.id_litologia ?? undefined } })),
         intervalosDiametro: diametros.map((x) => ({ idLocal: `persistido-dia-${x.id_intervalo_diametro_perforacion}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, diametro_pulg: x.diametro_pulg, material_tuberia: x.material_tuberia ?? '' } })),
         intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, dato: { desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia } })),
         nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
       };
-      return { pozo: { ...pozo, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: sitios as Sitio[], tecnicos };
+      return { pozo: { ...pozo, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
   });
 

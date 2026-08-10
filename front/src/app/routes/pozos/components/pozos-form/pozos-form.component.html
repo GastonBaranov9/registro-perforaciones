@@ -8,37 +8,46 @@
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
-    <ion-item>
-      <ion-label position="stacked">Sitio</ion-label>
-      @if (sitioActual(); as sitio) { <ion-text><p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }}</p></ion-text> }
-      @else { <ion-text color="danger"><p>No se encontró la información humana del sitio seleccionado.</p></ion-text> }
-      <ion-input type="search" name="buscar_sitio" label="Buscar sitio" labelPlacement="stacked"
-        [ngModel]="sitioBusqueda()" (ngModelChange)="sitioBusqueda.set($event ?? '')" [disabled]="guardando()"></ion-input>
-      @for (sitio of sitiosVisibles(); track sitio.id_sitio) {
-        <ion-button type="button" fill="clear" (click)="pozo().id_sitio = sitio.id_sitio; sitioBusqueda.set('')">
-          {{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }}
-        </ion-button>
-      }
-      <ion-button
-        slot="end"
-        size="Default"
-        type="button"
-        *ngIf="!agregareditar(); else editarSitioBtn"
-        (click)="onCrearSitioClick()"
-        [disabled]="!propietarioValido()"
-      >
-        Crear Sitio
-      </ion-button>
+    @if (!agregareditar()) {
+      <fieldset class="propietario-nuevo">
+        <legend>Crear nuevo propietario</legend>
+        <ion-item><ion-input label="Nombre" labelPlacement="stacked" name="propietario_nuevo_nombre"
+          [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" name="propietario_nuevo_email"
+          [(ngModel)]="propietarioNuevo.email" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-button type="button" fill="outline" (click)="registrarPropietario()"
+          [disabled]="guardando() || !propietarioNuevo.nombre.trim() || !propietarioNuevo.email.trim()">CREAR PROPIETARIO</ion-button>
+      </fieldset>
+    }
 
-      <ng-template #editarSitioBtn>
-        <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">
-          Editar Sitio
-        </ion-button>
-      </ng-template>
+    @if (agregareditar()) {
+    <ion-item>
+      <ion-label position="stacked">Ubicación actual</ion-label>
+      @if (sitioActual(); as sitio) { <ion-text><p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }} @if (sitio.latitud && sitio.longitud) { — {{ sitio.latitud }}, {{ sitio.longitud }} }</p></ion-text> }
+      @else { <ion-text color="danger"><p>No se encontró la información humana del sitio seleccionado.</p></ion-text> }
+      <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">Editar sitio</ion-button>
     </ion-item>
+    } @else if (sitioNuevo(); as sitio) {
+      <fieldset class="ubicacion-nueva">
+        <legend>Ubicación del nuevo pozo</legend>
+        <ion-item><ion-input label="Departamento" labelPlacement="stacked" name="departamento"
+          [(ngModel)]="sitio.departamento" required /></ion-item>
+        <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="localidad"
+          [(ngModel)]="sitio.localidad" /></ion-item>
+        <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="number"
+          [(ngModel)]="sitio.latitud" min="-90" max="90" required /></ion-item>
+        <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="number"
+          [(ngModel)]="sitio.longitud" min="-180" max="180" required /></ion-item>
+        @if (ubicacionPrecision() !== null) { <p>Precisión aproximada: {{ ubicacionPrecision() | number:'1.0-0' }} m</p> }
+        @if (ubicacionError()) { <ion-text color="danger"><p role="alert">{{ ubicacionError() }}</p></ion-text> }
+        <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="capturandoUbicacion()">
+          {{ capturandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : 'TOMAR UBICACIÓN' }}
+        </ion-button>
+      </fieldset>
+    }
 
     <app-selector-persona-pozo etiqueta="Perforador" rol="perforador" [buscarRemoto]="buscarPerforadores()" [candidatos]="perforadores()"
-      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadores().length === 1" />
+      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadorBloqueado()" />
 
     <ion-item>
       <ion-label position="stacked">Fecha de inicio</ion-label>

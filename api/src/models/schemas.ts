@@ -282,6 +282,14 @@ export type NivelAporteBody = Static<typeof NivelAporteBody>;
 export const SitioBody = Type.Omit(Sitio, ["id_sitio"]);
 export type SitioBody = Static<typeof SitioBody>;
 
+export const SitioNuevoPozoBody = Type.Object({
+  departamento: Type.String({ minLength: 1, maxLength: 160 }),
+  localidad: Type.Optional(Type.String({ maxLength: 160 })),
+  latitud: Type.String({ minLength: 1, maxLength: 32 }),
+  longitud: Type.String({ minLength: 1, maxLength: 32 }),
+});
+export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
+
 export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
@@ -292,7 +300,8 @@ export const FotoNuevaPozo = Type.Object({
 });
 
 export const PozoCompletoBody = Type.Object({
-  pozo: NuevoPozo,
+  pozo: Type.Omit(NuevoPozo, ["id_sitio"]),
+  sitio_nuevo: SitioNuevoPozoBody,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
   intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
@@ -312,7 +321,13 @@ export const PerfilLitologicoVistaPreviaBody = Type.Object({
 export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVistaPreviaBody>;
 
 export const PozoCompletoUpdateBody = Type.Intersect([
-  Type.Omit(PozoCompletoBody, ["foto"]),
+  Type.Object({
+    pozo: NuevoPozo,
+    intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+    intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+    intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+    niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+  }),
   Type.Object({
     foto_accion: Type.Union([Type.Literal("conservar"), Type.Literal("eliminar"), Type.Literal("reemplazar")]),
     foto: Type.Optional(FotoNuevaPozo),
@@ -327,6 +342,24 @@ export const CandidatoPozo = Type.Object({
   roles: Type.Array(Type.String()),
 });
 export type CandidatoPozo = Static<typeof CandidatoPozo>;
+
+export const PropietarioOperativoCrearBody = Type.Object({
+  nombre: Type.String({ minLength: 1, maxLength: 160 }),
+  email: Type.String({ format: "email", maxLength: 254 }),
+});
+export type PropietarioOperativoCrearBody = Static<typeof PropietarioOperativoCrearBody>;
+
+export const PozoDetalle = Type.Intersect([
+  Pozo,
+  Type.Object({
+    propietario_nombre: Type.String(),
+    propietario_email: Type.String({ format: "email" }),
+    perforador_nombre: Type.String(),
+    perforador_email: Type.String({ format: "email" }),
+    sitio: Sitio,
+  }),
+]);
+export type PozoDetalle = Static<typeof PozoDetalle>;
 
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",

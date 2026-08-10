@@ -13,13 +13,14 @@
         <app-pozos-form
           [pozo]="nuevoPozo()"
           [propietarios]="personas.propietarios" [perforadores]="personas.perforadores" [catalogosDisponibles]="true"
-          [sitios]="sitios()"
+          [sitioNuevo]="sitioNuevo()"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
+          [perforadorBloqueado]="!authService.tieneRol('administracion')"
           (saved)="guardarPozo($event)"
           [id_pozo]="null"
           [agregareditar]="false"
           [guardando]="disabled()"
-          (crearSitio)="crearSitio()"
+          (crearPropietario)="crearPropietario($event)"
         >
           <app-datos-tecnicos-borrador
             [profundidad]="nuevoPozo().profundidad_final_m"

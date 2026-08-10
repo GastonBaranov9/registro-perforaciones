@@ -1,5 +1,5 @@
 import { myPool } from "../db/pool.ts";
-import type { Pozo, Estado, NuevoPozo } from "../models/schemas.ts";
+import type { Pozo, PozoDetalle, Estado, NuevoPozo } from "../models/schemas.ts";
 
 type PozoUpdate = Partial<
   Omit<Pozo, "id_pozo" | "creado_por" | "fecha_creado">
@@ -56,7 +56,7 @@ export async function updatePozo(
   const sql = `    UPDATE public.pozo
   SET
     id_propietario      = COALESCE($2::integer,  id_propietario),
-    id_sitio            = COALESCE($3::integer,  id_sitio),
+    id_sitio            = id_sitio,
     empresa             = COALESCE($4::text,     empresa),
     id_perforador       = COALESCE($5::integer,  id_perforador),
     fecha_inicio        = COALESCE($6::date,     fecha_inicio),
@@ -71,7 +71,7 @@ export async function updatePozo(
     metodo_rocoso       = COALESCE($15::text,    metodo_rocoso),
     cementacion         = COALESCE($16::text,    cementacion),
     desarrollo          = COALESCE($17::text,    desarrollo),
-    revestimiento       = COALESCE($18::text,    revestimiento) -- 👈 string, no array
+    revestimiento       = COALESCE($18::text,    revestimiento)
   WHERE id_pozo = $1
   RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
     fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
@@ -97,7 +97,7 @@ export async function updatePozo(
     data.metodo_rocoso ?? null,
     data.cementacion ?? null,
     data.desarrollo ?? null,
-    (data as any).revestimiento ?? null,
+    data.revestimiento ?? null,
   ];
 
   const { rows } = await myPool.query(sql, vals);
@@ -105,19 +105,39 @@ export async function updatePozo(
 }
 
 // Obtener un pozo específico
-export async function getPozoById(id_pozo: number): Promise<Pozo | null> {
-  const { rows } = await myPool.query(
-    `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-      metodo_rocoso, cementacion, desarrollo, revestimiento,
-      CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
-      fecha_creado
-     FROM public.pozo WHERE id_pozo = $1`,
+export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> {
+  const { rows } = await myPool.query<PozoDetalle>(
+    `SELECT p.id_pozo, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+      p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
+      p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
+      p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
+      CASE WHEN p.foto_url IS NULL THEN NULL ELSE '/usuarios/' || p.id_propietario || '/pozos/' || p.id_pozo || '/foto' END AS foto_url,
+      p.fecha_creado, prop.nombre AS propietario_nombre, prop.email AS propietario_email,
+      perf.nombre AS perforador_nombre, perf.email AS perforador_email,
+      json_build_object('id_sitio',s.id_sitio,'departamento',s.departamento,'localidad',s.localidad,
+        'latitud',s.latitud,'longitud',s.longitud) AS sitio
+     FROM public.pozo p
+     JOIN public.usuario prop ON prop.id_usuario=p.id_propietario
+     JOIN public.usuario perf ON perf.id_usuario=p.id_perforador
+     JOIN public.sitio s ON s.id_sitio=p.id_sitio
+     WHERE p.id_pozo = $1`,
     [id_pozo]
   );
-  return rows[0] ?? null;
+  const fila = rows[0];
+  return fila ? {
+    ...fila,
+    id_pozo: Number(fila.id_pozo), id_propietario: Number(fila.id_propietario),
+    id_sitio: Number(fila.id_sitio), id_perforador: Number(fila.id_perforador),
+    sitio: { ...fila.sitio, id_sitio: Number(fila.sitio.id_sitio) },
+    creado_por: fila.creado_por == null ? undefined : Number(fila.creado_por),
+    profundidad_final_m: numeroOpcional(fila.profundidad_final_m),
+    nivel_estatico_m: numeroOpcional(fila.nivel_estatico_m),
+    nivel_dinamico_m: numeroOpcional(fila.nivel_dinamico_m),
+    caudal_estimado_lh: numeroOpcional(fila.caudal_estimado_lh),
+  } : null;
 }
+
+function numeroOpcional(valor:unknown):number|undefined{return valor==null?undefined:Number(valor);}
 
 export async function deletePozo(id_pozo: number): Promise<boolean> {
   const result = await myPool.query(

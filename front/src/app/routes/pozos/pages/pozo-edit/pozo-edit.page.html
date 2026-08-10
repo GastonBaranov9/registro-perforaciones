@@ -15,6 +15,7 @@
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           [sitios]="editor.sitios"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
+          [perforadorBloqueado]="!authService.tieneRol('administracion')"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"

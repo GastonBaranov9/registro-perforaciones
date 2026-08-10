@@ -1,11 +1,12 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, Sitio } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonDatetime, IonItemDivider } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
+import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
 
 @Component({
   selector: 'app-pozos-form',
@@ -32,12 +33,14 @@ export class PozosFormComponent {
   public propietarios = input<CandidatoPozo[]>([]);
   public perforadores = input<CandidatoPozo[]>([]);
   public sitios = input<Sitio[]>([]);
+  public sitioNuevo = input<SitioBody | null>(null);
   public buscarPropietarios = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public buscarPerforadores = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public catalogosDisponibles = input(false);
+  public perforadorBloqueado = input(false);
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
-  public crearSitio = output<void>();
+  public crearPropietario = output<PropietarioOperativoCrearBody>();
   public editarSitio = output<void>();
   public eliminarFotoPersistida = output<void>();
   public cambiado = output<NuevoPozo>();
@@ -46,12 +49,11 @@ export class PozosFormComponent {
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
-  public sitioBusqueda = signal('');
+  public ubicacionPrecision = signal<number | null>(null);
+  public ubicacionError = signal('');
+  public capturandoUbicacion = signal(false);
+  public propietarioNuevo = { nombre: '', email: '' };
   sitioActual() { return this.sitios().find((sitio) => sitio.id_sitio === Number(this.pozo().id_sitio)) ?? null; }
-  sitiosVisibles() {
-    const q = this.sitioBusqueda().trim().toLocaleLowerCase();
-    return this.sitios().filter((s) => !q || `${s.localidad ?? ''} ${s.departamento}`.toLocaleLowerCase().includes(q)).slice(0, 10);
-  }
 
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
@@ -68,8 +70,22 @@ export class PozosFormComponent {
 
   notificarCambio() { this.cambiado.emit({ ...this.pozo() }); }
 
-  onCrearSitioClick() {
-    this.crearSitio.emit();
+  async tomarUbicacionNueva() {
+    const sitio = this.sitioNuevo();
+    if (!sitio || this.capturandoUbicacion()) return;
+    try {
+      this.capturandoUbicacion.set(true); this.ubicacionError.set('');
+      const ubicacion = await capturarUbicacionActual();
+      sitio.latitud = ubicacion.latitud; sitio.longitud = ubicacion.longitud;
+      this.ubicacionPrecision.set(ubicacion.precision ?? null);
+    } catch (error: unknown) {
+      this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
+    } finally { this.capturandoUbicacion.set(false); }
+  }
+
+  registrarPropietario() {
+    const nombre = this.propietarioNuevo.nombre.trim(); const email = this.propietarioNuevo.email.trim();
+    if (nombre && email) this.crearPropietario.emit({ nombre, email });
   }
 
   onEditarSitioClick() {
@@ -100,10 +116,8 @@ export class PozosFormComponent {
     this.quitarFotoSeleccionada();
   }
   personasValidas() {
-    return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)) &&
-      this.perforadores().some((p) => p.id_usuario === Number(this.pozo().id_perforador));
+    return Number(this.pozo().id_propietario) > 0 && Number(this.pozo().id_perforador) > 0;
   }
-  propietarioValido() { return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)); }
 
 getFoto() {
   const foto = this.pozo()?.foto_url;

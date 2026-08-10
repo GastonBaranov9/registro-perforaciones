@@ -35,3 +35,20 @@ ion-button[type='submit'] {
   letter-spacing: 0.5px;
 }
 
+fieldset {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--ion-color-medium-tint);
+  border-radius: 10px;
+}
+
+legend {
+  padding: 0 .4rem;
+  color: var(--ion-color-primary);
+  font-weight: 650;
+}
+
+fieldset > p {
+  margin: .5rem .75rem;
+  color: var(--ion-color-medium-shade);
+}

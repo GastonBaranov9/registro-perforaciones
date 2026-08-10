@@ -57,6 +57,11 @@ export type Pozo = {
   creado_por?: number;
   fecha_creado: string;
   foto_url?: string;
+  propietario_nombre?: string;
+  propietario_email?: string;
+  perforador_nombre?: string;
+  perforador_email?: string;
+  sitio?: Sitio;
 };
 
 export type NuevoPozo = {
@@ -133,6 +138,8 @@ export type IntervaloLitologico = {
   litologia_activa?: boolean | null;
 };
 
+export type NuevoPozoCrear = Omit<NuevoPozo, 'id_sitio'>;
+
 export type IntervaloLitologicoBody = {
   id_intervalo_litologico?: number;
   desde_m: number;
@@ -190,7 +197,8 @@ export type DatosTecnicosBorrador = {
 };
 
 export type PozoCompletoBody = {
-  pozo: NuevoPozo;
+  pozo: NuevoPozoCrear;
+  sitio_nuevo: SitioBody;
   intervalos_litologicos: IntervaloLitologicoBody[];
   intervalos_diametro: IntervaloDiametroPerforacionBody[];
   intervalos_filtro: IntervaloFiltroBody[];
@@ -198,25 +206,29 @@ export type PozoCompletoBody = {
   foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
 };
 
-export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'foto'> & {
+export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'foto' | 'sitio_nuevo'> & {
   profundidad_final_m: number;
 };
 
 export type CandidatoPozo = { id_usuario: number; nombre: string; email: string; roles: string[] };
 export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
 export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
-export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto'> & {
+export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 'sitio_nuevo'> & {
+  pozo: NuevoPozo;
   foto_accion: AccionFotoEdicion;
   foto?: PozoCompletoBody['foto'];
 };
 
 export type PozoCompletoResultado = {
   pozo: Pozo;
+  sitio: Sitio;
   intervalos_litologicos: IntervaloLitologico[];
   intervalos_diametro: IntervaloDiametroPerforacion[];
   intervalos_filtro: IntervaloFiltro[];
   niveles_aporte: NivelAporte[];
 };
+
+export type PropietarioOperativoCrearBody = { nombre: string; email: string };
 
 import type { PatronCatalogo } from '../canonical/litologia-patrones';
 

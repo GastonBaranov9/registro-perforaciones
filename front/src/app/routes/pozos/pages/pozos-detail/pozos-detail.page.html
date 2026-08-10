@@ -8,28 +8,31 @@
   }@else {
   <ion-card>
     <ion-card-header>
-      <ion-card-title>ID: {{ id_pozo }}</ion-card-title>
+      <ion-card-title>Pozo N.º {{ id_pozo }}</ion-card-title>
     </ion-card-header>
 
     <ion-card-content>
       <ion-list>
         <ion-item>
           <ion-label>Empresa</ion-label>
-          <ion-label>{{ this.pozo()?.empresa }}</ion-label>
+          <ion-label>{{ this.pozo()?.empresa || 'No especificada' }}</ion-label>
         </ion-item>
         <ion-item>
           <ion-label>Propietario</ion-label>
-          <ion-label>{{ propietario()?.nombre || ('ID ' + this.pozo()?.id_propietario) }}</ion-label>
+          <ion-label>{{ this.pozo()?.propietario_nombre || 'Identificación no disponible' }}</ion-label>
         </ion-item>
 
         <ion-item>
           <ion-label>Sitio</ion-label>
-          <ion-label>{{ sitio() ? (sitio()?.localidad || 'Sin localidad') + ', ' + sitio()?.departamento : ('ID ' + this.pozo()?.id_sitio) }}</ion-label>
+          <ion-label>{{ representarSitio(this.pozo()?.sitio) }}</ion-label>
         </ion-item>
+        @if (this.pozo()?.sitio; as sitioActual) {
+          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario" />
+        }
 
         <ion-item>
           <ion-label>Perforador</ion-label>
-          <ion-label>{{ perforador()?.nombre || ('ID ' + this.pozo()?.id_perforador) }}</ion-label>
+          <ion-label>{{ this.pozo()?.perforador_nombre || 'Identificación no disponible' }}</ion-label>
         </ion-item>
 
         <ion-item>
