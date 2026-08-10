@@ -35,8 +35,8 @@ Focalizadas ejecutadas:
 - Build API (`npm run build`) correcto.
 - Inserción controlada en PostgreSQL verificó identidad sin email/contraseña y fue eliminada.
 
-La validación integral final queda pendiente hasta cerrar el conjunto de cambios de esta
-etapa; no se modificaron datos reales.
+Validación integral final completada: build y suite API 120/120, `check:utf8`, build y
+suite frontend 147/147. No se modificaron datos reales.
 
 ## Seguridad y regresiones
 
