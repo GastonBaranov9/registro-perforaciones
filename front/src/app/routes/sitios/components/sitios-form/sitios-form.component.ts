@@ -1,4 +1,4 @@
-import { Component, input, OnInit, output } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { SitioBody } from '../../../../shared/types/schemas';
 import {
   IonList,
@@ -8,38 +8,35 @@ import {
   IonButton,
 } from '@ionic/angular/standalone';
 import { FormsModule } from '@angular/forms';
-import { Geolocation } from '@capacitor/geolocation';
-import { throwError } from 'rxjs';
+import { DecimalPipe } from '@angular/common';
+import { capturarUbicacionActual, UbicacionCapturada } from '../../../../shared/utils/geolocalizacion';
 @Component({
   selector: 'app-sitios-form',
   templateUrl: './sitios-form.component.html',
   styleUrls: ['./sitios-form.component.scss'],
-  imports: [FormsModule, IonList, IonItem, IonLabel, IonInput, IonButton],
+  imports: [FormsModule, DecimalPipe, IonList, IonItem, IonLabel, IonInput, IonButton],
 })
-export class SitiosFormComponent implements OnInit {
+export class SitiosFormComponent {
   public sitio = input.required<SitioBody>();
   public saved = output<SitioBody>();
-  public cargandoUbicacion = true;
+  public cargandoUbicacion = signal(false);
+  public ubicacionPendiente = signal<UbicacionCapturada | null>(null);
+  public ubicacionError = signal('');
 
   handleSitio() {
-    this.saved.emit(this.sitio());
-  }
-
-  async ngOnInit(): Promise<void> {
-    await this.getLocation();
+    const pendiente = this.ubicacionPendiente();
+    this.saved.emit(pendiente ? { ...this.sitio(), latitud: pendiente.latitud, longitud: pendiente.longitud } : { ...this.sitio() });
   }
 
   public async getLocation(): Promise<void> {
     try {
-      let currentLocation = await Geolocation.getCurrentPosition();
-      console.log(currentLocation.coords.latitude);
-      this.sitio().latitud = JSON.stringify(currentLocation.coords.latitude);
-      console.log(currentLocation.coords.longitude);
-      this.sitio().longitud = JSON.stringify(currentLocation.coords.longitude);
-    } catch (e) {
-      throw e;
+      this.cargandoUbicacion.set(true); this.ubicacionError.set('');
+      this.ubicacionPendiente.set(await capturarUbicacionActual());
+    } catch (error: unknown) {
+      this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
     } finally {
-      this.cargandoUbicacion = false;
+      this.cargandoUbicacion.set(false);
     }
   }
+  cancelarUbicacion() { this.ubicacionPendiente.set(null); this.ubicacionError.set(''); }
 }

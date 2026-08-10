@@ -45,3 +45,11 @@ export async function sitioEsVisibleParaPropietario(
   );
   return (result.rowCount ?? 0) > 0;
 }
+
+export async function sitioEsGestionablePorPerforador(idSitio:number,idPerforador:number,db:Db=myPool):Promise<boolean>{
+  const {rows}=await db.query(
+    `SELECT 1 FROM public.pozo p WHERE p.id_sitio=$1 AND p.id_perforador=$2 LIMIT 1`,
+    [idSitio,idPerforador],
+  );
+  return Boolean(rows[0]);
+}

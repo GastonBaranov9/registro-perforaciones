@@ -3,10 +3,17 @@
     <ion-card-content>
       <h2>Editar sitio</h2>
 
+      <ion-button type="button" fill="clear" (click)="volver()">VOLVER</ion-button>
+
       @if (this.sitioResource.hasValue()) {
       <app-sitios-form [sitio]="this.sitioResource.value()!" (saved)="this.handleEdit($event)" />
+      @if (auth.userId(); as idUsuario) {
+        <app-mapa-aereo [idSitio]="id_sitio()" [idUsuario]="idUsuario" />
+      }
+      } @else if (this.sitioResource.isLoading()) {
+      <p role="status">Cargando sitio…</p>
       } @else {
-      <p>No hay usuario</p>
+      <p role="alert">No fue posible cargar el sitio.</p>
       }
 
       <ion-button

@@ -6,6 +6,9 @@ import * as err from "../models/errors.ts";
 import { SitioBody } from "../models/schemas.ts";
 import * as func from '../services/sitios-service.ts'
 import { rolUser } from "../services/auth-services.ts";
+import { configuracionMapaDesdeEntorno, leerCoordenadas, mapaConfigurado, obtenerMapaEstatico } from "../pdf/mapa-estatico.ts";
+import { sitioEsGestionablePorPerforador } from "../services/autorizacion-recursos.ts";
+import { isAdmin } from "../services/roles-services.ts";
 //intervalo litologico, intervalo de diámetro, revestimiento, cementación, desarrollo y nivel de aporte. Cementacion esta hecho y litologia casi hecho. Anda haciendo alguna otra de esas
 //Otra cosa, de esas cosas hay q ver cuales un pozo puede tener 1 o mas. Así vemos si necesitan id o no.
 
@@ -13,6 +16,49 @@ const sitiosRoutes= async function (
   fastify: FastifyInstance,
   options: object
 ) {
+  fastify.get(
+    "/mapas/estado",
+    {
+      schema: { summary: "Consultar disponibilidad del proveedor de mapas", tags: ["sitios"],
+        response: { 200: Type.Object({ configurado: Type.Boolean(), atribucion: Type.Optional(Type.String()) }) } },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+    },
+    async () => {
+      const configuracion = configuracionMapaDesdeEntorno();
+      return { configurado: mapaConfigurado(configuracion), ...(mapaConfigurado(configuracion) ? { atribucion: configuracion.atribucion } : {}) };
+    },
+  );
+  fastify.get(
+    "/usuarios/:id_usuario/sitios/:id_sitio/mapa-aereo",
+    {
+      schema: {
+        summary: "Obtener imagen aérea protegida del sitio",
+        tags: ["sitios"],
+        params: Type.Object({ id_usuario: Type.Integer(), id_sitio: Type.Integer() }),
+        response: { 404: err.ErrorSchema, 503: err.ErrorSchema },
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+    },
+    async (req, rep) => {
+      const { id_sitio } = req.params as { id_sitio: number };
+      const [propietario,administrador,gestionable]=await Promise.all([
+        rolUser(req.user.sub,"propietario"),isAdmin(req.user.sub),sitioEsGestionablePorPerforador(id_sitio,req.user.sub),
+      ]);
+      if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
+      const sitio = administrador||gestionable
+        ? await func.getSitioById(id_sitio)
+        : await func.getSitioPropioById(id_sitio, req.user.sub);
+      if (!sitio) throw new err.T05SitioNoEncontrado();
+      const coordenadas = leerCoordenadas(sitio.latitud ?? null, sitio.longitud ?? null);
+      if (!coordenadas) throw new err.T05SitioNoEncontrado("El sitio no tiene coordenadas válidas.");
+      const mapa = await obtenerMapaEstatico(coordenadas, configuracionMapaDesdeEntorno());
+      if (mapa.estado === "no-disponible") throw new err.T05ErrorConexion("Mapa aéreo no configurado");
+      return rep.header("Content-Type", mapa.tipo).header("X-Map-Attribution", mapa.atribucion)
+        .header("Cache-Control", "private, max-age=300").send(Buffer.from(mapa.bytes));
+    },
+  );
   //Crear un sitio
   fastify.post(
     "/usuarios/:id_usuario/sitios",
@@ -68,6 +114,8 @@ const sitiosRoutes= async function (
         id_sitio:number
       }
       const data = req.body as SitioBody;
+      if (!(await isAdmin(req.user.sub)) && !(await sitioEsGestionablePorPerforador(id_sitio,req.user.sub)))
+        throw new err.T05SitioNoEncontrado();
       const sitioEditado = await func.updateSitio(id_sitio, data)
       if(!sitioEditado) throw err.T05SitioNoEncontrado
       return rep.code(200).send(sitioEditado)
@@ -100,6 +148,8 @@ const sitiosRoutes= async function (
       const {id_sitio} = req.params as {
         id_sitio: number
       }
+      if (!(await isAdmin(req.user.sub)) && !(await sitioEsGestionablePorPerforador(id_sitio,req.user.sub)))
+        throw new err.T05SitioNoEncontrado();
       const sitioBorrado = await func.deleteSitio(id_sitio)
       if(!sitioBorrado) throw new err.T05SitioNoEncontrado
       return rep.code(204).send()
@@ -132,9 +182,13 @@ const sitiosRoutes= async function (
         id_sitio: number
       }
       const { sub } = req.user;
-      const sitioObtenido = await rolUser(sub, "propietario")
-        ? await func.getSitioPropioById(id_sitio, sub)
-        : await func.getSitioById(id_sitio)
+      const [propietario,administrador,gestionable]=await Promise.all([
+        rolUser(sub,"propietario"),isAdmin(sub),sitioEsGestionablePorPerforador(id_sitio,sub),
+      ]);
+      if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
+      const sitioObtenido = administrador||gestionable
+        ? await func.getSitioById(id_sitio)
+        : await func.getSitioPropioById(id_sitio, sub)
       if(!sitioObtenido)throw new err.T05SitioNoEncontrado
       return rep.code(200).send(sitioObtenido)
     }

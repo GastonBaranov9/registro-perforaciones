@@ -22,11 +22,17 @@ export function leerCoordenadas(latitud: string | null, longitud: string | null)
 
 export function configuracionMapaDesdeEntorno(env: NodeJS.ProcessEnv = process.env): ConfiguracionMapa {
   return {
-    plantillaUrl: env.PDF_MAP_STATIC_URL_TEMPLATE,
-    hostPermitido: env.PDF_MAP_ALLOWED_HOST,
-    clave: env.PDF_MAP_STATIC_API_KEY,
-    atribucion: env.PDF_MAP_ATTRIBUTION,
+    plantillaUrl: env.MAP_STATIC_URL_TEMPLATE ?? env.PDF_MAP_STATIC_URL_TEMPLATE,
+    hostPermitido: env.MAP_STATIC_ALLOWED_HOST ?? env.PDF_MAP_ALLOWED_HOST,
+    clave: env.MAP_STATIC_API_KEY ?? env.PDF_MAP_STATIC_API_KEY,
+    atribucion: env.MAP_STATIC_ATTRIBUTION ?? env.PDF_MAP_ATTRIBUTION,
   };
+}
+
+export function mapaConfigurado(configuracion: ConfiguracionMapa): boolean {
+  return Boolean(configuracion.plantillaUrl?.trim() && configuracion.hostPermitido?.trim() && configuracion.atribucion?.trim()
+    && tieneMarcador(configuracion.plantillaUrl,"latitud","lat") && tieneMarcador(configuracion.plantillaUrl,"longitud","lon")
+    && (!tieneMarcador(configuracion.plantillaUrl,"apiKey","key") || configuracion.clave?.trim()));
 }
 
 export async function obtenerMapaEstatico(
@@ -37,15 +43,18 @@ export async function obtenerMapaEstatico(
   if (!configuracion.plantillaUrl?.trim() || !configuracion.hostPermitido?.trim() || !configuracion.atribucion?.trim()) {
     return { estado: "no-disponible", motivo: "Proveedor de mapa no configurado" };
   }
-  if (!configuracion.plantillaUrl.includes("{latitud}") || !configuracion.plantillaUrl.includes("{longitud}"))
+  if (!tieneMarcador(configuracion.plantillaUrl,"latitud","lat") || !tieneMarcador(configuracion.plantillaUrl,"longitud","lon"))
     return { estado: "no-disponible", motivo: "Plantilla de mapa incompleta" };
-  if (configuracion.plantillaUrl.includes("{apiKey}") && !configuracion.clave?.trim())
+  if (tieneMarcador(configuracion.plantillaUrl,"apiKey","key") && !configuracion.clave?.trim())
     return { estado: "no-disponible", motivo: "Clave de mapa ausente" };
   const valor = (numero: number) => encodeURIComponent(numero.toFixed(6));
   const urlTexto = configuracion.plantillaUrl
     .replaceAll("{latitud}", valor(coordenadas.latitud))
+    .replaceAll("{lat}", valor(coordenadas.latitud))
     .replaceAll("{longitud}", valor(coordenadas.longitud))
-    .replaceAll("{apiKey}", encodeURIComponent(configuracion.clave ?? ""));
+    .replaceAll("{lon}", valor(coordenadas.longitud))
+    .replaceAll("{apiKey}", encodeURIComponent(configuracion.clave ?? ""))
+    .replaceAll("{key}", encodeURIComponent(configuracion.clave ?? ""));
   let url: URL;
   try { url = new URL(urlTexto); } catch { return { estado: "no-disponible", motivo: "URL inválida" }; }
   if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.toLowerCase() || url.username || url.password) {
@@ -88,4 +97,8 @@ export async function obtenerMapaEstatico(
     return { estado: "no-disponible", motivo: error instanceof Error && error.name === "AbortError" ? "Tiempo de espera agotado" : "Proveedor no disponible" };
   }
   finally { clearTimeout(timeout); }
+}
+
+function tieneMarcador(plantilla:string,principal:string,alternativo:string):boolean {
+  return plantilla.includes(`{${principal}}`) || plantilla.includes(`{${alternativo}}`);
 }

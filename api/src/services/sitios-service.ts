@@ -2,29 +2,27 @@ import { myPool } from "../db/pool.ts";
 import { Sitio, SitioBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 export async function createSitio(data: SitioBody): Promise<Sitio> {
+  validarSitio(data);
   const sql = `
             INSERT INTO sitio
               (departamento, localidad, latitud, longitud)
             VALUES ($1, $2, $3, $4)
             RETURNING id_sitio, departamento, localidad, latitud, longitud;
           `;
-  try {
-    const { rows } = await myPool.query(sql, [
-      data.departamento,
-      data.localidad,
-      data.latitud,
-      data.longitud,
-    ]);
-    return rows[0] as Sitio;
-  } catch (e: any) {
-    throw e;
-  }
+  const { rows } = await myPool.query(sql, [
+    data.departamento,
+    data.localidad,
+    data.latitud,
+    data.longitud,
+  ]);
+  return rows[0] as Sitio;
 }
 
 export async function updateSitio(
   id_sitio: number,
   data: SitioBody
 ): Promise<Sitio | null> {
+  validarSitio(data);
   const exists = await myPool.query(`SELECT 1 FROM sitio WHERE id_sitio = $1`, [
     id_sitio,
   ]);
@@ -40,18 +38,23 @@ export async function updateSitio(
     WHERE id_sitio = $1
     RETURNING id_sitio, departamento, localidad, latitud, longitud;
   `;
-  try {
-    const { rows } = await myPool.query(sql, [
-      id_sitio,
-      data.departamento,
-      data.localidad,
-      data.latitud,
-      data.longitud,
-    ]);
-    return rows[0] ?? null;
-  } catch (e: any) {
-    throw e;
-  }
+  const { rows } = await myPool.query(sql, [
+    id_sitio,
+    data.departamento,
+    data.localidad,
+    data.latitud,
+    data.longitud,
+  ]);
+  return rows[0] ?? null;
+}
+
+function validarSitio(data: SitioBody): void {
+  if (!data.departamento.trim()) throw new err.T05DatosIncorrectos("El departamento es obligatorio.");
+  const tieneLatitud=Boolean(data.latitud?.trim()),tieneLongitud=Boolean(data.longitud?.trim());
+  if(tieneLatitud!==tieneLongitud)throw new err.T05DatosIncorrectos("Latitud y longitud deben registrarse juntas.");
+  if(tieneLatitud){const lat=Number(data.latitud),lon=Number(data.longitud);
+    if(!Number.isFinite(lat)||lat < -90||lat > 90||!Number.isFinite(lon)||lon < -180||lon > 180)
+      throw new err.T05DatosIncorrectos("Las coordenadas no son v\u00e1lidas.");}
 }
 
 export async function deleteSitio(id_sitio: number): Promise<Boolean> {

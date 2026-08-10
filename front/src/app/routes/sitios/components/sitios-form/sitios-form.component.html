@@ -25,9 +25,8 @@
       <ion-label position="stacked">Latitud</ion-label>
       <ion-input
         type="text"
-        name="id_sitio"
-        [ngModel]="this.sitio().latitud ?? 'Cargando ubicación... '"
-        required
+        name="latitud"
+        [ngModel]="ubicacionPendiente()?.latitud ?? this.sitio().latitud ?? ''"
         readonly
       ></ion-input>
     </ion-item>
@@ -37,12 +36,21 @@
       <ion-input
         type="text"
         name="longitud"
-        [ngModel]="this.sitio().longitud?? 'Cargando ubicación... '"
-        required
+        [ngModel]="ubicacionPendiente()?.longitud ?? this.sitio().longitud ?? ''"
         readonly
       ></ion-input>
     </ion-item>
   </ion-list>
+
+  @if (ubicacionPendiente(); as ubicacion) {
+    <p>Nueva ubicación pendiente: {{ ubicacion.latitud }}, {{ ubicacion.longitud }}</p>
+    @if (ubicacion.precision !== undefined) { <p>Precisión aproximada: {{ ubicacion.precision | number:'1.0-0' }} m</p> }
+    <ion-button type="button" fill="outline" color="medium" (click)="cancelarUbicacion()">CANCELAR NUEVA UBICACIÓN</ion-button>
+  }
+  @if (ubicacionError()) { <p role="alert">{{ ubicacionError() }}</p> }
+  <ion-button type="button" fill="outline" (click)="getLocation()" [disabled]="cargandoUbicacion()">
+    {{ cargandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : 'ACTUALIZAR UBICACIÓN' }}
+  </ion-button>
 
   <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid">
     GUARDAR SITIO
