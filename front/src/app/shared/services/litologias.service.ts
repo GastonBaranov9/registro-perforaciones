@@ -6,22 +6,29 @@ import { LitologiaActualizarBody, LitologiaCrearBody, LitologiaPublica } from '.
 
 @Injectable({ providedIn: 'root' })
 export class LitologiasService {
+  /** El catálogo administrativo cambia poco; se comparte durante 5 minutos. */
+  private static readonly ACTIVAS_TTL_MS = 5 * 60 * 1000;
   private readonly http = inject(HttpClient);
   private readonly url = environment.apiURL + 'litologias';
   private activasCache: Promise<LitologiaPublica[]> | null = null;
+  private activasCacheExpiraEn = 0;
   private historicasCache = new Map<number, Promise<LitologiaPublica>>();
 
   listar(incluirInactivas = false): Promise<LitologiaPublica[]> {
     const params = incluirInactivas ? new HttpParams().set('incluir_inactivas', 'true') : undefined;
     if (incluirInactivas) return firstValueFrom(this.http.get<LitologiaPublica[]>(this.url, { params }));
-    if (!this.activasCache) {
+    if (!this.activasCache || Date.now() >= this.activasCacheExpiraEn) {
       this.activasCache = firstValueFrom(this.http.get<LitologiaPublica[]>(this.url)).catch((error: unknown) => {
         this.activasCache = null;
+        this.activasCacheExpiraEn = 0;
         throw error;
       });
+      this.activasCacheExpiraEn = Date.now() + LitologiasService.ACTIVAS_TTL_MS;
     }
     return this.activasCache;
   }
+  refresh(): Promise<LitologiaPublica[]> { this.invalidarCache(); return this.listar(); }
+  invalidate(): void { this.invalidarCache(); }
 
   obtener(id: number): Promise<LitologiaPublica> {
     const existente = this.historicasCache.get(id);
@@ -53,5 +60,5 @@ export class LitologiasService {
     this.invalidarCache();
     return resultado;
   }
-  private invalidarCache() { this.activasCache = null; this.historicasCache.clear(); }
+  private invalidarCache() { this.activasCache = null; this.activasCacheExpiraEn = 0; this.historicasCache.clear(); }
 }

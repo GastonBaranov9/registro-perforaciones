@@ -11,6 +11,21 @@ describe('LitologiasService', () => {
     service = TestBed.inject(LitologiasService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('expira el cache compartido y permite refresh explicito', async () => {
+    const ahora = spyOn(Date, 'now').and.returnValue(1_000_000);
+    try {
+      const primera = service.listar();
+      http.expectOne((r) => r.url.endsWith('/litologias')).flush([{ id_litologia: 1 }]);
+      await primera;
+      ahora.and.returnValue(1_000_000 + 5 * 60 * 1000 + 1);
+      const vencida = service.listar();
+      http.expectOne((r) => r.url.endsWith('/litologias')).flush([{ id_litologia: 2 }]);
+      await expectAsync(vencida).toBeResolved();
+      const refrescada = service.refresh();
+      http.expectOne((r) => r.url.endsWith('/litologias')).flush([]);
+      await expectAsync(refrescada).toBeResolvedTo([]);
+    } finally { ahora.and.callThrough(); }
+  });
   it('lista activas y solicita inactivas solo para administración', async () => {
     const activas = service.listar();
     http.expectOne((r) => r.url.endsWith('/litologias') && !r.params.has('incluir_inactivas')).flush([]);
