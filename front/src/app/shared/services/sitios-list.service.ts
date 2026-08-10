@@ -27,6 +27,10 @@ export class SitiosListService {
     const id_usuario = this.getUserIdOrThrow();
     return await firstValueFrom(this.httpClient.get<Sitio[]>(this.baseURL(id_usuario)));
   }
+  public async getSitioById(id_sitio: number): Promise<Sitio> {
+    const id_usuario = this.getUserIdOrThrow();
+    return await firstValueFrom(this.httpClient.get<Sitio>(`${this.baseURL(id_usuario)}/${id_sitio}`));
+  }
 
   public async deleteSitio(id_sitio: number): Promise<void> {
     const id_usuario = this.getUserIdOrThrow();

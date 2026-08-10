@@ -18,18 +18,18 @@
           <ion-label>{{ this.pozo()?.empresa }}</ion-label>
         </ion-item>
         <ion-item>
-          <ion-label>ID Propietario</ion-label>
-          <ion-label>{{ this.pozo()?.id_propietario }}</ion-label>
+          <ion-label>Propietario</ion-label>
+          <ion-label>{{ propietario()?.nombre || ('ID ' + this.pozo()?.id_propietario) }}</ion-label>
         </ion-item>
 
         <ion-item>
-          <ion-label>ID Sitio</ion-label>
-          <ion-label>{{ this.pozo()?.id_sitio }}</ion-label>
+          <ion-label>Sitio</ion-label>
+          <ion-label>{{ sitio() ? (sitio()?.localidad || 'Sin localidad') + ', ' + sitio()?.departamento : ('ID ' + this.pozo()?.id_sitio) }}</ion-label>
         </ion-item>
 
         <ion-item>
-          <ion-label>ID Perforador</ion-label>
-          <ion-label>{{ this.pozo()?.id_perforador }}</ion-label>
+          <ion-label>Perforador</ion-label>
+          <ion-label>{{ perforador()?.nombre || ('ID ' + this.pozo()?.id_perforador) }}</ion-label>
         </ion-item>
 
         <ion-item>

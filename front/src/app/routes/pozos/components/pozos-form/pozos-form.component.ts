@@ -1,6 +1,6 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AccionFotoEdicion, CandidatoPozo, NuevoPozo } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, Sitio } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonDatetime, IonItemDivider } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
@@ -18,6 +18,7 @@ import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-
     IonButton,
     IonToggle,
     IonList,
+    IonText,
     CommonModule,
     FormsModule,
     FotoComponent,
@@ -30,6 +31,9 @@ export class PozosFormComponent {
   public id_pozo = input<number | null>(null);
   public propietarios = input<CandidatoPozo[]>([]);
   public perforadores = input<CandidatoPozo[]>([]);
+  public sitios = input<Sitio[]>([]);
+  public buscarPropietarios = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
+  public buscarPerforadores = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public catalogosDisponibles = input(false);
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
@@ -42,6 +46,12 @@ export class PozosFormComponent {
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
+  public sitioBusqueda = signal('');
+  sitioActual() { return this.sitios().find((sitio) => sitio.id_sitio === Number(this.pozo().id_sitio)) ?? null; }
+  sitiosVisibles() {
+    const q = this.sitioBusqueda().trim().toLocaleLowerCase();
+    return this.sitios().filter((s) => !q || `${s.localidad ?? ''} ${s.departamento}`.toLocaleLowerCase().includes(q)).slice(0, 10);
+  }
 
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;

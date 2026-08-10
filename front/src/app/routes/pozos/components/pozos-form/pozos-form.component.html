@@ -5,17 +5,20 @@
       <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>
     </ion-item>
 
-    <app-selector-persona-pozo etiqueta="Propietario" [candidatos]="propietarios()"
+    <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
     <ion-item>
-      <ion-label position="stacked">ID Sitio</ion-label>
-      <ion-input
-        type="number"
-        name="id_sitio"
-        [(ngModel)]="this.pozo().id_sitio"
-        required
-      ></ion-input>
+      <ion-label position="stacked">Sitio</ion-label>
+      @if (sitioActual(); as sitio) { <ion-text><p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }}</p></ion-text> }
+      @else { <ion-text color="danger"><p>No se encontró la información humana del sitio seleccionado.</p></ion-text> }
+      <ion-input type="search" name="buscar_sitio" label="Buscar sitio" labelPlacement="stacked"
+        [ngModel]="sitioBusqueda()" (ngModelChange)="sitioBusqueda.set($event ?? '')" [disabled]="guardando()"></ion-input>
+      @for (sitio of sitiosVisibles(); track sitio.id_sitio) {
+        <ion-button type="button" fill="clear" (click)="pozo().id_sitio = sitio.id_sitio; sitioBusqueda.set('')">
+          {{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }}
+        </ion-button>
+      }
       <ion-button
         slot="end"
         size="Default"
@@ -34,7 +37,7 @@
       </ng-template>
     </ion-item>
 
-    <app-selector-persona-pozo etiqueta="Perforador" [candidatos]="perforadores()"
+    <app-selector-persona-pozo etiqueta="Perforador" rol="perforador" [buscarRemoto]="buscarPerforadores()" [candidatos]="perforadores()"
       [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadores().length === 1" />
 
     <ion-item>

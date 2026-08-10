@@ -13,6 +13,8 @@
         @let editor = this.pozoResource.value()!;
         <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
+          [sitios]="editor.sitios"
+          [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
@@ -28,7 +30,7 @@
         } @else if (this.pozoResource.isLoading()) {
         <ion-spinner></ion-spinner>
         } @else {
-        <p>{{ pozoResource.error() || 'No hay pozo' }}</p>
+        <p>{{ mensajeErrorCarga() }}</p>
         }
 
         <ion-button

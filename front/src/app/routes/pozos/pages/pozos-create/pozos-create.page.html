@@ -13,6 +13,8 @@
         <app-pozos-form
           [pozo]="nuevoPozo()"
           [propietarios]="personas.propietarios" [perforadores]="personas.perforadores" [catalogosDisponibles]="true"
+          [sitios]="sitios()"
+          [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
           (saved)="guardarPozo($event)"
           [id_pozo]="null"
           [agregareditar]="false"

@@ -17,7 +17,7 @@ import {
   IonButtons,
   ViewWillEnter,
 } from '@ionic/angular/standalone';
-import { IntervaloDiametroPerforacion, IntervaloFiltro, IntervaloLitologico, NivelAporte, Pozo } from '../../../../shared/types/schemas';
+import { CandidatoPozo, IntervaloDiametroPerforacion, IntervaloFiltro, IntervaloLitologico, NivelAporte, Pozo, Sitio } from '../../../../shared/types/schemas';
 import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
 import { PdfGenerate } from '../../../../shared/services/pdf-generate/pdf-generate';
 import { environment } from '../../../../../environments/environment';
@@ -26,6 +26,8 @@ import { IntervaloLitologicoListService } from '../../../../shared/services/inte
 import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
 import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
 import { formatearFechaCalendario } from '../../../../shared/utils/fechas';
+import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
+import { SitiosListService } from '../../../../shared/services/sitios-list.service';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -60,11 +62,16 @@ export class PozosDetailPage implements ViewWillEnter {
   public diametros = signal<IntervaloDiametroPerforacion[]>([]);
   public aportes = signal<NivelAporte[]>([]);
   public filtros = signal<IntervaloFiltro[]>([]);
+  public propietario = signal<CandidatoPozo | null>(null);
+  public perforador = signal<CandidatoPozo | null>(null);
+  public sitio = signal<Sitio | null>(null);
   public versionPerfil = signal(0);
   private litologiaService = inject(IntervaloLitologicoListService);
   private diametroService = inject(IntervaloDiametroListService);
   private aporteService = inject(AporteListService);
   private filtroService = inject(IntervalosFiltroService);
+  private candidatosService = inject(CandidatosPozoService);
+  private sitiosService = inject(SitiosListService);
 
   async ionViewWillEnter(){
     this.versionPerfil.update((version) => version + 1);
@@ -72,6 +79,13 @@ export class PozosDetailPage implements ViewWillEnter {
     try {
       const data = await this.pozoEditService.getPozoById(this.id_pozo);
       this.pozo.set(data);
+      const [personasResult, sitioResult] = await Promise.allSettled([this.candidatosService.obtener(), this.sitiosService.getSitioById(data.id_sitio)]);
+      if (personasResult.status === 'fulfilled') {
+        const personas = personasResult.value;
+        this.propietario.set(personas.propietarios.find((p) => p.id_usuario === data.id_propietario) ?? null);
+        this.perforador.set(personas.perforadores.find((p) => p.id_usuario === data.id_perforador) ?? null);
+      }
+      if (sitioResult.status === 'fulfilled') this.sitio.set(sitioResult.value);
       this.getFoto();
       await this.cargarTecnicos();
     } catch {
