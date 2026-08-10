@@ -13,7 +13,7 @@ const GRIS = rgb(0.34, 0.39, 0.44);
 const PUBLIC_DIR = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
 
 export interface OpcionesPDF { directorioFotos?: string; mapa?: ConfiguracionMapa; fetchMapa?: typeof fetch }
-export interface DiagnosticoTabla { titulo:string; alturaEncabezado:number; alturasFilas:number[]; alturaCompleta:number; posicionFinal:number; paginas:number[] }
+export interface DiagnosticoTabla { titulo:string; alturaEncabezado:number; alturasFilas:number[]; alturaCompleta:number; posicionFinal:number; paginas:number[]; fuente?:number }
 export interface DiagnosticoPDF { paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number }
 
 class FlujoPDF {
@@ -89,25 +89,134 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
   const coordenadas=leerCoordenadas(reporte.latitud??null,reporte.longitud??null);
   const mapa=coordenadas ? await obtenerMapaEstatico(coordenadas,opciones.mapa??configuracionMapaDesdeEntorno(),opciones.fetchMapa) : { estado:"no-disponible" as const, motivo:"Sin coordenadas" };
   await dibujarUbicacion(flujo,reporte,coordenadas,mapa);
-  flujo.pagina(); flujo.titulo("Datos generales");
-  flujo.campo("Nivel estático", unidad(reporte.nivel_estatico_m,"m")); flujo.campo("Nivel dinámico",unidad(reporte.nivel_dinamico_m,"m"));
-  flujo.campo("Caudal estimado",unidad(reporte.caudal_estimado_lh,"l/h")); flujo.campo("Sello sanitario",booleano(reporte.sello_sanitario));
-  flujo.campo("Prefiltro",reporte.pre_filtro); flujo.campo("Revestimiento",reporte.revestimiento); flujo.campo("Método sedimentario",reporte.metodo_sedimentario);
-  flujo.campo("Método rocoso",reporte.metodo_rocoso); flujo.campo("Cementación",reporte.cementacion); flujo.campo("Desarrollo",reporte.desarrollo);
-  const n=(v:number)=>formatearNumero(v);
-  flujo.tabla("Intervalos litológicos",[{titulo:"Desde",ancho:90,valor:f=>`${n(Number(f.desde_m))} m`},{titulo:"Hasta",ancho:90,valor:f=>`${n(Number(f.hasta_m))} m`},{titulo:"Material",ancho:319,valor:f=>String(f.material)}],reporte.litologia);
-  flujo.tabla("Tuberías y diámetros",[{titulo:"Desde",ancho:85,valor:f=>`${n(Number(f.desde_m))} m`},{titulo:"Hasta",ancho:85,valor:f=>`${n(Number(f.hasta_m))} m`},{titulo:"Diámetro",ancho:115,valor:f=>`${n(Number(f.diametro_pulg))} pulg`},{titulo:"Material",ancho:214,valor:f=>String(f.material_tuberia??"No especificado")}],reporte.diametros);
-  flujo.tabla("Intervalos de filtro",[{titulo:"Desde",ancho:85,valor:f=>`${n(Number(f.desde_m))} m`},{titulo:"Hasta",ancho:85,valor:f=>`${n(Number(f.hasta_m))} m`},{titulo:"Diámetro",ancho:115,valor:f=>`${n(Number(f.diametro_pulg))} pulg`},{titulo:"Material",ancho:214,valor:f=>String(f.material_tuberia)}],reporte.filtros??[]);
-  flujo.tabla("Niveles de aporte",[{titulo:"Profundidad",ancho:499,valor:f=>`${n(Number(f.profundidad_m))} m`}],reporte.niveles_aporte);
+  dibujarPaginaTecnica(flujo,reporte);
   const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[]);
   if(perfil) dibujarPerfilLitologico(doc,perfil,font,bold);
   return { documento:doc, diagnostico:flujo.diagnostico };
 }
 
-function dibujarPortada(f:FlujoPDF,r:ReportePozo,id:number,image:PDFImage|null){f.pagina("portada");f.marcar("portada");const p=f.page;p.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:AZUL});p.drawText("Informe de Perforación",{x:48,y:744,size:28,font:f.bold,color:AZUL});p.drawText(`Pozo Nº ${id}`,{x:48,y:710,size:17,font:f.bold,color:GRIS});
-  if(image){const caja={x:48,y:235,w:499,h:425};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
+type ColumnaTecnica = { titulo:string; ancho:number; valor:(fila:Record<string,unknown>)=>string };
+type AjusteTecnico = { fuente:number; linea:number; padding:number; separacion:number };
+
+function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
+  const numero=(v:unknown)=>formatearNumero(Number(v));
+  const generales: Array<[string,string]>=[
+    ["Nivel estático",unidad(r.nivel_estatico_m,"m")],["Nivel dinámico",unidad(r.nivel_dinamico_m,"m")],
+    ["Caudal estimado",unidad(r.caudal_estimado_lh,"l/h")],["Sello sanitario",booleano(r.sello_sanitario)],
+    ["Prefiltro",valorTexto(r.pre_filtro)],["Revestimiento",valorTexto(r.revestimiento)],
+    ["Método sedimentario",valorTexto(r.metodo_sedimentario)],["Método rocoso",valorTexto(r.metodo_rocoso)],
+    ["Cementación",valorTexto(r.cementacion)],["Desarrollo",valorTexto(r.desarrollo)],
+  ];
+  const tablas: Array<{titulo:string;columnas:ColumnaTecnica[];filas:Record<string,unknown>[]}> = [
+    { titulo:"Intervalos litológicos", filas:r.litologia, columnas:[
+      {titulo:"Desde",ancho:90,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:90,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Material",ancho:319,valor:x=>String(x.material)},
+    ]},
+    { titulo:"Tuberías y diámetros", filas:r.diametros, columnas:[
+      {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:214,valor:x=>String(x.material_tuberia??"No especificado")},
+    ]},
+    { titulo:"Intervalos de filtro", filas:r.filtros??[], columnas:[
+      {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:214,valor:x=>String(x.material_tuberia)},
+    ]},
+    { titulo:"Niveles de aporte", filas:r.niveles_aporte, columnas:[{titulo:"Profundidad",ancho:499,valor:x=>`${numero(x.profundidad_m)} m`}] },
+  ];
+  const ajustes: AjusteTecnico[] = [
+    {fuente:10.2,linea:12.5,padding:4,separacion:7},
+    {fuente:9.7,linea:11.8,padding:3,separacion:5},
+    {fuente:9,linea:11,padding:2.5,separacion:3},
+  ];
+  const altoGeneral=medirDatosGenerales(f,generales);
+  const disponible=A4[1]-62-f.inferior-altoGeneral;
+  const ajuste=ajustes.find(a=>tablas.reduce((s,t)=>s+medirTabla(t,a,f),0)<=disponible)??ajustes.at(-1)!;
+  f.pagina("tecnica"); f.marcar("datos-generales");
+  f.page.drawText("Datos generales",{x:f.margen,y:f.y,size:16,font:f.bold,color:AZUL}); f.y-=25;
+  for(let indice=0;indice<generales.length;indice+=2){
+    const par=generales.slice(indice,indice+2);
+    const preparados=par.map(([etiqueta,valor])=>prepararCampoGeneral(f,etiqueta,valor));
+    const alto=Math.max(...preparados.map(c=>Math.max(18,c.lineas.length*11)));
+    preparados.forEach((campo,columna)=>{
+      const x=f.margen+columna*255;
+      f.page.drawText(`${campo.etiqueta}:`,{x,y:f.y,size:9.7,font:f.bold,color:GRIS});
+      campo.lineas.forEach((linea,lineaIndice)=>f.page.drawText(linea,{x:x+campo.anchoEtiqueta,y:f.y-lineaIndice*11,size:9.7,font:f.font}));
+    });
+    f.y-=alto;
+  }
+  f.y-=7;
+  for(const tabla of tablas) dibujarTablaTecnica(f,tabla,ajuste);
+}
+
+function prepararCampoGeneral(f:FlujoPDF,etiqueta:string,valor:string){
+  const anchoEtiqueta=Math.min(150,Math.max(78,f.bold.widthOfTextAtSize(`${etiqueta}: `,9.7)+4));
+  return {etiqueta,anchoEtiqueta,lineas:envolver(valor,f.font,9.7,238-anchoEtiqueta)};
+}
+
+function medirDatosGenerales(f:FlujoPDF,generales:Array<[string,string]>) {
+  let alto=25+7;
+  for(let indice=0;indice<generales.length;indice+=2){
+    const par=generales.slice(indice,indice+2).map(([etiqueta,valor])=>prepararCampoGeneral(f,etiqueta,valor));
+    alto+=Math.max(...par.map(c=>Math.max(18,c.lineas.length*11)));
+  }
+  return alto;
+}
+
+function medirTabla(tabla:{columnas:ColumnaTecnica[];filas:Record<string,unknown>[]},a:AjusteTecnico,f:FlujoPDF) {
+  if(!tabla.filas.length)return 18+a.linea+a.separacion;
+  const encabezado=Math.max(...tabla.columnas.map(c=>envolver(c.titulo,f.bold,a.fuente,c.ancho-a.padding*2).length))*a.linea+a.padding*2;
+  const filas=tabla.filas.reduce((s,fila)=>s+Math.max(...tabla.columnas.map(c=>envolver(c.valor(fila),f.font,a.fuente,c.ancho-a.padding*2).length))*a.linea+a.padding*2,0);
+  return 18+encabezado+filas+a.separacion;
+}
+
+function dibujarTablaTecnica(f:FlujoPDF,tabla:{titulo:string;columnas:ColumnaTecnica[];filas:Record<string,unknown>[]},a:AjusteTecnico) {
+  const celdas=tabla.filas.map(fila=>tabla.columnas.map(c=>envolver(c.valor(fila),f.font,a.fuente,c.ancho-a.padding*2)));
+  const altos=celdas.map(c=>Math.max(...c.map(lineas=>lineas.length))*a.linea+a.padding*2);
+  const encabezados=tabla.columnas.map(c=>envolver(c.titulo,f.bold,a.fuente,c.ancho-a.padding*2));
+  const altoEncabezado=Math.max(...encabezados.map(l=>l.length))*a.linea+a.padding*2;
+  const paginas:number[]=[]; let alturaCompleta=0;
+  const encabezado=(titulo:boolean,primera:number)=>{
+    const requerido=(titulo?18:0)+altoEncabezado+primera;
+    if(f.y-requerido<f.inferior)f.pagina("tecnica-continuacion");
+    if(titulo){f.page.drawText(tabla.titulo,{x:f.margen,y:f.y,size:12,font:f.bold,color:AZUL});f.y-=18;alturaCompleta+=18;}
+    f.marcar(`tabla:${tabla.titulo}`); paginas.push(f.diagnostico.paginas.length-1);
+    let x=f.margen;const superior=f.y;
+    encabezados.forEach((lineas,i)=>{lineas.forEach((texto,j)=>f.page.drawText(texto,{x:x+a.padding,y:superior-a.padding-a.fuente-j*a.linea,size:a.fuente,font:f.bold,color:GRIS}));x+=tabla.columnas[i].ancho;});
+    f.y-=altoEncabezado;alturaCompleta+=altoEncabezado;
+    f.page.drawLine({start:{x:f.margen,y:f.y},end:{x:A4[0]-f.margen,y:f.y},thickness:.55,color:rgb(.55,.6,.65)});
+  };
+  if(!tabla.filas.length){
+    if(f.y-18-a.linea-a.separacion<f.inferior)f.pagina("tecnica-continuacion");
+    f.marcar(`tabla:${tabla.titulo}`);paginas.push(f.diagnostico.paginas.length-1);
+    f.page.drawText(tabla.titulo,{x:f.margen,y:f.y,size:12,font:f.bold,color:AZUL});f.y-=17;
+    f.page.drawText("Sin registros",{x:f.margen,y:f.y,size:a.fuente,font:f.font,color:GRIS});f.y-=a.linea+a.separacion;
+    f.diagnostico.tablas.push({titulo:tabla.titulo,alturaEncabezado:0,alturasFilas:[],alturaCompleta:18+a.linea,posicionFinal:f.y,paginas,fuente:a.fuente});return;
+  }
+  encabezado(true,altos[0]);
+  celdas.forEach((fila,indice)=>{
+    const restantes=celdas.length-indice;
+    if(restantes===2&&f.y-altos[indice]>=f.inferior&&f.y-altos[indice]-altos[indice+1]<f.inferior){f.pagina("tecnica-continuacion");encabezado(false,altos[indice]);}
+    else if(f.y-altos[indice]<f.inferior){f.pagina("tecnica-continuacion");encabezado(false,altos[indice]);}
+    const superior=f.y;let x=f.margen;
+    fila.forEach((lineas,i)=>{lineas.forEach((texto,j)=>f.page.drawText(texto,{x:x+a.padding,y:superior-a.padding-a.fuente-j*a.linea,size:a.fuente,font:f.font}));x+=tabla.columnas[i].ancho;});
+    f.y-=altos[indice];alturaCompleta+=altos[indice];
+    f.page.drawLine({start:{x:f.margen,y:f.y},end:{x:A4[0]-f.margen,y:f.y},thickness:.3,color:rgb(.82,.84,.86)});
+  });
+  f.y-=a.separacion;
+  f.diagnostico.tablas.push({titulo:tabla.titulo,alturaEncabezado:altoEncabezado,alturasFilas:altos,alturaCompleta,posicionFinal:f.y,paginas:[...new Set(paginas)],fuente:a.fuente});
+}
+
+function valorTexto(valor:unknown){return valor===null||valor===undefined||valor===""?"No especificado":String(valor);}
+
+function dibujarPortada(f:FlujoPDF,r:ReportePozo,id:number,image:PDFImage|null){
+  f.pagina("portada");f.marcar("portada");const p=f.page;
+  p.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:AZUL});
+  p.drawText("Informe de Perforación",{x:48,y:754,size:27,font:f.bold,color:AZUL});
+  let tamanoPropietario=21,lineasPropietario=envolver(r.propietario,f.bold,tamanoPropietario,499);
+  while(lineasPropietario.length>2&&tamanoPropietario>18){tamanoPropietario-=.5;lineasPropietario=envolver(r.propietario,f.bold,tamanoPropietario,499);}
+  const interlineado=tamanoPropietario+3;
+  lineasPropietario.forEach((linea,indice)=>p.drawText(linea,{x:48,y:716-indice*interlineado,size:tamanoPropietario,font:f.bold,color:AZUL}));
+  const yPozo=716-lineasPropietario.length*interlineado-4;
+  p.drawText(`Pozo Nº ${id}`,{x:48,y:yPozo,size:14,font:f.bold,color:GRIS});
+  if(image){const superior=Math.min(640,yPozo-18),caja={x:48,y:235,w:499,h:superior-235};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
   else {p.drawRectangle({x:48,y:330,width:499,height:240,color:rgb(.97,.98,.99),borderColor:rgb(.78,.81,.84),borderWidth:.8});p.drawText("Fotografía no registrada",{x:205,y:445,size:14,font:f.font,color:GRIS});}
-  p.drawText("Propietario",{x:48,y:154,size:11.5,font:f.bold,color:GRIS});envolver(r.propietario,f.font,14,499).slice(0,2).forEach((l,i)=>p.drawText(l,{x:48,y:132-i*17,size:14,font:f.font}));if(r.empresa)p.drawText(r.empresa,{x:48,y:91,size:11.5,font:f.font,color:GRIS});}
+  if(r.empresa)p.drawText(r.empresa,{x:48,y:154,size:12,font:f.font,color:GRIS});}
 
 async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longitud:number}|null,mapa:Awaited<ReturnType<typeof obtenerMapaEstatico>>){
   f.pagina("ubicacion"); f.marcar("ubicacion"); const p=f.page;
