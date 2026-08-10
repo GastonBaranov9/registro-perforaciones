@@ -338,14 +338,13 @@ export type PozoCompletoUpdateBody = Static<typeof PozoCompletoUpdateBody>;
 export const CandidatoPozo = Type.Object({
   id_usuario: Type.Integer(),
   nombre: Type.String(),
-  email: Type.String({ format: "email" }),
+  email: Type.Optional(Type.String({ format: "email" })),
   roles: Type.Array(Type.String()),
 });
 export type CandidatoPozo = Static<typeof CandidatoPozo>;
 
 export const PropietarioOperativoCrearBody = Type.Object({
   nombre: Type.String({ minLength: 1, maxLength: 160 }),
-  email: Type.String({ format: "email", maxLength: 254 }),
 });
 export type PropietarioOperativoCrearBody = Static<typeof PropietarioOperativoCrearBody>;
 
@@ -353,7 +352,7 @@ export const PozoDetalle = Type.Intersect([
   Pozo,
   Type.Object({
     propietario_nombre: Type.String(),
-    propietario_email: Type.String({ format: "email" }),
+    propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
     perforador_nombre: Type.String(),
     perforador_email: Type.String({ format: "email" }),
     sitio: Sitio,
@@ -371,7 +370,7 @@ export type PozoUpdate = Static<typeof PozoUpdate>;
 
 export const Informe = Type.Object({
   id_perforacion: Type.Integer(),
-  propietario_email: Type.String({ format: "email" }),
+  propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
   propietario_nombre: Type.String(),
   ubicacion: Type.String(),
   empresa: Type.Optional(Type.String()),

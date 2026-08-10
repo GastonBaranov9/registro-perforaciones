@@ -2,8 +2,6 @@ import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import type { CandidatoPozo } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
-import { randomBytes } from "node:crypto";
-import { hashPassword } from "./password-service.ts";
 
 type Consultable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
@@ -43,42 +41,35 @@ export async function validarPersonaPozo(
 }
 
 export async function crearPropietarioOperativo(
-  data: { nombre: string; email: string },
+  data: { nombre: string },
   db: Pick<Pool, "connect"> = myPool,
 ): Promise<CandidatoPozo> {
   const nombre = data.nombre.trim();
-  const email = data.email.trim();
   if (!nombre) throw new err.T05DatosIncorrectos("El nombre del propietario es obligatorio.");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    const passwordNoEntregada = await hashPassword(randomBytes(48).toString("base64url"));
     const { rows: roles } = await client.query<{ id_rol: number }>(
       "SELECT id_rol FROM rol WHERE nombre=$1 FOR SHARE",
       ["propietario"],
     );
     if (!roles[0]) throw new err.T05RolNoEncontrado();
     const { rows } = await client.query<{ id_usuario: number; nombre: string; email: string }>(
-      `INSERT INTO usuario (email,nombre,password,activo)
-       VALUES ($1,$2,$3,TRUE)
+      `INSERT INTO usuario (email,nombre,password,activo,cuenta_acceso)
+       VALUES (NULL,$1,NULL,TRUE,FALSE)
        RETURNING id_usuario,nombre,email`,
-      [email, nombre, passwordNoEntregada],
+      [nombre],
     );
     await client.query(
       "INSERT INTO usuario_rol (id_usuario,id_rol) VALUES ($1,$2)",
       [rows[0].id_usuario, roles[0].id_rol],
     );
     await client.query("COMMIT");
-    return { id_usuario: Number(rows[0].id_usuario), nombre: rows[0].nombre, email: rows[0].email, roles: ["propietario"] };
+    return { id_usuario: Number(rows[0].id_usuario), nombre: rows[0].nombre, email: undefined, roles: ["propietario"] };
   } catch (error: unknown) {
     await client.query("ROLLBACK");
-    if (esEmailDuplicado(error)) throw new err.T05DatosIncorrectos("Ya existe una persona registrada con ese email.");
     throw error;
   } finally { client.release(); }
-}
-
-function esEmailDuplicado(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }
 
 async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number, busqueda?: string, limite = 20, idExacto?: number): Promise<CandidatoPozo[]> {
@@ -96,7 +87,8 @@ async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number
     [rol, idUsuario ?? null, idExacto ?? null, busqueda?.trim() || null, limite],
   );
   return rows.map((row) => ({
-    id_usuario: Number(row.id_usuario), nombre: String(row.nombre), email: String(row.email),
+    id_usuario: Number(row.id_usuario), nombre: String(row.nombre),
+    ...(row.email == null ? {} : { email: String(row.email) }),
     roles: Array.isArray(row.roles) ? row.roles.map(String) : [rol],
   }));
 }

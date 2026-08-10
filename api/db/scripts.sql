@@ -25,10 +25,11 @@ CREATE EXTENSION IF NOT EXISTS citext;
 
 CREATE TABLE usuario (
   id_usuario      BIGSERIAL PRIMARY KEY,
-  email           CITEXT NOT NULL UNIQUE,
+  email           CITEXT UNIQUE,
   nombre          VARCHAR NOT NULL,
-  password        VARCHAR NOT NULL,    
+  password        VARCHAR,
   activo          BOOLEAN NOT NULL DEFAULT TRUE,
+  cuenta_acceso   BOOLEAN NOT NULL DEFAULT TRUE,
   version_sesion  INTEGER NOT NULL DEFAULT 1 CHECK (version_sesion > 0),
   fecha_registro  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -153,6 +154,7 @@ CREATE TABLE informe (
 -- La instalaciÃ³n fresca reutiliza la definiciÃ³n canÃ³nica del catÃ¡logo y su FK.
 -- Las migraciones 001/002 ya quedan incorporadas en las tablas creadas arriba.
 \ir migrations/003_catalogo_litologias.sql
+\ir migrations/004_propietario_operativo.sql
 
 
 
