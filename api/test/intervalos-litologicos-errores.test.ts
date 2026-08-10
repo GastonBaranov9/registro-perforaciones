@@ -13,3 +13,9 @@ test("una edición histórica sin FK no vincula por coincidencia aproximada",()=
   assert.match(fuente,/c\.activo OR c\.id_litologia=v\.id_litologia/);
   assert.doesNotMatch(fuente,/litologia_normalizar\(actual\.material\)/);
 });
+test("las respuestas de intervalos normalizan tipos PostgreSQL antes de Fastify",()=>{
+  const fuente=fs.readFileSync(new URL("../src/services/intervalos-litologicos-services.ts",import.meta.url),"utf8");
+  assert.match(fuente,/function normalizarIntervalo\(fila: Record<string, unknown>\)/);
+  assert.match(fuente,/id_litologia: fila\.id_litologia == null \? null : Number\(fila\.id_litologia\)/);
+  assert.match(fuente,/return rows\.map\(normalizarIntervalo\)/);
+});

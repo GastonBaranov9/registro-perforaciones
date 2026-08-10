@@ -22,11 +22,14 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   fastify.get(
     "/pozos/candidatos-personas",
     {
-      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
+      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], querystring: Type.Object({ propietario: Type.Optional(Type.String({ maxLength: 80 })), perforador: Type.Optional(Type.String({ maxLength: 80 })), limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), propietario_id: Type.Optional(Type.Integer({ minimum: 1 })), perforador_id: Type.Optional(Type.Integer({ minimum: 1 })) }), response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
       onRequest: [fastify.authenticate],
       preHandler: [fastify.userIsAdminOrPerforador],
     },
-    async (req) => listarCandidatosPozo(req.user.sub, await isAdmin(req.user.sub)),
+    async (req) => {
+      const q = req.query as { propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
+      return listarCandidatosPozo(req.user.sub, await isAdmin(req.user.sub), undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
+    },
   );
   fastify.post(
     "/usuarios/:id_usuario/pozos/completo",
