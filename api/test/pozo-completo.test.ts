@@ -8,7 +8,8 @@ import type { PozoCompletoBody } from "../src/models/schemas.ts";
 
 function body(): PozoCompletoBody {
   return {
-    pozo: { id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: 50 },
+    pozo: { id_propietario: 10, id_perforador: 30, profundidad_final_m: 50 },
+    sitio_nuevo: { departamento: "Salto", localidad: "Colonia 18 de Julio", latitud: "-31.325", longitud: "-57.961" },
     intervalos_litologicos: [{ desde_m: 0, hasta_m: 10, material: "Arena" }, { desde_m: 15, hasta_m: 30, material: "Roca" }],
     intervalos_diametro: [{ desde_m: 0, hasta_m: 25, diametro_pulg: 8, material_tuberia: "PVC" }, { desde_m: 25, hasta_m: 50, diametro_pulg: 6, material_tuberia: "Acero" }],
     intervalos_filtro: [],
@@ -26,7 +27,8 @@ function poolFalso(fallarEn?: string, rechazarLitologia = false, legacySinVincul
       consultas.push(sql);
       if (fallarEn && sql.includes(fallarEn)) throw new Error("fallo controlado");
       if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 10 }] };
-      if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
+      if (sql.includes("INSERT INTO public.sitio")) return { rows: [{ id_sitio: "202", departamento:"Salto", localidad:"Colonia 18 de Julio", latitud:"-31.325", longitud:"-57.961" }] };
+      if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 202, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
       if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: legacySinVinculo ? "  Histórico\t" : "Arena", id_litologia: legacySinVinculo ? null : "7" }] };
       if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: String(++diam), id_pozo: "101", desde_m: "0", hasta_m: "25", diametro_pulg: "8" }] };
       if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC" }] };
@@ -44,11 +46,26 @@ test("crea pozo y todos sus hijos en una sola transacción", async () => {
   try {
     const resultado = await crearPozoCompleto(30, body(), dir, falso.pool as never);
     assert.equal(resultado.pozo.id_pozo, 101);
+    assert.equal(resultado.sitio.id_sitio, 202);
     assert.equal(resultado.intervalos_litologicos.length, 2);
     assert.equal(resultado.intervalos_diametro.length, 2);
     assert.equal(resultado.niveles_aporte.length, 1);
     assert.ok(falso.consultas.includes("BEGIN"));
+    assert.ok(falso.consultas.some((sql) => sql.includes("INSERT INTO public.sitio")));
     assert.ok(falso.consultas.includes("COMMIT"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("un fallo al insertar el pozo revierte también el sitio nuevo", async () => {
+  const falso = poolFalso("INSERT INTO public.pozo");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06i-sitio-"));
+  try {
+    await assert.rejects(() => crearPozoCompleto(30, body(), dir, falso.pool as never));
+    const sitio = falso.consultas.findIndex((sql) => sql.includes("INSERT INTO public.sitio"));
+    const pozo = falso.consultas.findIndex((sql) => sql.includes("INSERT INTO public.pozo"));
+    assert.ok(sitio >= 0 && sitio < pozo);
+    assert.ok(falso.consultas.includes("ROLLBACK"));
+    assert.ok(!falso.consultas.includes("COMMIT"));
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 

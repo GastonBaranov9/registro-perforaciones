@@ -18,7 +18,7 @@ test("catálogos separan activos por rol y fijan perforador no administrador", a
     return { rows: base };
   } };
   const resultado = await listarCandidatosPozo(8, false, db as never);
-  assert.deepEqual(resultado.propietarios.map((x) => x.id_usuario), [2, 3]);
+  assert.deepEqual(resultado.propietarios, []);
   assert.deepEqual(resultado.perforadores.map((x) => x.id_usuario), [8]);
   assert.ok(sqlEjecutado.every((sql) => sql.includes("u.activo = true") && !sql.includes("password") && !sql.includes("version_sesion")));
 });
@@ -36,28 +36,40 @@ function updateBody(): PozoCompletoUpdateBody {
 
 function poolActualizacion(fallar = false, rechazarLitologia = false) {
   const consultas: string[] = [];
-  const client = { async query(sql: string) {
+  let parametrosUpdate: unknown[] | undefined;
+  const client = { async query(sql: string, params?:unknown[]) {
     consultas.push(sql);
     if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 2 }] };
-    if (sql.includes("SELECT id_pozo FROM pozo")) return { rows: [{ id_pozo: 55 }] };
-    if (sql.includes("UPDATE pozo SET id_propietario")) return { rows: [{ id_pozo: 55, id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: "40", foto_url: "/foto" }] };
+    if (sql.includes("SELECT id_pozo,id_sitio FROM pozo")) return { rows: [{ id_pozo: 55, id_sitio: 4 }] };
+    if (sql.includes("UPDATE pozo SET id_propietario")) { parametrosUpdate=params; return { rows: [{ id_pozo: 55, id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: "40", foto_url: "/foto" }] }; }
+    if (sql.includes("FROM public.sitio WHERE id_sitio")) return { rows: [{ id_sitio:4,departamento:"Salto",localidad:"Salto",latitud:"-31",longitud:"-57" }] };
     if (fallar && sql.includes("INSERT INTO intervalo_diametro")) throw new Error("fallo intermedio");
     if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: 7, id_pozo: 55, desde_m: "0", hasta_m: "15", material: "Arena", id_litologia: 7 }] };
     if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: 8, id_pozo: 55, desde_m: "0", hasta_m: "40", diametro_pulg: "6" }] };
     if (sql.includes("INSERT INTO nivel_aporte")) return { rows: [{ id_nivel_aporte: 9, id_pozo: 55, profundidad_m: "20" }] };
     return { rows: [] };
   }, release() { consultas.push("RELEASE"); } };
-  return { consultas, pool: { async connect() { return client; } } };
+  return { consultas, get parametrosUpdate(){return parametrosUpdate;}, pool: { async connect() { return client; } } };
 }
 
 test("actualización completa reemplaza hijos dentro de una transacción", async () => {
   const falso = poolActualizacion(); const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06c-"));
   try {
-    const resultado = await actualizarPozoCompleto(55, updateBody(), dir, falso.pool as never);
+    const data=updateBody();data.pozo.id_sitio=999;
+    const resultado = await actualizarPozoCompleto(55, data, dir, falso.pool as never);
     assert.equal(resultado.intervalos_litologicos[0].id_pozo, 55);
+    assert.equal(resultado.sitio.id_sitio,4);
+    assert.equal(resultado.pozo.id_sitio,4);
+    assert.equal(falso.parametrosUpdate?.[2],4);
     assert.ok(falso.consultas.some((x) => x === "COMMIT"));
     assert.equal(falso.consultas.filter((x) => x.startsWith("DELETE FROM")).length, 4);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("propietarios solo se consultan al buscar y el resultado queda limitado", async () => {
+  const db = { async query(_sql:string,params:unknown[]) { return { rows:Array.from({length:10},(_,i)=>({id_usuario:i+1,nombre:`Persona ${i}`,email:`p${i}@example.test`,roles:[String(params[0])]})) }; } };
+  const resultado=await listarCandidatosPozo(8,false,db as never,{propietario:"persona",limite:10});
+  assert.equal(resultado.propietarios.length,10);
 });
 
 test("actualización completa acepta una litología activa identificada",async()=>{
