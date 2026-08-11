@@ -1,7 +1,7 @@
 import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
-import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
 
 @Component({
@@ -43,10 +43,10 @@ export class DatosTecnicosBorradorComponent {
   }
 
   agregarLitologia() {
-    const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
+    const sugerencia = sugerirIntervaloLitologico(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, material: '' })] });
+    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' })] });
   }
   seleccionarLitologia(item: IntervaloLitologicoBody, id: number | null, nombre: string) {
     item.id_litologia = id ?? undefined;

@@ -2,6 +2,69 @@ import { DatosTecnicosBorrador } from '../types/schemas';
 
 export type SugerenciaIntervalo = { permitido: true; desde_m: number } | { permitido: false; mensaje: string };
 
+export interface RangoProfundidad { desde_m: number; hasta_m: number }
+export interface AnalisisCoberturaIntervalos {
+  huecos: RangoProfundidad[];
+  solapamientos: RangoProfundidad[];
+  invalidos: number[];
+  coberturaCompleta: boolean;
+}
+
+export type SugerenciaIntervaloLitologico =
+  | { permitido: true; desde_m: number; hasta_m: number }
+  | { permitido: false; mensaje: string };
+
+export function analizarCoberturaIntervalos(
+  profundidad: number,
+  intervalos: ReadonlyArray<RangoProfundidad>,
+): AnalisisCoberturaIntervalos {
+  const ordenados = intervalos
+    .map((intervalo, indice) => ({ ...intervalo, indice }))
+    .sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
+  const invalidos = ordenados
+    .filter((intervalo) => !Number.isFinite(intervalo.desde_m) || intervalo.desde_m < 0
+      || !Number.isFinite(intervalo.hasta_m) || intervalo.hasta_m <= intervalo.desde_m
+      || !Number.isFinite(profundidad) || profundidad < 0 || intervalo.hasta_m > profundidad)
+    .map((intervalo) => intervalo.indice);
+  const indicesInvalidos = new Set(invalidos);
+  const huecos: RangoProfundidad[] = [];
+  const solapamientos: RangoProfundidad[] = [];
+  let coberturaHasta = 0;
+
+  for (const intervalo of ordenados) {
+    if (indicesInvalidos.has(intervalo.indice)) continue;
+    if (intervalo.desde_m > coberturaHasta) huecos.push({ desde_m: coberturaHasta, hasta_m: intervalo.desde_m });
+    else if (intervalo.desde_m < coberturaHasta)
+      solapamientos.push({ desde_m: intervalo.desde_m, hasta_m: Math.min(coberturaHasta, intervalo.hasta_m) });
+    coberturaHasta = Math.max(coberturaHasta, intervalo.hasta_m);
+  }
+  if (Number.isFinite(profundidad) && profundidad >= 0 && coberturaHasta < profundidad)
+    huecos.push({ desde_m: coberturaHasta, hasta_m: profundidad });
+
+  return { huecos, solapamientos, invalidos, coberturaCompleta: invalidos.length === 0 && solapamientos.length === 0 && huecos.length === 0 };
+}
+
+export function sugerirIntervaloLitologico(
+  intervalos: ReadonlyArray<RangoProfundidad>,
+  profundidad?: number,
+): SugerenciaIntervaloLitologico {
+  if (profundidad == null) {
+    const sugerencia = sugerirInicioSiguienteIntervalo(intervalos);
+    return sugerencia.permitido ? { ...sugerencia, hasta_m: Number.NaN } : sugerencia;
+  }
+  if (!Number.isFinite(profundidad) || profundidad < 0)
+    return { permitido: false, mensaje: 'Ingrese una profundidad final válida antes de agregar un intervalo.' };
+  const analisis = analizarCoberturaIntervalos(profundidad, intervalos);
+  if (analisis.invalidos.length)
+    return { permitido: false, mensaje: 'Corrija los intervalos inválidos antes de agregar otro.' };
+  if (analisis.solapamientos.length)
+    return { permitido: false, mensaje: 'Corrija el solapamiento antes de agregar otro intervalo.' };
+  const primerHueco = analisis.huecos[0];
+  if (!primerHueco)
+    return { permitido: false, mensaje: 'El perfil litológico cubre toda la profundidad.' };
+  return { permitido: true, ...primerHueco };
+}
+
 export function sugerirInicioSiguienteIntervalo(
   intervalos: ReadonlyArray<{ desde_m: number; hasta_m: number }>,
   profundidad?: number,
