@@ -1,3 +1,5 @@
+import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
+
 export interface CoordenadasMapa { latitud: number; longitud: number }
 export type ResultadoMapa =
   | { estado: "disponible"; bytes: Uint8Array; tipo: "image/png" | "image/jpeg"; atribucion: string }
@@ -13,19 +15,18 @@ export interface ConfiguracionMapa {
 }
 
 export function leerCoordenadas(latitud: string | null, longitud: string | null): CoordenadasMapa | null {
-  if (!latitud?.trim() || !longitud?.trim()) return null;
-  const coordenadas = { latitud: Number(latitud), longitud: Number(longitud) };
-  return Number.isFinite(coordenadas.latitud) && Number.isFinite(coordenadas.longitud)
-    && coordenadas.latitud >= -90 && coordenadas.latitud <= 90
-    && coordenadas.longitud >= -180 && coordenadas.longitud <= 180 ? coordenadas : null;
+  const normalizadas = normalizarCoordenadasTexto(latitud, longitud);
+  if (!normalizadas) return null;
+  return { latitud: Number(normalizadas.latitud), longitud: Number(normalizadas.longitud) };
 }
 
 export function configuracionMapaDesdeEntorno(env: NodeJS.ProcessEnv = process.env): ConfiguracionMapa {
+  const elegir = (canonico: string | undefined, legacy: string | undefined) => canonico?.trim() ? canonico : legacy;
   return {
-    plantillaUrl: env.MAP_STATIC_URL_TEMPLATE ?? env.PDF_MAP_STATIC_URL_TEMPLATE,
-    hostPermitido: env.MAP_STATIC_ALLOWED_HOST ?? env.PDF_MAP_ALLOWED_HOST,
-    clave: env.MAP_STATIC_API_KEY ?? env.PDF_MAP_STATIC_API_KEY,
-    atribucion: env.MAP_STATIC_ATTRIBUTION ?? env.PDF_MAP_ATTRIBUTION,
+    plantillaUrl: elegir(env.MAP_STATIC_URL_TEMPLATE, env.PDF_MAP_STATIC_URL_TEMPLATE),
+    hostPermitido: elegir(env.MAP_STATIC_ALLOWED_HOST, env.PDF_MAP_ALLOWED_HOST),
+    clave: elegir(env.MAP_STATIC_API_KEY, env.PDF_MAP_STATIC_API_KEY),
+    atribucion: elegir(env.MAP_STATIC_ATTRIBUTION, env.PDF_MAP_ATTRIBUTION),
   };
 }
 

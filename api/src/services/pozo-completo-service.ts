@@ -7,6 +7,7 @@ import type { PerfilLitologicoVistaPreviaBody, Pozo, PozoCompletoBody, PozoCompl
 import * as err from "../models/errors.ts";
 import { validarPersonaPozo } from "./candidatos-pozo-service.ts";
 import { aislarFotoExistente, decodificarFotoBase64, purgarFotoConfirmada, restaurarFotoAislada, type FotoAislada, type LoggerPurga } from "./foto-archivo-service.ts";
+import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 
 export interface PozoCompletoResultado {
   pozo: Pozo;
@@ -28,12 +29,17 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
     intervalos_filtro: data.intervalos_filtro,
     niveles_aporte: data.niveles_aporte,
   });
-  if ("sitio_nuevo" in data) {
+  if ("sitio_nuevo" in data && !("foto_accion" in data)) {
+    if (!normalizarCoordenadasTexto(data.sitio_nuevo.latitud, data.sitio_nuevo.longitud, true)) errores.push("Las coordenadas del sitio son invÃ¡lidas.");
     if (!data.sitio_nuevo.departamento.trim()) errores.push("El departamento del sitio es obligatorio.");
     const latitud = Number(data.sitio_nuevo.latitud);
     const longitud = Number(data.sitio_nuevo.longitud);
     if (!Number.isFinite(latitud) || latitud < -90 || latitud > 90) errores.push("La latitud del sitio es inválida.");
     if (!Number.isFinite(longitud) || longitud < -180 || longitud > 180) errores.push("La longitud del sitio es inválida.");
+  }
+  if ("foto_accion" in data) {
+    const idsPersistidos = data.intervalos_litologicos.map((intervalo) => intervalo.id_intervalo_litologico).filter((id): id is number => id !== undefined);
+    if (new Set(idsPersistidos).size !== idsPersistidos.length) errores.push("No se puede repetir un id_intervalo_litologico persistido.");
   }
   return errores;
 }
@@ -280,11 +286,13 @@ async function insertarIntervaloLitologico(
 }
 
 async function insertarSitio(client: PoolClient, sitio: PozoCompletoBody["sitio_nuevo"]): Promise<import("../models/schemas.ts").Sitio> {
+  const coordenadas = normalizarCoordenadasTexto(sitio.latitud, sitio.longitud, true);
+  if (!coordenadas) throw new err.T05DatosIncorrectos("Las coordenadas del sitio son invÃ¡lidas.");
   const { rows } = await client.query(
     `INSERT INTO public.sitio (departamento,localidad,latitud,longitud)
      VALUES ($1,$2,$3,$4)
      RETURNING id_sitio,departamento,localidad,latitud,longitud`,
-    [sitio.departamento.trim(), sitio.localidad?.trim() || null, sitio.latitud ?? null, sitio.longitud ?? null],
+    [sitio.departamento.trim(), sitio.localidad?.trim() || null, coordenadas.latitud, coordenadas.longitud],
   );
   return { ...rows[0], id_sitio: Number(rows[0].id_sitio) };
 }
