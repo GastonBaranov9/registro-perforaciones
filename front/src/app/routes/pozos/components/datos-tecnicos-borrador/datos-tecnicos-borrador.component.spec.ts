@@ -78,4 +78,41 @@ describe('DatosTecnicosBorradorComponent', () => {
     fixture.componentRef.setInput('inicial',remoto);fixture.detectChanges();TestBed.flushEffects();expect(component.datos().nivelesAporte[0].dato.profundidad_m).toBe(0);
     fixture.componentRef.setInput('versionDescartar',1);fixture.detectChanges();TestBed.flushEffects();expect(component.datos()).toEqual(remoto);expect(component.dirty()).toBeFalse();
   });
+
+  it('completa un hueco interno aunque el último intervalo alcance la profundidad final', () => {
+    fixture.componentRef.setInput('profundidad', 100);
+    component.datos.set({
+      intervalosLitologicos: [
+        { idLocal: 'persistido-30', dato: { id_intervalo_litologico: 30, desde_m: 0, hasta_m: 10, material: 'Sello', id_litologia: 4 } },
+        { idLocal: 'persistido-31', dato: { id_intervalo_litologico: 31, desde_m: 10, hasta_m: 40, material: 'Tosca', id_litologia: 5 } },
+        { idLocal: 'persistido-32', dato: { id_intervalo_litologico: 32, desde_m: 40, hasta_m: 100, material: 'Arena', id_litologia: 6 } },
+      ], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [],
+    });
+
+    component.datos().intervalosLitologicos[0].dato.hasta_m = 5;
+    component.notificarEdicion();
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.seccion button') as HTMLButtonElement).disabled).toBeFalse();
+
+    component.agregarLitologia();
+
+    const intervalos = component.datos().intervalosLitologicos;
+    expect(intervalos.map((item) => [item.dato.desde_m, item.dato.hasta_m])).toEqual([[0, 5], [5, 10], [10, 40], [40, 100]]);
+    expect(intervalos[0].dato.id_intervalo_litologico).toBe(30);
+    expect(intervalos[1].dato.id_intervalo_litologico).toBeUndefined();
+    expect(new Set(intervalos.map((item) => item.dato.id_intervalo_litologico).filter((id) => id != null)).size).toBe(3);
+    expect(component.errorAgregar()).toBe('');
+  });
+
+  it('informa cobertura real solo cuando no existen huecos', () => {
+    component.datos.set({
+      intervalosLitologicos: [
+        { idLocal: 'a', dato: { desde_m: 0, hasta_m: 10, material: 'Arena' } },
+        { idLocal: 'b', dato: { desde_m: 10, hasta_m: 30, material: 'Roca' } },
+      ], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [],
+    });
+    component.agregarLitologia();
+    expect(component.datos().intervalosLitologicos.length).toBe(2);
+    expect(component.errorAgregar()).toBe('El perfil litológico cubre toda la profundidad.');
+  });
 });

@@ -1,5 +1,5 @@
 import { DatosTecnicosBorrador } from '../types/schemas';
-import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from './datos-tecnicos-borrador';
+import { analizarCoberturaIntervalos, ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from './datos-tecnicos-borrador';
 
 function datos(): DatosTecnicosBorrador {
   return {
@@ -29,6 +29,10 @@ describe('datos técnicos en memoria', () => {
     expect(errores.filter((error) => error.includes('excede')).length).toBe(2);
     expect(borrador.intervalosLitologicos.length).toBe(2);
   });
+
+  it('mantiene el contrato histórico que permite guardar perfiles con huecos', () => {
+    expect(validarDatosTecnicos(datos(), 20)).toEqual([]);
+  });
 });
 
 describe('litologias nuevas e historicas', () => {
@@ -55,6 +59,45 @@ describe('litologias nuevas e historicas', () => {
     expect(validarDatosTecnicos(borrador, 20)).toEqual([]);
     borrador.intervalosLitologicos[1].dato.id_litologia = 4;
     expect(validarDatosTecnicos(borrador, 20)).toEqual([]);
+  });
+});
+
+describe('cobertura del perfil litológico', () => {
+  it('distingue cobertura completa del simple alcance del último intervalo', () => {
+    const completo = [{ desde_m: 0, hasta_m: 10 }, { desde_m: 10, hasta_m: 40 }, { desde_m: 40, hasta_m: 100 }];
+    expect(analizarCoberturaIntervalos(100, completo)).toEqual({ huecos: [], solapamientos: [], invalidos: [], coberturaCompleta: true });
+
+    const editado = [{ desde_m: 0, hasta_m: 5 }, { desde_m: 10, hasta_m: 40 }, { desde_m: 40, hasta_m: 100 }];
+    expect(analizarCoberturaIntervalos(100, editado).huecos).toEqual([{ desde_m: 5, hasta_m: 10 }]);
+    expect(sugerirIntervaloLitologico(editado, 100)).toEqual({ permitido: true, desde_m: 5, hasta_m: 10 });
+    expect(analizarCoberturaIntervalos(100, [...editado, { desde_m: 5, hasta_m: 10 }]).coberturaCompleta).toBeTrue();
+  });
+
+  it('detecta huecos iniciales, finales y múltiples', () => {
+    expect(analizarCoberturaIntervalos(100, [{ desde_m: 5, hasta_m: 20 }, { desde_m: 20, hasta_m: 100 }]).huecos)
+      .toEqual([{ desde_m: 0, hasta_m: 5 }]);
+    expect(analizarCoberturaIntervalos(100, [{ desde_m: 0, hasta_m: 20 }, { desde_m: 20, hasta_m: 80 }]).huecos)
+      .toEqual([{ desde_m: 80, hasta_m: 100 }]);
+    expect(analizarCoberturaIntervalos(100, [{ desde_m: 0, hasta_m: 20 }, { desde_m: 30, hasta_m: 50 }, { desde_m: 70, hasta_m: 100 }]).huecos)
+      .toEqual([{ desde_m: 20, hasta_m: 30 }, { desde_m: 50, hasta_m: 70 }]);
+  });
+
+  it('ordena una copia, detecta solapamientos y no muta la entrada', () => {
+    const desordenados = [{ desde_m: 40, hasta_m: 100 }, { desde_m: 10, hasta_m: 40 }, { desde_m: 0, hasta_m: 5 }];
+    const original = desordenados.map((intervalo) => ({ ...intervalo }));
+    expect(analizarCoberturaIntervalos(100, desordenados).huecos).toEqual([{ desde_m: 5, hasta_m: 10 }]);
+    expect(desordenados).toEqual(original);
+    expect(analizarCoberturaIntervalos(100, [{ desde_m: 0, hasta_m: 20 }, { desde_m: 5, hasta_m: 10 }]).solapamientos)
+      .toEqual([{ desde_m: 5, hasta_m: 10 }]);
+  });
+
+  it('rechaza rangos inválidos antes de sugerir otro intervalo', () => {
+    expect(sugerirIntervaloLitologico([{ desde_m: 10, hasta_m: 10 }], 100).permitido).toBeFalse();
+    expect(sugerirIntervaloLitologico([{ desde_m: 0, hasta_m: 10 }, { desde_m: 5, hasta_m: 20 }], 100).permitido).toBeFalse();
+  });
+
+  it('conserva la edición previa a definir la profundidad final', () => {
+    expect(sugerirIntervaloLitologico([], undefined)).toEqual({ permitido: true, desde_m: 0, hasta_m: Number.NaN });
   });
 });
 
