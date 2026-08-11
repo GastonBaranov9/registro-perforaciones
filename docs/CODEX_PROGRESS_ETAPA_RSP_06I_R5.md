@@ -23,8 +23,15 @@ Los payloads modernos pueden identificar el intervalo mediante `id_intervalo_lit
 - Prueba focalizada RSP-06I-R5: 7/7.
 - Prueba HTTP/PostgreSQL real: PUT legado 200, sitio inmutable, update compatible 200 y asociación `id_litologia` conservada.
 - Se verificó limpieza de los registros temporales mediante `finally`.
-- Suites completas y builds se ejecutan una sola vez al cierre.
+- Suite API completa: 139/139; suite frontend completa: 148/148; `check:utf8`, builds y `git diff --check` correctos.
 
 ## Commits
 
-Se registran en commits separados para SQL, preservación litológica, pruebas y documentación. El HEAD final y el estado del árbol se anotan al cerrar la etapa.
+Commits:
+
+- `feaa716 fix(api): corregir compatibilidad de actualizaciones`
+- `1ee1150 test: cubrir compatibilidad SQL y litologica`
+- `b121286 docs: cerrar RSP-06I-R5`
+- El commit de actualización de esta documentación registra la validación final.
+
+HEAD final y estado del árbol se verifican al cerrar la etapa.
