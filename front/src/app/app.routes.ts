@@ -188,7 +188,7 @@ export const routes: Routes = [
   {
     path: 'sitios-create/:id_usuario',
 
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitios-create/sitios-create.page'))
         .SitiosCreatePage,

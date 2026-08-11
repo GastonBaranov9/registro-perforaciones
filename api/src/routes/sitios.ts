@@ -65,7 +65,7 @@ const sitiosRoutes= async function (
     {
       schema: {
         summary: "Crear un sitio",
-        description: "Rol: Administrador/Perforador",
+        description: "Rol: Administrador",
         tags: ["sitios"],
         params: Type.Object({
           id_usuario: Type.Integer(),
@@ -73,6 +73,7 @@ const sitiosRoutes= async function (
         body: SitioBody,
         response: {
           201: Sitio,
+          403: err.ErrorSchema,
           501: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
@@ -81,6 +82,7 @@ const sitiosRoutes= async function (
       preHandler: [fastify.userIsAdminOrPerforador],
     },
     async function (req, rep) {
+      if (!(await isAdmin(req.user.sub))) throw new err.T05SinPermiso();
       const data = req.body as SitioBody
       const nuevoSitio = await func.createSitio(data)
       return rep.code(201).send(nuevoSitio)
