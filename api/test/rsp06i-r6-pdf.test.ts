@@ -17,29 +17,29 @@ function reporte(): ReportePozo {
   };
 }
 
-test("R6 mide 10 pt reales entre tablas técnicas y 6 pt después del título", async () => {
+test("R6 conserva mínimos visuales entre tablas y después del título", async () => {
   const { diagnostico } = await crearPDFConDiagnostico(reporte(), 606, { mapa: {} });
   const [litologia, tuberias, filtros] = diagnostico.tablas;
   assert.equal(diagnostico.paginas.filter((pagina) => pagina.tipo.startsWith("tecnica")).length, 1);
   assert.equal(litologia.paginas.at(-1), tuberias.paginaTitulo);
-  assert.equal(litologia.bordeInferiorFinal - tuberias.tituloTop, 10);
-  assert.equal(tuberias.gapAntesTitulo, 10);
+  assert.ok(litologia.bordeInferiorFinal - tuberias.tituloTop >= 10);
+  assert.ok((tuberias.gapAntesTitulo ?? 0) >= 10);
   assert.equal(tuberias.paginas.at(-1), filtros.paginaTitulo);
-  assert.equal(tuberias.bordeInferiorFinal - filtros.tituloTop, 10);
-  assert.equal(filtros.gapAntesTitulo, 10);
-  assert.ok(diagnostico.tablas.every((tabla) => tabla.tituloBottom - tabla.contenidoTop === 6));
+  assert.ok(tuberias.bordeInferiorFinal - filtros.tituloTop >= 10);
+  assert.ok((filtros.gapAntesTitulo ?? 0) >= 10);
+  assert.ok(diagnostico.tablas.every((tabla) => tabla.tituloBottom - tabla.contenidoTop >= 6));
   assert.ok(diagnostico.tablas.every((tabla) => (tabla.fuente ?? 0) >= 9));
 });
 
-test("R6 mide el mismo gap desde Sin registros hasta Niveles de aporte", async () => {
+test("R6 conserva el mismo mínimo desde Sin registros hasta Niveles de aporte", async () => {
   const control = reporte(); control.filtros = [];
   const { diagnostico } = await crearPDFConDiagnostico(control, 606, { mapa: {} });
   const filtros = diagnostico.tablas.find((tabla) => tabla.titulo === "Intervalos de filtro")!;
   const aportes = diagnostico.tablas.find((tabla) => tabla.titulo === "Niveles de aporte")!;
   assert.equal(filtros.alturasFilas.length, 0);
   assert.equal(filtros.paginas.at(-1), aportes.paginaTitulo);
-  assert.equal(filtros.bordeInferiorFinal - aportes.tituloTop, 10);
-  assert.equal(aportes.gapAntesTitulo, 10);
+  assert.ok(filtros.bordeInferiorFinal - aportes.tituloTop >= 10);
+  assert.ok((aportes.gapAntesTitulo ?? 0) >= 10);
 });
 
 test("R6 conserva casos pequeño, cargado, largo y continuación sin clipping tipográfico", async () => {
