@@ -90,7 +90,7 @@ class FlujoPDF {
       gapAntesTitulo:inicio-tituloTop,gapDespuesTitulo:tituloBottom-contenidoTop,
     });
   }
-  texto(texto:string){const lineas=envolver(texto,this.font,12,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
+  texto(texto:string){const lineas=envolver(texto,this.font,30,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
 }
 
 export async function crearPDF(reporte: ReportePozo, pozoId: number, opciones: OpcionesPDF = {}) {
@@ -113,7 +113,7 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
 type ColumnaTecnica = { titulo:string; ancho:number; valor:(fila:Record<string,unknown>)=>string };
 type AjusteTecnico = { fuente:number; linea:number; padding:number };
 const TITULO_TECNICO_TAMANO = 12;
-const GAP_ANTES_TITULO_TECNICO = 12;
+const GAP_ANTES_TITULO_TECNICO = 20;
 const GAP_DESPUES_TITULO_TECNICO = 7;
 const GROSOR_BORDE_FILA = .3;
 
