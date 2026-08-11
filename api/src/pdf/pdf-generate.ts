@@ -77,7 +77,17 @@ class FlujoPDF {
       alturaCompleta+=alto;
     });
     this.y-=18;
-    this.diagnostico.tablas.push({titulo,alturaEncabezado:altoEncabezado,alturasFilas:altos,alturaCompleta,posicionFinal:this.y,paginas:[...new Set(paginas)]});
+    const inicio=this.y+18+alturaCompleta;
+    const ascensoTitulo=this.bold.heightAtSize(17,{descender:false});
+    const descensoTitulo=this.bold.heightAtSize(17)-ascensoTitulo;
+    const tituloTop=inicio-10+ascensoTitulo;
+    const tituloBottom=inicio-10-descensoTitulo;
+    const contenidoTop=inicio-38;
+    this.diagnostico.tablas.push({
+      titulo,alturaEncabezado:altoEncabezado,alturasFilas:altos,alturaCompleta,posicionFinal:this.y,paginas:[...new Set(paginas)],
+      paginaTitulo:paginas[0],tituloTop,tituloBottom,contenidoTop,bordeInferiorFinal:this.y+18,
+      gapAntesTitulo:inicio-tituloTop,gapDespuesTitulo:tituloBottom-contenidoTop,
+    });
   }
   texto(texto:string){const lineas=envolver(texto,this.font,12,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
 }
