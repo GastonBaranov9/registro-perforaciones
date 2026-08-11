@@ -17,6 +17,7 @@ export interface DiagnosticoTabla {
   titulo:string; alturaEncabezado:number; alturasFilas:number[]; alturaCompleta:number; posicionFinal:number;
   paginas:number[]; fuente?:number; paginaTitulo:number; tituloTop:number; tituloBottom:number;
   contenidoTop:number; bordeInferiorFinal:number; gapAntesTitulo?:number; gapDespuesTitulo:number;
+  lineaBaseTitulo?:number; ascensoVisualTitulo?:number; descensoVisualTitulo?:number;
 }
 export interface DiagnosticoPDF { paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number }
 
@@ -112,12 +113,25 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
 type ColumnaTecnica = { titulo:string; ancho:number; valor:(fila:Record<string,unknown>)=>string };
 type AjusteTecnico = { fuente:number; linea:number; padding:number };
 const TITULO_TECNICO_TAMANO = 12;
-const GAP_ANTES_TITULO_TECNICO = 10;
-const GAP_DESPUES_TITULO_TECNICO = 6;
+const GAP_ANTES_TITULO_TECNICO = 12;
+const GAP_DESPUES_TITULO_TECNICO = 7;
+const GROSOR_BORDE_FILA = .3;
 
 interface PosicionTituloTecnico {
   paginaTitulo:number; tituloTop:number; tituloBottom:number; contenidoTop:number;
   gapAntesTitulo?:number; gapDespuesTitulo:number;
+  lineaBaseTitulo:number; ascensoVisualTitulo:number; descensoVisualTitulo:number;
+}
+
+function medirCajaVisualTexto(font:PDFFont,size:number) {
+  const ascensoFuente=font.heightAtSize(size,{descender:false});
+  const descensoFuente=font.heightAtSize(size)-ascensoFuente;
+  // Helvetica-Bold declara Ascender 718, pero su FontBBox alcanza 962/-228.
+  // El tamaño y el 25 % encierran también diacríticos y descendentes reales.
+  return {
+    ascenso:Math.max(ascensoFuente,size),
+    descenso:Math.max(descensoFuente,size*.25),
+  };
 }
 
 function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
@@ -197,18 +211,20 @@ function medirDatosGenerales(f:FlujoPDF,generales:Array<[string,string]>) {
 }
 
 function medirTabla(tabla:{columnas:ColumnaTecnica[];filas:Record<string,unknown>[]},a:AjusteTecnico,f:FlujoPDF) {
-  const altoTitulo=f.bold.heightAtSize(TITULO_TECNICO_TAMANO);
+  const cajaTitulo=medirCajaVisualTexto(f.bold,TITULO_TECNICO_TAMANO);
+  const altoTitulo=cajaTitulo.ascenso+cajaTitulo.descenso;
   const separacion=GAP_ANTES_TITULO_TECNICO+altoTitulo+GAP_DESPUES_TITULO_TECNICO;
-  if(!tabla.filas.length)return separacion+f.font.heightAtSize(a.fuente);
+  if(!tabla.filas.length){const caja=medirCajaVisualTexto(f.font,a.fuente);return separacion+caja.ascenso+caja.descenso;}
+  const cajaEncabezado=medirCajaVisualTexto(f.bold,a.fuente);
+  const desplazamientoCaja=a.padding+a.fuente-cajaEncabezado.ascenso;
   const encabezado=Math.max(...tabla.columnas.map(c=>envolver(c.titulo,f.bold,a.fuente,c.ancho-a.padding*2).length))*a.linea+a.padding*2;
   const filas=tabla.filas.reduce((s,fila)=>s+Math.max(...tabla.columnas.map(c=>envolver(c.valor(fila),f.font,a.fuente,c.ancho-a.padding*2).length))*a.linea+a.padding*2,0);
-  return separacion+encabezado+filas;
+  return separacion+encabezado-desplazamientoCaja+filas+GROSOR_BORDE_FILA/2;
 }
 
 function iniciarSeccionTecnica(f:FlujoPDF,titulo:string,altoSiguiente:number):PosicionTituloTecnico {
-  const altoTitulo=f.bold.heightAtSize(TITULO_TECNICO_TAMANO);
-  const ascensoTitulo=f.bold.heightAtSize(TITULO_TECNICO_TAMANO,{descender:false});
-  const descensoTitulo=altoTitulo-ascensoTitulo;
+  const cajaTitulo=medirCajaVisualTexto(f.bold,TITULO_TECNICO_TAMANO);
+  const altoTitulo=cajaTitulo.ascenso+cajaTitulo.descenso;
   const paginaAnterior=f.diagnostico.paginas.length-1;
   const fondoAnterior=f.y;
   const requerido=GAP_ANTES_TITULO_TECNICO+altoTitulo+GAP_DESPUES_TITULO_TECNICO+altoSiguiente;
@@ -216,14 +232,15 @@ function iniciarSeccionTecnica(f:FlujoPDF,titulo:string,altoSiguiente:number):Po
   const paginaTitulo=f.diagnostico.paginas.length-1;
   const mismaPagina=paginaTitulo===paginaAnterior;
   const tituloTop=f.y-(mismaPagina?GAP_ANTES_TITULO_TECNICO:0);
-  const lineaBase=tituloTop-ascensoTitulo;
-  const tituloBottom=lineaBase-descensoTitulo;
+  const lineaBase=tituloTop-cajaTitulo.ascenso;
+  const tituloBottom=lineaBase-cajaTitulo.descenso;
   f.page.drawText(titulo,{x:f.margen,y:lineaBase,size:TITULO_TECNICO_TAMANO,font:f.bold,color:AZUL});
   f.y=tituloBottom-GAP_DESPUES_TITULO_TECNICO;
   return {
     paginaTitulo,tituloTop,tituloBottom,contenidoTop:f.y,
     gapAntesTitulo:mismaPagina?fondoAnterior-tituloTop:undefined,
     gapDespuesTitulo:GAP_DESPUES_TITULO_TECNICO,
+    lineaBaseTitulo:lineaBase,ascensoVisualTitulo:cajaTitulo.ascenso,descensoVisualTitulo:cajaTitulo.descenso,
   };
 }
 
@@ -232,37 +249,40 @@ function dibujarTablaTecnica(f:FlujoPDF,tabla:{titulo:string;columnas:ColumnaTec
   const altos=celdas.map(c=>Math.max(...c.map(lineas=>lineas.length))*a.linea+a.padding*2);
   const encabezados=tabla.columnas.map(c=>envolver(c.titulo,f.bold,a.fuente,c.ancho-a.padding*2));
   const altoEncabezado=Math.max(...encabezados.map(l=>l.length))*a.linea+a.padding*2;
+  const cajaEncabezado=medirCajaVisualTexto(f.bold,a.fuente);
+  const desplazamientoCaja=a.padding+a.fuente-cajaEncabezado.ascenso;
   const paginas:number[]=[]; let alturaCompleta=0;
-  const altoContenidoInicial=tabla.filas.length?altoEncabezado+altos[0]:f.font.heightAtSize(a.fuente);
+  const cajaVacio=medirCajaVisualTexto(f.font,a.fuente);
+  const altoContenidoInicial=tabla.filas.length?altoEncabezado-desplazamientoCaja+altos[0]+GROSOR_BORDE_FILA/2:cajaVacio.ascenso+cajaVacio.descenso;
   const posicionTitulo=iniciarSeccionTecnica(f,tabla.titulo,altoContenidoInicial);
-  alturaCompleta+=GAP_ANTES_TITULO_TECNICO+f.bold.heightAtSize(TITULO_TECNICO_TAMANO)+GAP_DESPUES_TITULO_TECNICO;
+  const cajaTitulo=medirCajaVisualTexto(f.bold,TITULO_TECNICO_TAMANO);
+  alturaCompleta+=GAP_ANTES_TITULO_TECNICO+cajaTitulo.ascenso+cajaTitulo.descenso+GAP_DESPUES_TITULO_TECNICO;
   const encabezado=(primera:number)=>{
-    if(f.y-altoEncabezado-primera<f.inferior)f.pagina("tecnica-continuacion");
+    if(f.y-(altoEncabezado-desplazamientoCaja)-primera-GROSOR_BORDE_FILA/2<f.inferior)f.pagina("tecnica-continuacion");
     f.marcar(`tabla:${tabla.titulo}`); paginas.push(f.diagnostico.paginas.length-1);
-    let x=f.margen;const superior=f.y;
+    let x=f.margen;const superior=f.y+desplazamientoCaja;
     encabezados.forEach((lineas,i)=>{lineas.forEach((texto,j)=>f.page.drawText(texto,{x:x+a.padding,y:superior-a.padding-a.fuente-j*a.linea,size:a.fuente,font:f.bold,color:GRIS}));x+=tabla.columnas[i].ancho;});
-    f.y-=altoEncabezado;alturaCompleta+=altoEncabezado;
+    f.y=superior-altoEncabezado;alturaCompleta+=altoEncabezado-desplazamientoCaja;
     f.page.drawLine({start:{x:f.margen,y:f.y},end:{x:A4[0]-f.margen,y:f.y},thickness:.55,color:rgb(.55,.6,.65)});
   };
   if(!tabla.filas.length){
     f.marcar(`tabla:${tabla.titulo}`);paginas.push(f.diagnostico.paginas.length-1);
-    const ascenso=f.font.heightAtSize(a.fuente,{descender:false});
-    const descenso=f.font.heightAtSize(a.fuente)-ascenso;
-    const lineaBase=f.y-ascenso;
+    const lineaBase=f.y-cajaVacio.ascenso;
     f.page.drawText("Sin registros",{x:f.margen,y:lineaBase,size:a.fuente,font:f.font,color:GRIS});
-    f.y=lineaBase-descenso;alturaCompleta+=f.font.heightAtSize(a.fuente);
+    f.y=lineaBase-cajaVacio.descenso;alturaCompleta+=cajaVacio.ascenso+cajaVacio.descenso;
     f.diagnostico.tablas.push({titulo:tabla.titulo,alturaEncabezado:0,alturasFilas:[],alturaCompleta,posicionFinal:f.y,paginas,fuente:a.fuente,...posicionTitulo,bordeInferiorFinal:f.y});return;
   }
   encabezado(altos[0]);
   celdas.forEach((fila,indice)=>{
     const restantes=celdas.length-indice;
-    if(restantes===2&&f.y-altos[indice]>=f.inferior&&f.y-altos[indice]-altos[indice+1]<f.inferior){f.pagina("tecnica-continuacion");encabezado(altos[indice]);}
-    else if(f.y-altos[indice]<f.inferior){f.pagina("tecnica-continuacion");encabezado(altos[indice]);}
+    if(restantes===2&&f.y-altos[indice]-GROSOR_BORDE_FILA/2>=f.inferior&&f.y-altos[indice]-altos[indice+1]-GROSOR_BORDE_FILA/2<f.inferior){f.pagina("tecnica-continuacion");encabezado(altos[indice]);}
+    else if(f.y-altos[indice]-GROSOR_BORDE_FILA/2<f.inferior){f.pagina("tecnica-continuacion");encabezado(altos[indice]);}
     const superior=f.y;let x=f.margen;
     fila.forEach((lineas,i)=>{lineas.forEach((texto,j)=>f.page.drawText(texto,{x:x+a.padding,y:superior-a.padding-a.fuente-j*a.linea,size:a.fuente,font:f.font}));x+=tabla.columnas[i].ancho;});
     f.y-=altos[indice];alturaCompleta+=altos[indice];
-    f.page.drawLine({start:{x:f.margen,y:f.y},end:{x:A4[0]-f.margen,y:f.y},thickness:.3,color:rgb(.82,.84,.86)});
+    f.page.drawLine({start:{x:f.margen,y:f.y},end:{x:A4[0]-f.margen,y:f.y},thickness:GROSOR_BORDE_FILA,color:rgb(.82,.84,.86)});
   });
+  f.y-=GROSOR_BORDE_FILA/2;alturaCompleta+=GROSOR_BORDE_FILA/2;
   f.diagnostico.tablas.push({titulo:tabla.titulo,alturaEncabezado:altoEncabezado,alturasFilas:altos,alturaCompleta,posicionFinal:f.y,paginas:[...new Set(paginas)],fuente:a.fuente,...posicionTitulo,bordeInferiorFinal:f.y});
 }
 
