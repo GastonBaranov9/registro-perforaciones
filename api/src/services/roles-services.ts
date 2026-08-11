@@ -10,10 +10,13 @@ export async function changeRol(
 
   try {
     await client.query("BEGIN");
-    await client.query(
-      `SELECT id_usuario FROM usuario WHERE id_usuario = $1 FOR UPDATE`,
+    const { rows: cuentas } = await client.query(
+      `SELECT id_usuario FROM usuario
+       WHERE id_usuario = $1 AND cuenta_acceso = TRUE
+       FOR UPDATE`,
       [id_usuario]
     );
+    if (!cuentas[0]) throw new err.T05UsuarioNoEncontrado();
     await client.query(
       `SELECT pg_advisory_xact_lock($1::integer, $2::integer)`,
       [id_usuario, id_rol]

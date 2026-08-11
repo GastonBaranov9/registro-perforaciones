@@ -48,8 +48,8 @@ export async function createUsuario(
     const { rows } = await client.query<UsuarioPublicoSinRoles>(
       `
         INSERT INTO usuario
-          (email, nombre, password, activo)
-        VALUES ($1, $2, $3, $4)
+          (email, nombre, password, activo, cuenta_acceso)
+        VALUES ($1, $2, $3, $4, TRUE)
         RETURNING
           id_usuario,
           email,
@@ -117,7 +117,9 @@ export async function updateUsuario(
     await client.query("BEGIN");
 
     const { rows: estados } = await client.query<{ activo: boolean }>(
-      `SELECT activo FROM usuario WHERE id_usuario = $1 FOR UPDATE`,
+      `SELECT activo FROM usuario
+       WHERE id_usuario = $1 AND cuenta_acceso = TRUE
+       FOR UPDATE`,
       [id_usuario]
     );
     const estadoAnterior = estados[0];
@@ -205,7 +207,7 @@ export async function deleteUsuario(id_usuario: number): Promise<Boolean> {
   const { rowCount } = await myPool.query(
     `
     DELETE FROM usuario
-    WHERE id_usuario = $1
+    WHERE id_usuario = $1 AND cuenta_acceso = TRUE
     `,
     [id_usuario]
   );
@@ -240,7 +242,7 @@ export async function getUsuarioById(
         ON ur.id_usuario = u.id_usuario
       LEFT JOIN rol r
         ON r.id_rol = ur.id_rol
-      WHERE u.id_usuario = $1
+      WHERE u.id_usuario = $1 AND u.cuenta_acceso = TRUE
       GROUP BY
         u.id_usuario,
         u.email,
@@ -279,6 +281,7 @@ export async function getAllUsuarios(): Promise<UsuarioPublico[]> {
         ON ur.id_usuario = u.id_usuario
       LEFT JOIN rol r
         ON r.id_rol = ur.id_rol
+      WHERE u.cuenta_acceso = TRUE
       GROUP BY
         u.id_usuario,
         u.email,
