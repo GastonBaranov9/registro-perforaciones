@@ -51,27 +51,28 @@ export async function createPozo(
 // Editar pozo
 export async function updatePozo(
   id_pozo: number,
-  data: PozoUpdate
+  data: PozoUpdate,
+  db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<Pozo | void> {
   const sql = `    UPDATE public.pozo
   SET
     id_propietario      = COALESCE($2::integer,  id_propietario),
     id_sitio            = id_sitio,
-    empresa             = COALESCE($4::text,     empresa),
-    id_perforador       = COALESCE($5::integer,  id_perforador),
-    fecha_inicio        = COALESCE($6::date,     fecha_inicio),
-    fecha_fin           = COALESCE($7::date,     fecha_fin),
-    profundidad_final_m = COALESCE($8::numeric,  profundidad_final_m),
-    sello_sanitario     = COALESCE($9::boolean,  sello_sanitario),
-    pre_filtro          = COALESCE($10::text,    pre_filtro),
-    nivel_estatico_m    = COALESCE($11::numeric, nivel_estatico_m),
-    nivel_dinamico_m    = COALESCE($12::numeric, nivel_dinamico_m),
-    caudal_estimado_lh  = COALESCE($13::numeric, caudal_estimado_lh),
-    metodo_sedimentario = COALESCE($14::text,    metodo_sedimentario),
-    metodo_rocoso       = COALESCE($15::text,    metodo_rocoso),
-    cementacion         = COALESCE($16::text,    cementacion),
-    desarrollo          = COALESCE($17::text,    desarrollo),
-    revestimiento       = COALESCE($18::text,    revestimiento)
+    empresa             = COALESCE($3::text,     empresa),
+    id_perforador       = COALESCE($4::integer,  id_perforador),
+    fecha_inicio        = COALESCE($5::date,     fecha_inicio),
+    fecha_fin           = COALESCE($6::date,     fecha_fin),
+    profundidad_final_m = COALESCE($7::numeric,  profundidad_final_m),
+    sello_sanitario     = COALESCE($8::boolean,  sello_sanitario),
+    pre_filtro          = COALESCE($9::text,    pre_filtro),
+    nivel_estatico_m    = COALESCE($10::numeric, nivel_estatico_m),
+    nivel_dinamico_m    = COALESCE($11::numeric, nivel_dinamico_m),
+    caudal_estimado_lh  = COALESCE($12::numeric, caudal_estimado_lh),
+    metodo_sedimentario = COALESCE($13::text,    metodo_sedimentario),
+    metodo_rocoso       = COALESCE($14::text,    metodo_rocoso),
+    cementacion         = COALESCE($15::text,    cementacion),
+    desarrollo          = COALESCE($16::text,    desarrollo),
+    revestimiento       = COALESCE($17::text,    revestimiento)
   WHERE id_pozo = $1
   RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
     fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
@@ -82,7 +83,6 @@ export async function updatePozo(
   const vals = [
     id_pozo,
     data.id_propietario ?? null,
-    data.id_sitio ?? null,
     data.empresa ?? null,
     data.id_perforador ?? null,
     data.fecha_inicio ?? null,
@@ -100,7 +100,7 @@ export async function updatePozo(
     data.revestimiento ?? null,
   ];
 
-  const { rows } = await myPool.query(sql, vals);
+  const { rows } = await db.query(sql, vals);
   return rows[0] as Pozo | undefined;
 }
 

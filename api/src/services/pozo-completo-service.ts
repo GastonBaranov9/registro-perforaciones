@@ -20,6 +20,13 @@ export interface PozoCompletoResultado {
 
 type Intervalo = { desde_m: number; hasta_m: number };
 type DatosCompletosPozo = PozoCompletoBody | PozoCompletoUpdateBody;
+type IntervaloOriginal = {
+  id_intervalo_litologico: number;
+  desde_m: number;
+  hasta_m: number;
+  material: string;
+  id_litologia: number | null;
+};
 
 export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   const errores = validarDatosTecnicosPozo({
@@ -192,14 +199,21 @@ export async function actualizarPozoCompleto(
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
 
-    const { rows: litologiasOriginales } = await client.query<{ id_intervalo_litologico: number; id_litologia: number | null }>(
-      "SELECT id_intervalo_litologico,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
-    const originales = new Map(litologiasOriginales.map((fila) => [Number(fila.id_intervalo_litologico), fila.id_litologia == null ? null : Number(fila.id_litologia)]));
+    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
+      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const originales = litologiasOriginales.map((fila) => ({
+      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
+      desde_m: Number(fila.desde_m),
+      hasta_m: Number(fila.hasta_m),
+      material: String(fila.material),
+      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
+    }));
+    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
     await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
-    const hijos = await insertarHijos(client, idPozo, data, originales);
+    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones);
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
@@ -235,13 +249,13 @@ export async function actualizarPozoCompleto(
   return resultado;
 }
 
-async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: Map<number, number | null>) {
+async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>) {
   const intervalos_litologicos: PozoCompletoResultado["intervalos_litologicos"] = [];
   const intervalos_diametro: PozoCompletoResultado["intervalos_diametro"] = [];
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];
   const intervalos_filtro: PozoCompletoResultado["intervalos_filtro"] = [];
   for (const i of data.intervalos_litologicos) {
-    const originalId = originales === undefined ? undefined : (i.id_intervalo_litologico == null ? null : (originales.has(i.id_intervalo_litologico) ? originales.get(i.id_intervalo_litologico) ?? null : null));
+    const originalId = originales === undefined ? undefined : resoluciones?.get(intervalos_litologicos.length) ?? null;
     intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, i, originalId));
   }
   for (const i of data.intervalos_diametro) {
@@ -257,6 +271,51 @@ async function insertarHijos(client: PoolClient, idPozo: number, data: DatosComp
     niveles_aporte.push(numerizarAporte(rows[0]));
   }
   return { intervalos_litologicos, intervalos_diametro, intervalos_filtro, niveles_aporte };
+}
+
+export function resolverLitologiasOriginales(
+  intervalos: readonly PozoCompletoBody["intervalos_litologicos"][number][],
+  originales: readonly IntervaloOriginal[],
+): Map<number, number | null | undefined> {
+  const resoluciones = new Map<number, number | null | undefined>();
+  const consumidos = new Set<number>();
+  for (const [indice, intervalo] of intervalos.entries()) {
+    if (intervalo.id_litologia != null) {
+      if (intervalo.id_intervalo_litologico != null) {
+        const original = originales.find((fila) => fila.id_intervalo_litologico === intervalo.id_intervalo_litologico);
+        resoluciones.set(indice, original?.id_litologia ?? null);
+        if (original) consumidos.add(original.id_intervalo_litologico);
+      } else {
+        resoluciones.set(indice, undefined);
+      }
+      continue;
+    }
+    if (intervalo.id_intervalo_litologico != null) {
+      const original = originales.find((fila) => fila.id_intervalo_litologico === intervalo.id_intervalo_litologico);
+      resoluciones.set(indice, original?.id_litologia ?? null);
+      if (original) consumidos.add(original.id_intervalo_litologico);
+      continue;
+    }
+    const coincidencias = originales.filter((fila) =>
+      fila.desde_m === intervalo.desde_m
+      && fila.hasta_m === intervalo.hasta_m
+      && normalizarMaterial(fila.material) === normalizarMaterial(intervalo.material));
+    if (coincidencias.length > 1) throw new err.T05DatosIncorrectos("No se puede identificar de forma inequívoca un intervalo litológico legado.");
+    if (coincidencias.length === 1 && consumidos.has(coincidencias[0].id_intervalo_litologico)) {
+      throw new err.T05DatosIncorrectos("Un intervalo litológico original no puede reutilizarse en el mismo update.");
+    }
+    const candidatos = coincidencias;
+    const original = candidatos[0];
+    if (original) {
+      consumidos.add(original.id_intervalo_litologico);
+      resoluciones.set(indice, original.id_litologia);
+    } else resoluciones.set(indice, undefined);
+  }
+  return resoluciones;
+}
+
+function normalizarMaterial(material: string): string {
+  return material.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 async function insertarIntervaloLitologico(
