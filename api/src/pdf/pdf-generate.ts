@@ -132,13 +132,7 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
   for(let indice=0;indice<generales.length;indice+=2){
     const par=generales.slice(indice,indice+2);
     const preparados=par.map(([etiqueta,valor])=>prepararCampoGeneral(f,etiqueta,valor));
-    const alto=Math.max(...preparados.map(c=>Math.max(18,c.lineas.length*11)));
-    preparados.forEach((campo,columna)=>{
-      const x=f.margen+columna*255;
-      f.page.drawText(`${campo.etiqueta}:`,{x,y:f.y,size:9.7,font:f.bold,color:GRIS});
-      campo.lineas.forEach((linea,lineaIndice)=>f.page.drawText(linea,{x:x+campo.anchoEtiqueta,y:f.y-lineaIndice*11,size:9.7,font:f.font}));
-    });
-    f.y-=alto;
+    dibujarParCamposGenerales(f, preparados);
   }
   f.y-=7;
   for(const tabla of tablas) dibujarTablaTecnica(f,tabla,ajuste);
@@ -147,6 +141,28 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
 function prepararCampoGeneral(f:FlujoPDF,etiqueta:string,valor:string){
   const anchoEtiqueta=Math.min(150,Math.max(78,f.bold.widthOfTextAtSize(`${etiqueta}: `,9.7)+4));
   return {etiqueta,anchoEtiqueta,lineas:envolver(valor,f.font,9.7,238-anchoEtiqueta)};
+}
+
+function dibujarParCamposGenerales(f:FlujoPDF, campos:ReturnType<typeof prepararCampoGeneral>[]) {
+  const maximoLineas = Math.max(...campos.map((campo) => campo.lineas.length));
+  let desplazamiento = 0;
+  while (desplazamiento < maximoLineas) {
+    if (f.y - f.inferior < 18) {
+      f.pagina("tecnica-continuacion");
+      f.marcar("datos-generales-continuacion");
+    }
+    const lineasDisponibles = Math.max(1, Math.floor((f.y - f.inferior) / 11));
+    const cantidad = Math.min(maximoLineas - desplazamiento, lineasDisponibles);
+    campos.forEach((campo, columna) => {
+      const x = f.margen + columna * 255;
+      if (desplazamiento === 0) f.page.drawText(`${campo.etiqueta}:`, { x, y:f.y, size:9.7, font:f.bold, color:GRIS });
+      campo.lineas.slice(desplazamiento, desplazamiento + cantidad).forEach((linea, indice) => {
+        f.page.drawText(linea, { x:x+campo.anchoEtiqueta, y:f.y-indice*11, size:9.7, font:f.font });
+      });
+    });
+    f.y -= Math.max(18, cantidad * 11);
+    desplazamiento += cantidad;
+  }
 }
 
 function medirDatosGenerales(f:FlujoPDF,generales:Array<[string,string]>) {
