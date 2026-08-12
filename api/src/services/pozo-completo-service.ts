@@ -28,6 +28,8 @@ type IntervaloOriginal = {
   material: string;
   id_litologia: number | null;
 };
+type FiltroOriginal = { id_intervalo_filtro: number; ranura_mm: 0.5 | 0.75 | 1 | null };
+type FiltroEntrada = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero"; id_intervalo_filtro?: number; ranura_mm?: 0.5 | 0.75 | 1 | null };
 
 export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   const errores = validarDatosTecnicosPozo({
@@ -195,12 +197,14 @@ export async function actualizarPozoCompleto(
     const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
     const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
     if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
+    let ranurasFiltros = new Map<number, 0.5 | 0.75 | 1 | null>();
     if (idsFiltros.length) {
-      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number}>(
-        "SELECT id_intervalo_filtro FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
+      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number;ranura_mm:number|null}>(
+        "SELECT id_intervalo_filtro,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
         [idPozo, idsFiltros],
       );
       if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
+      ranurasFiltros = resolverRanurasFiltros(data.intervalos_filtro, filtrosOriginales.map((filtro) => ({ id_intervalo_filtro: Number(filtro.id_intervalo_filtro), ranura_mm: filtro.ranura_mm == null ? null : Number(filtro.ranura_mm) as 0.5 | 0.75 | 1 })));
     }
 
     const p = data.pozo;
@@ -225,7 +229,7 @@ export async function actualizarPozoCompleto(
     await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
-    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones);
+    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones, ranurasFiltros);
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
@@ -261,7 +265,7 @@ export async function actualizarPozoCompleto(
   return resultado;
 }
 
-async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>) {
+async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {
   const intervalos_litologicos: PozoCompletoResultado["intervalos_litologicos"] = [];
   const intervalos_diametro: PozoCompletoResultado["intervalos_diametro"] = [];
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];
@@ -275,7 +279,9 @@ async function insertarHijos(client: PoolClient, idPozo: number, data: DatosComp
     intervalos_diametro.push(numerizarDiametro(rows[0]));
   }
   for (const i of data.intervalos_filtro ?? []) {
-    const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia,i.ranura_mm ?? null]);
+    const idFiltro = "id_intervalo_filtro" in i ? i.id_intervalo_filtro : undefined;
+    const ranura = idFiltro == null ? i.ranura_mm : ranurasFiltros?.get(idFiltro) ?? i.ranura_mm;
+    const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia,ranura ?? null]);
     intervalos_filtro.push(numerizarFiltro(rows[0]));
   }
   for (const a of data.niveles_aporte) {
@@ -328,6 +334,28 @@ export function resolverLitologiasOriginales(
     } else resoluciones.set(indice, undefined);
   }
   return resoluciones;
+}
+
+export function resolverRanurasFiltros(
+  filtros: readonly FiltroEntrada[],
+  originales: readonly FiltroOriginal[],
+): Map<number, 0.5 | 0.75 | 1 | null> {
+  const resultado = new Map<number, 0.5 | 0.75 | 1 | null>();
+  for (const filtro of filtros) {
+    if (filtro.id_intervalo_filtro == null) continue;
+    const original = originales.find((fila) => fila.id_intervalo_filtro === filtro.id_intervalo_filtro);
+    if (!original) throw new err.T05DatosIncorrectos("Un filtro persistido no pertenece al pozo editado.");
+    const presente = Object.prototype.hasOwnProperty.call(filtro, "ranura_mm");
+    if (!presente) { resultado.set(filtro.id_intervalo_filtro, original.ranura_mm); continue; }
+    if (filtro.ranura_mm == null) {
+      if (original.ranura_mm != null) throw new err.T05DatosIncorrectos("No se puede eliminar una ranura ya especificada.");
+      resultado.set(filtro.id_intervalo_filtro, null);
+      continue;
+    }
+    if (![0.5, 0.75, 1].includes(filtro.ranura_mm)) throw new err.T05DatosIncorrectos("Ranura invÃ¡lida.");
+    resultado.set(filtro.id_intervalo_filtro, filtro.ranura_mm);
+  }
+  return resultado;
 }
 
 function normalizarMaterial(material: string): string {
