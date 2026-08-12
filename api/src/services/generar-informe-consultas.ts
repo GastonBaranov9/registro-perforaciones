@@ -34,7 +34,7 @@ export interface ReportePozo {
     diametro_pulg: number;
     material_tuberia: "PVC" | "Acero" | null;
   }[];
-  filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero" }[];
+  filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero"; ranura_mm?:number|null }[];
   niveles_aporte: { profundidad_m: number }[];
 }
 
@@ -97,7 +97,7 @@ export async function getReportePozo(
     ORDER BY desde_m;
   `;
   const { rows: diamRows } = await db.query(diamSql, [id_pozo]);
-  const { rows: filtroRows } = await db.query(`SELECT desde_m,hasta_m,diametro_pulg,material_tuberia FROM public.intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m`, [id_pozo]);
+  const { rows: filtroRows } = await db.query(`SELECT desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm FROM public.intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m`, [id_pozo]);
 
   const aporteSql = `
     SELECT profundidad_m
@@ -126,7 +126,7 @@ export async function getReportePozo(
       diametro_pulg: Number(d.diametro_pulg),
       material_tuberia: d.material_tuberia == null ? null : String(d.material_tuberia) as "PVC" | "Acero",
     })),
-    filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero" })),
+    filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero",ranura_mm:f.ranura_mm==null?null:Number(f.ranura_mm) })),
 
     niveles_aporte: (aporteRows as Record<string, unknown>[]).map((a) => ({
       profundidad_m: Number(a.profundidad_m),

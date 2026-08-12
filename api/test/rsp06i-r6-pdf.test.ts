@@ -15,7 +15,7 @@ function reporte(): ReportePozo {
     desarrollo: "Registrado", introduccion: null, nombre_archivo: null, foto_url: null,
     litologia: Array.from({ length: 5 }, (_, i) => ({ desde_m: i * 20, hasta_m: (i + 1) * 20, material: `Material ${i}` })),
     diametros: Array.from({ length: 3 }, (_, i) => ({ desde_m: i * 20, hasta_m: (i + 1) * 20, diametro_pulg: 8 - i, material_tuberia: "PVC" as const })),
-    filtros: Array.from({ length: 2 }, (_, i) => ({ desde_m: 50 + i * 10, hasta_m: 55 + i * 10, diametro_pulg: 6, material_tuberia: "PVC" as const })),
+    filtros: Array.from({ length: 2 }, (_, i) => ({ desde_m: 50 + i * 10, hasta_m: 55 + i * 10, diametro_pulg: 6, material_tuberia: "PVC" as const, ranura_mm: i ? null : 0.75 })),
     niveles_aporte: [{ profundidad_m: 60 }],
   };
 }
@@ -52,7 +52,7 @@ test("R6 conserva casos pequeño, cargado, largo y continuación sin clipping ti
 
   const cargado = reporte(); cargado.litologia = Array.from({ length: 12 }, (_, i) => ({ desde_m: i, hasta_m: i + 1, material: `Material técnico ${i}` }));
   cargado.diametros = Array.from({ length: 8 }, (_, i) => ({ desde_m: i, hasta_m: i + 1, diametro_pulg: 6, material_tuberia: "Acero" as const }));
-  cargado.filtros = Array.from({ length: 6 }, (_, i) => ({ desde_m: i, hasta_m: i + .5, diametro_pulg: 6, material_tuberia: "PVC" as const }));
+  cargado.filtros = Array.from({ length: 6 }, (_, i) => ({ desde_m: i, hasta_m: i + .5, diametro_pulg: 6, material_tuberia: "PVC" as const, ranura_mm: i % 2 ? 0.5 : 1 }));
   const cargadoResultado = await crearPDFConDiagnostico(cargado, 606, { mapa: {} });
   assert.ok(cargadoResultado.diagnostico.tablas.every((tabla) => (tabla.fuente ?? 0) >= 9));
   assert.ok(cargadoResultado.diagnostico.tablas.every((tabla) => tabla.bordeInferiorFinal >= 52));

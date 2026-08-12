@@ -154,7 +154,7 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
       {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:214,valor:x=>String(x.material_tuberia??"No especificado")},
     ]},
     { titulo:"Intervalos de filtro", filas:r.filtros??[], columnas:[
-      {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:214,valor:x=>String(x.material_tuberia)},
+      {titulo:"Desde",ancho:75,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:75,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:100,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:145,valor:x=>String(x.material_tuberia)},{titulo:"Ranura",ancho:104,valor:x=>formatearRanuraFiltro(x.ranura_mm)},
     ]},
     { titulo:"Niveles de aporte", filas:r.niveles_aporte, columnas:[{titulo:"Profundidad",ancho:499,valor:x=>`${numero(x.profundidad_m)} m`}] },
   ];
@@ -175,6 +175,13 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
   }
   f.y-=7;
   for(const tabla of tablas) dibujarTablaTecnica(f,tabla,ajuste);
+}
+
+export function formatearRanuraFiltro(ranura: unknown): string {
+  if (ranura == null) return "No especificada";
+  const valor = Number(ranura);
+  if (!Number.isFinite(valor)) return "No especificada";
+  return `${valor === 1 ? "1" : valor.toFixed(2)} mm`;
 }
 
 function prepararCampoGeneral(f:FlujoPDF,etiqueta:string,valor:string){
