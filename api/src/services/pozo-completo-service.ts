@@ -188,19 +188,18 @@ export async function actualizarPozoCompleto(
     const p = data.pozo;
     const { rows } = await client.query(
       `UPDATE pozo SET id_propietario=$2, id_sitio=$3, empresa=$4, id_perforador=$5,
-       fecha_inicio=$6, fecha_fin=$7, profundidad_final_m=$8, sello_sanitario=$9,
-       pre_filtro=$10, nivel_estatico_m=$11, nivel_dinamico_m=$12, caudal_estimado_lh=$13,
-       metodo_sedimentario=COALESCE($14::text,metodo_sedimentario), metodo_rocoso=COALESCE($15::text,metodo_rocoso),
-       cementacion=COALESCE($16::text,cementacion), desarrollo=COALESCE($17::text,desarrollo), revestimiento=$18
+       fecha_inicio=$6, fecha_fin=$7, profundidad_final_m=$8,
+       nivel_estatico_m=$9, nivel_dinamico_m=$10, caudal_estimado_lh=$11,
+       metodo_sedimentario=COALESCE($12::text,metodo_sedimentario), metodo_rocoso=COALESCE($13::text,metodo_rocoso),
+       cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16
        WHERE id_pozo=$1
        RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
         fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
         caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
         foto_url, fecha_creado`,
       [idPozo,p.id_propietario,Number(bloqueado[0].id_sitio),p.empresa??null,p.id_perforador,p.fecha_inicio??null,p.fecha_fin??null,
-       p.profundidad_final_m??null,p.sello_sanitario??null,p.pre_filtro??null,p.nivel_estatico_m??null,
-       p.nivel_dinamico_m??null,p.caudal_estimado_lh??null,p.metodo_sedimentario??null,p.metodo_rocoso??null,
-       p.cementacion??null,p.desarrollo??null,p.revestimiento??null],
+       p.profundidad_final_m??null,p.nivel_estatico_m??null,p.nivel_dinamico_m??null,p.caudal_estimado_lh??null,
+       p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null],
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
 
@@ -385,16 +384,16 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
   const { rows } = await client.query(
     `INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio, fecha_fin,
-      profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
+      profundidad_final_m, nivel_estatico_m, nivel_dinamico_m,
       caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
       fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
       caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
       foto_url, fecha_creado`,
     [p.id_propietario, idSitio, p.empresa ?? null, p.id_perforador, creadoPor, p.fecha_inicio ?? null,
-      p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.sello_sanitario ?? null, p.pre_filtro ?? null,
-      p.nivel_estatico_m ?? null, p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
+      p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.nivel_estatico_m ?? null,
+      p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
       estandar.metodo_sedimentario, estandar.metodo_rocoso, estandar.cementacion,
       estandar.desarrollo, p.revestimiento ?? null],
   );

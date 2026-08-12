@@ -301,6 +301,8 @@ export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
 export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
+export const PozoModerno = Type.Omit(NuevoPozo, ["sello_sanitario", "pre_filtro"]);
+export type PozoModerno = Static<typeof PozoModerno>;
 
 export const FotoNuevaPozo = Type.Object({
   mime_type: Type.Union([Type.Literal("image/jpeg"), Type.Literal("image/png")]),
@@ -308,7 +310,7 @@ export const FotoNuevaPozo = Type.Object({
 });
 
 export const PozoCompletoBody = Type.Object({
-  pozo: Type.Omit(NuevoPozo, ["id_sitio"]),
+  pozo: Type.Omit(PozoModerno, ["id_sitio"]),
   sitio_nuevo: SitioNuevoPozoBody,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
@@ -330,7 +332,7 @@ export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVist
 
 export const PozoCompletoUpdateBody = Type.Intersect([
   Type.Object({
-    pozo: NuevoPozo,
+    pozo: PozoModerno,
     intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
     intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
     intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
