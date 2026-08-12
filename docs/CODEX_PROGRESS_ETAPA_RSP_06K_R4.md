@@ -7,5 +7,5 @@
 - Compatibilidad: no cambia la creación de propietarios operativos ni la selección de perforadores.
 - Pruebas focalizadas: API 5/5 y selector Angular 6/6.
 - Validación final: API build/suite y frontend UTF-8/build/suite ejecutados al cierre.
-- Commits: `a2aacd9` (API/aislamiento), `a5085a7` (frontend/búsqueda), `c82a88f` (documentación).
-- HEAD y estado Git: `c82a88f`; árbol limpio al finalizar.
+- Commits: `a2aacd9` (API/aislamiento), `a5085a7` (frontend/búsqueda), `c82a88f` y `2b97207` (documentación).
+- HEAD y estado Git: `2b97207`; árbol limpio al finalizar.
