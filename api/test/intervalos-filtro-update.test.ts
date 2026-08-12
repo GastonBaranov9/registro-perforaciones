@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { actualizarFiltro } from "../src/services/intervalos-filtro-service.ts";
 
-const valido = { desde_m:10,hasta_m:20,diametro_pulg:6,material_tuberia:"PVC" as const };
+const valido = { desde_m:10,hasta_m:20,diametro_pulg:6,material_tuberia:"PVC" as const,ranura_mm:0.75 as const };
 function dbCon(filas: Record<string,unknown>[][]) {
   let indice=0;
   return { query:async()=>({rows:filas[indice++] ?? []}) };

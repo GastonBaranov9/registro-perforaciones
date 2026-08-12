@@ -1,5 +1,7 @@
 import { myPool } from "../db/pool.ts";
 import type { Pozo, PozoDetalle, Estado, NuevoPozo } from "../models/schemas.ts";
+import { datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
+import * as err from "../models/errors.ts";
 
 type PozoUpdate = Partial<
   Omit<Pozo, "id_pozo" | "creado_por" | "fecha_creado">
@@ -10,15 +12,18 @@ export async function createPozo(
   id_usuario: number,
   data: NuevoPozo
 ): Promise<Pozo> {
+  let estandar: ReturnType<typeof datosTecnicosParaCreacion>;
+  try { estandar = datosTecnicosParaCreacion(data); }
+  catch (error) { throw new err.T05DatosIncorrectos(error instanceof Error ? error.message : "Los datos técnicos no son válidos."); }
   const sql = `
     INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por,
       fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario,
       pre_filtro, nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh,
-      metodo_sedimentario, metodo_rocoso
+      metodo_sedimentario, metodo_rocoso, cementacion, desarrollo
     )
     VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
     )
     RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
       fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
@@ -40,8 +45,10 @@ export async function createPozo(
     data.nivel_estatico_m ?? null,
     data.nivel_dinamico_m ?? null,
     data.caudal_estimado_lh ?? null,
-    data.metodo_sedimentario ?? null,
-    data.metodo_rocoso ?? null,
+    estandar.metodo_sedimentario,
+    estandar.metodo_rocoso,
+    estandar.cementacion,
+    estandar.desarrollo,
   ];
 
   const { rows } = await myPool.query(sql, vals);

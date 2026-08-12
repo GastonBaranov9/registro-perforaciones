@@ -268,13 +268,21 @@ export type IntervaloDiametroPerforacionBody = Static<
 export const IntervaloFiltro = Type.Object({
   id_intervalo_filtro: Type.Integer(), id_pozo: Type.Integer(),
   desde_m: Type.Number(), hasta_m: Type.Number(), diametro_pulg: Type.Number(), material_tuberia: MaterialTuberia,
+  ranura_mm: Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1), Type.Null()]),
 });
 export type IntervaloFiltro = Static<typeof IntervaloFiltro>;
 export const IntervaloFiltroBody = Type.Object({
+  id_intervalo_filtro: Type.Optional(Type.Integer()),
   desde_m: Type.Number({ minimum: 0 }), hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   diametro_pulg: Type.Number({ exclusiveMinimum: 0 }), material_tuberia: MaterialTuberia,
+  ranura_mm: Type.Optional(Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1), Type.Null()])),
 });
 export type IntervaloFiltroBody = Static<typeof IntervaloFiltroBody>;
+export const IntervaloFiltroCreateBody = Type.Intersect([
+  Type.Omit(IntervaloFiltroBody, ["id_intervalo_filtro", "ranura_mm"]),
+  Type.Object({ ranura_mm: Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1)]) }),
+]);
+export type IntervaloFiltroCreateBody = Static<typeof IntervaloFiltroCreateBody>;
 
 export const NivelAporteBody = Type.Pick(NivelAporte, ["profundidad_m"]);
 export type NivelAporteBody = Static<typeof NivelAporteBody>;
@@ -304,7 +312,7 @@ export const PozoCompletoBody = Type.Object({
   sitio_nuevo: SitioNuevoPozoBody,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
-  intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+  intervalos_filtro: Type.Array(IntervaloFiltroCreateBody, { default: [] }),
   niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
   foto: Type.Optional(FotoNuevaPozo),
 });

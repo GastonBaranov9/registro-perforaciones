@@ -31,7 +31,7 @@ function poolFalso(fallarEn?: string, rechazarLitologia = false, legacySinVincul
       if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 202, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
       if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: legacySinVinculo ? "  Histórico\t" : "Arena", id_litologia: legacySinVinculo ? null : "7" }] };
       if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: String(++diam), id_pozo: "101", desde_m: "0", hasta_m: "25", diametro_pulg: "8" }] };
-      if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC" }] };
+      if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC", ranura_mm: "0.75" }] };
       if (sql.includes("INSERT INTO nivel_aporte")) return { rows: [{ id_nivel_aporte: "1", id_pozo: "101", profundidad_m: "18" }] };
       return { rows: [] };
     },
@@ -120,7 +120,7 @@ test("intervalo inválido o solapado se rechaza antes de abrir transacción", ()
 
 test("filtros opcionales validan material profundidad y solapamiento por categoría", async () => {
   const valido = body();
-  valido.intervalos_filtro = [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "PVC" }, { desde_m: 20, hasta_m: 25, diametro_pulg: 6, material_tuberia: "Acero" }];
+  valido.intervalos_filtro = [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "PVC", ranura_mm: 0.5 }, { desde_m: 20, hasta_m: 25, diametro_pulg: 6, material_tuberia: "Acero", ranura_mm: 1 }];
   assert.deepEqual(validarPozoCompleto(valido), []);
   const solapado = structuredClone(valido); solapado.intervalos_filtro[1].desde_m = 14;
   assert.ok(validarPozoCompleto(solapado).some((x) => x.includes("solapan")));

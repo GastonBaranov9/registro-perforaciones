@@ -121,6 +121,8 @@ CREATE TABLE intervalo_filtro (
   hasta_m             NUMERIC NOT NULL,
   diametro_pulg       NUMERIC NOT NULL CHECK (diametro_pulg > 0),
   material_tuberia    VARCHAR(5) NOT NULL CHECK (material_tuberia IN ('PVC', 'Acero')),
+  ranura_mm           NUMERIC(4,2),
+  CONSTRAINT intervalo_filtro_ranura_mm_check CHECK (ranura_mm IS NULL OR ranura_mm IN (0.50, 0.75, 1.00)),
   CHECK (hasta_m > desde_m)
 );
 CREATE INDEX intervalo_filtro_pozo_profundidad_idx ON intervalo_filtro (id_pozo, desde_m, hasta_m);

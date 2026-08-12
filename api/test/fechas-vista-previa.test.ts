@@ -12,7 +12,7 @@ test("formatea DATE sin aplicar zona horaria ni cambiar el día", () => {
 });
 
 test("un borrador válido genera el mismo modelo canónico sin persistencia", () => {
-  const borrador = { profundidad_final_m: 20, intervalos_litologicos: [{ desde_m: 0, hasta_m: 20, material: "Arena" }], intervalos_diametro: [{ desde_m: 0, hasta_m: 20, diametro_pulg: 8, material_tuberia: "PVC" as const }], intervalos_filtro: [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "Acero" as const }], niveles_aporte: [{ profundidad_m: 12 }] };
+  const borrador = { profundidad_final_m: 20, intervalos_litologicos: [{ desde_m: 0, hasta_m: 20, material: "Arena" }], intervalos_diametro: [{ desde_m: 0, hasta_m: 20, diametro_pulg: 8, material_tuberia: "PVC" as const }], intervalos_filtro: [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "Acero" as const, ranura_mm: 0.75 as const }], niveles_aporte: [{ profundidad_m: 12 }] };
   assert.deepEqual(validarDatosTecnicosPozo(borrador), []);
   const perfil = crearPerfilLitologico(borrador.intervalos_litologicos, borrador.profundidad_final_m, borrador.niveles_aporte, borrador.intervalos_diametro, borrador.intervalos_filtro);
   assert.equal(perfil?.tuberias[0].material_tuberia, "PVC"); assert.equal(perfil?.filtros[0].material_tuberia, "Acero"); assert.equal(perfil?.aportes[0].profundidad_m, 12);

@@ -8,13 +8,14 @@ import * as err from "../models/errors.ts";
 import { validarPersonaPozo } from "./candidatos-pozo-service.ts";
 import { aislarFotoExistente, decodificarFotoBase64, purgarFotoConfirmada, restaurarFotoAislada, type FotoAislada, type LoggerPurga } from "./foto-archivo-service.ts";
 import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
+import { DATOS_TECNICOS_ESTANDAR, datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 
 export interface PozoCompletoResultado {
   pozo: Pozo;
   sitio: import("../models/schemas.ts").Sitio;
   intervalos_litologicos: Array<{ id_intervalo_litologico: number; id_pozo: number; desde_m: number; hasta_m: number; material: string; id_litologia:number|null }>;
   intervalos_diametro: Array<{ id_intervalo_diametro_perforacion: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero" | null }>;
-  intervalos_filtro: Array<{ id_intervalo_filtro: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero" }>;
+  intervalos_filtro: Array<{ id_intervalo_filtro: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero"; ranura_mm: 0.5 | 0.75 | 1 | null }>;
   niveles_aporte: Array<{ id_nivel_aporte: number; id_pozo: number; profundidad_m: number }>;
 }
 
@@ -36,6 +37,9 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
     intervalos_filtro: data.intervalos_filtro,
     niveles_aporte: data.niveles_aporte,
   });
+  for (const [campo, valor] of Object.entries(data.pozo).filter(([campo]) => campo in DATOS_TECNICOS_ESTANDAR)) {
+    if (typeof valor === "string" && !valor.trim()) errores.push(`El campo ${campo} no puede estar vacío.`);
+  }
   if ("sitio_nuevo" in data && !("foto_accion" in data)) {
     if (!normalizarCoordenadasTexto(data.sitio_nuevo.latitud, data.sitio_nuevo.longitud, true)) errores.push("Las coordenadas del sitio son invÃ¡lidas.");
     if (!data.sitio_nuevo.departamento.trim()) errores.push("El departamento del sitio es obligatorio.");
@@ -54,7 +58,11 @@ export function validarDatosTecnicosPozo(data: PerfilLitologicoVistaPreviaBody):
   validarIntervalos(data.intervalos_diametro, "de diámetro", profundidad, errores);
   validarIntervalos(data.intervalos_filtro ?? [], "de filtro", profundidad, errores);
   data.intervalos_diametro.forEach((i, n) => { if (i.material_tuberia !== "PVC" && i.material_tuberia !== "Acero") errores.push(`Tubería ${n + 1}: material inválido.`); });
-  (data.intervalos_filtro ?? []).forEach((i, n) => { if (i.material_tuberia !== "PVC" && i.material_tuberia !== "Acero") errores.push(`Filtro ${n + 1}: material inválido.`); });
+  (data.intervalos_filtro ?? []).forEach((i, n) => {
+    if (i.material_tuberia !== "PVC" && i.material_tuberia !== "Acero") errores.push(`Filtro ${n + 1}: material inválido.`);
+    if (i.ranura_mm == null && i.id_intervalo_filtro == null) errores.push(`Filtro ${n + 1}: la ranura es obligatoria.`);
+    else if (i.ranura_mm != null && ![0.5, 0.75, 1].includes(i.ranura_mm)) errores.push(`Filtro ${n + 1}: ranura inválida.`);
+  });
   data.niveles_aporte.forEach((aporte, indice) => {
     if (!Number.isFinite(aporte.profundidad_m) || aporte.profundidad_m < 0)
       errores.push(`Aporte ${indice + 1}: la profundidad debe ser mayor o igual a 0.`);
@@ -115,7 +123,7 @@ export async function crearPozoCompleto(
       diametros.push(numerizarDiametro(rows[0]));
     }
     for (const intervalo of data.intervalos_filtro ?? []) {
-      const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia) VALUES ($1,$2,$3,$4,$5) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia`, [idPozo,intervalo.desde_m,intervalo.hasta_m,intervalo.diametro_pulg,intervalo.material_tuberia]);
+      const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm`, [idPozo,intervalo.desde_m,intervalo.hasta_m,intervalo.diametro_pulg,intervalo.material_tuberia,intervalo.ranura_mm]);
       filtros.push(numerizarFiltro(rows[0]));
     }
     for (const aporte of data.niveles_aporte) {
@@ -182,7 +190,8 @@ export async function actualizarPozoCompleto(
       `UPDATE pozo SET id_propietario=$2, id_sitio=$3, empresa=$4, id_perforador=$5,
        fecha_inicio=$6, fecha_fin=$7, profundidad_final_m=$8, sello_sanitario=$9,
        pre_filtro=$10, nivel_estatico_m=$11, nivel_dinamico_m=$12, caudal_estimado_lh=$13,
-       metodo_sedimentario=$14, metodo_rocoso=$15, cementacion=$16, desarrollo=$17, revestimiento=$18
+       metodo_sedimentario=COALESCE($14::text,metodo_sedimentario), metodo_rocoso=COALESCE($15::text,metodo_rocoso),
+       cementacion=COALESCE($16::text,cementacion), desarrollo=COALESCE($17::text,desarrollo), revestimiento=$18
        WHERE id_pozo=$1
        RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
         fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
@@ -205,6 +214,15 @@ export async function actualizarPozoCompleto(
       id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
     }));
     const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
+    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
+    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
+    if (idsFiltros.length) {
+      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number}>(
+        "SELECT id_intervalo_filtro FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
+        [idPozo, idsFiltros],
+      );
+      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
+    }
     await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
@@ -259,7 +277,7 @@ async function insertarHijos(client: PoolClient, idPozo: number, data: DatosComp
     intervalos_diametro.push(numerizarDiametro(rows[0]));
   }
   for (const i of data.intervalos_filtro ?? []) {
-    const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia) VALUES ($1,$2,$3,$4,$5) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia]);
+    const { rows } = await client.query(`INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia,i.ranura_mm ?? null]);
     intervalos_filtro.push(numerizarFiltro(rows[0]));
   }
   for (const a of data.niveles_aporte) {
@@ -363,6 +381,7 @@ async function obtenerSitioTransaccional(client: PoolClient, idSitio: number): P
 
 async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCompletoBody, idSitio: number): Promise<Pozo> {
   const p = data.pozo;
+  const estandar = datosTecnicosParaCreacion(p);
   const { rows } = await client.query(
     `INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio, fecha_fin,
@@ -376,8 +395,8 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
     [p.id_propietario, idSitio, p.empresa ?? null, p.id_perforador, creadoPor, p.fecha_inicio ?? null,
       p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.sello_sanitario ?? null, p.pre_filtro ?? null,
       p.nivel_estatico_m ?? null, p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
-      p.metodo_sedimentario ?? null, p.metodo_rocoso ?? null, p.cementacion ?? null,
-      p.desarrollo ?? null, p.revestimiento ?? null],
+      estandar.metodo_sedimentario, estandar.metodo_rocoso, estandar.cementacion,
+      estandar.desarrollo, p.revestimiento ?? null],
   );
   return numerizarPozo(rows[0]);
 }
@@ -396,5 +415,5 @@ function numerizarPozo(fila: Record<string,unknown>):Pozo{return{
 } as Pozo;}
 function numerizarLitologia(fila: Record<string, unknown>) { return { id_intervalo_litologico: Number(fila.id_intervalo_litologico), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),id_litologia:fila.id_litologia==null?null:Number(fila.id_litologia) }; }
 function numerizarDiametro(fila: Record<string, unknown>) { return { id_intervalo_diametro_perforacion: Number(fila.id_intervalo_diametro_perforacion), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: fila.material_tuberia == null ? null : String(fila.material_tuberia) as "PVC" | "Acero" }; }
-function numerizarFiltro(fila: Record<string, unknown>) { return { id_intervalo_filtro: Number(fila.id_intervalo_filtro), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: String(fila.material_tuberia) as "PVC" | "Acero" }; }
+function numerizarFiltro(fila: Record<string, unknown>) { return { id_intervalo_filtro: Number(fila.id_intervalo_filtro), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: String(fila.material_tuberia) as "PVC" | "Acero", ranura_mm: fila.ranura_mm == null ? null : Number(fila.ranura_mm) as 0.5 | 0.75 | 1 }; }
 function numerizarAporte(fila: Record<string, unknown>) { return { id_nivel_aporte: Number(fila.id_nivel_aporte), id_pozo: Number(fila.id_pozo), profundidad_m: Number(fila.profundidad_m) }; }
