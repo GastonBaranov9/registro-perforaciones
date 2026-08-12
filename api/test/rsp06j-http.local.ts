@@ -35,6 +35,7 @@ try{
   assert.equal((await estado.json() as {configurado:boolean}).configurado,true);
   const mapa=await fetch(`${base}/usuarios/${perforador.id}/sitios/${idSitio}/mapa-aereo`,{headers:headers(perforador.id,perforador.version)});
   assert.equal(mapa.status,200,await mapa.clone().text());assert.match(mapa.headers.get("content-type")??"",/^image\/(png|jpeg)$/);assert.ok((await mapa.arrayBuffer()).byteLength>10_000);
+  assert.equal(mapa.headers.get("cache-control"),"private, no-store");
   const pdf=await fetch(`${base}/usuarios/${perforador.id}/pozos/${idPozo}/informe-pdf`,{headers:headers(perforador.id,perforador.version)});
   assert.equal(pdf.status,200,await pdf.clone().text());const documento=await PDFDocument.load(await pdf.arrayBuffer());assert.ok(documento.getPageCount()>=3);
   console.log(JSON.stringify({decimal_http:201,dms_http:200,lectura_normalizada:true,mapa_estado:true,mapa_http:200,frontend_endpoint:true,pdf_http:200,pdf_paginas:documento.getPageCount(),google_real:true,key:"***REDACTED***"}));
