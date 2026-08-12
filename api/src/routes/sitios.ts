@@ -30,6 +30,40 @@ const sitiosRoutes= async function (
     },
   );
   fastify.get(
+    "/usuarios/:id_usuario/sitios/:id_sitio/mapa-aereo/preview",
+    {
+      schema: {
+        summary: "Previsualizar mapa aÃ©reo con coordenadas pendientes",
+        tags: ["sitios"],
+        params: Type.Object({ id_usuario: Type.Integer(), id_sitio: Type.Integer() }),
+        querystring: Type.Object({ latitud: Type.String(), longitud: Type.String() }),
+        response: { 400: err.ErrorSchema, 404: err.ErrorSchema, 503: err.ErrorSchema },
+      },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+    },
+    async (req, rep) => {
+      const { id_sitio } = req.params as { id_sitio: number };
+      const { latitud, longitud } = req.query as { latitud: string; longitud: string };
+      const [propietario, administrador, gestionable] = await Promise.all([
+        rolUser(req.user.sub, "propietario"), isAdmin(req.user.sub), sitioEsGestionablePorPerforador(id_sitio, req.user.sub),
+      ]);
+      if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
+      const sitio = administrador || gestionable
+        ? await func.getSitioById(id_sitio)
+        : await func.getSitioPropioById(id_sitio, req.user.sub);
+      if (!sitio) throw new err.T05SitioNoEncontrado();
+      const coordenadas = leerCoordenadas(latitud, longitud);
+      if (!coordenadas) throw new err.T05DatosIncorrectos("Las coordenadas del preview no son vÃ¡lidas.");
+      const configuracion = configuracionMapaDesdeEntorno();
+      if (!mapaConfigurado(configuracion)) throw new err.T05ErrorConexion("Mapa aÃ©reo no configurado");
+      const mapa = await obtenerMapaEstatico(coordenadas, configuracion);
+      if (mapa.estado === "no-disponible") throw new err.T05ErrorConexion("Mapa aÃ©reo no disponible");
+      return rep.header("Content-Type", mapa.tipo).header("X-Map-Attribution", mapa.atribucion)
+        .header("Cache-Control", "private, no-store").send(Buffer.from(mapa.bytes));
+    },
+  );
+  fastify.get(
     "/usuarios/:id_usuario/sitios/:id_sitio/mapa-aereo",
     {
       schema: {
