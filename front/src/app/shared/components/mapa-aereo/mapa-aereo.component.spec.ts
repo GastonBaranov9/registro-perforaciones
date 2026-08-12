@@ -37,4 +37,16 @@ describe('MapaAereoComponent', () => {
     expect(fixture.componentInstance.urlImagen()).not.toBe(inicial);
     expect(fixture.componentInstance.urlImagen()).toContain('v=-31.443917%2C-57.986556');
   });
+
+  it('envía coordenadas pendientes al endpoint protegido de preview', () => {
+    fixture.componentRef.setInput('preview', true);
+    fixture.componentRef.setInput('latitud', '-31.443917');
+    fixture.componentRef.setInput('longitud', '-57.986556');
+    fixture.detectChanges();
+    http.expectOne(`${environment.apiURL}mapas/estado`).flush({configurado:true,atribucion:'Google Maps'});
+    expect(fixture.componentInstance.urlImagen()).toBe(
+      `${environment.apiURL}usuarios/7/sitios/12/mapa-aereo/preview?latitud=-31.443917&longitud=-57.986556`,
+    );
+    expect(fixture.componentInstance.urlImagen()).not.toContain('maps.googleapis.com');
+  });
 });

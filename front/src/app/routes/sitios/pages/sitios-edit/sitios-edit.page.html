@@ -15,6 +15,7 @@
         <app-mapa-aereo
           [idSitio]="id_sitio()"
           [idUsuario]="idUsuario"
+          [preview]="true"
           [latitud]="this.coordenadasPendientesMapa()?.latitud ?? this.sitioResource.value()!.latitud"
           [longitud]="this.coordenadasPendientesMapa()?.longitud ?? this.sitioResource.value()!.longitud"
         />

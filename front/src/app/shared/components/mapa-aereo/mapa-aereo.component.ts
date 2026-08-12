@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, OnChanges, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, input, OnChanges, OnInit, signal, SimpleChanges } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
@@ -22,6 +22,7 @@ import { coordenadasRegistradasValidas } from '../../utils/coordenadas';
 export class MapaAereoComponent implements OnInit, OnChanges {
   idSitio = input.required<number>(); idUsuario = input.required<number>();
   latitud = input<string | null | undefined>(); longitud = input<string | null | undefined>();
+  preview = input(false);
   private http = inject(HttpClient);
   cargando = signal(true); configurado = signal(false); atribucion = signal(''); falloImagen = signal(false); mensajeCoordenadas = signal('');
   coordenadasVersion = computed(() => {
@@ -29,21 +30,50 @@ export class MapaAereoComponent implements OnInit, OnChanges {
     return latitud && longitud ? encodeURIComponent(`${latitud},${longitud}`) : '';
   });
   urlImagen = () => {
-    const base=`${environment.apiURL}usuarios/${this.idUsuario()}/sitios/${this.idSitio()}/mapa-aereo`;
+    const base=`${environment.apiURL}usuarios/${this.idUsuario()}/sitios/${this.idSitio()}/mapa-aereo${this.preview() ? '/preview' : ''}`;
     const version=this.coordenadasVersion();
+    if (this.preview()) {
+      const latitud=encodeURIComponent(String(this.latitud() ?? '').trim());
+      const longitud=encodeURIComponent(String(this.longitud() ?? '').trim());
+      return `${base}?latitud=${latitud}&longitud=${longitud}`;
+    }
     return version ? `${base}?v=${version}` : base;
   };
-  ngOnInit() { void this.actualizarEstado(); }
-  ngOnChanges() { if (this.cargando() === false) void this.actualizarEstado(); }
-  private async actualizarEstado() {
-    this.falloImagen.set(false);this.mensajeCoordenadas.set('');this.configurado.set(false);this.cargando.set(true);
+  private actualizacion = 0;
+  private inicializado = false;
+  private estadoConsultado = false;
+  private estadoEnCurso = false;
+  ngOnInit() { this.inicializado = true; void this.actualizarEstado(); }
+  ngOnChanges(changes: SimpleChanges) {
+    if (!this.inicializado) return;
+    if (changes['latitud'] || changes['longitud']) {
+      this.validarCoordenadas();
+      if (this.coordenadasValidas() && !this.estadoConsultado && !this.estadoEnCurso) void this.actualizarEstado();
+      return;
+    }
+    void this.actualizarEstado();
+  }
+  private coordenadasValidas() {
     const latitud=String(this.latitud() ?? '').trim(),longitud=String(this.longitud() ?? '').trim();
-    if(!latitud&&!longitud){this.mensajeCoordenadas.set('Coordenadas no registradas');this.cargando.set(false);return;}
-    if(!coordenadasRegistradasValidas(latitud,longitud)){this.mensajeCoordenadas.set('Coordenadas inválidas');this.cargando.set(false);return;}
+    return Boolean(latitud && longitud && coordenadasRegistradasValidas(latitud,longitud));
+  }
+  private validarCoordenadas() {
+    this.falloImagen.set(false); this.mensajeCoordenadas.set('');
+    const latitud=String(this.latitud() ?? '').trim(),longitud=String(this.longitud() ?? '').trim();
+    if(!latitud&&!longitud){this.mensajeCoordenadas.set('Coordenadas no registradas');this.cargando.set(false);return false;}
+    if(!coordenadasRegistradasValidas(latitud,longitud)){this.mensajeCoordenadas.set('Coordenadas inválidas');this.cargando.set(false);return false;}
+    return true;
+  }
+  private async actualizarEstado() {
+    const actualizacion = ++this.actualizacion;
+    if (!this.validarCoordenadas()) return;
+    this.configurado.set(false);this.cargando.set(true);
+    this.estadoEnCurso = true;
     try {
       const estado = await firstValueFrom(this.http.get<{ configurado:boolean; atribucion?:string }>(`${environment.apiURL}mapas/estado`));
-      this.configurado.set(estado.configurado); this.atribucion.set(estado.atribucion ?? '');
-    } catch { this.configurado.set(false); }
-    finally { this.cargando.set(false); }
+      if (actualizacion !== this.actualizacion) return;
+      this.configurado.set(estado.configurado); this.atribucion.set(estado.atribucion ?? ''); this.estadoConsultado = true;
+    } catch { if (actualizacion === this.actualizacion) this.configurado.set(false); }
+    finally { this.estadoEnCurso = false; if (actualizacion === this.actualizacion) this.cargando.set(false); }
   }
 }
