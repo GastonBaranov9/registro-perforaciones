@@ -32,12 +32,13 @@
 
 
           <ion-button (click)="irAEditar(sitio)">Editar</ion-button>
+          @if (this.authService.tieneRol('administracion')) {
           <ion-button  color="danger" (click)="borrarSitio(sitio)">
             Borrar
           </ion-button>
+          }
       </ion-card-content>
     </ion-card>
   }
 
 </ion-content>
-
