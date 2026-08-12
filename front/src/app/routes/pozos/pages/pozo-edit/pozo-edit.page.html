@@ -13,7 +13,7 @@
         @let editor = this.pozoResource.value()!;
         <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
-          [sitios]="editor.sitios"
+          [sitios]="this.sitiosActualizados() ?? editor.sitios"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
           [perforadorBloqueado]="!authService.tieneRol('administracion')"
           (saved)="this.handleEdit($event)"

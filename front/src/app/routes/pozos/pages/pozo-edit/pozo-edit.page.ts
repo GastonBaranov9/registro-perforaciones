@@ -90,10 +90,22 @@ export class PozoEditPage {
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
+  public sitiosActualizados = signal<Sitio[] | null>(null);
   public profundidadBorrador = signal<number | undefined>(undefined);
   public borradorDirty = signal(false);
   public versionDescartar = signal(0);
   mensajeErrorCarga() { return mensajeHumano(this.pozoResource.error(), 'No fue posible cargar los datos del pozo.'); }
+
+  ionViewWillEnter(): void {
+    const sitio = this.sitioReturn.sitioCreado();
+    if (!sitio) return;
+    this.sitioReturn.sitioCreado.set(null);
+    this.sitiosActualizados.update((actualizados) => {
+      const actuales = actualizados ?? this.pozoResource.value()?.sitios ?? [];
+      if (!actuales.some((actual) => actual.id_sitio === sitio.id_sitio)) return actualizados;
+      return actuales.map((actual) => actual.id_sitio === sitio.id_sitio ? sitio : actual);
+    });
+  }
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
     if (this.disabled()) return;
