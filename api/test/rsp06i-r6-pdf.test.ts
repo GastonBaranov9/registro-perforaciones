@@ -3,6 +3,9 @@ import test from "node:test";
 import { crearPDFConDiagnostico } from "../src/pdf/pdf-generate.ts";
 import type { ReportePozo } from "../src/services/generar-informe-consultas.ts";
 
+const GAP_ANTES_TITULO_TECNICO = 20;
+const GAP_DESPUES_TITULO_TECNICO = 7;
+
 function reporte(): ReportePozo {
   return {
     id_pozo: 606, propietario: "Control R6", empresa: "Empresa", perforador: "Perforador", sitio: "Salto",
@@ -23,11 +26,11 @@ test("R6 conserva mínimos visuales entre tablas y después del título", async 
   assert.equal(diagnostico.paginas.filter((pagina) => pagina.tipo.startsWith("tecnica")).length, 1);
   assert.equal(litologia.paginas.at(-1), tuberias.paginaTitulo);
   assert.ok(litologia.bordeInferiorFinal - tuberias.tituloTop >= 10);
-  assert.ok((tuberias.gapAntesTitulo ?? 0) >= 10);
+  assert.equal(tuberias.gapAntesTitulo, GAP_ANTES_TITULO_TECNICO);
   assert.equal(tuberias.paginas.at(-1), filtros.paginaTitulo);
   assert.ok(tuberias.bordeInferiorFinal - filtros.tituloTop >= 10);
-  assert.ok((filtros.gapAntesTitulo ?? 0) >= 10);
-  assert.ok(diagnostico.tablas.every((tabla) => tabla.tituloBottom - tabla.contenidoTop >= 6));
+  assert.equal(filtros.gapAntesTitulo, GAP_ANTES_TITULO_TECNICO);
+  assert.ok(diagnostico.tablas.every((tabla) => tabla.tituloBottom - tabla.contenidoTop >= GAP_DESPUES_TITULO_TECNICO));
   assert.ok(diagnostico.tablas.every((tabla) => (tabla.fuente ?? 0) >= 9));
 });
 
@@ -39,7 +42,7 @@ test("R6 conserva el mismo mínimo desde Sin registros hasta Niveles de aporte",
   assert.equal(filtros.alturasFilas.length, 0);
   assert.equal(filtros.paginas.at(-1), aportes.paginaTitulo);
   assert.ok(filtros.bordeInferiorFinal - aportes.tituloTop >= 10);
-  assert.ok((aportes.gapAntesTitulo ?? 0) >= 10);
+  assert.equal(aportes.gapAntesTitulo, GAP_ANTES_TITULO_TECNICO);
 });
 
 test("R6 conserva casos pequeño, cargado, largo y continuación sin clipping tipográfico", async () => {

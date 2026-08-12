@@ -4,6 +4,9 @@ import test from "node:test";
 import { crearPDFConDiagnostico } from "../src/pdf/pdf-generate.ts";
 import type { ReportePozo } from "../src/services/generar-informe-consultas.ts";
 
+const GAP_ANTES_TITULO_TECNICO = 20;
+const GAP_DESPUES_TITULO_TECNICO = 7;
+
 function casoManual(): ReportePozo {
   return {
     id_pozo: 6061, propietario: "Control visual R6-R1", empresa: "Empresa", perforador: "Perforador",
@@ -35,9 +38,9 @@ test("R6-R1 mide cajas visuales en el caso manual exacto",async()=>{
   assert.equal(diagnostico.paginas.filter((pagina)=>pagina.tipo.startsWith("tecnica")).length,1);
   assert.deepEqual(diagnostico.tablas.map((tabla)=>tabla.paginaTitulo),[2,2,2,2]);
 
-  cerca(litologia.bordeInferiorFinal-tuberias.tituloTop,12);
-  cerca(tuberias.bordeInferiorFinal-filtros.tituloTop,12);
-  cerca(filtros.bordeInferiorFinal-aportes.tituloTop,12);
+  cerca(litologia.bordeInferiorFinal-tuberias.tituloTop,GAP_ANTES_TITULO_TECNICO);
+  cerca(tuberias.bordeInferiorFinal-filtros.tituloTop,GAP_ANTES_TITULO_TECNICO);
+  cerca(filtros.bordeInferiorFinal-aportes.tituloTop,GAP_ANTES_TITULO_TECNICO);
   assert.ok(litologia.bordeInferiorFinal>tuberias.tituloTop);
   assert.ok(tuberias.bordeInferiorFinal>filtros.tituloTop);
   assert.ok(filtros.bordeInferiorFinal>aportes.tituloTop);
@@ -46,7 +49,7 @@ test("R6-R1 mide cajas visuales en el caso manual exacto",async()=>{
     assert.ok(tabla.tituloBottom<(tabla.lineaBaseTitulo??Number.NEGATIVE_INFINITY));
     assert.equal(tabla.tituloTop-tabla.tituloBottom,(tabla.ascensoVisualTitulo??0)+(tabla.descensoVisualTitulo??0));
   });
-  diagnostico.tablas.forEach((tabla)=>cerca(tabla.tituloBottom-tabla.contenidoTop,7));
+  diagnostico.tablas.forEach((tabla)=>cerca(tabla.tituloBottom-tabla.contenidoTop,GAP_DESPUES_TITULO_TECNICO));
   assert.equal(filtros.alturasFilas.length,0);
   assert.ok(diagnostico.tablas.every((tabla)=>(tabla.fuente??0)>=9));
   assert.ok(diagnostico.tablas.every((tabla)=>tabla.bordeInferiorFinal>=52));
