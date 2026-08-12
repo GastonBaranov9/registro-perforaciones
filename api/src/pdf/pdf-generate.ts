@@ -21,6 +21,7 @@ export interface DiagnosticoTabla {
 }
 export interface DiagnosticoPDF {
   paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number;
+  datosGenerales?: string[];
   mapa?: { x:number; y:number; ancho:number; alto:number; imagenX:number; imagenY:number; imagenAncho:number; imagenAlto:number; atribucionY:number; overlayOpaco:boolean };
 }
 
@@ -141,8 +142,7 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
   const numero=(v:unknown)=>formatearNumero(Number(v));
   const generales: Array<[string,string]>=[
     ["Nivel estático",unidad(r.nivel_estatico_m,"m")],["Nivel dinámico",unidad(r.nivel_dinamico_m,"m")],
-    ["Caudal estimado",unidad(r.caudal_estimado_lh,"l/h")],["Sello sanitario",booleano(r.sello_sanitario)],
-    ["Prefiltro",valorTexto(r.pre_filtro)],["Revestimiento",valorTexto(r.revestimiento)],
+    ["Caudal estimado",unidad(r.caudal_estimado_lh,"l/h")],["Revestimiento",valorTexto(r.revestimiento)],
     ["Método sedimentario",valorTexto(r.metodo_sedimentario)],["Método rocoso",valorTexto(r.metodo_rocoso)],
     ["Cementación",valorTexto(r.cementacion)],["Desarrollo",valorTexto(r.desarrollo)],
   ];
@@ -167,6 +167,7 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
   const disponible=A4[1]-62-f.inferior-altoGeneral;
   const ajuste=ajustes.find(a=>tablas.reduce((s,t)=>s+medirTabla(t,a,f),0)<=disponible)??ajustes.at(-1)!;
   f.pagina("tecnica"); f.marcar("datos-generales");
+  f.diagnostico.datosGenerales=generales.map(([etiqueta])=>etiqueta);
   f.page.drawText("Datos generales",{x:f.margen,y:f.y,size:16,font:f.bold,color:AZUL}); f.y-=25;
   for(let indice=0;indice<generales.length;indice+=2){
     const par=generales.slice(indice,indice+2);
@@ -350,6 +351,6 @@ async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longi
 
 async function cargarFoto(doc:PDFDocument,r:ReportePozo,id:number,dir:string){if(!r.foto_url)return null;try{const nombres=await fs.readdir(dir);const nombre=nombres.find(n=>n.startsWith(`pozo-${id}.`)&&/^pozo-\d+\.(?:jpe?g|png)$/i.test(n));if(!nombre)return null;const bytes=await fs.readFile(path.join(dir,nombre));if(bytes.length>5_000_000)return null;if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)return await doc.embedPng(bytes);if(bytes[0]===0xff&&bytes[1]===0xd8)return await doc.embedJpg(bytes);}catch{return null;}return null;}
 function envolver(texto:string,font:PDFFont,size:number,width:number){const limpio=texto.replace(/[^\x20-\x7E\xA0-\xFF]/g,"?").trim();const palabras:string[]=[];for(const palabra of (limpio||"No especificado").split(/\s+/)){if(font.widthOfTextAtSize(palabra,size)<=width){palabras.push(palabra);continue;}let fragmento="";for(const caracter of palabra){const candidato=fragmento+caracter;if(fragmento&&font.widthOfTextAtSize(candidato,size)>width){palabras.push(fragmento);fragmento=caracter;}else fragmento=candidato;}if(fragmento)palabras.push(fragmento);}const lineas:string[]=[];let actual="";for(const palabra of palabras){const candidato=actual?`${actual} ${palabra}`:palabra;if(font.widthOfTextAtSize(candidato,size)<=width)actual=candidato;else{if(actual)lineas.push(actual);actual=palabra;}}if(actual)lineas.push(actual);return lineas;}
-function unidad(v:number|null,u:string){return v==null?"No especificado":`${formatearNumero(v)} ${u}`;} function formatearNumero(v:number){return new Intl.NumberFormat("es-UY",{maximumFractionDigits:3}).format(v);} function booleano(v:boolean|null){return v==null?"No especificado":v?"Sí":"No";}
+function unidad(v:number|null,u:string){return v==null?"No especificado":`${formatearNumero(v)} ${u}`;} function formatearNumero(v:number){return new Intl.NumberFormat("es-UY",{maximumFractionDigits:3}).format(v);}
 export async function generarPDF(reporte:ReportePozo,pozoId:number){const bytes=await generarPDFBytes(reporte,pozoId);await fs.mkdir("./output",{recursive:true});await fs.writeFile(`./output/informe_pozo_${pozoId}.pdf`,bytes);}
 export async function generarPDFBytes(reporte:ReportePozo,pozoId:number){return await (await crearPDF(reporte,pozoId)).save();}

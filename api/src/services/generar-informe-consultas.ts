@@ -21,8 +21,6 @@ export interface ReportePozo {
   metodo_rocoso: string | null;
   cementacion: string | null;
   desarrollo: string | null;
-  sello_sanitario?: boolean | null;
-  pre_filtro?: string | null;
   revestimiento?: string | null;
   introduccion: string | null;
   nombre_archivo: string | null;
@@ -63,8 +61,6 @@ export async function getReportePozo(
       p.metodo_rocoso,
       p.cementacion AS cementacion,
       p.desarrollo AS desarrollo,
-      p.sello_sanitario,
-      p.pre_filtro,
       p.revestimiento,
       NULL::text AS introduccion,  
       doc.nombre_archivo,
