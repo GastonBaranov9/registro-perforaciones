@@ -51,9 +51,9 @@ test("rechaza coordenadas vacías y conserva cero explícito normalizado", async
     await assert.rejects(() => createSitio({ departamento: "Salto", latitud: "   ", longitud: "0" }), /coordenadas/i);
     const creado = await createSitio({ departamento: " Salto ", latitud: " 0 ", longitud: " 0.0 " });
     assert.equal(creado.id_sitio, 12);
-    assert.deepEqual(consultas.at(-1)?.params?.slice(2), ["0", "0.0"]);
+    assert.deepEqual(consultas.at(-1)?.params?.slice(2), ["0", "0"]);
     await updateSitio(12, { departamento: " Salto ", latitud: " 0 ", longitud: " 0.0 " });
-    assert.deepEqual(consultas.at(-1)?.params?.slice(3), ["0", "0.0"]);
+    assert.deepEqual(consultas.at(-1)?.params?.slice(3), ["0", "0"]);
   } finally { pool.query = original; }
 });
 
@@ -63,7 +63,7 @@ test("la configuración canónica no vacía gana y la legacy cubre valores vací
     MAP_STATIC_ALLOWED_HOST: " ", PDF_MAP_ALLOWED_HOST: "legacy.example",
     MAP_STATIC_API_KEY: " ", PDF_MAP_STATIC_API_KEY: "legacy-key",
     MAP_STATIC_ATTRIBUTION: " ", PDF_MAP_ATTRIBUTION: "Legacy",
-  }), { plantillaUrl: "https://legacy.example/{lat}/{lon}", hostPermitido: "legacy.example", clave: "legacy-key", atribucion: "Legacy" });
+  }), { plantillaUrl: "https://legacy.example/{lat}/{lon}", hostPermitido: "legacy.example", clave: "legacy-key", atribucion: "Legacy", cacheMs: 300_000 });
   assert.equal(configuracionMapaDesdeEntorno({ MAP_STATIC_URL_TEMPLATE: "https://canonical.example/{lat}/{lon}", PDF_MAP_STATIC_URL_TEMPLATE: "https://legacy.example/{lat}/{lon}" }).plantillaUrl, "https://canonical.example/{lat}/{lon}");
 });
 

@@ -71,4 +71,11 @@ describe('PozosFormComponent', () => {
     expect(component.fotoVistaPrevia()).toBeNull();
     expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ fotoAccion: 'conservar' }));
   });
+
+  it('normaliza DMS del sitio nuevo y emite decimales', () => {
+    const sitio={departamento:'Salto',latitud:`31°26'38.1"S`,longitud:`57°59'11.6"W`};
+    fixture.componentRef.setInput('sitioNuevo',sitio);
+    const emitir=spyOn(component.saved,'emit');component.handlePozo();
+    expect(sitio.latitud).toBe('-31.4439167');expect(sitio.longitud).toBe('-57.9865556');expect(emitir).toHaveBeenCalled();
+  });
 });
