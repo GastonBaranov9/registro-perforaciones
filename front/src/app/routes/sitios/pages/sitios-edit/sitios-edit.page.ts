@@ -9,6 +9,8 @@ import { AuthService } from '../../../../shared/services/auth-service/auth.servi
 import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
 import { mensajeHumano } from '../../../../shared/utils/errores';
 
+type CoordenadasMapa = { latitud: string; longitud: string };
+
 @Component({
   selector: 'app-sitios-edit',
   imports: [IonContent, IonCard, IonCardContent, SitiosFormComponent, IonButton, MapaAereoComponent],
@@ -35,6 +37,7 @@ export class SitiosEditPage {
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
+  public coordenadasPendientesMapa = signal<CoordenadasMapa | null>(null);
 
   returnTo = signal('/sitios-list');
 
@@ -55,5 +58,6 @@ export class SitiosEditPage {
       this.disabled.set(false);
     }
   }
+  actualizarMapa(coordenadas: CoordenadasMapa | null) { this.coordenadasPendientesMapa.set(coordenadas); }
   volver() { this.router.navigateByUrl(this.returnTo()); }
 }

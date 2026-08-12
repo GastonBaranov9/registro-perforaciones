@@ -6,9 +6,18 @@
       <ion-button type="button" fill="clear" (click)="volver()">VOLVER</ion-button>
 
       @if (this.sitioResource.hasValue()) {
-      <app-sitios-form [sitio]="this.sitioResource.value()!" (saved)="this.handleEdit($event)" />
+      <app-sitios-form
+        [sitio]="this.sitioResource.value()!"
+        (saved)="this.handleEdit($event)"
+        (ubicacionChange)="this.actualizarMapa($event)"
+      />
       @if (auth.userId(); as idUsuario) {
-        <app-mapa-aereo [idSitio]="id_sitio()" [idUsuario]="idUsuario" />
+        <app-mapa-aereo
+          [idSitio]="id_sitio()"
+          [idUsuario]="idUsuario"
+          [latitud]="this.coordenadasPendientesMapa()?.latitud ?? this.sitioResource.value()!.latitud"
+          [longitud]="this.coordenadasPendientesMapa()?.longitud ?? this.sitioResource.value()!.longitud"
+        />
       }
       } @else if (this.sitioResource.isLoading()) {
       <p role="status">Cargando sitio…</p>

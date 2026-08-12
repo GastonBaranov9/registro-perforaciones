@@ -20,6 +20,7 @@ import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/uti
 export class SitiosFormComponent {
   public sitio = input.required<SitioBody>();
   public saved = output<SitioBody>();
+  public ubicacionChange = output<{ latitud: string; longitud: string } | null>();
   public cargandoUbicacion = signal(false);
   public ubicacionPendiente = signal<UbicacionCapturada | null>(null);
   public ubicacionError = signal('');
@@ -37,8 +38,18 @@ export class SitiosFormComponent {
   actualizarCoordenada(eje:EjeCoordenada, valor:unknown) {
     const texto=valor == null ? '' : String(valor);
     const pendiente=this.ubicacionPendiente();
-    if(pendiente) this.ubicacionPendiente.set({...pendiente,[eje]:texto});
-    else this.sitio()[eje]=texto;
+    if(pendiente) {
+      const actualizada = {...pendiente,[eje]:texto};
+      this.ubicacionPendiente.set(actualizada);
+      this.ubicacionChange.emit({ latitud: actualizada.latitud, longitud: actualizada.longitud });
+    }
+    else {
+      this.sitio()[eje]=texto;
+      this.ubicacionChange.emit({
+        latitud: String(this.sitio().latitud ?? ''),
+        longitud: String(this.sitio().longitud ?? ''),
+      });
+    }
   }
 
   normalizarCoordenada(eje:EjeCoordenada) {
@@ -53,12 +64,14 @@ export class SitiosFormComponent {
   public async getLocation(): Promise<void> {
     try {
       this.cargandoUbicacion.set(true); this.ubicacionError.set('');
-      this.ubicacionPendiente.set(await capturarUbicacionActual());
+      const pendiente = await capturarUbicacionActual();
+      this.ubicacionPendiente.set(pendiente);
+      this.ubicacionChange.emit({ latitud: pendiente.latitud, longitud: pendiente.longitud });
     } catch (error: unknown) {
       this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
     } finally {
       this.cargandoUbicacion.set(false);
     }
   }
-  cancelarUbicacion() { this.ubicacionPendiente.set(null); this.ubicacionError.set(''); }
+  cancelarUbicacion() { this.ubicacionPendiente.set(null); this.ubicacionChange.emit(null); this.ubicacionError.set(''); }
 }

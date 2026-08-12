@@ -25,4 +25,11 @@ describe('SitiosEditPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('usa coordenadas pendientes para el mapa y vuelve a las persistidas al cancelar', () => {
+    component.actualizarMapa({ latitud: '-31.4439167', longitud: '-57.9865556' });
+    expect(component.coordenadasPendientesMapa()).toEqual({ latitud: '-31.4439167', longitud: '-57.9865556' });
+    component.actualizarMapa(null);
+    expect(component.coordenadasPendientesMapa()).toBeNull();
+  });
 });
