@@ -27,7 +27,8 @@
           <ion-label>{{ representarSitio(this.pozo()?.sitio) }}</ion-label>
         </ion-item>
         @if (this.pozo()?.sitio; as sitioActual) {
-          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario" />
+          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario"
+            [latitud]="sitioActual.latitud" [longitud]="sitioActual.longitud" />
         }
 
         <ion-item>
