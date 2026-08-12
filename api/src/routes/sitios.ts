@@ -58,7 +58,7 @@ const sitiosRoutes= async function (
       const mapa = await obtenerMapaEstatico(coordenadas, configuracion);
       if (mapa.estado === "no-disponible") throw new err.T05ErrorConexion("Mapa aéreo no disponible");
       return rep.header("Content-Type", mapa.tipo).header("X-Map-Attribution", mapa.atribucion)
-        .header("Cache-Control", "private, max-age=300").send(Buffer.from(mapa.bytes));
+        .header("Cache-Control", "private, no-store").send(Buffer.from(mapa.bytes));
     },
   );
   //Crear un sitio
