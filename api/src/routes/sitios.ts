@@ -40,15 +40,15 @@ const sitiosRoutes= async function (
         response: { 400: err.ErrorSchema, 404: err.ErrorSchema, 503: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
       const { id_sitio } = req.params as { id_sitio: number };
       const { latitud, longitud } = req.query as { latitud: string; longitud: string };
-      const [propietario, administrador, gestionable] = await Promise.all([
-        rolUser(req.user.sub, "propietario"), isAdmin(req.user.sub), sitioEsGestionablePorPerforador(id_sitio, req.user.sub),
+      const [administrador, gestionable] = await Promise.all([
+        isAdmin(req.user.sub), sitioEsGestionablePorPerforador(id_sitio, req.user.sub),
       ]);
-      if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
+      if (!administrador && !gestionable) throw new err.T05SitioNoEncontrado();
       const sitio = administrador || gestionable
         ? await func.getSitioById(id_sitio)
         : await func.getSitioPropioById(id_sitio, req.user.sub);
