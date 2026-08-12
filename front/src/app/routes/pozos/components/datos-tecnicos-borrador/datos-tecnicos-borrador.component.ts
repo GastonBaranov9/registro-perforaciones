@@ -63,7 +63,7 @@ export class DatosTecnicosBorradorComponent {
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosFiltro.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC' })] });
+    this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC', ranura_mm: null })] });
   }
   agregarAporte() { this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] }); }
   quitarLitologia(id: string) { this.actualizar({ ...this.datos(), intervalosLitologicos: this.datos().intervalosLitologicos.filter((item) => item.idLocal !== id) }); }

@@ -52,3 +52,12 @@ fieldset > p {
   margin: .5rem .75rem;
   color: var(--ion-color-medium-shade);
 }
+.dato-estandar ion-input[readonly],
+.dato-estandar ion-textarea[readonly] {
+  opacity: 0.72;
+}
+
+.dato-estandar--editable ion-input,
+.dato-estandar--editable ion-textarea {
+  opacity: 1;
+}

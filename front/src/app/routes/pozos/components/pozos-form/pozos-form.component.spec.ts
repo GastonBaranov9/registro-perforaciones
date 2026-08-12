@@ -26,6 +26,17 @@ describe('PozosFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('mantiene los datos estándar readonly y Editar habilita solo el elegido', () => {
+    expect(component.datoTecnicoEditable('desarrollo')).toBeFalse();
+    expect(component.datoTecnicoEditable('cementacion')).toBeFalse();
+    const desarrollo = fixture.nativeElement.querySelector('ion-textarea[name="desarrollo"]') as HTMLIonTextareaElement;
+    expect(desarrollo.readonly).toBeTrue();
+    component.editarDatoTecnico('desarrollo'); fixture.detectChanges();
+    expect(component.datoTecnicoEditable('desarrollo')).toBeTrue();
+    expect(component.datoTecnicoEditable('cementacion')).toBeFalse();
+    expect(desarrollo.readonly).toBeFalse();
+  });
+
   it('oculta el alta mientras hay propietario y vuelve a mostrarla al limpiar', () => {
     expect(component.propietarioSeleccionado()).toBeTrue();
     component.limpiarPropietario();

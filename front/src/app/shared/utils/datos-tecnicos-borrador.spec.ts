@@ -123,7 +123,7 @@ describe('tubería y filtros', () => {
   it('valida materiales y solapamiento de filtros independientemente de tubería', () => {
     const borrador = datos();
     borrador.intervalosDiametro = [{idLocal:'t',dato:{desde_m:0,hasta_m:20,diametro_pulg:8,material_tuberia:'PVC'}}];
-    borrador.intervalosFiltro = [{idLocal:'f1',dato:{desde_m:5,hasta_m:10,diametro_pulg:6,material_tuberia:'Acero'}},{idLocal:'f2',dato:{desde_m:9,hasta_m:12,diametro_pulg:6,material_tuberia:'PVC'}}];
+    borrador.intervalosFiltro = [{idLocal:'f1',dato:{desde_m:5,hasta_m:10,diametro_pulg:6,material_tuberia:'Acero',ranura_mm:0.5}},{idLocal:'f2',dato:{desde_m:9,hasta_m:12,diametro_pulg:6,material_tuberia:'PVC',ranura_mm:0.75}}];
     expect(validarDatosTecnicos(borrador, 20).some((x) => x.includes('solapan'))).toBeTrue();
     borrador.intervalosFiltro[1].dato.desde_m = 10;
     expect(validarDatosTecnicos(borrador, 20)).toEqual([]);

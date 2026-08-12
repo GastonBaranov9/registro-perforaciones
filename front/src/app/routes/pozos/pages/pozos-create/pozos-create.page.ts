@@ -17,6 +17,7 @@ import { validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-bo
 import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 import { PropietariosOperativosService } from '../../../../shared/services/propietarios-operativos.service';
+import { DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
 @Component({
   selector: 'app-pozos-create',
   imports: [
@@ -52,6 +53,7 @@ export class PozosCreatePage {
     id_propietario: 0,
     id_sitio: 0,
     id_perforador: 0,
+    ...DATOS_TECNICOS_ESTANDAR,
   });
 
   async ionViewWillEnter() {

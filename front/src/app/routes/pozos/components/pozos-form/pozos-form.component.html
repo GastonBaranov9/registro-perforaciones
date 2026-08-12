@@ -118,32 +118,38 @@
       ></ion-input>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_sedimentario')">
       <ion-label position="stacked">Método sedimentario</ion-label>
       <ion-input
         type="text"
         name="metodo_sedimentario"
         [(ngModel)]="this.pozo().metodo_sedimentario"
+        [readonly]="!datoTecnicoEditable('metodo_sedimentario')"
       ></ion-input>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método sedimentario" (click)="editarDatoTecnico('metodo_sedimentario')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_rocoso')">
       <ion-label position="stacked">Método rocoso</ion-label>
       <ion-input
         type="text"
         name="metodo_rocoso"
         [(ngModel)]="this.pozo().metodo_rocoso"
+        [readonly]="!datoTecnicoEditable('metodo_rocoso')"
       ></ion-input>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método rocoso" (click)="editarDatoTecnico('metodo_rocoso')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('cementacion')">
       <ion-label position="stacked">Cementación</ion-label>
-      <ion-input type="text" name="cementacion" [(ngModel)]="this.pozo().cementacion"></ion-input>
+      <ion-textarea name="cementacion" [(ngModel)]="this.pozo().cementacion" [readonly]="!datoTecnicoEditable('cementacion')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar cementación" (click)="editarDatoTecnico('cementacion')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('desarrollo')">
       <ion-label position="stacked">Desarrollo</ion-label>
-      <ion-input type="text" name="desarrollo" [(ngModel)]="this.pozo().desarrollo"></ion-input>
+      <ion-textarea name="desarrollo" [(ngModel)]="this.pozo().desarrollo" [readonly]="!datoTecnicoEditable('desarrollo')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar desarrollo" (click)="editarDatoTecnico('desarrollo')">Editar</ion-button>
     </ion-item>
 
     @if(this.agregareditar()===true){

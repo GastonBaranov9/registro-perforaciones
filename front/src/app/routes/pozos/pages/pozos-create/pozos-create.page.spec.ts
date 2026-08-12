@@ -25,6 +25,15 @@ describe('PozosCreatePage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('inicia pozos nuevos con los cuatro datos técnicos estándar', () => {
+    expect(component.nuevoPozo()).toEqual(jasmine.objectContaining({
+      desarrollo: 'Fue realizado el desarrollo con aire comprimido.',
+      cementacion: 'Es el espacio anular entre el tubo de protección sanitario y el revestimiento que fue cementado.',
+      metodo_sedimentario: 'Rotativa.',
+      metodo_rocoso: 'Rotoneumatica.',
+    }));
+  });
+
   it('renderiza los textos de creación en español correcto', () => {
     const texto = fixture.nativeElement.textContent as string;
     expect(texto).toContain('Crear nueva perforación');

@@ -96,7 +96,11 @@ export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?:
   validarIntervalos(datos.intervalosDiametro.map((item) => item.dato), 'de diámetro', profundidad, errores);
   validarIntervalos(datos.intervalosFiltro.map((item) => item.dato), 'de filtro', profundidad, errores);
   datos.intervalosDiametro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`); });
-  datos.intervalosFiltro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`); });
+  datos.intervalosFiltro.forEach((item, indice) => {
+    if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`);
+    if (item.dato.ranura_mm == null && item.dato.id_intervalo_filtro == null) errores.push(`Filtro ${indice + 1}: ranura obligatoria.`);
+    else if (item.dato.ranura_mm != null && ![0.5, 0.75, 1].includes(item.dato.ranura_mm)) errores.push(`Filtro ${indice + 1}: ranura inválida.`);
+  });
   datos.nivelesAporte.forEach((item, indice) => {
     if (!Number.isFinite(item.dato.profundidad_m) || item.dato.profundidad_m < 0)
       errores.push(`Aporte ${indice + 1}: profundidad inválida.`);

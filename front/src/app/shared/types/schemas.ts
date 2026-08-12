@@ -174,8 +174,9 @@ export type IntervaloDiametroPerforacionBody = {
   material_tuberia: MaterialTuberia | '';
 };
 
-export type IntervaloFiltroBody = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | '' };
-export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia };
+export type RanuraFiltro = 0.5 | 0.75 | 1;
+export type IntervaloFiltroBody = { id_intervalo_filtro?: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | ''; ranura_mm?: RanuraFiltro | null };
+export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia' | 'ranura_mm'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia; ranura_mm: RanuraFiltro | null };
 
 export type NivelAporte = {
   id_nivel_aporte: number;

@@ -79,6 +79,17 @@ describe('DatosTecnicosBorradorComponent', () => {
     fixture.componentRef.setInput('versionDescartar',1);fixture.detectChanges();TestBed.flushEffects();expect(component.datos()).toEqual(remoto);expect(component.dirty()).toBeFalse();
   });
 
+  it('exige selector de ranura solo para filtros nuevos y acepta histórico sin especificar', () => {
+    component.agregarFiltro();
+    expect(component.datos().intervalosFiltro[0].dato.ranura_mm).toBeNull();
+    expect(component.errores().some((error) => error.includes('ranura obligatoria'))).toBeTrue();
+    component.datos().intervalosFiltro[0].dato.ranura_mm = 0.75;
+    expect(component.errores().some((error) => error.includes('ranura'))).toBeFalse();
+    component.datos().intervalosFiltro[0].dato.id_intervalo_filtro = 9;
+    component.datos().intervalosFiltro[0].dato.ranura_mm = null;
+    expect(component.errores().some((error) => error.includes('ranura'))).toBeFalse();
+  });
+
   it('completa un hueco interno aunque el último intervalo alcance la profundidad final', () => {
     fixture.componentRef.setInput('profundidad', 100);
     component.datos.set({
