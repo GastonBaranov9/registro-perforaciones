@@ -29,7 +29,6 @@ export class PozosListService {
     caudal_max?: number,
     profundidad_max?: number,
     profundidad_min?: number,
-    sello_sanitario?: boolean
   ): Promise<Pozo[]> {
     const id_usuario = this.getUserIdOrThrow();
     const params: any = {};
@@ -37,7 +36,6 @@ export class PozosListService {
     if (caudal_max !== undefined) params.caudal_max = caudal_max;
     if (profundidad_max !== undefined) params.profundidad_max = profundidad_max;
     if (profundidad_min !== undefined) params.profundidad_min = profundidad_min;
-    if (sello_sanitario !== undefined) params.sello_sanitario = sello_sanitario;
     return await firstValueFrom(this.httpClient.get<Pozo[]>(this.baseURL(id_usuario), { params }));
   }
 

@@ -1,6 +1,6 @@
 import { effect, inject, input, OnInit, signal } from '@angular/core';
 import { Component } from '@angular/core';
-import { IonButton, IonCol, IonRow, IonGrid, ViewWillEnter, IonCard, IonCardHeader, IonCardTitle, IonContent, IonCardSubtitle, IonCardContent, IonList, IonItem, IonLabel, IonNote, IonPopover, IonToolbar, IonButtons, IonInput, IonToggle, IonItemDivider, IonIcon, IonSelect, IonSelectOption, IonModal, IonHeader, IonTitle, IonText, IonFooter, IonBackButton } from '@ionic/angular/standalone';
+import { IonButton, ViewWillEnter, IonCard, IonCardHeader, IonCardTitle, IonContent, IonCardSubtitle, IonCardContent, IonList, IonItem, IonLabel, IonPopover, IonToolbar, IonButtons, IonInput, IonIcon, IonModal, IonHeader, IonTitle, IonFooter } from '@ionic/angular/standalone';
 import { Router } from '@angular/router';
 import { Pozo } from '../../../../shared/types/schemas';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
@@ -36,7 +36,6 @@ import { logoIonic } from 'ionicons/icons'
     IonTitle,
     IonFooter,
     IonInput,
-    IonToggle,
 ],
   templateUrl: './pozos-list.page.html',
   styleUrl: './pozos-list.page.css',
@@ -60,8 +59,6 @@ export class PozosListPage implements OnInit, ViewWillEnter {
 
   public profundidad_max: number | undefined = undefined;
   public profundidad_min: number | undefined = undefined;
-
-  public sello_sanitario: boolean | undefined = true;
 
 
   async ngOnInit(): Promise<void> {
@@ -99,8 +96,6 @@ export class PozosListPage implements OnInit, ViewWillEnter {
     const caudalMax = this.caudal_max ?? undefined;
     const profMax = this.profundidad_max ?? undefined;
     const profMin = this.profundidad_min ?? undefined;
-    const sello = this.sello_sanitario ?? undefined;
-
     this.pozos.set([]);
     try {
       const pozos = await this.pozosListService.getListaPozos(
@@ -108,7 +103,6 @@ export class PozosListPage implements OnInit, ViewWillEnter {
         caudalMax,
         profMax,
         profMin,
-        sello
       );
       this.pozos.set(pozos);
     } catch (error) {

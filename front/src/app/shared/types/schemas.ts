@@ -72,8 +72,6 @@ export type NuevoPozo = {
   fecha_inicio?: string;
   fecha_fin?: string;
   profundidad_final_m?: number;
-  sello_sanitario?: boolean;
-  pre_filtro?: string;
   nivel_estatico_m?: number;
   nivel_dinamico_m?: number;
   caudal_estimado_lh?: number;

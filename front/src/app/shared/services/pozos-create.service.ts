@@ -32,7 +32,7 @@ export class PozosCreateService {
     tecnicos: DatosTecnicosBorrador,
     foto: File | null,
   ): Promise<PozoCompletoResultado> {
-    const { id_sitio: _sitioHistoricoIgnorado, ...pozoNuevo } = pozo;
+    const pozoNuevo = sinCamposHistoricos(pozo);
     const body: PozoCompletoBody = {
       pozo: pozoNuevo,
       sitio_nuevo: {
@@ -55,6 +55,14 @@ export class PozosCreateService {
       throw new Error(respuesta.error?.message ?? respuesta.message ?? 'No se pudo crear la perforación.');
     }
   }
+}
+
+function sinCamposHistoricos(pozo: NuevoPozo): Omit<NuevoPozo, 'id_sitio'> {
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
+  delete copia.sello_sanitario;
+  delete copia.pre_filtro;
+  const { id_sitio: _idSitio, ...moderno } = copia;
+  return moderno;
 }
 
 async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {

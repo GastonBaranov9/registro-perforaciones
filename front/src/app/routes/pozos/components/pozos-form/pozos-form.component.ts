@@ -1,7 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonTextarea } from '@ionic/angular/standalone';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
@@ -20,7 +20,6 @@ import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnico
     IonInput,
     IonTextarea,
     IonButton,
-    IonToggle,
     IonList,
     IonText,
     CommonModule,
