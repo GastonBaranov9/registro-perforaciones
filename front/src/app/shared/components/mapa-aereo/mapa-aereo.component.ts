@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, input, OnChanges, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
@@ -19,13 +19,24 @@ import { coordenadasRegistradasValidas } from '../../utils/coordenadas';
     </section>`,
   styles: [`img{display:block;width:100%;max-width:720px;height:auto;object-fit:contain}small{display:block;margin-top:.25rem}`],
 })
-export class MapaAereoComponent implements OnInit {
+export class MapaAereoComponent implements OnInit, OnChanges {
   idSitio = input.required<number>(); idUsuario = input.required<number>();
   latitud = input<string | null | undefined>(); longitud = input<string | null | undefined>();
   private http = inject(HttpClient);
   cargando = signal(true); configurado = signal(false); atribucion = signal(''); falloImagen = signal(false); mensajeCoordenadas = signal('');
-  urlImagen = () => `${environment.apiURL}usuarios/${this.idUsuario()}/sitios/${this.idSitio()}/mapa-aereo`;
-  async ngOnInit() {
+  coordenadasVersion = computed(() => {
+    const latitud=String(this.latitud() ?? '').trim(),longitud=String(this.longitud() ?? '').trim();
+    return latitud && longitud ? encodeURIComponent(`${latitud},${longitud}`) : '';
+  });
+  urlImagen = () => {
+    const base=`${environment.apiURL}usuarios/${this.idUsuario()}/sitios/${this.idSitio()}/mapa-aereo`;
+    const version=this.coordenadasVersion();
+    return version ? `${base}?v=${version}` : base;
+  };
+  ngOnInit() { void this.actualizarEstado(); }
+  ngOnChanges() { if (this.cargando() === false) void this.actualizarEstado(); }
+  private async actualizarEstado() {
+    this.falloImagen.set(false);this.mensajeCoordenadas.set('');this.configurado.set(false);this.cargando.set(true);
     const latitud=String(this.latitud() ?? '').trim(),longitud=String(this.longitud() ?? '').trim();
     if(!latitud&&!longitud){this.mensajeCoordenadas.set('Coordenadas no registradas');this.cargando.set(false);return;}
     if(!coordenadasRegistradasValidas(latitud,longitud)){this.mensajeCoordenadas.set('Coordenadas inválidas');this.cargando.set(false);return;}

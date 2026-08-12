@@ -19,7 +19,7 @@ describe('MapaAereoComponent', () => {
     http.expectOne(`${environment.apiURL}mapas/estado`).flush({configurado:true,atribucion:'Google Maps'});
     await fixture.whenStable();fixture.detectChanges();
     const imagen=fixture.nativeElement.querySelector('img') as HTMLImageElement;
-    expect(imagen.getAttribute('src')).toBe(`${environment.apiURL}usuarios/7/sitios/12/mapa-aereo`);
+    expect(imagen.getAttribute('src')).toBe(`${environment.apiURL}usuarios/7/sitios/12/mapa-aereo?v=31%C2%B026'38.1%22S%2C57%C2%B059'11.6%22W`);
     expect(imagen.getAttribute('src')).not.toContain('maps.googleapis.com');
     expect(fixture.nativeElement.textContent).toContain('Google Maps');
   });
@@ -27,5 +27,14 @@ describe('MapaAereoComponent', () => {
   it('distingue coordenadas ausentes e inválidas sin consultar configuración', () => {
     fixture.componentRef.setInput('latitud','');fixture.componentRef.setInput('longitud','');fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Coordenadas no registradas');
+  });
+
+  it('cambia el src determinísticamente cuando cambia la coordenada', async () => {
+    fixture.componentRef.setInput('latitud', '-34.913600');fixture.componentRef.setInput('longitud', '-56.161900');fixture.detectChanges();
+    http.expectOne(`${environment.apiURL}mapas/estado`).flush({configurado:true,atribucion:'Google Maps'});
+    const inicial=fixture.componentInstance.urlImagen();
+    fixture.componentRef.setInput('latitud', '-31.443917');fixture.componentRef.setInput('longitud', '-57.986556');fixture.detectChanges();
+    expect(fixture.componentInstance.urlImagen()).not.toBe(inicial);
+    expect(fixture.componentInstance.urlImagen()).toContain('v=-31.443917%2C-57.986556');
   });
 });
