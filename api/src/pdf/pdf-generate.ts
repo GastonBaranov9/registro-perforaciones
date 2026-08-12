@@ -19,7 +19,10 @@ export interface DiagnosticoTabla {
   contenidoTop:number; bordeInferiorFinal:number; gapAntesTitulo?:number; gapDespuesTitulo:number;
   lineaBaseTitulo?:number; ascensoVisualTitulo?:number; descensoVisualTitulo?:number;
 }
-export interface DiagnosticoPDF { paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number }
+export interface DiagnosticoPDF {
+  paginas: { tipo: string; bloques: string[] }[]; tablas: DiagnosticoTabla[]; fallbackMapaAlto?: number;
+  mapa?: { x:number; y:number; ancho:number; alto:number; imagenX:number; imagenY:number; imagenAncho:number; imagenAlto:number; atribucionY:number; overlayOpaco:boolean };
+}
 
 class FlujoPDF {
   page!: PDFPage; y = 0; readonly diagnostico: DiagnosticoPDF = { paginas: [], tablas: [] };
@@ -317,9 +320,14 @@ async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longi
       const img=mapaImagen.tipo==="image/png"?await f.doc.embedPng(mapaImagen.bytes):await f.doc.embedJpg(mapaImagen.bytes);
       p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,color:rgb(.97,.98,.99),borderColor:rgb(.72,.76,.8),borderWidth:.8});
       const escala=Math.min(caja.w/img.width,caja.h/img.height);
-      p.drawImage(img,{x:caja.x+(caja.w-img.width*escala)/2,y:caja.y+(caja.h-img.height*escala)/2,width:img.width*escala,height:img.height*escala});
-      p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:18,color:rgb(1,1,1),opacity:.82});
-      p.drawText(mapaImagen.atribucion,{x:54,y:346,size:10.5,font:f.font,color:GRIS}); y=305;
+      const imagenX=caja.x+(caja.w-img.width*escala)/2,imagenY=caja.y+(caja.h-img.height*escala)/2;
+      const imagenAncho=img.width*escala,imagenAlto=img.height*escala,atribucionY=caja.y-16;
+      p.drawImage(img,{x:imagenX,y:imagenY,width:imagenAncho,height:imagenAlto});
+      // La atribución incorporada por el proveedor permanece intacta dentro de la imagen.
+      // La atribución textual configurada se agrega fuera del mapa, sin fondo ni overlay.
+      p.drawText(mapaImagen.atribucion,{x:caja.x,y:atribucionY,size:9.5,font:f.font,color:GRIS});
+      f.diagnostico.mapa={x:caja.x,y:caja.y,ancho:caja.w,alto:caja.h,imagenX,imagenY,imagenAncho,imagenAlto,atribucionY,overlayOpaco:false};
+      y=295;
     }catch{mapaDisponible=false;}
   }
   if(!mapaDisponible){
