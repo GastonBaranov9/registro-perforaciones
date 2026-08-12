@@ -12,14 +12,16 @@ export async function listarCandidatosPozo(
   filtros: { propietario?: string; perforador?: string; limite?: number; propietarioId?: number; perforadorId?: number } = {},
 ): Promise<{ propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] }> {
   const limite = Math.min(Math.max(filtros.limite ?? 20, 1), 50);
-  const propietarios = filtros.propietario || filtros.propietarioId
-    ? await candidatosPorRol("propietario", db, undefined, filtros.propietario, limite, filtros.propietarioId)
+  const propietario = filtros.propietario?.trim() || undefined;
+  const perforador = filtros.perforador?.trim() || undefined;
+  const propietarios = propietario || filtros.propietarioId
+    ? await candidatosPorRol("propietario", db, undefined, propietario, limite, filtros.propietarioId)
     : [];
   const perforadores = esAdmin
-    ? (filtros.perforador || filtros.perforadorId
-      ? await candidatosPorRol("perforador", db, undefined, filtros.perforador, limite, filtros.perforadorId)
+    ? (perforador || filtros.perforadorId
+      ? await candidatosPorRol("perforador", db, undefined, perforador, limite, filtros.perforadorId)
       : [])
-    : (await candidatosPorRol("perforador", db, idSesion, filtros.perforador, limite, filtros.perforadorId));
+    : (await candidatosPorRol("perforador", db, idSesion, perforador, limite, filtros.perforadorId));
   return { propietarios, perforadores };
 }
 

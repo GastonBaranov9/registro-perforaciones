@@ -253,9 +253,11 @@ const sitiosRoutes= async function (
     },
     async function (req, rep) {
       const { sub } = req.user;
-      const listaSitios = await rolUser(sub, "propietario")
-        ? await func.getSitiosByPropietario(sub)
-        : await func.getAllSitios()
+      const listaSitios = await isAdmin(sub)
+        ? await func.getAllSitios()
+        : await rolUser(sub, "propietario")
+          ? await func.getSitiosByPropietario(sub)
+          : await func.getSitiosByPerforador(sub)
       return rep.code(200).send(listaSitios)
     }
   );

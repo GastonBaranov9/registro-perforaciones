@@ -1,4 +1,5 @@
 import { myPool } from "../db/pool.ts";
+import type { Pool } from "pg";
 import { Sitio, SitioBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
@@ -115,6 +116,20 @@ export async function getSitiosByPropietario(id_usuario: number): Promise<Sitio[
       )
       ORDER BY s.id_sitio`,
     [id_usuario]
+  );
+  return rows as Sitio[];
+}
+
+export async function getSitiosByPerforador(id_usuario: number, db: Pick<Pool, "query"> = myPool): Promise<Sitio[]> {
+  const { rows } = await db.query(
+    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
+       FROM sitio s
+      WHERE EXISTS (
+        SELECT 1 FROM pozo p
+         WHERE p.id_sitio = s.id_sitio AND p.id_perforador = $1
+      )
+      ORDER BY s.id_sitio`,
+    [id_usuario],
   );
   return rows as Sitio[];
 }
