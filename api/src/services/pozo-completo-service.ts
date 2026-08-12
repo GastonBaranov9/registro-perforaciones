@@ -39,10 +39,6 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   if ("sitio_nuevo" in data && !("foto_accion" in data)) {
     if (!normalizarCoordenadasTexto(data.sitio_nuevo.latitud, data.sitio_nuevo.longitud, true)) errores.push("Las coordenadas del sitio son invÃ¡lidas.");
     if (!data.sitio_nuevo.departamento.trim()) errores.push("El departamento del sitio es obligatorio.");
-    const latitud = Number(data.sitio_nuevo.latitud);
-    const longitud = Number(data.sitio_nuevo.longitud);
-    if (!Number.isFinite(latitud) || latitud < -90 || latitud > 90) errores.push("La latitud del sitio es inválida.");
-    if (!Number.isFinite(longitud) || longitud < -180 || longitud > 180) errores.push("La longitud del sitio es inválida.");
   }
   if ("foto_accion" in data) {
     const idsPersistidos = data.intervalos_litologicos.map((intervalo) => intervalo.id_intervalo_litologico).filter((id): id is number => id !== undefined);

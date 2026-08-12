@@ -36,10 +36,11 @@
           [(ngModel)]="sitio.departamento" required /></ion-item>
         <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="localidad"
           [(ngModel)]="sitio.localidad" /></ion-item>
-        <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="number"
-          [(ngModel)]="sitio.latitud" min="-90" max="90" required /></ion-item>
-        <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="number"
-          [(ngModel)]="sitio.longitud" min="-180" max="180" required /></ion-item>
+        <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="text"
+          [(ngModel)]="sitio.latitud" (ionBlur)="normalizarCoordenadaNueva('latitud')" required /></ion-item>
+        <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="text"
+          [(ngModel)]="sitio.longitud" (ionBlur)="normalizarCoordenadaNueva('longitud')" required /></ion-item>
+        <p class="ayuda-coordenadas">Se aceptan coordenadas decimales o grados/minutos/segundos.</p>
         @if (ubicacionPrecision() !== null) { <p>Precisión aproximada: {{ ubicacionPrecision() | number:'1.0-0' }} m</p> }
         @if (ubicacionError()) { <ion-text color="danger"><p role="alert">{{ ubicacionError() }}</p></ion-text> }
         <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="capturandoUbicacion()">

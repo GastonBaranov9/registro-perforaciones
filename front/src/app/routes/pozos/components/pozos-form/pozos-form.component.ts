@@ -7,6 +7,7 @@ import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/
 import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
 import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
+import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
 
 @Component({
   selector: 'app-pozos-form',
@@ -62,6 +63,12 @@ export class PozosFormComponent {
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
+    const sitio=this.sitioNuevo();
+    if(sitio){
+      const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');
+      if(!latitud||!longitud){this.ubicacionError.set('Las coordenadas no son válidas.');return;}
+      sitio.latitud=latitud;sitio.longitud=longitud;
+    }
     this.saved.emit({
       pozo: this.pozo(),
       foto: this.fotoFile,
@@ -82,6 +89,13 @@ export class PozosFormComponent {
     } catch (error: unknown) {
       this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
     } finally { this.capturandoUbicacion.set(false); }
+  }
+
+  normalizarCoordenadaNueva(eje:EjeCoordenada) {
+    const sitio=this.sitioNuevo();if(!sitio)return;
+    const normalizada=normalizarCoordenadaTexto(sitio[eje],eje);
+    if(!normalizada){this.ubicacionError.set(`La ${eje} no es válida.`);return;}
+    sitio[eje]=normalizada;this.ubicacionError.set('');
   }
 
   registrarPropietario() {

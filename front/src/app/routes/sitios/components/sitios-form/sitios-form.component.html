@@ -27,7 +27,8 @@
         type="text"
         name="latitud"
         [ngModel]="ubicacionPendiente()?.latitud ?? this.sitio().latitud ?? ''"
-        readonly
+        (ngModelChange)="actualizarCoordenada('latitud', $event)"
+        (ionBlur)="normalizarCoordenada('latitud')"
       ></ion-input>
     </ion-item>
 
@@ -37,9 +38,11 @@
         type="text"
         name="longitud"
         [ngModel]="ubicacionPendiente()?.longitud ?? this.sitio().longitud ?? ''"
-        readonly
+        (ngModelChange)="actualizarCoordenada('longitud', $event)"
+        (ionBlur)="normalizarCoordenada('longitud')"
       ></ion-input>
     </ion-item>
+    <p class="ayuda-coordenadas">Se aceptan coordenadas decimales o grados/minutos/segundos.</p>
   </ion-list>
 
   @if (ubicacionPendiente(); as ubicacion) {

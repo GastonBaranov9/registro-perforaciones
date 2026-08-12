@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DecimalPipe } from '@angular/common';
 import { capturarUbicacionActual, UbicacionCapturada } from '../../../../shared/utils/geolocalizacion';
+import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
 @Component({
   selector: 'app-sitios-form',
   templateUrl: './sitios-form.component.html',
@@ -25,7 +26,28 @@ export class SitiosFormComponent {
 
   handleSitio() {
     const pendiente = this.ubicacionPendiente();
-    this.saved.emit(pendiente ? { ...this.sitio(), latitud: pendiente.latitud, longitud: pendiente.longitud } : { ...this.sitio() });
+    const resultado = pendiente ? { ...this.sitio(), latitud: pendiente.latitud, longitud: pendiente.longitud } : { ...this.sitio() };
+    const alguna = Boolean(String(resultado.latitud ?? '').trim() || String(resultado.longitud ?? '').trim());
+    if (alguna && (!normalizarCoordenadaTexto(resultado.latitud, 'latitud') || !normalizarCoordenadaTexto(resultado.longitud, 'longitud'))) {
+      this.ubicacionError.set('Las coordenadas no son válidas.'); return;
+    }
+    this.saved.emit(resultado);
+  }
+
+  actualizarCoordenada(eje:EjeCoordenada, valor:unknown) {
+    const texto=valor == null ? '' : String(valor);
+    const pendiente=this.ubicacionPendiente();
+    if(pendiente) this.ubicacionPendiente.set({...pendiente,[eje]:texto});
+    else this.sitio()[eje]=texto;
+  }
+
+  normalizarCoordenada(eje:EjeCoordenada) {
+    const objetivo=this.ubicacionPendiente() ?? this.sitio();
+    const original=objetivo[eje];
+    if(!String(original ?? '').trim()){this.ubicacionError.set('');return;}
+    const normalizada=normalizarCoordenadaTexto(original,eje);
+    if(!normalizada){this.ubicacionError.set(`La ${eje} no es válida.`);return;}
+    this.actualizarCoordenada(eje,normalizada);this.ubicacionError.set('');
   }
 
   public async getLocation(): Promise<void> {
