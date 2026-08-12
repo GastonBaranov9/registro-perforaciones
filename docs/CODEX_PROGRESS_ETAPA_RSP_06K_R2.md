@@ -7,4 +7,5 @@
 - Pruebas focalizadas: API IDs/compatibilidad 10/10; frontend mapa 4/4.
 - Validación final: API build + 161/161; frontend UTF-8 + build + 172/172; `git diff --check` correcto.
 - Commits: `fix(front): mostrar mapa existente al editar sitio`, `fix(api): validar pertenencia de intervalos litologicos`, `test: cubrir mapa de sitio e identidades litologicas`, `docs: cerrar RSP-06K-R2`.
-- HEAD y árbol se registran en el commit de cierre.
+- HEAD final: `ce18d077e9a44a38784cab13e3a23c2c10e23021`.
+- Git status final: limpio.
