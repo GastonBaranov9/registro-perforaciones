@@ -53,8 +53,10 @@ const sitiosRoutes= async function (
       if (!sitio) throw new err.T05SitioNoEncontrado();
       const coordenadas = leerCoordenadas(sitio.latitud ?? null, sitio.longitud ?? null);
       if (!coordenadas) throw new err.T05SitioNoEncontrado("El sitio no tiene coordenadas válidas.");
-      const mapa = await obtenerMapaEstatico(coordenadas, configuracionMapaDesdeEntorno());
-      if (mapa.estado === "no-disponible") throw new err.T05ErrorConexion("Mapa aéreo no configurado");
+      const configuracion = configuracionMapaDesdeEntorno();
+      if (!mapaConfigurado(configuracion)) throw new err.T05ErrorConexion("Mapa aéreo no configurado");
+      const mapa = await obtenerMapaEstatico(coordenadas, configuracion);
+      if (mapa.estado === "no-disponible") throw new err.T05ErrorConexion("Mapa aéreo no disponible");
       return rep.header("Content-Type", mapa.tipo).header("X-Map-Attribution", mapa.atribucion)
         .header("Cache-Control", "private, max-age=300").send(Buffer.from(mapa.bytes));
     },

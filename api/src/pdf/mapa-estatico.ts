@@ -12,7 +12,10 @@ export interface ConfiguracionMapa {
   atribucion?: string;
   timeoutMs?: number;
   maxBytes?: number;
+  cacheMs?: number;
 }
+
+const cacheMapas = new Map<string,{ expira:number; resultado:Extract<ResultadoMapa,{estado:"disponible"}> }>();
 
 export function leerCoordenadas(latitud: string | null, longitud: string | null): CoordenadasMapa | null {
   const normalizadas = normalizarCoordenadasTexto(latitud, longitud);
@@ -27,6 +30,7 @@ export function configuracionMapaDesdeEntorno(env: NodeJS.ProcessEnv = process.e
     hostPermitido: elegir(env.MAP_STATIC_ALLOWED_HOST, env.PDF_MAP_ALLOWED_HOST),
     clave: elegir(env.MAP_STATIC_API_KEY, env.PDF_MAP_STATIC_API_KEY),
     atribucion: elegir(env.MAP_STATIC_ATTRIBUTION, env.PDF_MAP_ATTRIBUTION),
+    cacheMs: 300_000,
   };
 }
 
@@ -58,9 +62,13 @@ export async function obtenerMapaEstatico(
     .replaceAll("{key}", encodeURIComponent(configuracion.clave ?? ""));
   let url: URL;
   try { url = new URL(urlTexto); } catch { return { estado: "no-disponible", motivo: "URL inválida" }; }
-  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.toLowerCase() || url.username || url.password) {
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.trim().toLowerCase() || url.username || url.password) {
     return { estado: "no-disponible", motivo: "Proveedor no permitido" };
   }
+  const cacheMs=Math.max(0,configuracion.cacheMs??0),cacheKey=url.toString(),ahora=Date.now();
+  const cacheado=cacheMs?cacheMapas.get(cacheKey):undefined;
+  if(cacheado&&cacheado.expira>ahora)return cacheado.resultado;
+  if(cacheado)cacheMapas.delete(cacheKey);
   const controlador = new AbortController();
   const timeout = setTimeout(() => controlador.abort(), configuracion.timeoutMs ?? 3_000);
   try {
@@ -93,7 +101,13 @@ export async function obtenerMapaEstatico(
     const png = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
     const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
     if ((tipo === "image/png" && !png) || (tipo === "image/jpeg" && !jpeg)) return { estado: "no-disponible", motivo: "Firma de imagen no válida" };
-    return { estado: "disponible", bytes, tipo, atribucion: configuracion.atribucion };
+    const resultado={ estado: "disponible" as const, bytes, tipo, atribucion: configuracion.atribucion };
+    if(cacheMs){
+      for(const [clave,entrada] of cacheMapas)if(entrada.expira<=ahora)cacheMapas.delete(clave);
+      if(cacheMapas.size>=32)cacheMapas.delete(cacheMapas.keys().next().value!);
+      cacheMapas.set(cacheKey,{expira:ahora+cacheMs,resultado});
+    }
+    return resultado;
   } catch (error: unknown) {
     return { estado: "no-disponible", motivo: error instanceof Error && error.name === "AbortError" ? "Tiempo de espera agotado" : "Proveedor no disponible" };
   }
