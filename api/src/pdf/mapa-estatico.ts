@@ -74,8 +74,9 @@ export async function obtenerMapaEstatico(
   try {
     const respuesta = await fetchImpl(url, { redirect: "manual", signal: controlador.signal });
     if (!respuesta.ok || respuesta.status >= 300) return { estado: "no-disponible", motivo: "Respuesta no válida" };
-    const tipo = respuesta.headers.get("content-type")?.split(";")[0];
-    if (tipo !== "image/png" && tipo !== "image/jpeg") return { estado: "no-disponible", motivo: "Contenido no admitido" };
+    const tipoCabecera = respuesta.headers.get("content-type")?.split(";")[0];
+    if (tipoCabecera !== "image/png" && tipoCabecera !== "image/jpeg") return { estado: "no-disponible", motivo: "Contenido no admitido" };
+    const tipo: "image/png" | "image/jpeg" = tipoCabecera;
     const maxBytes = configuracion.maxBytes ?? 2_000_000;
     const anunciado = Number(respuesta.headers.get("content-length"));
     if (Number.isFinite(anunciado) && anunciado > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
