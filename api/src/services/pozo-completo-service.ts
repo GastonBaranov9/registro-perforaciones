@@ -185,6 +185,24 @@ export async function actualizarPozoCompleto(
     await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
 
+    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
+      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const originales = litologiasOriginales.map((fila) => ({
+      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
+      desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),
+      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
+    }));
+    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
+    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
+    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
+    if (idsFiltros.length) {
+      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number}>(
+        "SELECT id_intervalo_filtro FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
+        [idPozo, idsFiltros],
+      );
+      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
+    }
+
     const p = data.pozo;
     const { rows } = await client.query(
       `UPDATE pozo SET id_propietario=$2, id_sitio=$3, empresa=$4, id_perforador=$5,
@@ -203,25 +221,6 @@ export async function actualizarPozoCompleto(
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
 
-    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
-      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
-    const originales = litologiasOriginales.map((fila) => ({
-      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
-      desde_m: Number(fila.desde_m),
-      hasta_m: Number(fila.hasta_m),
-      material: String(fila.material),
-      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
-    }));
-    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
-    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
-    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
-    if (idsFiltros.length) {
-      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number}>(
-        "SELECT id_intervalo_filtro FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
-        [idPozo, idsFiltros],
-      );
-      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
-    }
     await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
     await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
@@ -296,8 +295,10 @@ export function resolverLitologiasOriginales(
     if (intervalo.id_litologia != null) {
       if (intervalo.id_intervalo_litologico != null) {
         const original = originales.find((fila) => fila.id_intervalo_litologico === intervalo.id_intervalo_litologico);
-        resoluciones.set(indice, original?.id_litologia ?? null);
-        if (original) consumidos.add(original.id_intervalo_litologico);
+        if (!original) throw new err.T05DatosIncorrectos("Un id_intervalo_litologico no pertenece al pozo editado.");
+        if (consumidos.has(original.id_intervalo_litologico)) throw new err.T05DatosIncorrectos("Un intervalo litologico original no puede reutilizarse en el mismo update.");
+        resoluciones.set(indice, original.id_litologia);
+        consumidos.add(original.id_intervalo_litologico);
       } else {
         resoluciones.set(indice, undefined);
       }
@@ -305,8 +306,10 @@ export function resolverLitologiasOriginales(
     }
     if (intervalo.id_intervalo_litologico != null) {
       const original = originales.find((fila) => fila.id_intervalo_litologico === intervalo.id_intervalo_litologico);
-      resoluciones.set(indice, original?.id_litologia ?? null);
-      if (original) consumidos.add(original.id_intervalo_litologico);
+      if (!original) throw new err.T05DatosIncorrectos("Un id_intervalo_litologico no pertenece al pozo editado.");
+      if (consumidos.has(original.id_intervalo_litologico)) throw new err.T05DatosIncorrectos("Un intervalo litologico original no puede reutilizarse en el mismo update.");
+      resoluciones.set(indice, original.id_litologia);
+      consumidos.add(original.id_intervalo_litologico);
       continue;
     }
     const coincidencias = originales.filter((fila) =>
