@@ -41,4 +41,16 @@ describe('SelectorPersonaPozoComponent', () => {
     fixture.componentRef.setInput('candidatos', []); fixture.detectChanges();
     expect(component.filtrados()).toEqual([]); expect(component.actual()).toBeNull();
   });
+  it('ejecuta búsqueda remota desde un carácter y no desde vacío', async () => {
+    const buscar = jasmine.createSpy('buscar').and.resolveTo([{ id_usuario: 3, nombre: 'A', roles: ['propietario'] }]);
+    fixture.componentRef.setInput('buscarRemoto', buscar);
+    fixture.detectChanges();
+    await component.buscar('A');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(buscar).toHaveBeenCalledWith('A');
+    buscar.calls.reset();
+    await component.buscar(' ');
+    expect(buscar).not.toHaveBeenCalled();
+    expect(component.filtrados()).toEqual([]);
+  });
 });

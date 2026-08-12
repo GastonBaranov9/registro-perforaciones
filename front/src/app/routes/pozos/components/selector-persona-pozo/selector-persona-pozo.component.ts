@@ -25,7 +25,7 @@ export class SelectorPersonaPozoComponent {
   private seleccionRemota = signal<CandidatoPozo | null>(null);
   filtrados = computed(() => {
     const q = this.busqueda().trim().toLocaleLowerCase();
-    if (q.length < 2) return [];
+    if (q.length < 1) return [];
     const origen = this.resultados() ?? [];
     return origen.filter((c) => c.nombre.toLocaleLowerCase().includes(q) || (c.email ?? '').toLocaleLowerCase().includes(q)).slice(0, 20);
   });
@@ -45,7 +45,7 @@ export class SelectorPersonaPozoComponent {
     if (this.temporizador) clearTimeout(this.temporizador);
     const q = texto.trim(); const secuencia = ++this.secuenciaBusqueda;
     this.activo.set(0);
-    if (q.length < 2) { this.resultados.set(null); this.activo.set(0); return; }
+    if (q.length < 1) { this.resultados.set(null); this.activo.set(0); return; }
     if (!this.buscarRemoto()) { this.resultados.set(this.candidatos().filter((c) => c.nombre.toLocaleLowerCase().includes(q.toLocaleLowerCase()) || (c.email ?? '').toLocaleLowerCase().includes(q.toLocaleLowerCase()))); return; }
     this.temporizador = setTimeout(async () => { try { const lista = await this.buscarRemoto()!(q); if (secuencia === this.secuenciaBusqueda) this.resultados.set(lista); }
     catch { if (secuencia === this.secuenciaBusqueda) this.resultados.set([]); }
