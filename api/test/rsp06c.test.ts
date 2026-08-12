@@ -61,6 +61,10 @@ test("actualización completa reemplaza hijos dentro de una transacción", async
     assert.equal(resultado.sitio.id_sitio,4);
     assert.equal(resultado.pozo.id_sitio,4);
     assert.equal(falso.parametrosUpdate?.[2],4);
+    const actualizacion = falso.consultas.find((sql) => sql.startsWith("UPDATE pozo SET"));
+    assert.ok(actualizacion);
+    const asignaciones = actualizacion.split("WHERE id_pozo")[0];
+    assert.doesNotMatch(asignaciones, /sello_sanitario|pre_filtro/);
     assert.ok(falso.consultas.some((x) => x === "COMMIT"));
     assert.equal(falso.consultas.filter((x) => x.startsWith("DELETE FROM")).length, 4);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }

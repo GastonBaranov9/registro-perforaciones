@@ -26,6 +26,14 @@ describe('PozosFormComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('retira sello sanitario y pre-filtro del formulario moderno', () => {
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).not.toContain('Sello sanitario');
+    expect(texto).not.toContain('Pre-filtro');
+    expect(fixture.nativeElement.querySelector('[name="sello_sanitario"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[name="pre_filtro"]')).toBeNull();
+  });
+
   it('mantiene los datos estándar readonly y Editar habilita solo el elegido', () => {
     expect(component.datoTecnicoEditable('desarrollo')).toBeFalse();
     expect(component.datoTecnicoEditable('cementacion')).toBeFalse();

@@ -36,6 +36,18 @@ describe('SelectorLitologiaComponent', () => {
     expect(selector.opcionesFiltradas().map((x) => x.id_litologia)).toEqual([1]);
     expect(selector.opcionesFiltradas().every((x) => x.activo)).toBeTrue();
   });
+  it('permite seleccionar Sello sanitario como litología activa del catálogo', async () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/litologias')).flush([
+      { id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#777777', patron: 'granite', activo: true, orden: 30 },
+    ]);
+    await fixture.whenStable();
+    const selector = fixture.debugElement.query(By.directive(SelectorLitologiaComponent)).componentInstance as SelectorLitologiaComponent;
+    const cambio = spyOn(selector.seleccionadoChange, 'emit');
+    selector.seleccionar('30');
+    expect(cambio).toHaveBeenCalledWith(30);
+  });
   it('comparte una sola carga activa entre diez selectores y no recarga al cambiar', async () => {
     const many = TestBed.createComponent(ManyHostComponent);
     many.detectChanges();

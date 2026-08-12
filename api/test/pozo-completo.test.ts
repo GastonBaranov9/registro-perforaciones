@@ -52,6 +52,10 @@ test("crea pozo y todos sus hijos en una sola transacción", async () => {
     assert.equal(resultado.niveles_aporte.length, 1);
     assert.ok(falso.consultas.includes("BEGIN"));
     assert.ok(falso.consultas.some((sql) => sql.includes("INSERT INTO public.sitio")));
+    const insercionPozo = falso.consultas.find((sql) => sql.includes("INSERT INTO public.pozo"));
+    assert.ok(insercionPozo);
+    const columnasInsertadas = insercionPozo.split(") VALUES")[0];
+    assert.doesNotMatch(columnasInsertadas, /sello_sanitario|pre_filtro/);
     assert.ok(falso.consultas.includes("COMMIT"));
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

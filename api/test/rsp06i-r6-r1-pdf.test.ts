@@ -33,8 +33,13 @@ function cerca(actual:number,esperado:number) {
 }
 
 test("R6-R1 mide cajas visuales en el caso manual exacto",async()=>{
-  const {documento,diagnostico}=await crearPDFConDiagnostico(casoManual(),6061,{mapa:{}});
+  const reporte=casoManual();
+  const {documento,diagnostico}=await crearPDFConDiagnostico(reporte,6061,{mapa:{}});
   const [litologia,tuberias,filtros,aportes]=diagnostico.tablas;
+  assert.equal(reporte.litologia[0].material,"Sello sanitario");
+  assert.equal(litologia.alturasFilas.length,reporte.litologia.length);
+  assert.ok(!diagnostico.datosGenerales?.includes("Sello sanitario"));
+  assert.ok(!diagnostico.datosGenerales?.includes("Prefiltro"));
   assert.equal(diagnostico.paginas.filter((pagina)=>pagina.tipo.startsWith("tecnica")).length,1);
   assert.deepEqual(diagnostico.tablas.map((tabla)=>tabla.paginaTitulo),[2,2,2,2]);
 
