@@ -176,6 +176,7 @@ const sitiosRoutes= async function (
           204: Type.Null(),
           501: err.ErrorSchema,
           404: err.ErrorSchema,
+          409: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
       },
@@ -186,8 +187,8 @@ const sitiosRoutes= async function (
       const {id_sitio} = req.params as {
         id_sitio: number
       }
-      if (!(await isAdmin(req.user.sub)) && !(await sitioEsGestionablePorPerforador(id_sitio,req.user.sub)))
-        throw new err.T05SitioNoEncontrado();
+      if (!(await isAdmin(req.user.sub))) throw new err.T05SinPermiso();
+      if (await func.sitioTienePozos(id_sitio)) throw new err.T05IntegridadReferencial();
       const sitioBorrado = await func.deleteSitio(id_sitio)
       if(!sitioBorrado) throw new err.T05SitioNoEncontrado
       return rep.code(204).send()

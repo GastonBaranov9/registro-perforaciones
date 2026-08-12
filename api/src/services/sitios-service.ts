@@ -120,6 +120,11 @@ export async function getSitiosByPropietario(id_usuario: number): Promise<Sitio[
   return rows as Sitio[];
 }
 
+export async function sitioTienePozos(id_sitio: number, db: Pick<Pool, "query"> = myPool): Promise<boolean> {
+  const { rowCount } = await db.query("SELECT 1 FROM pozo WHERE id_sitio = $1 LIMIT 1", [id_sitio]);
+  return (rowCount ?? 0) > 0;
+}
+
 export async function getSitiosByPerforador(id_usuario: number, db: Pick<Pool, "query"> = myPool): Promise<Sitio[]> {
   const { rows } = await db.query(
     `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
