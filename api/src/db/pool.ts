@@ -10,12 +10,15 @@ export const pgConfig: PoolConfig = {
   host: runtime.postgres.host,
   port: runtime.postgres.port,
   database: runtime.postgres.database,
-  connectionTimeoutMillis: 0,
+  connectionTimeoutMillis: runtime.postgres.connectionTimeoutMs,
   idleTimeoutMillis: 10000,
-  max: 10,
+  max: runtime.postgres.poolMax,
   min: 0,
   allowExitOnIdle: false,
   maxLifetimeSeconds: 0,
+  statement_timeout: runtime.postgres.statementTimeoutMs,
+  idle_in_transaction_session_timeout: runtime.postgres.idleTransactionTimeoutMs,
+  query_timeout: runtime.postgres.queryTimeoutMs,
 };
 
 export const myPool = new Pool(pgConfig);

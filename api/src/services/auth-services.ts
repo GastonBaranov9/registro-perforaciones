@@ -85,3 +85,16 @@ export async function getEstadoSesionUsuario(
 
   return (rows[0] as EstadoSesionUsuario | undefined) ?? null;
 }
+
+export async function revocarSesionesUsuario(
+  idUsuario: number,
+  pool: Pick<typeof myPool, "query"> = myPool,
+): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE usuario
+     SET version_sesion = version_sesion + 1
+     WHERE id_usuario = $1 AND activo = TRUE`,
+    [idUsuario],
+  );
+  return rowCount === 1;
+}

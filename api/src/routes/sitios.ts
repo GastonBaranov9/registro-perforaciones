@@ -53,6 +53,8 @@ const sitiosRoutes= async function (
         ? await func.getSitioById(id_sitio)
         : await func.getSitioPropioById(id_sitio, req.user.sub);
       if (!sitio) throw new err.T05SitioNoEncontrado();
+      await fastify.rateLimitMaps(req, rep);
+      if (rep.sent) return;
       const coordenadas = leerCoordenadas(latitud, longitud);
       if (!coordenadas) throw new err.T05DatosIncorrectos("Las coordenadas del preview no son vÃ¡lidas.");
       const configuracion = configuracionMapaDesdeEntorno();
@@ -85,6 +87,8 @@ const sitiosRoutes= async function (
         ? await func.getSitioById(id_sitio)
         : await func.getSitioPropioById(id_sitio, req.user.sub);
       if (!sitio) throw new err.T05SitioNoEncontrado();
+      await fastify.rateLimitMaps(req, rep);
+      if (rep.sent) return;
       const coordenadas = leerCoordenadas(sitio.latitud ?? null, sitio.longitud ?? null);
       if (!coordenadas) throw new err.T05SitioNoEncontrado("El sitio no tiene coordenadas válidas.");
       const configuracion = configuracionMapaDesdeEntorno();

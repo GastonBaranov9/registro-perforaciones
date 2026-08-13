@@ -35,6 +35,12 @@ test("acepta un contrato de producción completo y normaliza origins", () => {
   assert.equal(config.publicOrigin, "https://perforaciones.example.test");
   assert.equal(config.trustProxy, 1);
   assert.deepEqual(config.corsOrigins, ["https://perforaciones.example.test", "https://integracion.example.test"]);
+  assert.equal(config.enableApiDocs, false);
+  assert.equal(config.hstsEnabled, false);
+  assert.equal(config.postgres.connectionTimeoutMs, 5_000);
+  assert.equal(config.postgres.statementTimeoutMs, 30_000);
+  assert.equal(config.postgres.queryTimeoutMs, 35_000);
+  assert.equal(config.pdf.maxConcurrent, 2);
 });
 
 test("falla temprano ante variables críticas ausentes sin imprimir secretos", () => {
@@ -83,4 +89,14 @@ test("development conserva defaults locales sin exigir variables production", ()
   assert.equal(config.trustProxy, false);
   assert.equal(config.corsOrigins[0], "http://localhost:4200");
   assert.ok(path.isAbsolute(config.fotosDir));
+  assert.equal(config.enableApiDocs, true);
+});
+
+test("hardening falla temprano ante booleanos, timeouts y capacidad imposibles", () => {
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), ENABLE_API_DOCS: "true" }), /ENABLE_API_DOCS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), HSTS_ENABLED: "quizÃ¡s" }), /HSTS_ENABLED/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PG_POOL_MAX: "0" }), /PG_POOL_MAX/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PG_QUERY_TIMEOUT_MS: "1000" }), /PG_QUERY_TIMEOUT_MS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PDF_MAX_CONCURRENT: "99" }), /PDF_MAX_CONCURRENT/);
+  assert.throws(() => cargarConfiguracionRuntime({ NODE_ENV: "development", HSTS_ENABLED: "true" }), /HSTS_ENABLED/);
 });

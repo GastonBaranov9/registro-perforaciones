@@ -262,7 +262,6 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const isPerforador = await isPerf(id_usuario);
       const isAdministrador = await isAdmin(id_usuario);
       if (isPropietario) {
-        console.log("ES PROPIETARIO");
         const pozos = await funcPozo.getPozosByPropietario(
           id_usuario,
           caudal_min,
@@ -275,7 +274,6 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       }
 
       if (isPerforador) {
-        console.log("ES PERFORADOR");
         const pozos = await funcPozo.getPozosByPerforador(
           id_usuario,
           caudal_min,
@@ -287,7 +285,6 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         return rep.code(200).send(pozos);
       }
       if (isAdministrador) {
-        console.log("ES ADMIN");
         const pozos = await funcPozo.getAllPozo(
           caudal_min,
           caudal_max,
@@ -367,6 +364,9 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         id_pozo: number;
       };
       const { sub: id_usuario } = req.user;
+
+      await fastify.rateLimitUpload(req, rep);
+      if (rep.sent) return;
 
       const foto = await (req as any).file?.();
       if (!foto)

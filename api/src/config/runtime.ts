@@ -14,12 +14,32 @@ export interface RuntimeConfig {
   publicOrigin?: string;
   trustProxy: false | 1;
   corsOrigins: string[];
+  enableApiDocs: boolean;
+  hstsEnabled: boolean;
+  logLevel: string;
+  rateLimits: {
+    api: number;
+    login: number;
+    maps: number;
+    pdf: number;
+    upload: number;
+  };
+  pdf: {
+    maxConcurrent: number;
+    maxQueue: number;
+    queueTimeoutMs: number;
+  };
   postgres: {
     user?: string;
     password?: string;
     host?: string;
     port: number;
     database?: string;
+    poolMax: number;
+    connectionTimeoutMs: number;
+    statementTimeoutMs: number;
+    idleTransactionTimeoutMs: number;
+    queryTimeoutMs: number;
   };
 }
 
@@ -61,6 +81,28 @@ function puerto(nombre: string, entrada: string | undefined, porDefecto?: number
   if (!Number.isSafeInteger(resultado) || resultado < 1 || resultado > 65_535)
     throw new Error(`${nombre} debe ser un puerto válido`);
   return resultado;
+}
+
+function entero(
+  nombre: string,
+  entrada: string | undefined,
+  porDefecto: number,
+  minimo: number,
+  maximo: number,
+): number {
+  if (!entrada) return porDefecto;
+  if (!/^\d+$/.test(entrada)) throw new Error(`${nombre} debe ser un entero vÃ¡lido`);
+  const resultado = Number(entrada);
+  if (!Number.isSafeInteger(resultado) || resultado < minimo || resultado > maximo)
+    throw new Error(`${nombre} debe estar entre ${minimo} y ${maximo}`);
+  return resultado;
+}
+
+function booleano(nombre: string, entrada: string | undefined, porDefecto: boolean): boolean {
+  if (!entrada) return porDefecto;
+  if (entrada === "true") return true;
+  if (entrada === "false") return false;
+  throw new Error(`${nombre} debe ser true o false`);
 }
 
 function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { host?: string; origin?: string } {
@@ -144,6 +186,19 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
 
   if (production) validarMapasProduccion(env);
 
+  const enableApiDocs = booleano("ENABLE_API_DOCS", valor(env, "ENABLE_API_DOCS"), !production);
+  if (production && enableApiDocs)
+    throw new Error("ENABLE_API_DOCS no puede habilitarse en producciÃ³n");
+  const hstsEnabled = booleano("HSTS_ENABLED", valor(env, "HSTS_ENABLED"), false);
+  if (!production && hstsEnabled)
+    throw new Error("HSTS_ENABLED solo puede activarse en producciÃ³n con TLS pÃºblico estable");
+
+  const connectionTimeoutMs = entero("PG_CONNECTION_TIMEOUT_MS", valor(env, "PG_CONNECTION_TIMEOUT_MS"), 5_000, 100, 60_000);
+  const statementTimeoutMs = entero("PG_STATEMENT_TIMEOUT_MS", valor(env, "PG_STATEMENT_TIMEOUT_MS"), 30_000, 1_000, 300_000);
+  const queryTimeoutMs = entero("PG_QUERY_TIMEOUT_MS", valor(env, "PG_QUERY_TIMEOUT_MS"), 35_000, 1_000, 310_000);
+  if (queryTimeoutMs < statementTimeoutMs)
+    throw new Error("PG_QUERY_TIMEOUT_MS no puede ser menor que PG_STATEMENT_TIMEOUT_MS");
+
   return {
     nodeEnv,
     production,
@@ -154,12 +209,32 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     publicOrigin: publico.origin,
     trustProxy: production ? 1 : false,
     corsOrigins: originsCors(valor(env, "CORS_ORIGINS"), production, publico.origin),
+    enableApiDocs,
+    hstsEnabled,
+    logLevel: valor(env, "LOG_LEVEL") ?? (production ? "info" : "debug"),
+    rateLimits: {
+      api: entero("RATE_LIMIT_API_MAX", valor(env, "RATE_LIMIT_API_MAX"), 600, 10, 100_000),
+      login: entero("RATE_LIMIT_LOGIN_MAX", valor(env, "RATE_LIMIT_LOGIN_MAX"), 10, 1, 10_000),
+      maps: entero("RATE_LIMIT_MAP_MAX", valor(env, "RATE_LIMIT_MAP_MAX"), 30, 1, 10_000),
+      pdf: entero("RATE_LIMIT_PDF_MAX", valor(env, "RATE_LIMIT_PDF_MAX"), 10, 1, 10_000),
+      upload: entero("RATE_LIMIT_UPLOAD_MAX", valor(env, "RATE_LIMIT_UPLOAD_MAX"), 30, 1, 10_000),
+    },
+    pdf: {
+      maxConcurrent: entero("PDF_MAX_CONCURRENT", valor(env, "PDF_MAX_CONCURRENT"), 2, 1, 16),
+      maxQueue: entero("PDF_MAX_QUEUE", valor(env, "PDF_MAX_QUEUE"), 4, 0, 100),
+      queueTimeoutMs: entero("PDF_QUEUE_TIMEOUT_MS", valor(env, "PDF_QUEUE_TIMEOUT_MS"), 15_000, 100, 120_000),
+    },
     postgres: {
       user: production ? requerido(env, "PGUSER") : valor(env, "PGUSER"),
       password: production ? requerido(env, "PGPASSWORD") : valor(env, "PGPASSWORD"),
       host: production ? requerido(env, "PGHOST") : valor(env, "PGHOST"),
       port: puerto("PGPORT", valor(env, "PGPORT"), production ? undefined : 5432),
       database: production ? requerido(env, "PGDATABASE") : valor(env, "PGDATABASE"),
+      poolMax: entero("PG_POOL_MAX", valor(env, "PG_POOL_MAX"), 10, 1, 50),
+      connectionTimeoutMs,
+      statementTimeoutMs,
+      idleTransactionTimeoutMs: entero("PG_IDLE_TRANSACTION_TIMEOUT_MS", valor(env, "PG_IDLE_TRANSACTION_TIMEOUT_MS"), 15_000, 1_000, 300_000),
+      queryTimeoutMs,
     },
   };
 }

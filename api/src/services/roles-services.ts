@@ -67,14 +67,8 @@ export async function getRoles(id_usuario: number): Promise<Rol[]> {
        FROM rol r
        JOIN usuario_rol ur ON ur.id_rol = r.id_rol
        WHERE ur.id_usuario = $1`;
-  try {
-    const { rows } = await myPool.query(sql, [id_usuario]);
-
-    return rows;
-  } catch (e) {
-    console.error(e);
-    throw e;
-  }
+  const { rows } = await myPool.query(sql, [id_usuario]);
+  return rows;
 }
 
 export async function createRol(data: RolBody): Promise<Rol> {

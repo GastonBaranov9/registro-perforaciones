@@ -17,11 +17,14 @@ import { crearPerfilLitologico } from "../pdf/perfil-litologico.ts";
 import { validarDatosTecnicosPozo } from "../services/pozo-completo-service.ts";
 import { obtenerMetadatosLitologias } from "../services/litologias-services.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+import { PdfCapacityError, PdfCapacityGate } from "../services/pdf-capacity.ts";
 
 const informeRoutes = async function (
   fastify:FastifyInstance
 ) {
-  const { fotosDir } = cargarConfiguracionRuntime();
+  const runtime = cargarConfiguracionRuntime();
+  const { fotosDir } = runtime;
+  const pdfCapacity = new PdfCapacityGate(runtime.pdf.maxConcurrent, runtime.pdf.maxQueue, runtime.pdf.queueTimeoutMs);
   //Ver un informe
   fastify.get(
     "/usuarios/:id_usuario/pozos/:id_pozo/informes",
@@ -200,6 +203,7 @@ const informeRoutes = async function (
         }),
         response: {
           200: Type.String({ format: "binary" }),
+          503: err.ErrorSchema,
           501: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
@@ -208,7 +212,20 @@ const informeRoutes = async function (
       preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
     },
     async function (req, rep) {
+      await fastify.rateLimitPdf(req, rep);
+      if (rep.sent) return;
+      let release: (() => void) | undefined;
       try {
+        try {
+          release = await pdfCapacity.acquire();
+          req.log.info({ event: "pdf_started", ...pdfCapacity.snapshot() }, "GeneraciÃ³n PDF iniciada");
+        } catch (error) {
+          if (!(error instanceof PdfCapacityError)) throw error;
+          req.log.warn({ event: "pdf_capacity_rejected", ...pdfCapacity.snapshot() }, "GeneraciÃ³n PDF rechazada por capacidad");
+          return rep.header("Retry-After", String(error.retryAfterSeconds)).code(503).send({
+            statusCode: 503, error: "Service Unavailable", message: error.message,
+          });
+        }
         const { id_pozo } = req.params as {
           id_usuario: number;
           id_pozo: number;
@@ -226,9 +243,11 @@ const informeRoutes = async function (
             `attachment; filename="informe_pozo_${id_pozo}.pdf"`
           )
           .send(Buffer.from(pdfBytes));
-      } catch (e) {
-        console.error("ERROR GENERANDO PDF:", e);
-        throw e;
+      } finally {
+        if (release) {
+          release();
+          req.log.info({ event: "pdf_completed", ...pdfCapacity.snapshot() }, "Capacidad PDF liberada");
+        }
       }
     }
   );

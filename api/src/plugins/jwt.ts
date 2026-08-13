@@ -136,7 +136,6 @@ export default fastifyPlugin(async function (fastify) {
     await (fastify as any).authenticate(req, rep);
     const { sub } = req.user as { sub: number };
     const { id_usuario } = req.params as { id_usuario: number };
-    console.log(id_usuario,Number(sub) )
     const isuser= Number(sub) === id_usuario;
     const isadmin =  await rolUser(sub, "administracion");
 
