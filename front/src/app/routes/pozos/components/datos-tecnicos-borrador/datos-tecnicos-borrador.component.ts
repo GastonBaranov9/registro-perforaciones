@@ -1,11 +1,12 @@
 import { Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
-import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
 
 @Component({
   selector: 'app-datos-tecnicos-borrador',
-  imports: [FormsModule],
+  imports: [FormsModule, SelectorLitologiaComponent],
   templateUrl: './datos-tecnicos-borrador.component.html',
   styleUrl: './datos-tecnicos-borrador.component.css',
 })
@@ -42,10 +43,15 @@ export class DatosTecnicosBorradorComponent {
   }
 
   agregarLitologia() {
-    const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
+    const sugerencia = sugerirIntervaloLitologico(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, material: '' })] });
+    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' })] });
+  }
+  seleccionarLitologia(item: IntervaloLitologicoBody, id: number | null, nombre: string) {
+    item.id_litologia = id ?? undefined;
+    if (id != null) item.material = nombre;
+    this.notificarEdicion();
   }
   agregarDiametro() {
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());
@@ -57,7 +63,7 @@ export class DatosTecnicosBorradorComponent {
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosFiltro.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC' })] });
+    this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC', ranura_mm: null })] });
   }
   agregarAporte() { this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] }); }
   quitarLitologia(id: string) { this.actualizar({ ...this.datos(), intervalosLitologicos: this.datos().intervalosLitologicos.filter((item) => item.idLocal !== id) }); }
@@ -66,6 +72,10 @@ export class DatosTecnicosBorradorComponent {
   quitarAporte(id: string) { this.actualizar({ ...this.datos(), nivelesAporte: this.datos().nivelesAporte.filter((item) => item.idLocal !== id) }); }
   notificarEdicion() { this.actualizar(this.datos()); }
   errores() { return validarDatosTecnicos(this.datos(), this.profundidad()); }
+  puedeConservarRanuraNoEspecificada(item: ElementoBorrador<IntervaloFiltroBody>): boolean {
+    return item.dato.id_intervalo_filtro != null
+      && (item.ranuraOriginal === null || (item.ranuraOriginal === undefined && item.dato.ranura_mm === null));
+  }
 
   private local<T>(dato: T): ElementoBorrador<T> { return { idLocal: `local-${this.siguienteId++}`, dato }; }
   private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }

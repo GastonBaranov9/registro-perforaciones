@@ -4,7 +4,9 @@
   </div>
   <div class="contenedor-sitio">
 
-    <app-estilo-paginas titulo="CREAR UN SITIO" (clickPagina)="crearSitio()">> </app-estilo-paginas>
+    @if (mainStore.isAdmin()) {
+      <app-estilo-paginas titulo="CREAR UN SITIO" (clickPagina)="crearSitio()">> </app-estilo-paginas>
+    }
         <app-estilo-paginas titulo="LISTA DE SITIOS" link="/sitios-list"> </app-estilo-paginas>
     @if(!this.user){
       <p>No hay usuario</p>

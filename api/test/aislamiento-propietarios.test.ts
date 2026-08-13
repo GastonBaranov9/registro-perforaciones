@@ -5,6 +5,7 @@ import {
   pozoPerteneceAUsuario,
   sitioEsVisibleParaPropietario,
 } from "../src/services/autorizacion-recursos.ts";
+import { getSitiosByPerforador } from "../src/services/sitios-service.ts";
 
 function dbConRelaciones(relaciones: ReadonlySet<string>) {
   return {
@@ -31,4 +32,16 @@ test("un sitio solo es visible si existe un pozo propio asociado", async () => {
   const db = dbConRelaciones(new Set(["7:1"]));
   assert.equal(await sitioEsVisibleParaPropietario(7, 1, db), true);
   assert.equal(await sitioEsVisibleParaPropietario(8, 1, db), false);
+});
+
+test("el listado de sitios del perforador filtra por su relación persistente", async () => {
+  let parametros: unknown[] | undefined;
+  const db = { async query(sql: string, params: unknown[]) {
+    parametros = params;
+    assert.match(sql, /p\.id_perforador = \$1/);
+    return { rows: [{ id_sitio: 7, departamento: "A", localidad: "B", latitud: null, longitud: null }] };
+  } };
+  const sitios = await getSitiosByPerforador(3, db);
+  assert.deepEqual(sitios.map((sitio) => sitio.id_sitio), [7]);
+  assert.deepEqual(parametros, [3]);
 });

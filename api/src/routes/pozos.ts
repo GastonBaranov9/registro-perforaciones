@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoUpdateBody, Usuario } from "../models/schemas.ts";
+import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoUpdateBody, PozoDetalle, PropietarioOperativoCrearBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
 import { eliminarFotoPersistida, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
-import { listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
+import { crearPropietarioOperativo, listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
 import { validarFotoBuffer } from "../services/foto-archivo-service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,14 +19,31 @@ const __dirname = dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "..", "..", "public");
 
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
-  fastify.get(
-    "/pozos/candidatos-personas",
+  fastify.post(
+    "/pozos/propietarios",
     {
-      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
+      schema: {
+        summary: "Registrar un propietario operativo",
+        description: "Crea exclusivamente una persona propietaria sin asignar credenciales ni privilegios",
+        tags: ["pozos"], body: PropietarioOperativoCrearBody,
+        response: { 201: CandidatoPozo, 400: err.ErrorSchema, 403: err.ErrorSchema },
+      },
       onRequest: [fastify.authenticate],
       preHandler: [fastify.userIsAdminOrPerforador],
     },
-    async (req) => listarCandidatosPozo(req.user.sub, await isAdmin(req.user.sub)),
+    async (req, rep) => rep.code(201).send(await crearPropietarioOperativo(req.body as import("../models/schemas.ts").PropietarioOperativoCrearBody)),
+  );
+  fastify.get(
+    "/pozos/candidatos-personas",
+    {
+      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], querystring: Type.Object({ propietario: Type.Optional(Type.String({ maxLength: 80 })), perforador: Type.Optional(Type.String({ maxLength: 80 })), limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), propietario_id: Type.Optional(Type.Integer({ minimum: 1 })), perforador_id: Type.Optional(Type.Integer({ minimum: 1 })) }), response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
+      onRequest: [fastify.authenticate],
+      preHandler: [fastify.userIsAdminOrPerforador],
+    },
+    async (req) => {
+      const q = req.query as { propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
+      return listarCandidatosPozo(req.user.sub, await isAdmin(req.user.sub), undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
+    },
   );
   fastify.post(
     "/usuarios/:id_usuario/pozos/completo",
@@ -45,7 +62,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       preHandler: [fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
-      const { sub: idUsuarioSesion } = req.user;
+      const idUsuarioSesion = Number(req.user.sub);
       const data = req.body as PozoCompletoBody;
       if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion)
         throw new err.T05SinPermiso();
@@ -75,7 +92,8 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     async (req, rep) => {
       const { id_pozo } = req.params as { id_pozo: number };
       const data = req.body as PozoCompletoUpdateBody;
-      if (!(await isAdmin(req.user.sub)) && data.pozo.id_perforador !== req.user.sub) throw new err.T05SinPermiso();
+      const idUsuarioSesion=Number(req.user.sub);
+      if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion) throw new err.T05SinPermiso();
       const resultado = await actualizarPozoCompleto(id_pozo, data, PUBLIC_DIR, undefined, { logger: req.log });
       fastify.notifyClient(resultado.pozo.id_propietario, { type: "pozo" });
       return rep.code(200).send(resultado);
@@ -87,8 +105,8 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     "/usuarios/:id_usuario/pozos",
     {
       schema: {
-        summary: "Crear un pozo",
-        description: "Rol: Perforador",
+        summary: "Creación legacy deshabilitada",
+        description: "Use /pozos/completo con sitio_nuevo para garantizar atomicidad",
         params: Type.Object({
           id_usuario: Type.Integer(),
         }),
@@ -104,27 +122,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       preHandler: [fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => {
-      const { sub: id_usuario } = req.user;
-      const data = req.body as NuevoPozo;
-
-      if (!(await isAdmin(id_usuario)) && data.id_perforador !== id_usuario)
-        throw new err.T05SinPermiso();
-
-      const isPropietario = await isProp(data.id_propietario);
-      const isPerforador = await isPerf(data.id_perforador);
-
-      if (isPropietario === false)
-        throw new err.T05DatosIncorrectos("El ID no es de un propietario");
-      if (isPerforador === false)
-        throw new err.T05DatosIncorrectos("El ID no es de un perforador");
-
-      const nuevoPozo = await funcPozo.createPozo(
-        id_usuario,
-        req.body as NuevoPozo
-      );
-
-      fastify.notifyClient(data.id_propietario, { type: "pozo" })
-      return rep.code(201).send(nuevoPozo);
+      throw new err.T05DatosIncorrectos("La creación de un pozo requiere una ubicación nueva dentro de la operación completa.");
     }
   );
 
@@ -191,7 +189,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
           id_pozo: Type.Integer({ description: "ID del pozo a consultar" }),
         }),
         response: {
-          200: Pozo,
+          200: PozoDetalle,
           501: err.ErrorSchema,
           404: err.ErrorSchema,
         },

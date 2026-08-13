@@ -63,13 +63,6 @@
             </div>
           </ion-item>
 
-          <ion-item>
-            <ion-label position="stacked">
-              <ion-icon name="document-outline"></ion-icon>
-              Sello sanitario
-            </ion-label>
-            <ion-toggle slot="end" [(ngModel)]="sello_sanitario"> </ion-toggle>
-          </ion-item>
         </ion-list>
       </ion-content>
 
@@ -111,11 +104,6 @@
         <ion-item>
           <ion-label>Profundidad (m)</ion-label>
           <ion-label>{{ pozo.profundidad_final_m ?? '-' }}</ion-label>
-        </ion-item>
-
-        <ion-item>
-          <ion-label>Sello sanitario</ion-label>
-          <ion-label>{{ pozo.sello_sanitario ? 'Sí' : 'No' }}</ion-label>
         </ion-item>
 
         <ion-item>

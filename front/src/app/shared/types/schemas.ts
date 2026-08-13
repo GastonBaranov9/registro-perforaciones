@@ -57,6 +57,11 @@ export type Pozo = {
   creado_por?: number;
   fecha_creado: string;
   foto_url?: string;
+  propietario_nombre?: string;
+  propietario_email?: string | null;
+  perforador_nombre?: string;
+  perforador_email?: string;
+  sitio?: Sitio;
 };
 
 export type NuevoPozo = {
@@ -67,8 +72,6 @@ export type NuevoPozo = {
   fecha_inicio?: string;
   fecha_fin?: string;
   profundidad_final_m?: number;
-  sello_sanitario?: boolean;
-  pre_filtro?: string;
   nivel_estatico_m?: number;
   nivel_dinamico_m?: number;
   caudal_estimado_lh?: number;
@@ -126,13 +129,30 @@ export type IntervaloLitologico = {
   desde_m: number;
   hasta_m: number;
   material: string;
+  id_litologia: number | null;
+  litologia_nombre?: string | null;
+  litologia_color?: string | null;
+  litologia_patron?: PatronCatalogoLitologia | null;
+  litologia_activa?: boolean | null;
 };
 
+export type NuevoPozoCrear = Omit<NuevoPozo, 'id_sitio'>;
+
 export type IntervaloLitologicoBody = {
+  id_intervalo_litologico?: number;
   desde_m: number;
   hasta_m: number;
   material: string;
+  id_litologia?: number;
 };
+
+export const familiasLitologia = ['basalto','suelo','arenisca','arcilla_arena','tosca','gravilla','granito','otro'] as const;
+export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite'] as const;
+export type FamiliaLitologia = (typeof familiasLitologia)[number];
+export type PatronCatalogoLitologia = (typeof patronesLitologia)[number];
+export type LitologiaPublica = { id_litologia:number;codigo:string;nombre:string;familia:FamiliaLitologia;color:string;patron:PatronCatalogoLitologia;activo:boolean;orden:number };
+export type LitologiaCrearBody = Omit<LitologiaPublica,'id_litologia'|'activo'>;
+export type LitologiaActualizarBody = Pick<LitologiaPublica,'nombre'|'familia'|'color'|'patron'|'orden'>;
 
 export type IntervaloDiametroPerforacion = {
   id_intervalo_diametro_perforacion: number;
@@ -152,8 +172,9 @@ export type IntervaloDiametroPerforacionBody = {
   material_tuberia: MaterialTuberia | '';
 };
 
-export type IntervaloFiltroBody = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | '' };
-export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia };
+export type RanuraFiltro = 0.5 | 0.75 | 1;
+export type IntervaloFiltroBody = { id_intervalo_filtro?: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: MaterialTuberia | ''; ranura_mm?: RanuraFiltro | null };
+export type IntervaloFiltro = Omit<IntervaloFiltroBody, 'material_tuberia' | 'ranura_mm'> & { id_intervalo_filtro: number; id_pozo: number; material_tuberia: MaterialTuberia; ranura_mm: RanuraFiltro | null };
 
 export type NivelAporte = {
   id_nivel_aporte: number;
@@ -165,7 +186,7 @@ export type NivelAporteBody = {
   profundidad_m: number;
 };
 
-export type ElementoBorrador<T> = { idLocal: string; dato: T };
+export type ElementoBorrador<T> = { idLocal: string; dato: T; ranuraOriginal?: RanuraFiltro | null };
 
 export type DatosTecnicosBorrador = {
   intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
@@ -175,7 +196,8 @@ export type DatosTecnicosBorrador = {
 };
 
 export type PozoCompletoBody = {
-  pozo: NuevoPozo;
+  pozo: NuevoPozoCrear;
+  sitio_nuevo: SitioBody;
   intervalos_litologicos: IntervaloLitologicoBody[];
   intervalos_diametro: IntervaloDiametroPerforacionBody[];
   intervalos_filtro: IntervaloFiltroBody[];
@@ -183,27 +205,33 @@ export type PozoCompletoBody = {
   foto?: { mime_type: 'image/jpeg' | 'image/png'; base64: string };
 };
 
-export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'foto'> & {
+export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'foto' | 'sitio_nuevo'> & {
   profundidad_final_m: number;
 };
 
-export type CandidatoPozo = { id_usuario: number; nombre: string; email: string; roles: string[] };
+export type CandidatoPozo = { id_usuario: number; nombre: string; email?: string; roles: string[] };
 export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
 export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
-export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto'> & {
+export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 'sitio_nuevo'> & {
+  pozo: NuevoPozo;
   foto_accion: AccionFotoEdicion;
   foto?: PozoCompletoBody['foto'];
 };
 
 export type PozoCompletoResultado = {
   pozo: Pozo;
+  sitio: Sitio;
   intervalos_litologicos: IntervaloLitologico[];
   intervalos_diametro: IntervaloDiametroPerforacion[];
   intervalos_filtro: IntervaloFiltro[];
   niveles_aporte: NivelAporte[];
 };
 
-export type PatronLitologico =
+export type PropietarioOperativoCrearBody = { nombre: string };
+
+import type { PatronCatalogo } from '../canonical/litologia-patrones';
+
+export type PatronLitologico = PatronCatalogo
   | 'diagonal'
   | 'diagonal-inversa'
   | 'cruz'
@@ -223,6 +251,7 @@ export type PerfilLitologico = {
     descripcion: string | null;
     estilo: { color: string; gris: number; patron: PatronLitologico };
     carril_etiqueta: number;
+    litologia?: {id_litologia:number;nombre:string;color:string;patron:PatronCatalogoLitologia;activa:boolean}|null;
   }>;
   aportes: Array<{ profundidad_m: number; tipo: 'puntual'; desde_m: number; hasta_m: number; geometria: { x_inicio: 0.03; x_fin: 0.97; espesor_min_px: 12; patron: 'ondas' } }>;
   tuberias: Array<{tipo:'tuberia';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;

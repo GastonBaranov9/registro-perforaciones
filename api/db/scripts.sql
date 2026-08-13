@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS
   intervalo_filtro,
   intervalo_diametro_perforacion,
   intervalo_litologico,
+  catalogo_litologia,
   pozo,
   perforador,
   empresa,
@@ -24,10 +25,11 @@ CREATE EXTENSION IF NOT EXISTS citext;
 
 CREATE TABLE usuario (
   id_usuario      BIGSERIAL PRIMARY KEY,
-  email           CITEXT NOT NULL UNIQUE,
+  email           CITEXT UNIQUE,
   nombre          VARCHAR NOT NULL,
-  password        VARCHAR NOT NULL,    
+  password        VARCHAR,
   activo          BOOLEAN NOT NULL DEFAULT TRUE,
+  cuenta_acceso   BOOLEAN NOT NULL DEFAULT TRUE,
   version_sesion  INTEGER NOT NULL DEFAULT 1 CHECK (version_sesion > 0),
   fecha_registro  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -119,6 +121,8 @@ CREATE TABLE intervalo_filtro (
   hasta_m             NUMERIC NOT NULL,
   diametro_pulg       NUMERIC NOT NULL CHECK (diametro_pulg > 0),
   material_tuberia    VARCHAR(5) NOT NULL CHECK (material_tuberia IN ('PVC', 'Acero')),
+  ranura_mm           NUMERIC(4,2),
+  CONSTRAINT intervalo_filtro_ranura_mm_check CHECK (ranura_mm IS NULL OR ranura_mm IN (0.50, 0.75, 1.00)),
   CHECK (hasta_m > desde_m)
 );
 CREATE INDEX intervalo_filtro_pozo_profundidad_idx ON intervalo_filtro (id_pozo, desde_m, hasta_m);
@@ -148,6 +152,11 @@ CREATE TABLE informe (
   generado_por BIGINT NOT NULL REFERENCES usuario(id_usuario),
   generado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- La instalaciÃ³n fresca reutiliza la definiciÃ³n canÃ³nica del catÃ¡logo y su FK.
+-- Las migraciones 001/002 ya quedan incorporadas en las tablas creadas arriba.
+\ir migrations/003_catalogo_litologias.sql
+\ir migrations/004_propietario_operativo.sql
 
 
 

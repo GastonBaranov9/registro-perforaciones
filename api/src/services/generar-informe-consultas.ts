@@ -1,4 +1,5 @@
 import { myPool } from "../db/pool.ts";
+import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 export interface ReportePozo {
   id_pozo: number;
@@ -20,16 +21,10 @@ export interface ReportePozo {
   metodo_rocoso: string | null;
   cementacion: string | null;
   desarrollo: string | null;
-  sello_sanitario?: boolean | null;
-  pre_filtro?: string | null;
   revestimiento?: string | null;
   introduccion: string | null;
   nombre_archivo: string | null;
-  litologia: {
-    desde_m: number;
-    hasta_m: number;
-    material: string;
-  }[];
+  litologia: Array<IntervaloPerfilLitologico & Record<string, unknown>>;
   foto_url: string | null;
   diametros: {
     desde_m: number;
@@ -37,7 +32,7 @@ export interface ReportePozo {
     diametro_pulg: number;
     material_tuberia: "PVC" | "Acero" | null;
   }[];
-  filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero" }[];
+  filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero"; ranura_mm?:number|null }[];
   niveles_aporte: { profundidad_m: number }[];
 }
 
@@ -66,8 +61,6 @@ export async function getReportePozo(
       p.metodo_rocoso,
       p.cementacion AS cementacion,
       p.desarrollo AS desarrollo,
-      p.sello_sanitario,
-      p.pre_filtro,
       p.revestimiento,
       NULL::text AS introduccion,  
       doc.nombre_archivo,
@@ -86,10 +79,9 @@ export async function getReportePozo(
   const pozo = rows[0] as Record<string, unknown>;
 
   const litologiaSql = `
-    SELECT desde_m, hasta_m, material
-    FROM public.intervalo_litologico
-    WHERE id_pozo = $1
-    ORDER BY desde_m;
+    SELECT i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
+    FROM public.intervalo_litologico i LEFT JOIN public.catalogo_litologia c ON c.id_litologia=i.id_litologia
+    WHERE i.id_pozo = $1 ORDER BY i.desde_m;
   `;
 
   const { rows: litRows } = await db.query(litologiaSql, [id_pozo]);
@@ -101,7 +93,7 @@ export async function getReportePozo(
     ORDER BY desde_m;
   `;
   const { rows: diamRows } = await db.query(diamSql, [id_pozo]);
-  const { rows: filtroRows } = await db.query(`SELECT desde_m,hasta_m,diametro_pulg,material_tuberia FROM public.intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m`, [id_pozo]);
+  const { rows: filtroRows } = await db.query(`SELECT desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm FROM public.intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m`, [id_pozo]);
 
   const aporteSql = `
     SELECT profundidad_m
@@ -122,6 +114,7 @@ export async function getReportePozo(
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
       material: l.material,
+      id_litologia:l.id_litologia==null?null:Number(l.id_litologia),litologia_nombre:l.litologia_nombre==null?null:String(l.litologia_nombre),litologia_color:l.litologia_color==null?null:String(l.litologia_color),litologia_patron:l.litologia_patron==null?null:String(l.litologia_patron) as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia|null,litologia_activa:l.litologia_activa==null?null:Boolean(l.litologia_activa),
     })),
     diametros: (diamRows as Record<string, unknown>[]).map((d) => ({
       desde_m: Number(d.desde_m),
@@ -129,7 +122,7 @@ export async function getReportePozo(
       diametro_pulg: Number(d.diametro_pulg),
       material_tuberia: d.material_tuberia == null ? null : String(d.material_tuberia) as "PVC" | "Acero",
     })),
-    filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero" })),
+    filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero",ranura_mm:f.ranura_mm==null?null:Number(f.ranura_mm) })),
 
     niveles_aporte: (aporteRows as Record<string, unknown>[]).map((a) => ({
       profundidad_m: Number(a.profundidad_m),

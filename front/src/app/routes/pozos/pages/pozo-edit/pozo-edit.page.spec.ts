@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PozoEditPage } from './pozo-edit.page';
+import { Sitio } from '../../../../shared/types/schemas';
 
 describe('PozoEditPage', () => {
   let component: PozoEditPage;
@@ -36,7 +37,7 @@ describe('PozoEditPage', () => {
   });
 
   it('un error mantiene cambios técnicos en memoria', async () => {
-    component.datosTecnicos.set({ intervalosLitologicos: [{ idLocal: 'local-1', dato: { desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
+    component.datosTecnicos.set({ intervalosLitologicos: [{ idLocal: 'persistido-1', dato: { id_intervalo_litologico: 1, desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
     spyOn(component.pozoEditService, 'editPozoCompleto').and.rejectWith(new Error('fallo controlado'));
     await component.handleEdit({ pozo: { id_propietario: 2, id_perforador: 3, id_sitio: 4, profundidad_final_m: 10 }, foto: null, fotoAccion: 'conservar' });
     expect(component.datosTecnicos().intervalosLitologicos.length).toBe(1);
@@ -58,5 +59,39 @@ describe('PozoEditPage', () => {
   it('confirmar recarga descarta dirty y solicita datos remotos nuevos', () => {
     component.borradorDirty.set(true);spyOn(window,'confirm').and.returnValue(true);const recargar=spyOn(component.pozoResource,'reload');const version=component.versionDescartar();
     component.recargar();expect(recargar).toHaveBeenCalledTimes(1);expect(component.borradorDirty()).toBeFalse();expect(component.versionDescartar()).toBe(version+1);
+  });
+  it('consume el sitio guardado al volver sin recargar ni perder el borrador técnico', () => {
+    const sitioA: Sitio = { id_sitio: 4, departamento: 'Salto', localidad: 'Salto', latitud: '-34.9', longitud: '-56.1' };
+    const sitioB: Sitio = { ...sitioA, departamento: 'Paysandú', localidad: 'Guaviyú', latitud: '-31.4', longitud: '-57.9' };
+    component.sitiosActualizados.set([sitioA]);
+    const borrador = { intervalosLitologicos: [{ idLocal: 'draft', dato: { desde_m: 0, hasta_m: 1, material: 'Arena' } }], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] };
+    component.datosTecnicos.set(borrador);
+    component.sitioReturn.sitioCreado.set(sitioB);
+    const reload = spyOn(component.pozoResource, 'reload');
+    component.ionViewWillEnter();
+    expect(component.sitiosActualizados()).toEqual([sitioB]);
+    expect(component.datosTecnicos()).toBe(borrador);
+    expect(reload).not.toHaveBeenCalled();
+    expect(component.sitioReturn.sitioCreado()).toBeNull();
+  });
+  it('ignora un retorno de otro sitio y no lo reaplica', () => {
+    const sitioA: Sitio = { id_sitio: 4, departamento: 'Salto' };
+    const sitioAjeno: Sitio = { id_sitio: 9, departamento: 'Paysandú' };
+    component.sitiosActualizados.set([sitioA]);
+    component.sitioReturn.sitioCreado.set(sitioAjeno);
+    component.ionViewWillEnter();
+    expect(component.sitiosActualizados()).toEqual([sitioA]);
+    expect(component.sitioReturn.sitioCreado()).toBeNull();
+  });
+  it('sin retorno conserva el sitio local y los retornos consecutivos reemplazan por identidad', () => {
+    const sitioA: Sitio = { id_sitio: 4, departamento: 'Salto' };
+    const sitioB: Sitio = { id_sitio: 4, departamento: 'Paysandú' };
+    const sitioC: Sitio = { id_sitio: 4, departamento: 'Guaviyú' };
+    component.sitiosActualizados.set([sitioA]);
+    component.ionViewWillEnter();
+    expect(component.sitiosActualizados()).toEqual([sitioA]);
+    component.sitioReturn.sitioCreado.set(sitioB); component.ionViewWillEnter();
+    component.sitioReturn.sitioCreado.set(sitioC); component.ionViewWillEnter();
+    expect(component.sitiosActualizados()).toEqual([sitioC]);
   });
 });

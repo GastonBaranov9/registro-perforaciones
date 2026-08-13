@@ -1,3 +1,5 @@
+import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
+
 export interface CoordenadasMapa { latitud: number; longitud: number }
 export type ResultadoMapa =
   | { estado: "disponible"; bytes: Uint8Array; tipo: "image/png" | "image/jpeg"; atribucion: string }
@@ -10,23 +12,32 @@ export interface ConfiguracionMapa {
   atribucion?: string;
   timeoutMs?: number;
   maxBytes?: number;
+  cacheMs?: number;
 }
 
+const cacheMapas = new Map<string,{ expira:number; resultado:Extract<ResultadoMapa,{estado:"disponible"}> }>();
+
 export function leerCoordenadas(latitud: string | null, longitud: string | null): CoordenadasMapa | null {
-  if (!latitud?.trim() || !longitud?.trim()) return null;
-  const coordenadas = { latitud: Number(latitud), longitud: Number(longitud) };
-  return Number.isFinite(coordenadas.latitud) && Number.isFinite(coordenadas.longitud)
-    && coordenadas.latitud >= -90 && coordenadas.latitud <= 90
-    && coordenadas.longitud >= -180 && coordenadas.longitud <= 180 ? coordenadas : null;
+  const normalizadas = normalizarCoordenadasTexto(latitud, longitud);
+  if (!normalizadas) return null;
+  return { latitud: Number(normalizadas.latitud), longitud: Number(normalizadas.longitud) };
 }
 
 export function configuracionMapaDesdeEntorno(env: NodeJS.ProcessEnv = process.env): ConfiguracionMapa {
+  const elegir = (canonico: string | undefined, legacy: string | undefined) => canonico?.trim() ? canonico : legacy;
   return {
-    plantillaUrl: env.PDF_MAP_STATIC_URL_TEMPLATE,
-    hostPermitido: env.PDF_MAP_ALLOWED_HOST,
-    clave: env.PDF_MAP_STATIC_API_KEY,
-    atribucion: env.PDF_MAP_ATTRIBUTION,
+    plantillaUrl: elegir(env.MAP_STATIC_URL_TEMPLATE, env.PDF_MAP_STATIC_URL_TEMPLATE),
+    hostPermitido: elegir(env.MAP_STATIC_ALLOWED_HOST, env.PDF_MAP_ALLOWED_HOST),
+    clave: elegir(env.MAP_STATIC_API_KEY, env.PDF_MAP_STATIC_API_KEY),
+    atribucion: elegir(env.MAP_STATIC_ATTRIBUTION, env.PDF_MAP_ATTRIBUTION),
+    cacheMs: 300_000,
   };
+}
+
+export function mapaConfigurado(configuracion: ConfiguracionMapa): boolean {
+  return Boolean(configuracion.plantillaUrl?.trim() && configuracion.hostPermitido?.trim() && configuracion.atribucion?.trim()
+    && tieneMarcador(configuracion.plantillaUrl,"latitud","lat") && tieneMarcador(configuracion.plantillaUrl,"longitud","lon")
+    && (!tieneMarcador(configuracion.plantillaUrl,"apiKey","key") || configuracion.clave?.trim()));
 }
 
 export async function obtenerMapaEstatico(
@@ -37,27 +48,35 @@ export async function obtenerMapaEstatico(
   if (!configuracion.plantillaUrl?.trim() || !configuracion.hostPermitido?.trim() || !configuracion.atribucion?.trim()) {
     return { estado: "no-disponible", motivo: "Proveedor de mapa no configurado" };
   }
-  if (!configuracion.plantillaUrl.includes("{latitud}") || !configuracion.plantillaUrl.includes("{longitud}"))
+  if (!tieneMarcador(configuracion.plantillaUrl,"latitud","lat") || !tieneMarcador(configuracion.plantillaUrl,"longitud","lon"))
     return { estado: "no-disponible", motivo: "Plantilla de mapa incompleta" };
-  if (configuracion.plantillaUrl.includes("{apiKey}") && !configuracion.clave?.trim())
+  if (tieneMarcador(configuracion.plantillaUrl,"apiKey","key") && !configuracion.clave?.trim())
     return { estado: "no-disponible", motivo: "Clave de mapa ausente" };
   const valor = (numero: number) => encodeURIComponent(numero.toFixed(6));
   const urlTexto = configuracion.plantillaUrl
     .replaceAll("{latitud}", valor(coordenadas.latitud))
+    .replaceAll("{lat}", valor(coordenadas.latitud))
     .replaceAll("{longitud}", valor(coordenadas.longitud))
-    .replaceAll("{apiKey}", encodeURIComponent(configuracion.clave ?? ""));
+    .replaceAll("{lon}", valor(coordenadas.longitud))
+    .replaceAll("{apiKey}", encodeURIComponent(configuracion.clave ?? ""))
+    .replaceAll("{key}", encodeURIComponent(configuracion.clave ?? ""));
   let url: URL;
   try { url = new URL(urlTexto); } catch { return { estado: "no-disponible", motivo: "URL inválida" }; }
-  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.toLowerCase() || url.username || url.password) {
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== configuracion.hostPermitido.trim().toLowerCase() || url.username || url.password) {
     return { estado: "no-disponible", motivo: "Proveedor no permitido" };
   }
+  const cacheMs=Math.max(0,configuracion.cacheMs??0),cacheKey=url.toString(),ahora=Date.now();
+  const cacheado=cacheMs?cacheMapas.get(cacheKey):undefined;
+  if(cacheado&&cacheado.expira>ahora)return cacheado.resultado;
+  if(cacheado)cacheMapas.delete(cacheKey);
   const controlador = new AbortController();
   const timeout = setTimeout(() => controlador.abort(), configuracion.timeoutMs ?? 3_000);
   try {
     const respuesta = await fetchImpl(url, { redirect: "manual", signal: controlador.signal });
     if (!respuesta.ok || respuesta.status >= 300) return { estado: "no-disponible", motivo: "Respuesta no válida" };
-    const tipo = respuesta.headers.get("content-type")?.split(";")[0];
-    if (tipo !== "image/png" && tipo !== "image/jpeg") return { estado: "no-disponible", motivo: "Contenido no admitido" };
+    const tipoCabecera = respuesta.headers.get("content-type")?.split(";")[0];
+    if (tipoCabecera !== "image/png" && tipoCabecera !== "image/jpeg") return { estado: "no-disponible", motivo: "Contenido no admitido" };
+    const tipo: "image/png" | "image/jpeg" = tipoCabecera;
     const maxBytes = configuracion.maxBytes ?? 2_000_000;
     const anunciado = Number(respuesta.headers.get("content-length"));
     if (Number.isFinite(anunciado) && anunciado > maxBytes) return { estado: "no-disponible", motivo: "Imagen excesiva" };
@@ -83,9 +102,19 @@ export async function obtenerMapaEstatico(
     const png = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
     const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
     if ((tipo === "image/png" && !png) || (tipo === "image/jpeg" && !jpeg)) return { estado: "no-disponible", motivo: "Firma de imagen no válida" };
-    return { estado: "disponible", bytes, tipo, atribucion: configuracion.atribucion };
+    const resultado={ estado: "disponible" as const, bytes, tipo, atribucion: configuracion.atribucion };
+    if(cacheMs){
+      for(const [clave,entrada] of cacheMapas)if(entrada.expira<=ahora)cacheMapas.delete(clave);
+      if(cacheMapas.size>=32)cacheMapas.delete(cacheMapas.keys().next().value!);
+      cacheMapas.set(cacheKey,{expira:ahora+cacheMs,resultado});
+    }
+    return resultado;
   } catch (error: unknown) {
     return { estado: "no-disponible", motivo: error instanceof Error && error.name === "AbortError" ? "Tiempo de espera agotado" : "Proveedor no disponible" };
   }
   finally { clearTimeout(timeout); }
+}
+
+function tieneMarcador(plantilla:string,principal:string,alternativo:string):boolean {
+  return plantilla.includes(`{${principal}}`) || plantilla.includes(`{${alternativo}}`);
 }

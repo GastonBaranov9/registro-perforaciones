@@ -1,30 +1,30 @@
 import { myPool } from "../db/pool.ts";
+import type { Pool } from "pg";
 import { Sitio, SitioBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
+import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 export async function createSitio(data: SitioBody): Promise<Sitio> {
+  const normalizado = validarSitio(data);
   const sql = `
             INSERT INTO sitio
               (departamento, localidad, latitud, longitud)
             VALUES ($1, $2, $3, $4)
             RETURNING id_sitio, departamento, localidad, latitud, longitud;
           `;
-  try {
-    const { rows } = await myPool.query(sql, [
-      data.departamento,
-      data.localidad,
-      data.latitud,
-      data.longitud,
-    ]);
-    return rows[0] as Sitio;
-  } catch (e: any) {
-    throw e;
-  }
+  const { rows } = await myPool.query(sql, [
+    normalizado.departamento,
+    normalizado.localidad,
+    normalizado.latitud,
+    normalizado.longitud,
+  ]);
+  return rows[0] as Sitio;
 }
 
 export async function updateSitio(
   id_sitio: number,
   data: SitioBody
 ): Promise<Sitio | null> {
+  const normalizado = validarSitio(data);
   const exists = await myPool.query(`SELECT 1 FROM sitio WHERE id_sitio = $1`, [
     id_sitio,
   ]);
@@ -40,18 +40,22 @@ export async function updateSitio(
     WHERE id_sitio = $1
     RETURNING id_sitio, departamento, localidad, latitud, longitud;
   `;
-  try {
-    const { rows } = await myPool.query(sql, [
-      id_sitio,
-      data.departamento,
-      data.localidad,
-      data.latitud,
-      data.longitud,
-    ]);
-    return rows[0] ?? null;
-  } catch (e: any) {
-    throw e;
-  }
+  const { rows } = await myPool.query(sql, [
+    id_sitio,
+    normalizado.departamento,
+    normalizado.localidad,
+    normalizado.latitud,
+    normalizado.longitud,
+  ]);
+  return rows[0] ?? null;
+}
+
+function validarSitio(data: SitioBody): SitioBody {
+  if (!data.departamento.trim()) throw new err.T05DatosIncorrectos("El departamento es obligatorio.");
+  const tieneLatitud=Boolean(data.latitud?.trim()),tieneLongitud=Boolean(data.longitud?.trim());
+  const coordenadas = normalizarCoordenadasTexto(data.latitud, data.longitud);
+  if(tieneLatitud!==tieneLongitud || (tieneLatitud && !coordenadas)) throw new err.T05DatosIncorrectos("Las coordenadas no son v\u00e1lidas.");
+  return { ...data, departamento: data.departamento.trim(), localidad: data.localidad?.trim() || undefined, latitud: coordenadas?.latitud, longitud: coordenadas?.longitud };
 }
 
 export async function deleteSitio(id_sitio: number): Promise<Boolean> {
@@ -112,6 +116,25 @@ export async function getSitiosByPropietario(id_usuario: number): Promise<Sitio[
       )
       ORDER BY s.id_sitio`,
     [id_usuario]
+  );
+  return rows as Sitio[];
+}
+
+export async function sitioTienePozos(id_sitio: number, db: Pick<Pool, "query"> = myPool): Promise<boolean> {
+  const { rowCount } = await db.query("SELECT 1 FROM pozo WHERE id_sitio = $1 LIMIT 1", [id_sitio]);
+  return (rowCount ?? 0) > 0;
+}
+
+export async function getSitiosByPerforador(id_usuario: number, db: Pick<Pool, "query"> = myPool): Promise<Sitio[]> {
+  const { rows } = await db.query(
+    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
+       FROM sitio s
+      WHERE EXISTS (
+        SELECT 1 FROM pozo p
+         WHERE p.id_sitio = s.id_sitio AND p.id_perforador = $1
+      )
+      ORDER BY s.id_sitio`,
+    [id_usuario],
   );
   return rows as Sitio[];
 }

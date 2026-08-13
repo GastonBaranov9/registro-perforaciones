@@ -24,4 +24,17 @@ describe('SitioPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('no muestra crear sitio standalone a un perforador', () => {
+    component.mainStore.user.set({
+      id_usuario: 8,
+      email: 'perforador@example.test',
+      nombre: 'Perforador',
+      activo: true,
+      fecha_registro: new Date().toISOString(),
+      roles: [{ id_rol: 2, nombre: 'perforador', descr: 'Perforador' }],
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('CREAR UN SITIO');
+  });
 });

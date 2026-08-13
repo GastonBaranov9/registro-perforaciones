@@ -25,6 +25,18 @@ describe('PozosDetailPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('no duplica los campos históricos en el detalle técnico moderno', () => {
+    component.pozo.set({
+      id_pozo: 8, id_propietario: 1, id_sitio: 2, id_perforador: 3,
+      fecha_creado: '2026-08-12T00:00:00.000Z', sello_sanitario: true,
+      pre_filtro: 'Prefiltro histórico',
+    });
+    fixture.detectChanges();
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).not.toContain('Sello sanitario');
+    expect(texto).not.toContain('Prefiltro histórico');
+  });
+
   it('invalida el perfil cada vez que Ionic vuelve a mostrar el detalle', async () => {
     spyOn(component.pozoEditService, 'getPozoById').and.rejectWith(new Error('sin red'));
     await component.ionViewWillEnter();

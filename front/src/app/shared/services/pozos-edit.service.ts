@@ -39,7 +39,7 @@ export class PozosEditService {
   public async editPozoCompleto(idPozo: number, pozo: NuevoPozo, tecnicos: DatosTecnicosBorrador, foto: File | null, fotoAccion: AccionFotoEdicion): Promise<PozoCompletoResultado> {
     const idUsuario = this.getUserIdOrThrow();
     const body: PozoCompletoUpdateBody = {
-      pozo,
+      pozo: sinCamposHistoricos(pozo),
       intervalos_litologicos: tecnicos.intervalosLitologicos.map((x) => ({ ...x.dato })),
       intervalos_diametro: tecnicos.intervalosDiametro.map((x) => ({ ...x.dato })),
       intervalos_filtro: tecnicos.intervalosFiltro.map((x) => ({ ...x.dato })),
@@ -65,6 +65,13 @@ export class PozosEditService {
       throw new Error(respuesta.error?.message ?? 'Error al obtener el pozo');
     }
   }
+}
+
+function sinCamposHistoricos(pozo: NuevoPozo): NuevoPozo {
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
+  delete copia.sello_sanitario;
+  delete copia.pre_filtro;
+  return copia;
 }
 
 async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoUpdateBody['foto']>> {

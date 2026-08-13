@@ -5,37 +5,52 @@
       <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>
     </ion-item>
 
-    <app-selector-persona-pozo etiqueta="Propietario" [candidatos]="propietarios()"
+    <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
+    @if (propietarioSeleccionado()) {
+      <ion-button type="button" fill="clear" (click)="limpiarPropietario()" [disabled]="guardando()">CAMBIAR</ion-button>
+    }
+
+    @if (!agregareditar() && !propietarioSeleccionado()) {
+      <fieldset class="propietario-nuevo">
+        <legend>Registrar propietario</legend>
+        <ion-item><ion-input label="Nombre" labelPlacement="stacked" name="propietario_nuevo_nombre"
+          [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-button type="button" fill="outline" (click)="registrarPropietario()"
+          [disabled]="guardando() || !propietarioNuevo.nombre.trim()">REGISTRAR PROPIETARIO</ion-button>
+      </fieldset>
+    }
+
+    @if (agregareditar()) {
     <ion-item>
-      <ion-label position="stacked">ID Sitio</ion-label>
-      <ion-input
-        type="number"
-        name="id_sitio"
-        [(ngModel)]="this.pozo().id_sitio"
-        required
-      ></ion-input>
-      <ion-button
-        slot="end"
-        size="Default"
-        type="button"
-        *ngIf="!agregareditar(); else editarSitioBtn"
-        (click)="onCrearSitioClick()"
-        [disabled]="!propietarioValido()"
-      >
-        Crear Sitio
-      </ion-button>
-
-      <ng-template #editarSitioBtn>
-        <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">
-          Editar Sitio
-        </ion-button>
-      </ng-template>
+      <ion-label position="stacked">Ubicación actual</ion-label>
+      @if (sitioActual(); as sitio) { <ion-text><p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }} @if (sitio.latitud && sitio.longitud) { — {{ sitio.latitud }}, {{ sitio.longitud }} }</p></ion-text> }
+      @else { <ion-text color="danger"><p>No se encontró la información humana del sitio seleccionado.</p></ion-text> }
+      <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">Editar sitio</ion-button>
     </ion-item>
+    } @else if (sitioNuevo(); as sitio) {
+      <fieldset class="ubicacion-nueva">
+        <legend>Ubicación del nuevo pozo</legend>
+        <ion-item><ion-input label="Departamento" labelPlacement="stacked" name="departamento"
+          [(ngModel)]="sitio.departamento" required /></ion-item>
+        <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="localidad"
+          [(ngModel)]="sitio.localidad" /></ion-item>
+        <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="text"
+          [(ngModel)]="sitio.latitud" (ionBlur)="normalizarCoordenadaNueva('latitud')" required /></ion-item>
+        <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="text"
+          [(ngModel)]="sitio.longitud" (ionBlur)="normalizarCoordenadaNueva('longitud')" required /></ion-item>
+        <p class="ayuda-coordenadas">Se aceptan coordenadas decimales o grados/minutos/segundos.</p>
+        @if (ubicacionPrecision() !== null) { <p>Precisión aproximada: {{ ubicacionPrecision() | number:'1.0-0' }} m</p> }
+        @if (ubicacionError()) { <ion-text color="danger"><p role="alert">{{ ubicacionError() }}</p></ion-text> }
+        <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="capturandoUbicacion()">
+          {{ capturandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : 'TOMAR UBICACIÓN' }}
+        </ion-button>
+      </fieldset>
+    }
 
-    <app-selector-persona-pozo etiqueta="Perforador" [candidatos]="perforadores()"
-      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadores().length === 1" />
+    <app-selector-persona-pozo etiqueta="Perforador" rol="perforador" [buscarRemoto]="buscarPerforadores()" [candidatos]="perforadores()"
+      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadorBloqueado()" />
 
     <ion-item>
       <ion-label position="stacked">Fecha de inicio</ion-label>
@@ -58,16 +73,6 @@
           (ngModelChange)="notificarCambio()"
         required
       ></ion-input>
-    </ion-item>
-
-    <ion-item lines="none">
-      <ion-label position="stacked">Sello sanitario</ion-label>
-      <ion-toggle name="sello_sanitario" [(ngModel)]="this.pozo().sello_sanitario"></ion-toggle>
-    </ion-item>
-
-    <ion-item>
-      <ion-label position="stacked">Pre-filtro</ion-label>
-      <ion-input type="text" name="pre_filtro" [(ngModel)]="this.pozo().pre_filtro"></ion-input>
     </ion-item>
 
     <ion-item>
@@ -103,32 +108,38 @@
       ></ion-input>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_sedimentario')">
       <ion-label position="stacked">Método sedimentario</ion-label>
       <ion-input
         type="text"
         name="metodo_sedimentario"
         [(ngModel)]="this.pozo().metodo_sedimentario"
+        [readonly]="!datoTecnicoEditable('metodo_sedimentario')"
       ></ion-input>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método sedimentario" (click)="editarDatoTecnico('metodo_sedimentario')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_rocoso')">
       <ion-label position="stacked">Método rocoso</ion-label>
       <ion-input
         type="text"
         name="metodo_rocoso"
         [(ngModel)]="this.pozo().metodo_rocoso"
+        [readonly]="!datoTecnicoEditable('metodo_rocoso')"
       ></ion-input>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método rocoso" (click)="editarDatoTecnico('metodo_rocoso')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('cementacion')">
       <ion-label position="stacked">Cementación</ion-label>
-      <ion-input type="text" name="cementacion" [(ngModel)]="this.pozo().cementacion"></ion-input>
+      <ion-textarea name="cementacion" [(ngModel)]="this.pozo().cementacion" [readonly]="!datoTecnicoEditable('cementacion')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar cementación" (click)="editarDatoTecnico('cementacion')">Editar</ion-button>
     </ion-item>
 
-    <ion-item>
+    <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('desarrollo')">
       <ion-label position="stacked">Desarrollo</ion-label>
-      <ion-input type="text" name="desarrollo" [(ngModel)]="this.pozo().desarrollo"></ion-input>
+      <ion-textarea name="desarrollo" [(ngModel)]="this.pozo().desarrollo" [readonly]="!datoTecnicoEditable('desarrollo')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button type="button" slot="end" fill="clear" aria-label="Editar desarrollo" (click)="editarDatoTecnico('desarrollo')">Editar</ion-button>
     </ion-item>
 
     @if(this.agregareditar()===true){

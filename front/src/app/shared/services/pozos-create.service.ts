@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { DatosTecnicosBorrador, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoResultado } from '../types/schemas';
+import { DatosTecnicosBorrador, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoResultado, SitioBody } from '../types/schemas';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
@@ -28,11 +28,18 @@ export class PozosCreateService {
   public async createPozoCompleto(
     idUsuario: number,
     pozo: NuevoPozo,
+    sitioNuevo: SitioBody,
     tecnicos: DatosTecnicosBorrador,
     foto: File | null,
   ): Promise<PozoCompletoResultado> {
+    const pozoNuevo = sinCamposHistoricos(pozo);
     const body: PozoCompletoBody = {
-      pozo,
+      pozo: pozoNuevo,
+      sitio_nuevo: {
+        ...sitioNuevo,
+        latitud: String(sitioNuevo.latitud ?? ''),
+        longitud: String(sitioNuevo.longitud ?? ''),
+      },
       intervalos_litologicos: tecnicos.intervalosLitologicos.map((item) => ({ ...item.dato })),
       intervalos_diametro: tecnicos.intervalosDiametro.map((item) => ({ ...item.dato })),
       intervalos_filtro: tecnicos.intervalosFiltro.map((item) => ({ ...item.dato })),
@@ -48,6 +55,14 @@ export class PozosCreateService {
       throw new Error(respuesta.error?.message ?? respuesta.message ?? 'No se pudo crear la perforación.');
     }
   }
+}
+
+function sinCamposHistoricos(pozo: NuevoPozo): Omit<NuevoPozo, 'id_sitio'> {
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
+  delete copia.sello_sanitario;
+  delete copia.pre_filtro;
+  const { id_sitio: _idSitio, ...moderno } = copia;
+  return moderno;
 }
 
 async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {

@@ -72,6 +72,12 @@ export const T05RegistroDuplicado = createError(
   "Ya existe un registro DINAGUA para este pozo",
   409
 );
+export const T05IntegridadReferencial = createError(
+  "ERR_FK_T05",
+  "No se puede eliminar el sitio porque tiene pozos asociados",
+  409,
+  Error
+);
 
 export const T05PozoNoEncontrado = createError(
   "ERR10_T05",

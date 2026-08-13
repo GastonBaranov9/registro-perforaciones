@@ -10,6 +10,7 @@
 
       <app-intervalo-lit-form
         [intervaloLitologico]="this.intervaloLitologico()"
+        [requerirSeleccion]="true"
         (saved)="guardarIntervaloLit($event)"
       ></app-intervalo-lit-form>
       @if (errorMessage()) {

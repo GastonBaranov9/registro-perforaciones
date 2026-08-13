@@ -19,6 +19,7 @@ import {
   IonLabel,
 } from '@ionic/angular/standalone';
 import { ToastController } from '@ionic/angular';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 @Component({
   selector: 'app-sitios-list',
   imports: [
@@ -40,6 +41,7 @@ export class SitiosListPage implements OnInit, ViewWillEnter {
   public toastController = inject(ToastController);
   private router = inject(Router);
   public sitios = signal<Sitio[]>([]);
+  public authService = inject(AuthService);
 
   async ngOnInit() {
     const sitios = await this.sitioListService.getAllSitios();

@@ -188,7 +188,7 @@ export const routes: Routes = [
   {
     path: 'sitios-create/:id_usuario',
 
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitios-create/sitios-create.page'))
         .SitiosCreatePage,
@@ -235,5 +235,11 @@ export const routes: Routes = [
       (await import('../app/routes/usuarios/pages/usuarios-list/usuarios-list.page'))
         .UsuariosListPage,
     title: 'usuarios-list',
+  },
+  {
+    path: 'litologias-admin',
+    canActivate: [isloggedGuard, isAdminGuard],
+    loadComponent: async () => (await import('./routes/litologias/litologias-admin.page')).LitologiasAdminPage,
+    title: 'Administración de litologías',
   },
 ];

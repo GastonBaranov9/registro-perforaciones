@@ -46,7 +46,7 @@ const intervalosLitologicosRoutes = async function (
         };
         const creado = await func.createIntervaloLitologico(
           id_pozo,
-          req.body as any
+          req.body as bodyIntervaloLitologico
         );
         return rep.code(201).send(creado);
       } catch (e: any) {
@@ -91,7 +91,7 @@ const intervalosLitologicosRoutes = async function (
         const editar = await func.updateIntervaloLitologico(
           id_pozo,
           id_intervalo_litologico,
-          req.body as any
+          req.body as bodyIntervaloLitologico
         );
         if (!editar) {
           throw new err.T05RegistroNoEncontrado(

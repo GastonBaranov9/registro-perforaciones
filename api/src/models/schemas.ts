@@ -132,6 +132,11 @@ export const IntervaloLitologico = Type.Object({
   desde_m: Type.Number(),
   hasta_m: Type.Number(),
   material: Type.String(),
+  id_litologia: Type.Union([Type.Integer(), Type.Null()]),
+  litologia_nombre: Type.Union([Type.String(), Type.Null()]),
+  litologia_color: Type.Union([Type.String(), Type.Null()]),
+  litologia_patron: Type.Union([Type.String(), Type.Null()]),
+  litologia_activa: Type.Union([Type.Boolean(), Type.Null()]),
 });
 
 export type IntervaloLitologico = Static<typeof IntervaloLitologico>;
@@ -211,12 +216,42 @@ export const InformeBody = Type.Omit(InformeAntes, ["id_informe", "id_pozo"]);
 export type InformeBody = Static<typeof InformeBody>;
 
 export const bodyIntervaloLitologico = Type.Object({
+  id_intervalo_litologico: Type.Optional(Type.Integer({ minimum: 1 })),
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   material: Type.String({ minLength: 1 }),
+  id_litologia: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
+
+export const FamiliasLitologia = ["basalto", "suelo", "arenisca", "arcilla_arena", "tosca", "gravilla", "granito", "otro"] as const;
+export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite"] as const;
+export const FamiliaLitologia = Type.Union(FamiliasLitologia.map((valor) => Type.Literal(valor)));
+export type FamiliaLitologia = Static<typeof FamiliaLitologia>;
+export const PatronCatalogoLitologia = Type.Union(PatronesLitologia.map((valor) => Type.Literal(valor)));
+export type PatronCatalogoLitologia = Static<typeof PatronCatalogoLitologia>;
+const ColorLitologia = Type.String({ pattern: "^#[0-9A-Fa-f]{6}$" });
+const CodigoLitologia = Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z][a-z0-9_]*$" });
+export const LitologiaPublica = Type.Object({
+  id_litologia: Type.Integer(), codigo: CodigoLitologia, nombre: Type.String(), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, activo: Type.Boolean(), orden: Type.Integer(),
+});
+export type LitologiaPublica = Static<typeof LitologiaPublica>;
+export const LitologiaCatalogo = Type.Intersect([LitologiaPublica, Type.Object({
+  es_inicial: Type.Boolean(), creado_en: Type.String({ format: "date-time" }), actualizado_en: Type.String({ format: "date-time" }),
+})]);
+export type LitologiaCatalogo = Static<typeof LitologiaCatalogo>;
+export const LitologiaCrearBody = Type.Object({
+  codigo: CodigoLitologia, nombre: Type.String({ minLength: 1, maxLength: 120 }), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, orden: Type.Integer({ minimum: 0 }),
+});
+export type LitologiaCrearBody = Static<typeof LitologiaCrearBody>;
+export const LitologiaActualizarBody = Type.Object({
+  nombre: Type.String({ minLength: 1, maxLength: 120 }), familia: FamiliaLitologia,
+  color: ColorLitologia, patron: PatronCatalogoLitologia, orden: Type.Integer({ minimum: 0 }),
+});
+export type LitologiaActualizarBody = Static<typeof LitologiaActualizarBody>;
 
 
 export const IntervaloDiametroPerforacionBody = Type.Object({
@@ -233,13 +268,21 @@ export type IntervaloDiametroPerforacionBody = Static<
 export const IntervaloFiltro = Type.Object({
   id_intervalo_filtro: Type.Integer(), id_pozo: Type.Integer(),
   desde_m: Type.Number(), hasta_m: Type.Number(), diametro_pulg: Type.Number(), material_tuberia: MaterialTuberia,
+  ranura_mm: Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1), Type.Null()]),
 });
 export type IntervaloFiltro = Static<typeof IntervaloFiltro>;
 export const IntervaloFiltroBody = Type.Object({
+  id_intervalo_filtro: Type.Optional(Type.Integer()),
   desde_m: Type.Number({ minimum: 0 }), hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   diametro_pulg: Type.Number({ exclusiveMinimum: 0 }), material_tuberia: MaterialTuberia,
+  ranura_mm: Type.Optional(Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1), Type.Null()])),
 });
 export type IntervaloFiltroBody = Static<typeof IntervaloFiltroBody>;
+export const IntervaloFiltroCreateBody = Type.Intersect([
+  Type.Omit(IntervaloFiltroBody, ["id_intervalo_filtro", "ranura_mm"]),
+  Type.Object({ ranura_mm: Type.Union([Type.Literal(0.5), Type.Literal(0.75), Type.Literal(1)]) }),
+]);
+export type IntervaloFiltroCreateBody = Static<typeof IntervaloFiltroCreateBody>;
 
 export const NivelAporteBody = Type.Pick(NivelAporte, ["profundidad_m"]);
 export type NivelAporteBody = Static<typeof NivelAporteBody>;
@@ -247,9 +290,19 @@ export type NivelAporteBody = Static<typeof NivelAporteBody>;
 export const SitioBody = Type.Omit(Sitio, ["id_sitio"]);
 export type SitioBody = Static<typeof SitioBody>;
 
+export const SitioNuevoPozoBody = Type.Object({
+  departamento: Type.String({ minLength: 1, maxLength: 160 }),
+  localidad: Type.Optional(Type.String({ maxLength: 160 })),
+  latitud: Type.String({ minLength: 1, maxLength: 32 }),
+  longitud: Type.String({ minLength: 1, maxLength: 32 }),
+});
+export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
+
 export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
+export const PozoModerno = Type.Omit(NuevoPozo, ["sello_sanitario", "pre_filtro"]);
+export type PozoModerno = Static<typeof PozoModerno>;
 
 export const FotoNuevaPozo = Type.Object({
   mime_type: Type.Union([Type.Literal("image/jpeg"), Type.Literal("image/png")]),
@@ -257,10 +310,11 @@ export const FotoNuevaPozo = Type.Object({
 });
 
 export const PozoCompletoBody = Type.Object({
-  pozo: NuevoPozo,
+  pozo: Type.Omit(PozoModerno, ["id_sitio"]),
+  sitio_nuevo: SitioNuevoPozoBody,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
-  intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+  intervalos_filtro: Type.Array(IntervaloFiltroCreateBody, { default: [] }),
   niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
   foto: Type.Optional(FotoNuevaPozo),
 });
@@ -277,7 +331,13 @@ export const PerfilLitologicoVistaPreviaBody = Type.Object({
 export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVistaPreviaBody>;
 
 export const PozoCompletoUpdateBody = Type.Intersect([
-  Type.Omit(PozoCompletoBody, ["foto"]),
+  Type.Object({
+    pozo: PozoModerno,
+    intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
+    intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
+    intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
+    niveles_aporte: Type.Array(NivelAporteBody, { default: [] }),
+  }),
   Type.Object({
     foto_accion: Type.Union([Type.Literal("conservar"), Type.Literal("eliminar"), Type.Literal("reemplazar")]),
     foto: Type.Optional(FotoNuevaPozo),
@@ -288,10 +348,27 @@ export type PozoCompletoUpdateBody = Static<typeof PozoCompletoUpdateBody>;
 export const CandidatoPozo = Type.Object({
   id_usuario: Type.Integer(),
   nombre: Type.String(),
-  email: Type.String({ format: "email" }),
+  email: Type.Optional(Type.String({ format: "email" })),
   roles: Type.Array(Type.String()),
 });
 export type CandidatoPozo = Static<typeof CandidatoPozo>;
+
+export const PropietarioOperativoCrearBody = Type.Object({
+  nombre: Type.String({ minLength: 1, maxLength: 160 }),
+});
+export type PropietarioOperativoCrearBody = Static<typeof PropietarioOperativoCrearBody>;
+
+export const PozoDetalle = Type.Intersect([
+  Pozo,
+  Type.Object({
+    propietario_nombre: Type.String(),
+    propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
+    perforador_nombre: Type.String(),
+    perforador_email: Type.String({ format: "email" }),
+    sitio: Sitio,
+  }),
+]);
+export type PozoDetalle = Static<typeof PozoDetalle>;
 
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",
@@ -303,7 +380,7 @@ export type PozoUpdate = Static<typeof PozoUpdate>;
 
 export const Informe = Type.Object({
   id_perforacion: Type.Integer(),
-  propietario_email: Type.String({ format: "email" }),
+  propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
   propietario_nombre: Type.String(),
   ubicacion: Type.String(),
   empresa: Type.Optional(Type.String()),

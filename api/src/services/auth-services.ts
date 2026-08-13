@@ -21,6 +21,8 @@ export async function logUser(
     FROM usuario
     WHERE email = $1
       AND activo = TRUE
+      AND cuenta_acceso = TRUE
+      AND password IS NOT NULL
     LIMIT 1;
   `;
 

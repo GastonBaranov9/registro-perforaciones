@@ -15,6 +15,7 @@ import { generarPDFBytes } from "../pdf/pdf-generate.ts";
 import { Buffer } from "buffer";
 import { crearPerfilLitologico } from "../pdf/perfil-litologico.ts";
 import { validarDatosTecnicosPozo } from "../services/pozo-completo-service.ts";
+import { obtenerMetadatosLitologias } from "../services/litologias-services.ts";
 
 const informeRoutes = async function (
   fastify:FastifyInstance
@@ -166,8 +167,16 @@ const informeRoutes = async function (
       const borrador = req.body as import("../models/schemas.ts").PerfilLitologicoVistaPreviaBody;
       const errores = validarDatosTecnicosPozo(borrador);
       if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
+      const ids = [...new Set(borrador.intervalos_litologicos.map((x) => x.id_litologia).filter((x): x is number => x != null))];
+      const metadatos = await obtenerMetadatosLitologias(ids);
+      if (metadatos.length !== ids.length) throw new err.T05DatosIncorrectos("La litologÃ­a indicada no existe.");
+      const porId = new Map(metadatos.map((x) => [Number(x.id_litologia), x]));
+      const intervalos = borrador.intervalos_litologicos.map((x) => {
+        const catalogo = x.id_litologia == null ? undefined : porId.get(x.id_litologia);
+        return catalogo ? { ...x, material: catalogo.nombre, litologia_nombre: catalogo.nombre, litologia_color: catalogo.color, litologia_patron: catalogo.patron as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia, litologia_activa: catalogo.activo } : x;
+      });
       return rep.code(200).send(crearPerfilLitologico(
-        borrador.intervalos_litologicos,
+        intervalos,
         borrador.profundidad_final_m,
         borrador.niveles_aporte,
         borrador.intervalos_diametro,

@@ -5,10 +5,15 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { SitioBody } from '../../../../shared/types/schemas';
 import { IonContent, IonCard, IonCardContent, IonButton } from '@ionic/angular/standalone';
 import { SitioReturnService } from '../../../../shared/services/sitio-navegar/sitio-navegar';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
+import { mensajeHumano } from '../../../../shared/utils/errores';
+
+type CoordenadasMapa = { latitud: string; longitud: string };
 
 @Component({
   selector: 'app-sitios-edit',
-  imports: [IonContent, IonCard, IonCardContent, SitiosFormComponent, IonButton],
+  imports: [IonContent, IonCard, IonCardContent, SitiosFormComponent, IonButton, MapaAereoComponent],
   templateUrl: './sitios-edit.page.html',
   styleUrl: './sitios-edit.page.css',
 })
@@ -17,6 +22,7 @@ export class SitiosEditPage {
   public activateRoute = inject(ActivatedRoute);
   public sitioReturn: SitioReturnService = inject(SitioReturnService);
   private router: Router = inject(Router);
+  public auth = inject(AuthService);
 
   public id_sitio = input.required<number>();
 
@@ -31,24 +37,27 @@ export class SitiosEditPage {
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
+  public coordenadasPendientesMapa = signal<CoordenadasMapa | null>(null);
 
   returnTo = signal('/sitios-list');
 
   ngOnInit() {
-    const nav = this.router.currentNavigation();
-    this.returnTo.set(nav?.extras.state?.['returnTo'] ?? '/sitios-list');
+    const candidata = globalThis.history.state?.returnTo;
+    this.returnTo.set(typeof candidata === 'string' && (/^\/pozo-edit\/\d+$/.test(candidata) || /^\/pozos-detail\/\d+$/.test(candidata)) ? candidata : '/sitios-list');
   }
 
   async handleEdit(sitio: SitioBody) {
     try {
       this.disabled.set(true);
       const editado = await this.editSitioService.editSitio(this.id_sitio(), sitio);
-      console.log('Sitio editado', editado);
       this.sitioReturn.sitioCreado.set(editado);
-      this.router.navigateByUrl(this.returnTo());
-    } catch (err: any) {
-      this.errorMessage.set(err.message);
+      await this.router.navigateByUrl(this.returnTo());
+    } catch (error: unknown) {
+      this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar el sitio.'));
+    } finally {
+      this.disabled.set(false);
     }
-    this.disabled.set(false);
   }
+  actualizarMapa(coordenadas: CoordenadasMapa | null) { this.coordenadasPendientesMapa.set(coordenadas); }
+  volver() { this.router.navigateByUrl(this.returnTo()); }
 }

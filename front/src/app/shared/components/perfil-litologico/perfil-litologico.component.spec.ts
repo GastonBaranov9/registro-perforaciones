@@ -61,7 +61,7 @@ describe('PerfilLitologicoComponent', () => {
     const aporte = elemento.querySelector('.banda-aporte');
     expect(filtro && aporte && Boolean(filtro.compareDocumentPosition(aporte) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTrue();
     expect(elemento.querySelector('.tuberia-interior')).not.toBeNull();
-    expect(elemento.querySelector('pattern#perfil-puntos')).not.toBeNull();
+    expect(elemento.querySelector(`pattern#${fixture.componentInstance.patronId('puntos')}`)).not.toBeNull();
     expect(elemento.querySelector('.marca-escala')).not.toBeNull();
     expect(elemento.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 760 820');
     expect(elemento.querySelectorAll('polyline.conector-etiqueta').length).toBe(perfil.etiquetas.length);

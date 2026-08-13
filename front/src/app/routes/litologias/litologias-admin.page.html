@@ -1,0 +1,53 @@
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-header><ion-card-title>Administración de litologías</ion-card-title></ion-card-header>
+    <ion-card-content>
+      <p>Las entradas se desactivan; no existe borrado definitivo.</p>
+      <div class="filtros">
+        <label>Buscar <input type="search" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" /></label>
+        <label>Familia <select [ngModel]="familia()" (ngModelChange)="familia.set($event)"><option value="">Todas</option>@for (f of familias; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+        <label>Estado <select [ngModel]="estado()" (ngModelChange)="estado.set($event)"><option value="todas">Todas</option><option value="activas">Activas</option><option value="inactivas">Inactivas</option></select></label>
+      </div>
+      <ion-button type="button" (click)="nuevo()">Nueva litología</ion-button>
+      @if (cargando()) { <p role="status">Cargando catálogo…</p> } @else if (error()) { <p role="alert">{{ error() }}</p><ion-button type="button" (click)="cargar()">REINTENTAR</ion-button> }
+      @for (litologia of filtradas(); track litologia.id_litologia) {
+        <ion-item>
+          <span class="muestra" [style.background-color]="litologia.color"></span>
+          <ion-label><strong>{{ litologia.nombre }}</strong> · {{ litologia.familia }} · {{ litologia.patron }} · orden {{ litologia.orden }}<br><small>{{ litologia.activo ? 'Activa' : 'Inactiva — uso histórico' }}</small></ion-label>
+          <ion-button (click)="editar(litologia)">Editar</ion-button><ion-button [color]="litologia.activo ? 'danger' : 'success'" (click)="cambiarEstado(litologia)">{{ litologia.activo ? 'Desactivar' : 'Activar' }}</ion-button>
+        </ion-item>
+      }
+    </ion-card-content>
+  </ion-card>
+  <ion-card>
+    <ion-card-header><ion-card-title>{{ editando() == null ? 'Crear' : 'Editar' }} entrada</ion-card-title></ion-card-header>
+    <ion-card-content>
+      <div class="formulario">
+        <label>Código <input [ngModel]="formulario().codigo" (ngModelChange)="actualizarCampo('codigo', $event)" [disabled]="editando() != null" required /></label>
+        <label>Nombre <input [ngModel]="formulario().nombre" (ngModelChange)="actualizarCampo('nombre', $event)" required /></label>
+        <label>Familia <select [ngModel]="formulario().familia" (ngModelChange)="actualizarCampo('familia', $event)">@for (f of familias; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+        <label>Color <input type="color" [ngModel]="formulario().color" (ngModelChange)="actualizarCampo('color', $event)" /></label>
+        <label>Patrón <select [ngModel]="formulario().patron" (ngModelChange)="actualizarCampo('patron', $event)">@for (p of patrones; track p) { <option [value]="p">{{ p }}</option> }</select></label>
+        <label>Orden <input type="number" min="0" [ngModel]="formulario().orden" (ngModelChange)="actualizarOrden($event)" /></label>
+      </div>
+      <div class="vista-patron" aria-label="Previsualización del patrón seleccionado">
+        <span>Vista: {{ formulario().patron }}</span>
+        <svg viewBox="0 0 180 42" role="img" [attr.aria-label]="'Muestra del patrón ' + formulario().patron">
+          <rect width="180" height="42" [attr.fill]="formulario().color" />
+          @switch (patronForma(formulario().patron)) {
+            @case ('angular') { <path d="M0 20L18 10L36 23L54 12L72 22L90 10L108 23L126 12L144 22L162 10L180 20" class="trama-admin" /> }
+            @case ('fractura') { <path d="M0 38L32 4M45 38L77 4M90 38L122 4M135 38L167 4" class="fractura-admin" /> }
+            @case ('organica') { <path d="M8 12L22 31L38 9M56 12L70 31L86 9M104 12L118 31L134 9M152 12L166 31" class="trama-admin" /> }
+            @case ('grano') { @for (x of [12,30,48,66,84,102,120,138,156,174]; track x) { <circle [attr.cx]="x" cy="21" [attr.r]="patronSpec(formulario().patron).tamano * 2" class="punto-admin" /> } }
+            @case ('laminar') { <path d="M0 10H180M0 21H180M0 32H180" class="trama-admin" /> }
+            @case ('hibrido') { <path d="M0 10H180M0 32H180" class="trama-admin" /> @for (x of [15,45,75,105,135,165]; track x) { <circle [attr.cx]="x" cy="21" r="2" class="punto-admin" /> } }
+            @case ('nodulo') { @for (x of [15,48,81,114,147,180]; track x) { <ellipse [attr.cx]="x" cy="21" rx="8" ry="5" class="nodo-admin" /> } }
+            @case ('canto') { @for (x of [15,52,89,126,163]; track x) { <ellipse [attr.cx]="x" cy="21" rx="11" ry="7" class="nodo-admin" /> } }
+            @case ('cristalino') { @for (x of [15,50,85,120,155]; track x) { <path [attr.d]="'M' + (x - 7) + ' 21H' + (x + 7) + 'M' + x + ' 14V28M' + (x - 5) + ' 16L' + (x + 5) + ' 26'" class="trama-admin" /> } }
+          }
+        </svg>
+      </div>
+      <ion-button (click)="guardar()" [disabled]="guardando()">GUARDAR</ion-button><ion-button fill="outline" (click)="nuevo()">CANCELAR</ion-button>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

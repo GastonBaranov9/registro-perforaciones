@@ -10,7 +10,10 @@
       <div class="fila">
         <label>Desde (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.desde_m" (ngModelChange)="notificarEdicion()" /></label>
         <label>Hasta (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
-        <label>Material<input type="text" [(ngModel)]="item.dato.material" (ngModelChange)="notificarEdicion()" /></label>
+        <app-selector-litologia [seleccionado]="item.dato.id_litologia" [materialHistorico]="item.dato.material"
+          [requerirSeleccion]="item.dato.id_intervalo_litologico == null"
+          [deshabilitado]="guardando()" (seleccionadoChange)="seleccionarLitologia(item.dato, $event, item.dato.material)"
+          (nombreChange)="seleccionarLitologia(item.dato, item.dato.id_litologia ?? null, $event)" />
         <button type="button" (click)="quitarLitologia(item.idLocal)" [disabled]="guardando()">Eliminar</button>
       </div>
     } @empty { <p>Sin intervalos litológicos.</p> }
@@ -39,6 +42,7 @@
         <label>Hasta (m)<input type="number" min="0" step="0.01" [(ngModel)]="item.dato.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
         <label>Diámetro (pulg)<input type="number" min="0.01" step="0.01" [(ngModel)]="item.dato.diametro_pulg" (ngModelChange)="notificarEdicion()" /></label>
         <label>Material de tubería<select aria-label="Material del filtro" [(ngModel)]="item.dato.material_tuberia" (ngModelChange)="notificarEdicion()"><option value="PVC">PVC</option><option value="Acero">Acero</option></select></label>
+        <label>Ranura<select aria-label="Ranura del filtro" [(ngModel)]="item.dato.ranura_mm" (ngModelChange)="notificarEdicion()" [required]="item.dato.id_intervalo_filtro == null">@if (item.dato.id_intervalo_filtro == null) { <option [ngValue]="null">Seleccionar...</option> } @if (puedeConservarRanuraNoEspecificada(item)) { <option [ngValue]="null">No especificada</option> }<option [ngValue]="0.5">0.50 mm</option><option [ngValue]="0.75">0.75 mm</option><option [ngValue]="1">1 mm</option></select></label>
         <button type="button" (click)="quitarFiltro(item.idLocal)" [disabled]="guardando()">Eliminar</button>
       </div>
     } @empty { <p>Este pozo no tiene intervalos de filtro registrados.</p> }

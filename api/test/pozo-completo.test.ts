@@ -8,7 +8,8 @@ import type { PozoCompletoBody } from "../src/models/schemas.ts";
 
 function body(): PozoCompletoBody {
   return {
-    pozo: { id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: 50 },
+    pozo: { id_propietario: 10, id_perforador: 30, profundidad_final_m: 50 },
+    sitio_nuevo: { departamento: "Salto", localidad: "Colonia 18 de Julio", latitud: "-31.325", longitud: "-57.961" },
     intervalos_litologicos: [{ desde_m: 0, hasta_m: 10, material: "Arena" }, { desde_m: 15, hasta_m: 30, material: "Roca" }],
     intervalos_diametro: [{ desde_m: 0, hasta_m: 25, diametro_pulg: 8, material_tuberia: "PVC" }, { desde_m: 25, hasta_m: 50, diametro_pulg: 6, material_tuberia: "Acero" }],
     intervalos_filtro: [],
@@ -16,7 +17,7 @@ function body(): PozoCompletoBody {
   };
 }
 
-function poolFalso(fallarEn?: string) {
+function poolFalso(fallarEn?: string, rechazarLitologia = false, legacySinVinculo = false) {
   const consultas: string[] = [];
   let lit = 0;
   let diam = 0;
@@ -26,10 +27,11 @@ function poolFalso(fallarEn?: string) {
       consultas.push(sql);
       if (fallarEn && sql.includes(fallarEn)) throw new Error("fallo controlado");
       if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 10 }] };
-      if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 20, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
-      if (sql.includes("INSERT INTO intervalo_litologico")) return { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: "Arena" }] };
+      if (sql.includes("INSERT INTO public.sitio")) return { rows: [{ id_sitio: "202", departamento:"Salto", localidad:"Colonia 18 de Julio", latitud:"-31.325", longitud:"-57.961" }] };
+      if (sql.includes("INSERT INTO public.pozo")) return { rows: [{ id_pozo: "101", id_propietario: 10, id_sitio: 202, id_perforador: 30, profundidad_final_m: "50", fecha_creado: new Date().toISOString() }] };
+      if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: String(++lit), id_pozo: "101", desde_m: "0", hasta_m: "10", material: legacySinVinculo ? "  Histórico\t" : "Arena", id_litologia: legacySinVinculo ? null : "7" }] };
       if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: String(++diam), id_pozo: "101", desde_m: "0", hasta_m: "25", diametro_pulg: "8" }] };
-      if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC" }] };
+      if (sql.includes("INSERT INTO intervalo_filtro")) return { rows: [{ id_intervalo_filtro: String(++filtro), id_pozo: "101", desde_m: "20", hasta_m: "25", diametro_pulg: "6", material_tuberia: "PVC", ranura_mm: "0.75" }] };
       if (sql.includes("INSERT INTO nivel_aporte")) return { rows: [{ id_nivel_aporte: "1", id_pozo: "101", profundidad_m: "18" }] };
       return { rows: [] };
     },
@@ -44,12 +46,57 @@ test("crea pozo y todos sus hijos en una sola transacción", async () => {
   try {
     const resultado = await crearPozoCompleto(30, body(), dir, falso.pool as never);
     assert.equal(resultado.pozo.id_pozo, 101);
+    assert.equal(resultado.sitio.id_sitio, 202);
     assert.equal(resultado.intervalos_litologicos.length, 2);
     assert.equal(resultado.intervalos_diametro.length, 2);
     assert.equal(resultado.niveles_aporte.length, 1);
     assert.ok(falso.consultas.includes("BEGIN"));
+    assert.ok(falso.consultas.some((sql) => sql.includes("INSERT INTO public.sitio")));
+    const insercionPozo = falso.consultas.find((sql) => sql.includes("INSERT INTO public.pozo"));
+    assert.ok(insercionPozo);
+    const columnasInsertadas = insercionPozo.split(") VALUES")[0];
+    assert.doesNotMatch(columnasInsertadas, /sello_sanitario|pre_filtro/);
     assert.ok(falso.consultas.includes("COMMIT"));
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("un fallo al insertar el pozo revierte también el sitio nuevo", async () => {
+  const falso = poolFalso("INSERT INTO public.pozo");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06i-sitio-"));
+  try {
+    await assert.rejects(() => crearPozoCompleto(30, body(), dir, falso.pool as never));
+    const sitio = falso.consultas.findIndex((sql) => sql.includes("INSERT INTO public.sitio"));
+    const pozo = falso.consultas.findIndex((sql) => sql.includes("INSERT INTO public.pozo"));
+    assert.ok(sitio >= 0 && sitio < pozo);
+    assert.ok(falso.consultas.includes("ROLLBACK"));
+    assert.ok(!falso.consultas.includes("COMMIT"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("creación completa legacy sin ID conserva material desconocido y FK NULL", async () => {
+  const falso = poolFalso(undefined, false, true); const data = body();
+  data.intervalos_litologicos = [{ desde_m: 0, hasta_m: 10, material: "  Histórico\t" }];
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06c-r1-legacy-"));
+  try {
+    const resultado = await crearPozoCompleto(30, data, dir, falso.pool as never);
+    assert.equal(resultado.intervalos_litologicos[0].id_litologia, null);
+    assert.equal(resultado.intervalos_litologicos[0].material, "  Histórico\t");
+    assert.ok(falso.consultas.includes("COMMIT"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("creación completa acepta una litología activa identificada", async () => {
+  const falso=poolFalso();const data=body();data.intervalos_litologicos[0].id_litologia=7;
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06h-r1-ok-"));
+  try { const resultado=await crearPozoCompleto(30,data,dir,falso.pool as never);assert.equal(resultado.intervalos_litologicos[0].id_litologia,7);assert.ok(falso.consultas.includes("COMMIT")); }
+  finally { await fs.rm(dir,{recursive:true,force:true}); }
+});
+
+for (const caso of ["inexistente","inactiva tras una carrera"] as const) test(`creación completa rechaza litología ${caso} con 400 y rollback`,async()=>{
+  const falso=poolFalso(undefined,true);const data=body();data.intervalos_litologicos[0].id_litologia=999;
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"rsp06h-r1-rechazo-"));
+  try { await assert.rejects(()=>crearPozoCompleto(30,data,dir,falso.pool as never),(error:unknown)=>{assert.ok(error instanceof Error);assert.equal((error as Error&{statusCode?:number}).statusCode,400);assert.doesNotMatch(error.name,/TypeError/);return true;});assert.ok(falso.consultas.includes("ROLLBACK"));assert.ok(!falso.consultas.includes("COMMIT"));assert.deepEqual(await fs.readdir(dir),[]); }
+  finally { await fs.rm(dir,{recursive:true,force:true}); }
 });
 
 test("creación solo general también es atómica", async () => {
@@ -77,7 +124,7 @@ test("intervalo inválido o solapado se rechaza antes de abrir transacción", ()
 
 test("filtros opcionales validan material profundidad y solapamiento por categoría", async () => {
   const valido = body();
-  valido.intervalos_filtro = [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "PVC" }, { desde_m: 20, hasta_m: 25, diametro_pulg: 6, material_tuberia: "Acero" }];
+  valido.intervalos_filtro = [{ desde_m: 10, hasta_m: 15, diametro_pulg: 6, material_tuberia: "PVC", ranura_mm: 0.5 }, { desde_m: 20, hasta_m: 25, diametro_pulg: 6, material_tuberia: "Acero", ranura_mm: 1 }];
   assert.deepEqual(validarPozoCompleto(valido), []);
   const solapado = structuredClone(valido); solapado.intervalos_filtro[1].desde_m = 14;
   assert.ok(validarPozoCompleto(solapado).some((x) => x.includes("solapan")));

@@ -1,11 +1,14 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AccionFotoEdicion, CandidatoPozo, NuevoPozo } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonToggle, IonList, IonText, IonImg, IonDatetime, IonItemDivider } from '@ionic/angular/standalone';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
+import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
+import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
+import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
 
 @Component({
   selector: 'app-pozos-form',
@@ -15,9 +18,10 @@ import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-
     IonItem,
     IonLabel,
     IonInput,
+    IonTextarea,
     IonButton,
-    IonToggle,
     IonList,
+    IonText,
     CommonModule,
     FormsModule,
     FotoComponent,
@@ -30,10 +34,15 @@ export class PozosFormComponent {
   public id_pozo = input<number | null>(null);
   public propietarios = input<CandidatoPozo[]>([]);
   public perforadores = input<CandidatoPozo[]>([]);
+  public sitios = input<Sitio[]>([]);
+  public sitioNuevo = input<SitioBody | null>(null);
+  public buscarPropietarios = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
+  public buscarPerforadores = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public catalogosDisponibles = input(false);
+  public perforadorBloqueado = input(false);
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
-  public crearSitio = output<void>();
+  public crearPropietario = output<PropietarioOperativoCrearBody>();
   public editarSitio = output<void>();
   public eliminarFotoPersistida = output<void>();
   public cambiado = output<NuevoPozo>();
@@ -42,6 +51,17 @@ export class PozosFormComponent {
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
   public errorMessage = signal<string>('');
+  public ubicacionPrecision = signal<number | null>(null);
+  public ubicacionError = signal('');
+  public capturandoUbicacion = signal(false);
+  public propietarioNuevo = { nombre: '' };
+  public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
+  datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
+  editarDatoTecnico(campo: CampoTecnicoEstandar) {
+    this.camposTecnicosEditables.update((actual) => new Set(actual).add(campo));
+  }
+  propietarioSeleccionado() { return Number(this.pozo().id_propietario) > 0; }
+  sitioActual() { return this.sitios().find((sitio) => sitio.id_sitio === Number(this.pozo().id_sitio)) ?? null; }
 
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
@@ -49,6 +69,12 @@ export class PozosFormComponent {
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
+    const sitio=this.sitioNuevo();
+    if(sitio){
+      const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');
+      if(!latitud||!longitud){this.ubicacionError.set('Las coordenadas no son válidas.');return;}
+      sitio.latitud=latitud;sitio.longitud=longitud;
+    }
     this.saved.emit({
       pozo: this.pozo(),
       foto: this.fotoFile,
@@ -58,8 +84,34 @@ export class PozosFormComponent {
 
   notificarCambio() { this.cambiado.emit({ ...this.pozo() }); }
 
-  onCrearSitioClick() {
-    this.crearSitio.emit();
+  async tomarUbicacionNueva() {
+    const sitio = this.sitioNuevo();
+    if (!sitio || this.capturandoUbicacion()) return;
+    try {
+      this.capturandoUbicacion.set(true); this.ubicacionError.set('');
+      const ubicacion = await capturarUbicacionActual();
+      sitio.latitud = ubicacion.latitud; sitio.longitud = ubicacion.longitud;
+      this.ubicacionPrecision.set(ubicacion.precision ?? null);
+    } catch (error: unknown) {
+      this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
+    } finally { this.capturandoUbicacion.set(false); }
+  }
+
+  normalizarCoordenadaNueva(eje:EjeCoordenada) {
+    const sitio=this.sitioNuevo();if(!sitio)return;
+    const normalizada=normalizarCoordenadaTexto(sitio[eje],eje);
+    if(!normalizada){this.ubicacionError.set(`La ${eje} no es válida.`);return;}
+    sitio[eje]=normalizada;this.ubicacionError.set('');
+  }
+
+  registrarPropietario() {
+    const nombre = this.propietarioNuevo.nombre.trim();
+    if (nombre) this.crearPropietario.emit({ nombre });
+  }
+
+  limpiarPropietario() {
+    this.pozo().id_propietario = 0;
+    this.notificarCambio();
   }
 
   onEditarSitioClick() {
@@ -90,10 +142,8 @@ export class PozosFormComponent {
     this.quitarFotoSeleccionada();
   }
   personasValidas() {
-    return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)) &&
-      this.perforadores().some((p) => p.id_usuario === Number(this.pozo().id_perforador));
+    return Number(this.pozo().id_propietario) > 0 && Number(this.pozo().id_perforador) > 0;
   }
-  propietarioValido() { return this.propietarios().some((p) => p.id_usuario === Number(this.pozo().id_propietario)); }
 
 getFoto() {
   const foto = this.pozo()?.foto_url;
