@@ -3,6 +3,10 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# JSON sin query string ni headers sensibles; $request_id se propaga a Fastify.
+log_format rsp_json escape=json '{"timestamp":"$time_iso8601","request_id":"$request_id","method":"$request_method","path":"$uri","status":$status,"duration":$request_time,"upstream":"$upstream_addr"}';
+access_log /var/log/nginx/access.log rsp_json;
+
 server {
     listen 80;
     server_name ${PUBLIC_HOST};
@@ -29,6 +33,9 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "same-origin" always;
     add_header X-Frame-Options "DENY" always;
+    add_header Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), fullscreen=(self)" always;
+    # Ionic necesita estilos inline; scripts, conexiones e imÃ¡genes permanecen same-origin.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     # Vacío durante pruebas locales. En TLS público estable: max-age=31536000.
     add_header Strict-Transport-Security "${HSTS_HEADER}" always;
 
@@ -47,6 +54,7 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Request-Id $request_id;
     }
 
     location = /ws {
@@ -62,6 +70,7 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Request-Id $request_id;
     }
 
     location / {
@@ -75,5 +84,6 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Request-Id $request_id;
     }
 }
