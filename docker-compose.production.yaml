@@ -8,7 +8,6 @@ services:
       POSTGRES_DB: ${PGDATABASE:?Falta PGDATABASE}
     volumes:
       - raul_silva_db:/var/lib/postgresql/data
-      - ./api/db:/docker-entrypoint-initdb.d:ro
     expose:
       - "5432"
     healthcheck:
@@ -17,6 +16,110 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    networks:
+      - backend
+
+  migrate:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+    restart: "no"
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  bootstrap-admin:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+    restart: "no"
+    command: ["npm", "run", "bootstrap:admin"]
+    environment:
+      NODE_ENV: production
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  backup:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      APP_VERSION: ${APP_VERSION:-unknown}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+        read_only: true
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  restore:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/restore.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      RESTORE_BUNDLE: ${RESTORE_BUNDLE:-}
+      RESTORE_CONFIRM: ${RESTORE_CONFIRM:-}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+        read_only: true
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - backend
 
