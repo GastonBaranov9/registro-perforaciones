@@ -11,6 +11,7 @@ $backupDir = Join-Path $tempRoot "backups"
 $envFile = Join-Path $tempRoot "production.env"
 $passwordFile = Join-Path $tempRoot "admin-password"
 $cookieJar = Join-Path $tempRoot "cookies.txt"
+$copiedCookieJar = Join-Path $tempRoot "cookies-copied.txt"
 $headersFile = Join-Path $tempRoot "headers.txt"
 $bodyFile = Join-Path $tempRoot "body.bin"
 $maxPhoto = Join-Path $tempRoot "max-photo.jpg"
@@ -113,7 +114,10 @@ HTTPS_BIND_ADDRESS=127.0.0.1
 HTTPS_PORT=$httpsPort
 TLS_CERT_FILE=$certCompose
 TLS_KEY_FILE=$keyCompose
-HSTS_HEADER=
+HSTS_ENABLED=false
+RATE_LIMIT_PDF_MAX=100
+PDF_MAX_CONCURRENT=1
+PDF_MAX_QUEUE=0
 BACKUP_DIR=$backupCompose
 APP_VERSION=$ProjectName
 "@
@@ -123,7 +127,12 @@ APP_VERSION=$ProjectName
 
   Invoke-Compose -Arguments @("build", "api", "front")
   Invoke-Compose -Arguments @("up", "-d", "postgres")
-  Invoke-Compose -Arguments @("--profile", "ops", "run", "--rm", "migrate")
+  try {
+    Invoke-Compose -Arguments @("--profile", "ops", "run", "--rm", "migrate")
+  } catch {
+    Start-Sleep -Seconds 2
+    Invoke-Compose -Arguments @("--profile", "ops", "run", "--rm", "migrate")
+  }
   Invoke-Compose -Arguments @("--profile", "ops", "run", "--rm", "-e", "ADMIN_EMAIL=$adminEmail", "-e", "ADMIN_NAME=Administrador HTTPS", "-e", "ADMIN_PASSWORD_FILE=/run/secrets/admin-password", "-v", "${passwordFile}:/run/secrets/admin-password:ro", "bootstrap-admin")
 
   $ownerId = Invoke-Psql "INSERT INTO usuario(email,nombre,password,activo,cuenta_acceso) VALUES(NULL,'Propietario TLS',NULL,TRUE,FALSE) RETURNING id_usuario"
@@ -146,7 +155,7 @@ APP_VERSION=$ProjectName
   $index = [IO.File]::ReadAllText($bodyFile)
   if ($index -notmatch '<app-root') { throw "GET / no devolvió Angular." }
   $securityHeaders = [IO.File]::ReadAllText($headersFile)
-  foreach ($header in @("X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin", "X-Frame-Options: DENY")) {
+  foreach ($header in @("X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin", "X-Frame-Options: DENY", "Permissions-Policy: geolocation=(self), camera=()", "Content-Security-Policy: default-src 'self'")) {
     if ($securityHeaders -notmatch [regex]::Escape($header)) { throw "Falta header HTTPS: $header" }
   }
   if ($securityHeaders -match "Strict-Transport-Security") { throw "HSTS no debe activarse en el certificado local." }
@@ -157,6 +166,7 @@ APP_VERSION=$ProjectName
   Assert-Status (Invoke-Https @("$publicOrigin/api/health")) "200" "health público"
   Assert-Status (Invoke-Https @("$publicOrigin/api/ready")) "200" "readiness público"
   Assert-Status (Invoke-Https @("$publicOrigin/api/ruta-inexistente")) "404" "404 API"
+  Assert-Status (Invoke-Https @("$publicOrigin/api/docs")) "404" "Swagger disabled"
   if (([IO.File]::ReadAllText($bodyFile)) -match '<app-root') { throw "El 404 API cayó en el fallback SPA." }
 
   $loginJson = @{ email=$adminEmail; password=$adminPassword } | ConvertTo-Json -Compress
@@ -169,6 +179,7 @@ APP_VERSION=$ProjectName
   $csrfLine = Get-Content $cookieJar | Where-Object { $_ -notmatch '^#' -and ($_ -split "`t").Count -ge 7 -and ($_ -split "`t")[5] -eq 'rsp_csrf' } | Select-Object -First 1
   if (-not $csrfLine) { throw "curl no almacenó rsp_csrf." }
   $csrf = ($csrfLine -split "`t")[6]
+  Copy-Item -LiteralPath $cookieJar -Destination $copiedCookieJar
   Assert-Status (Invoke-Https @("--cookie", $cookieJar, "$publicOrigin/api/login")) "200" "GET autenticado"
 
   [IO.File]::WriteAllText($ownerBodyFile, '{"nombre":"Propietario creado por HTTPS"}', [Text.UTF8Encoding]::new($false))
@@ -189,9 +200,47 @@ APP_VERSION=$ProjectName
   if ((Get-Item $bodyFile).Length -ne 5000000) { throw "La foto protegida no conserva el tamaño." }
   Assert-Status (Invoke-Https @("--cookie", $cookieJar, "$publicOrigin/api/usuarios/$ownerId/pozos/$wellId/informe-pdf")) "200" "PDF HTTPS"
   $pdfBytes = (Get-Item $bodyFile).Length
+  if ($pdfBytes -le 0 -or -not ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bodyFile),0,4) -eq '%PDF')) { throw "PDF HTTPS invalid." }
+  $pdfJobs = @()
+  try {
+    for ($pdfAttempt = 0; $pdfAttempt -lt 12; $pdfAttempt++) {
+      $pdfOutput = Join-Path $tempRoot "pdf-concurrent-$pdfAttempt.bin"
+      $pdfJobs += Start-Job -ScriptBlock {
+        param($HostName, $Port, $Origin, $Jar, $Output, $Owner, $Well)
+        (& curl.exe --insecure --silent --show-error --resolve "${HostName}:${Port}:127.0.0.1" --cookie $Jar --output $Output --write-out "%{http_code}" "$Origin/api/usuarios/$Owner/pozos/$Well/informe-pdf" | Out-String).Trim()
+      } -ArgumentList $publicHost,$httpsPort,$publicOrigin,$cookieJar,$pdfOutput,$ownerId,$wellId
+    }
+    Assert-Status (Invoke-Https @("$publicOrigin/api/health")) "200" "health during PDF load"
+    $pdfConcurrentStatuses = @($pdfJobs | Wait-Job | Receive-Job)
+    if ($pdfConcurrentStatuses -notcontains "503") { throw "PDF capacity test did not observe 503: $($pdfConcurrentStatuses -join ',')" }
+    if (@($pdfConcurrentStatuses | Where-Object { $_ -notin @("200", "503") }).Count -gt 0) { throw "Unexpected PDF concurrency status: $($pdfConcurrentStatuses -join ',')" }
+  } finally {
+    $pdfJobs | Remove-Job -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($candidate in Get-ChildItem -LiteralPath $tempRoot -Filter 'pdf-concurrent-*.bin') {
+    if ($candidate.Length -ge 4 -and [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($candidate.FullName),0,4) -eq '%PDF') {
+      Copy-Item -LiteralPath $candidate.FullName -Destination $bodyFile -Force
+      break
+    }
+  }
   if ($pdfBytes -le 0 -or -not ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bodyFile),0,4) -eq '%PDF')) { throw "El PDF HTTPS no es válido." }
   Assert-Status (Invoke-Https @("--cookie", $cookieJar, "$publicOrigin/api/mapas/estado")) "200" "estado Maps"
   if (([IO.File]::ReadAllText($bodyFile)).Contains($mapKey)) { throw "La API expuso MAP_STATIC_API_KEY." }
+
+  Assert-Status (Invoke-Https @("--request", "POST", "--cookie", $cookieJar, "--header", "Origin: $publicOrigin", "--header", "X-CSRF-Token: $csrf", "--dump-header", $headersFile, "$publicOrigin/api/logout")) "204" "logout"
+  $logoutHeaders = [IO.File]::ReadAllText($headersFile)
+  if ($logoutHeaders -notmatch '(?im)^set-cookie: rsp_session=.*Max-Age=0') { throw "Logout did not clear the session cookie." }
+  Assert-Status (Invoke-Https @("--cookie", $copiedCookieJar, "$publicOrigin/api/login")) "401" "copied token revoked"
+  Assert-Status (Invoke-Https @("--request", "POST", "--header", "Origin: $publicOrigin", "--header", "Content-Type: application/json", "--data-binary", "@$loginBodyFile", "--cookie-jar", $cookieJar, "$publicOrigin/api/login")) "200" "login after logout"
+
+  $rateStatuses = @()
+  for ($attempt = 0; $attempt -lt 11; $attempt++) {
+    $rateStatuses += Invoke-Https @("--request", "POST", "--header", "Origin: $publicOrigin", "--header", "Content-Type: application/json", "--data-binary", "@$loginBodyFile", "$publicOrigin/api/login")
+  }
+  if ($rateStatuses[-1] -ne "429") { throw "Login rate limit did not return 429: $($rateStatuses -join ',')" }
+  $rateHeadersStatus = Invoke-Https @("--request", "POST", "--header", "Origin: $publicOrigin", "--header", "Content-Type: application/json", "--data-binary", "@$loginBodyFile", "--dump-header", $headersFile, "$publicOrigin/api/login")
+  Assert-Status $rateHeadersStatus "429" "login rate limit"
+  if (([IO.File]::ReadAllText($headersFile)) -notmatch '(?im)^retry-after: [1-9][0-9]*') { throw "Rate limit did not send Retry-After." }
 
   $oldErrorPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
@@ -211,9 +260,10 @@ APP_VERSION=$ProjectName
 
   [pscustomobject]@{
     project=$ProjectName; http_redirect=308; https=$true; canonical_host=421; spa=$true; health="ok"; ready="ok"
-    login=$true; secure_cookie=$true; csrf_valid=201; csrf_missing=403; wrong_origin=403
+    login=$true; secure_cookie=$true; csrf_valid=201; csrf_missing=403; wrong_origin=403; swagger=404
+    logout_revokes=$true; login_rate_limit=429; security_headers=$true; hsts_local=$false
     websocket=101; upload_valid=5000000; upload_rejected=5000001; photo_protected=$true
-    pdf_bytes=$pdfBytes; api_public=$false; postgres_public=$false; front_public=$false; map_key_exposed=$false
+    pdf_bytes=$pdfBytes; pdf_capacity_rejected=503; health_during_pdf_load=200; api_public=$false; postgres_public=$false; front_public=$false; map_key_exposed=$false
   } | ConvertTo-Json -Compress
 }
 finally {
