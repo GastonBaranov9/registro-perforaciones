@@ -11,7 +11,6 @@ services:
       - "127.0.0.1:${PGPORT}:5432"
     volumes:
       - registro_perforaciones_db:/var/lib/postgresql/data
-      - ./api/db:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
       interval: 5s

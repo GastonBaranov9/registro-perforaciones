@@ -8,6 +8,8 @@
     "dev": "node --watch --env-file=.env src/server.ts",
     "build": "tsc",
     "start": "node ./dist/server.js",
+    "db:migrate": "node ./dist/scripts/migrate.js",
+    "bootstrap:admin": "node ./dist/scripts/bootstrap-admin.js",
     "generar:pdf": "node src/pdf/pdf-integrado.ts"
   },
   "repository": {

@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
+COPY db ./db
 
 RUN npm run build
 
@@ -16,6 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --chown=node:node --from=build /api/dist ./dist
 COPY --chown=node:node --from=build /api/public ./public
+COPY --chown=node:node --from=build /api/db ./db
 
 # Un volumen nuevo copia este subdirectorio con ownership 1000:1000. El
 # proceso continúa sin privilegios y solo escribe dentro de `fotos`.
