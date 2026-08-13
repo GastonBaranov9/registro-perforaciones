@@ -10,6 +10,8 @@ if ($ProjectName -notmatch '^rsp07b-runtime-[a-zA-Z0-9-]+$') {
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $composeFile = Join-Path $repo "docker-compose.production.yaml"
 $tempEnv = Join-Path ([IO.Path]::GetTempPath()) "$ProjectName.env"
+$tempBackup = Join-Path ([IO.Path]::GetTempPath()) "$ProjectName-backups"
+[IO.Directory]::CreateDirectory($tempBackup) | Out-Null
 
 function New-RandomHex {
   param([Parameter(Mandatory = $true)][int]$Bytes)
@@ -48,6 +50,8 @@ API_IMAGE_REF=rsp07b-runtime-api:$ProjectName
 FRONT_IMAGE_REF=rsp07b-runtime-front:$ProjectName
 HTTP_BIND_ADDRESS=127.0.0.1
 HTTP_PORT=$httpPort
+BACKUP_DIR=$tempBackup
+APP_VERSION=$ProjectName
 "@
 
 [IO.File]::WriteAllText($tempEnv, $envText, [Text.UTF8Encoding]::new($false))
@@ -122,4 +126,5 @@ finally {
     & docker compose @compose down --volumes --remove-orphans
   }
   if ([IO.File]::Exists($tempEnv)) { [IO.File]::Delete($tempEnv) }
+  if ([IO.Directory]::Exists($tempBackup)) { [IO.Directory]::Delete($tempBackup, $true) }
 }
