@@ -1,12 +1,12 @@
 
 services:
   api:
-    image: ${DOCKER_USER}/api
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
     build:
       context: ./api
       target: production
   front:
-    image: ${DOCKER_USER}/front
+    image: ${FRONT_IMAGE_REF:?Defina FRONT_IMAGE_REF con tag inmutable o digest}
     build:
       context: ./front
       target: production

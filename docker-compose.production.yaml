@@ -1,73 +1,106 @@
 services:
-  api:
-    image: gastonbaranov9/proyecto-api:foto-fix
-    environment:
-      - FASTIFY_SECRET=${FASTIFY_SECRET}
-      - PGHOST=postgres
-      - PGPASSWORD=${PGPASSWORD}
-      - PGPORT=${PGPORT}
-      - PGUSER=${PGUSER}
-      - PGDATABASE=${PGDATABASE}
-      - MAP_STATIC_URL_TEMPLATE=${MAP_STATIC_URL_TEMPLATE}
-      - MAP_STATIC_ALLOWED_HOST=${MAP_STATIC_ALLOWED_HOST}
-      - MAP_STATIC_API_KEY=${MAP_STATIC_API_KEY}
-      - MAP_STATIC_ATTRIBUTION=${MAP_STATIC_ATTRIBUTION}
-      - PDF_MAP_STATIC_URL_TEMPLATE=${PDF_MAP_STATIC_URL_TEMPLATE}
-      - PDF_MAP_ALLOWED_HOST=${PDF_MAP_ALLOWED_HOST}
-      - PDF_MAP_STATIC_API_KEY=${PDF_MAP_STATIC_API_KEY}
-      - PDF_MAP_ATTRIBUTION=${PDF_MAP_ATTRIBUTION}
-      - NODE_ENV=production
-    networks:
-      - raul_silva_net
-  proxy:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - 80:80
-      - 443:443
-    environment:
-      - REMOTE_HOST=${REMOTE_HOST}
-    depends_on:
-      - api
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt
-      - certbot:/var/www/certbot
-      - ./proxy/https.conf.template:/etc/nginx/templates/default.conf.template
-    networks:
-      - raul_silva_net
-  front:
-    image: ${DOCKER_USER}/front
-    networks:
-      - raul_silva_net
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${PGUSER}
-      POSTGRES_PASSWORD: ${PGPASSWORD}
-      POSTGRES_DB: ${PGDATABASE}
+      POSTGRES_USER: ${PGUSER:?Falta PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      POSTGRES_DB: ${PGDATABASE:?Falta PGDATABASE}
     volumes:
       - raul_silva_db:/var/lib/postgresql/data
       - ./api/db:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     networks:
-      - raul_silva_net
-  # certbot:
-  #   image: certbot/certbot
-  #   container_name: certbot
-  #   command: "certonly --webroot -w /var/www/certbot --email jorge.melnik@ucu.edu.uy --agree-tos --no-eff-email -d ${REMOTE_HOST}"
-  #   environment:
-  #     - REMOTE_HOST=${REMOTE_HOST}
-  #   volumes:
-  #     - certs:/etc/letsencrypt
-  #     - certbot:/var/www/certbot
-  #   depends_on:
-  #     - proxy
+      - backend
+
+  api:
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: "3000"
+      FASTIFY_SECRET: ${FASTIFY_SECRET:?Falta FASTIFY_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+      MAP_STATIC_URL_TEMPLATE: ${MAP_STATIC_URL_TEMPLATE:?Falta MAP_STATIC_URL_TEMPLATE}
+      MAP_STATIC_ALLOWED_HOST: ${MAP_STATIC_ALLOWED_HOST:?Falta MAP_STATIC_ALLOWED_HOST}
+      MAP_STATIC_API_KEY: ${MAP_STATIC_API_KEY:?Falta MAP_STATIC_API_KEY}
+      MAP_STATIC_ATTRIBUTION: ${MAP_STATIC_ATTRIBUTION:?Falta MAP_STATIC_ATTRIBUTION}
+    volumes:
+      - raul_silva_fotos:/var/lib/registro-perforaciones
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - edge
+      - backend
+
+  front:
+    image: ${FRONT_IMAGE_REF:?Defina FRONT_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./front
+      target: production
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+
+  proxy:
+    image: nginx:1.30.4-alpine3.24@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    ports:
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      front:
+        condition: service_healthy
+    volumes:
+      - ./proxy/http.conf.template:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+
 volumes:
-  certs:
-  certbot:
   raul_silva_db:
+  raul_silva_fotos:
 
 networks:
-  raul_silva_net:
-    driver: bridge
+  edge:
+  backend:
+    internal: true

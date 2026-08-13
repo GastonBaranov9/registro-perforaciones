@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: registro-perforaciones-db
     restart: unless-stopped
     environment:
@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${PGPASSWORD}
       POSTGRES_DB: ${PGDATABASE}
     ports:
-      - "${PGPORT}:5432"
+      - "127.0.0.1:${PGPORT}:5432"
     volumes:
       - registro_perforaciones_db:/var/lib/postgresql/data
       - ./api/db:/docker-entrypoint-initdb.d:ro
