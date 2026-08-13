@@ -186,7 +186,7 @@ export type NivelAporteBody = {
   profundidad_m: number;
 };
 
-export type ElementoBorrador<T> = { idLocal: string; dato: T };
+export type ElementoBorrador<T> = { idLocal: string; dato: T; ranuraOriginal?: RanuraFiltro | null };
 
 export type DatosTecnicosBorrador = {
   intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;

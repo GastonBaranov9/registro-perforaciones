@@ -90,6 +90,22 @@ describe('DatosTecnicosBorradorComponent', () => {
     expect(component.errores().some((error) => error.includes('ranura'))).toBeFalse();
   });
 
+  it('solo ofrece No especificada para un histórico originalmente NULL', () => {
+    component.datos.set({
+      intervalosLitologicos: [], intervalosDiametro: [], nivelesAporte: [],
+      intervalosFiltro: [
+        { idLocal: 'historico', ranuraOriginal: null, dato: { id_intervalo_filtro: 10, desde_m: 0, hasta_m: 5, diametro_pulg: 6, material_tuberia: 'PVC', ranura_mm: null } },
+        { idLocal: 'moderno', ranuraOriginal: 0.75, dato: { id_intervalo_filtro: 11, desde_m: 5, hasta_m: 10, diametro_pulg: 6, material_tuberia: 'PVC', ranura_mm: 0.75 } },
+      ],
+    });
+    fixture.detectChanges();
+    const selects = fixture.nativeElement.querySelectorAll('select[aria-label="Ranura del filtro"]') as NodeListOf<HTMLSelectElement>;
+    expect(Array.from(selects[0].options).map((option) => option.textContent?.trim())).toContain('No especificada');
+    expect(Array.from(selects[1].options).map((option) => option.textContent?.trim())).not.toContain('No especificada');
+    component.datos().intervalosFiltro[1].dato.ranura_mm = null;
+    expect(component.errores().some((error) => error.includes('no se puede eliminar'))).toBeTrue();
+  });
+
   it('completa un hueco interno aunque el último intervalo alcance la profundidad final', () => {
     fixture.componentRef.setInput('profundidad', 100);
     component.datos.set({

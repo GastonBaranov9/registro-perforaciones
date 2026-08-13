@@ -72,6 +72,10 @@ export class DatosTecnicosBorradorComponent {
   quitarAporte(id: string) { this.actualizar({ ...this.datos(), nivelesAporte: this.datos().nivelesAporte.filter((item) => item.idLocal !== id) }); }
   notificarEdicion() { this.actualizar(this.datos()); }
   errores() { return validarDatosTecnicos(this.datos(), this.profundidad()); }
+  puedeConservarRanuraNoEspecificada(item: ElementoBorrador<IntervaloFiltroBody>): boolean {
+    return item.dato.id_intervalo_filtro != null
+      && (item.ranuraOriginal === null || (item.ranuraOriginal === undefined && item.dato.ranura_mm === null));
+  }
 
   private local<T>(dato: T): ElementoBorrador<T> { return { idLocal: `local-${this.siguienteId++}`, dato }; }
   private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }

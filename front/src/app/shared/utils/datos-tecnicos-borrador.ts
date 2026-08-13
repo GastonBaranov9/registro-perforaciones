@@ -99,6 +99,7 @@ export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?:
   datos.intervalosFiltro.forEach((item, indice) => {
     if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`);
     if (item.dato.ranura_mm == null && item.dato.id_intervalo_filtro == null) errores.push(`Filtro ${indice + 1}: ranura obligatoria.`);
+    else if (item.dato.ranura_mm == null && item.dato.id_intervalo_filtro != null && item.ranuraOriginal != null) errores.push(`Filtro ${indice + 1}: no se puede eliminar una ranura ya especificada.`);
     else if (item.dato.ranura_mm != null && ![0.5, 0.75, 1].includes(item.dato.ranura_mm)) errores.push(`Filtro ${indice + 1}: ranura inválida.`);
   });
   datos.nivelesAporte.forEach((item, indice) => {
