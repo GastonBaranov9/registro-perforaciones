@@ -10,6 +10,9 @@ export interface RuntimeConfig {
   apiPort: number;
   fotosDir: string;
   fastifySecret?: string;
+  publicHost?: string;
+  publicOrigin?: string;
+  trustProxy: false | 1;
   corsOrigins: string[];
   postgres: {
     user?: string;
@@ -60,17 +63,40 @@ function puerto(nombre: string, entrada: string | undefined, porDefecto?: number
   return resultado;
 }
 
-function originsCors(entrada: string | undefined, production: boolean): string[] {
-  if (!entrada) return production ? [] : DEV_CORS_ORIGINS;
-  return entrada.split(",").map((item) => {
+function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { host?: string; origin?: string } {
+  if (!production) return {};
+  const hostIngresado = requerido(env, "PUBLIC_HOST");
+  const host = hostIngresado.toLowerCase();
+  if (
+    hostIngresado !== host || host.length > 253 || host.includes("*") || host === "localhost" ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)
+  ) throw new Error("PUBLIC_HOST debe ser un hostname DNS concreto sin wildcard");
+
+  const entrada = requerido(env, "PUBLIC_ORIGIN").replace(/\/$/, "");
+  let url: URL;
+  try { url = new URL(entrada); }
+  catch { throw new Error("PUBLIC_ORIGIN debe ser un origin HTTPS válido"); }
+  if (
+    url.protocol !== "https:" || url.origin !== entrada || url.hostname.toLowerCase() !== host ||
+    url.username || url.password || url.pathname !== "/" || url.search || url.hash
+  ) throw new Error("PUBLIC_ORIGIN debe ser HTTPS y coincidir con PUBLIC_HOST sin ruta");
+  return { host, origin: url.origin };
+}
+
+function originsCors(entrada: string | undefined, production: boolean, publicOrigin?: string): string[] {
+  if (!entrada) return production ? [publicOrigin!] : DEV_CORS_ORIGINS;
+  const origins = entrada.split(",").map((item) => {
     const candidato = item.trim();
     let url: URL;
     try { url = new URL(candidato); }
     catch { throw new Error("CORS_ORIGINS contiene un origin inválido"); }
     if ((url.protocol !== "http:" && url.protocol !== "https:") || url.origin !== candidato.replace(/\/$/, ""))
       throw new Error("CORS_ORIGINS debe contener origins HTTP(S) sin rutas");
+    if (production && (url.protocol !== "https:" || url.hostname === "localhost" || url.hostname.endsWith(".localhost")))
+      throw new Error("CORS_ORIGINS de producción solo admite origins HTTPS no locales");
     return url.origin;
   });
+  return [...new Set(production ? [publicOrigin!, ...origins] : origins)];
 }
 
 function validarMapasProduccion(env: NodeJS.ProcessEnv): void {
@@ -105,6 +131,7 @@ function validarMapasProduccion(env: NodeJS.ProcessEnv): void {
 export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const nodeEnv = valor(env, "NODE_ENV") ?? "development";
   const production = nodeEnv === "production";
+  const publico = validarDominioPublico(env, production);
   const apiPort = puerto("API_PORT", valor(env, "API_PORT"), production ? undefined : 3000);
   const fotosDir = valor(env, "FOTOS_DIR") ?? (production ? requerido(env, "FOTOS_DIR") : DEFAULT_FOTOS_DIR);
 
@@ -123,7 +150,10 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     apiPort,
     fotosDir: path.resolve(fotosDir),
     fastifySecret,
-    corsOrigins: originsCors(valor(env, "CORS_ORIGINS"), production),
+    publicHost: publico.host,
+    publicOrigin: publico.origin,
+    trustProxy: production ? 1 : false,
+    corsOrigins: originsCors(valor(env, "CORS_ORIGINS"), production, publico.origin),
     postgres: {
       user: production ? requerido(env, "PGUSER") : valor(env, "PGUSER"),
       password: production ? requerido(env, "PGPASSWORD") : valor(env, "PGPASSWORD"),

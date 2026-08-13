@@ -11,6 +11,8 @@ await prepararDirectorioFotos(runtime);
 
 const server: FastifyInstance = fastify({
   logger: true,
+  // La API no publica puertos; el único salto confiable es el proxy de la red edge.
+  trustProxy: runtime.trustProxy,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 const ListeningOptions: FastifyListenOptions = {
