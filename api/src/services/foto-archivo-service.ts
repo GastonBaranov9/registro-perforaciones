@@ -2,8 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as err from "../models/errors.ts";
+import { MAX_FOTO_BYTES } from "../constants/fotos.ts";
 
-export const MAX_FOTO_BYTES = 5_000_000;
+export { MAX_FOTO_BYTES } from "../constants/fotos.ts";
 export type MimeFoto = "image/jpeg" | "image/png";
 export interface LoggerPurga { warn(datos: Record<string, unknown>, mensaje: string): void }
 export interface FotoAislada { original: string; aislado: string }

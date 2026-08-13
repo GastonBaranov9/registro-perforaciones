@@ -1,12 +1,15 @@
 import type { PoolConfig } from "pg";
 import { Pool } from "pg";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+
+const runtime = cargarConfiguracionRuntime();
 
 export const pgConfig: PoolConfig = {
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  host: process.env.PGHOST,
-  port: Number(process.env.PGPORT),
-  database: process.env.PGDATABASE,
+  user: runtime.postgres.user,
+  password: runtime.postgres.password,
+  host: runtime.postgres.host,
+  port: runtime.postgres.port,
+  database: runtime.postgres.database,
   connectionTimeoutMillis: 0,
   idleTimeoutMillis: 10000,
   max: 10,

@@ -16,10 +16,12 @@ import { Buffer } from "buffer";
 import { crearPerfilLitologico } from "../pdf/perfil-litologico.ts";
 import { validarDatosTecnicosPozo } from "../services/pozo-completo-service.ts";
 import { obtenerMetadatosLitologias } from "../services/litologias-services.ts";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
 const informeRoutes = async function (
   fastify:FastifyInstance
 ) {
+  const { fotosDir } = cargarConfiguracionRuntime();
   //Ver un informe
   fastify.get(
     "/usuarios/:id_usuario/pozos/:id_pozo/informes",
@@ -215,7 +217,7 @@ const informeRoutes = async function (
         const reporte = await getReportePozo(id_pozo);
         if (!reporte) throw new err.T05InformeNoEncontrado();
 
-        const pdfBytes = await generarPDFBytes(reporte, id_pozo);
+        const pdfBytes = await generarPDFBytes(reporte, id_pozo, { directorioFotos: fotosDir });
 
         return rep
           .header("Content-Type", "application/pdf")

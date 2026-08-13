@@ -5,6 +5,7 @@ import { getEstadoSesionUsuario, rolUser } from "../services/auth-services.ts";
 import { myPool } from "../db/pool.ts";
 import { SESSION_COOKIE } from "./cookies.ts";
 import { pozoPerteneceAPerforador, pozoPerteneceAUsuario } from "../services/autorizacion-recursos.ts";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
 export function normalizarEnteroPositivoSeguro(value: unknown): number | null {
   if (typeof value === "number") {
@@ -29,7 +30,7 @@ export function sesionVigente(
 }
 
 export default fastifyPlugin(async function (fastify) {
-  const secret = process.env.FASTIFY_SECRET;
+  const secret = cargarConfiguracionRuntime().fastifySecret;
   if (!secret) throw new err.T05ErrorDesconocido("Falta setear FASTIFY_SECRET");
 
   await fastify.register(fastifyJwt, {

@@ -4,13 +4,18 @@ import autoLoad from "@fastify/autoload";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
+import { cargarConfiguracionRuntime, prepararDirectorioFotos } from "./config/runtime.ts";
+
+const runtime = cargarConfiguracionRuntime();
+await prepararDirectorioFotos(runtime);
+
 const server: FastifyInstance = fastify({
   logger: true,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 const ListeningOptions: FastifyListenOptions = {
   host: "::",
-  port: 3000,
+  port: runtime.apiPort,
 };
 
 const __filename = fileURLToPath(import.meta.url);

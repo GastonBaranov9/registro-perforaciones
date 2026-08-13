@@ -6,19 +6,17 @@ import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
 import { isAdmin, isPerf, isProp } from "../services/roles-services.ts";
 import fs from "fs/promises";
-import path, { dirname } from "path";
-import { fileURLToPath } from "url";
+import path from "path";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
 import { eliminarFotoPersistida, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
 import { crearPropietarioOperativo, listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
 import { validarFotoBuffer } from "../services/foto-archivo-service.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PUBLIC_DIR = path.join(__dirname, "..", "..", "public");
+import { FOTO_JSON_BODY_LIMIT_BYTES, MAX_FOTO_BYTES } from "../constants/fotos.ts";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
+  const { fotosDir } = cargarConfiguracionRuntime();
   fastify.post(
     "/pozos/propietarios",
     {
@@ -48,7 +46,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   fastify.post(
     "/usuarios/:id_usuario/pozos/completo",
     {
-      bodyLimit: 7_500_000,
+      bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,
       schema: {
         summary: "Crear un pozo con sus datos técnicos",
         description: "Crea atómicamente el pozo, litología, diámetros, aportes y fotografía opcional",
@@ -71,7 +69,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (!(await isPerf(data.pozo.id_perforador)))
         throw new err.T05DatosIncorrectos("El ID no es de un perforador");
 
-      const resultado = await crearPozoCompleto(idUsuarioSesion, data, PUBLIC_DIR);
+      const resultado = await crearPozoCompleto(idUsuarioSesion, data, fotosDir);
       fastify.notifyClient(data.pozo.id_propietario, { type: "pozo" });
       return rep.code(201).send(resultado);
     },
@@ -80,7 +78,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   fastify.put(
     "/usuarios/:id_usuario/pozos/:id_pozo/completo",
     {
-      bodyLimit: 7_500_000,
+      bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,
       schema: {
         summary: "Actualizar un pozo y todos sus datos técnicos",
         params: Type.Object({ id_usuario: Type.Integer(), id_pozo: Type.Integer() }),
@@ -94,7 +92,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const data = req.body as PozoCompletoUpdateBody;
       const idUsuarioSesion=Number(req.user.sub);
       if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion) throw new err.T05SinPermiso();
-      const resultado = await actualizarPozoCompleto(id_pozo, data, PUBLIC_DIR, undefined, { logger: req.log });
+      const resultado = await actualizarPozoCompleto(id_pozo, data, fotosDir, undefined, { logger: req.log });
       fastify.notifyClient(resultado.pozo.id_propietario, { type: "pozo" });
       return rep.code(200).send(resultado);
     },
@@ -374,15 +372,15 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (!foto)
         throw new err.T05DatosIncorrectos("No se recibió archivo de foto");
 
-      await fs.mkdir(PUBLIC_DIR, { recursive: true });
+      await fs.mkdir(fotosDir, { recursive: true });
 
       const buffer = await foto.toBuffer();
-      if (buffer.length === 0 || buffer.length > 5_000_000)
+      if (buffer.length === 0 || buffer.length > MAX_FOTO_BYTES)
         throw new err.T05DatosIncorrectos("La fotografía debe pesar entre 1 byte y 5 MB.");
       const validada = validarFotoBuffer(buffer, foto.mimetype);
       const fotoUrl = `/usuarios/${id_usuario}/pozos/${id_pozo}/foto`;
       const pozoActualizado = await reemplazarFotoPersistida(
-        id_pozo, PUBLIC_DIR, validada, fotoUrl, async (client,url) => {
+        id_pozo, fotosDir, validada, fotoUrl, async (client,url) => {
           const actualizado = await funcPozo.updatePozoFoto(id_pozo, url,client);
           if (!actualizado) throw new err.T05PozoNoEncontrado();
           return actualizado;
@@ -411,7 +409,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const pozo = await funcPozo.getPozoById(id_pozo);
       if (!pozo) throw new err.T05PozoNoEncontrado();
 
-      await eliminarFotoPersistida(id_pozo, PUBLIC_DIR, undefined, { logger: req.log });
+      await eliminarFotoPersistida(id_pozo, fotosDir, undefined, { logger: req.log });
       return rep.code(204).send(null);
     },
   );
@@ -433,12 +431,12 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const { id_pozo } = req.params as { id_pozo: number };
       const pozo = await funcPozo.getPozoById(id_pozo);
       if (!pozo?.foto_url) throw new err.T05PozoNoEncontrado();
-      const matches = await fs.readdir(PUBLIC_DIR);
+      const matches = await fs.readdir(fotosDir);
       const fileName = matches.find((name) => name.startsWith(`pozo-${id_pozo}.`));
       if (!fileName) throw new err.T05PozoNoEncontrado();
       const extension = path.extname(fileName).toLowerCase();
       const contentType = extension === ".png" ? "image/png" : "image/jpeg";
-      return rep.type(contentType).send(await fs.readFile(path.join(PUBLIC_DIR, fileName)));
+      return rep.type(contentType).send(await fs.readFile(path.join(fotosDir, fileName)));
     }
   );
 };

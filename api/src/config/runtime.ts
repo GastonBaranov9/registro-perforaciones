@@ -1,0 +1,146 @@
+import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import path from "node:path";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export interface RuntimeConfig {
+  nodeEnv: string;
+  production: boolean;
+  apiPort: number;
+  fotosDir: string;
+  fastifySecret?: string;
+  corsOrigins: string[];
+  postgres: {
+    user?: string;
+    password?: string;
+    host?: string;
+    port: number;
+    database?: string;
+  };
+}
+
+const DEFAULT_FOTOS_DIR = path.join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "public",
+);
+
+const DEV_CORS_ORIGINS = [
+  "http://localhost:4200",
+  "https://localhost:4200",
+  "https://localhost",
+];
+
+const SECRETOS_TRIVIALES = new Set([
+  "secret",
+  "changeme",
+  "change_me",
+  "change_this_with_a_long_random_secret",
+]);
+
+function valor(env: NodeJS.ProcessEnv, nombre: string): string | undefined {
+  const resultado = env[nombre]?.trim();
+  return resultado || undefined;
+}
+
+function requerido(env: NodeJS.ProcessEnv, nombre: string): string {
+  const resultado = valor(env, nombre);
+  if (!resultado) throw new Error(`Falta configurar ${nombre}`);
+  return resultado;
+}
+
+function puerto(nombre: string, entrada: string | undefined, porDefecto?: number): number {
+  if (!entrada && porDefecto !== undefined) return porDefecto;
+  if (!entrada || !/^\d+$/.test(entrada)) throw new Error(`${nombre} debe ser un puerto válido`);
+  const resultado = Number(entrada);
+  if (!Number.isSafeInteger(resultado) || resultado < 1 || resultado > 65_535)
+    throw new Error(`${nombre} debe ser un puerto válido`);
+  return resultado;
+}
+
+function originsCors(entrada: string | undefined, production: boolean): string[] {
+  if (!entrada) return production ? [] : DEV_CORS_ORIGINS;
+  return entrada.split(",").map((item) => {
+    const candidato = item.trim();
+    let url: URL;
+    try { url = new URL(candidato); }
+    catch { throw new Error("CORS_ORIGINS contiene un origin inválido"); }
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.origin !== candidato.replace(/\/$/, ""))
+      throw new Error("CORS_ORIGINS debe contener origins HTTP(S) sin rutas");
+    return url.origin;
+  });
+}
+
+function validarMapasProduccion(env: NodeJS.ProcessEnv): void {
+  const plantilla = requerido(env, "MAP_STATIC_URL_TEMPLATE");
+  const host = requerido(env, "MAP_STATIC_ALLOWED_HOST").toLowerCase();
+  requerido(env, "MAP_STATIC_API_KEY");
+  requerido(env, "MAP_STATIC_ATTRIBUTION");
+
+  if (!plantilla.includes("{latitud}") && !plantilla.includes("{lat}"))
+    throw new Error("MAP_STATIC_URL_TEMPLATE debe incluir latitud");
+  if (!plantilla.includes("{longitud}") && !plantilla.includes("{lon}"))
+    throw new Error("MAP_STATIC_URL_TEMPLATE debe incluir longitud");
+  if (!plantilla.includes("{apiKey}") && !plantilla.includes("{key}"))
+    throw new Error("MAP_STATIC_URL_TEMPLATE debe incluir el marcador de API key");
+
+  let url: URL;
+  try {
+    url = new URL(
+      plantilla
+        .replaceAll("{latitud}", "0").replaceAll("{lat}", "0")
+        .replaceAll("{longitud}", "0").replaceAll("{lon}", "0")
+        .replaceAll("{apiKey}", "validacion").replaceAll("{key}", "validacion"),
+    );
+  } catch {
+    throw new Error("MAP_STATIC_URL_TEMPLATE debe ser una URL válida");
+  }
+  if (url.protocol !== "https:") throw new Error("MAP_STATIC_URL_TEMPLATE debe usar HTTPS");
+  if (url.hostname.toLowerCase() !== host || url.username || url.password)
+    throw new Error("MAP_STATIC_ALLOWED_HOST no coincide con la plantilla de Maps");
+}
+
+export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
+  const nodeEnv = valor(env, "NODE_ENV") ?? "development";
+  const production = nodeEnv === "production";
+  const apiPort = puerto("API_PORT", valor(env, "API_PORT"), production ? undefined : 3000);
+  const fotosDir = valor(env, "FOTOS_DIR") ?? (production ? requerido(env, "FOTOS_DIR") : DEFAULT_FOTOS_DIR);
+
+  if (production && !path.isAbsolute(fotosDir))
+    throw new Error("FOTOS_DIR debe ser una ruta absoluta en producción");
+
+  const fastifySecret = production ? requerido(env, "FASTIFY_SECRET") : valor(env, "FASTIFY_SECRET");
+  if (production && fastifySecret && (fastifySecret.length < 32 || SECRETOS_TRIVIALES.has(fastifySecret.toLowerCase())))
+    throw new Error("FASTIFY_SECRET debe ser aleatorio y tener al menos 32 caracteres");
+
+  if (production) validarMapasProduccion(env);
+
+  return {
+    nodeEnv,
+    production,
+    apiPort,
+    fotosDir: path.resolve(fotosDir),
+    fastifySecret,
+    corsOrigins: originsCors(valor(env, "CORS_ORIGINS"), production),
+    postgres: {
+      user: production ? requerido(env, "PGUSER") : valor(env, "PGUSER"),
+      password: production ? requerido(env, "PGPASSWORD") : valor(env, "PGPASSWORD"),
+      host: production ? requerido(env, "PGHOST") : valor(env, "PGHOST"),
+      port: puerto("PGPORT", valor(env, "PGPORT"), production ? undefined : 5432),
+      database: production ? requerido(env, "PGDATABASE") : valor(env, "PGDATABASE"),
+    },
+  };
+}
+
+export async function prepararDirectorioFotos(config: Pick<RuntimeConfig, "fotosDir">): Promise<void> {
+  try {
+    await fs.mkdir(config.fotosDir, { recursive: true });
+    await fs.mkdir(path.join(config.fotosDir, ".trash"), { recursive: true });
+    await fs.access(config.fotosDir, fsConstants.R_OK | fsConstants.W_OK);
+    await fs.access(path.join(config.fotosDir, ".trash"), fsConstants.R_OK | fsConstants.W_OK);
+  } catch (cause) {
+    throw new Error("No se pudo preparar el almacenamiento de fotografías configurado", { cause });
+  }
+}
