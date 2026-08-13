@@ -9,9 +9,13 @@ if ($ProjectName -notmatch '^rsp07b-runtime-[a-zA-Z0-9-]+$') {
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $composeFile = Join-Path $repo "docker-compose.production.yaml"
-$tempEnv = Join-Path ([IO.Path]::GetTempPath()) "$ProjectName.env"
-$tempBackup = Join-Path ([IO.Path]::GetTempPath()) "$ProjectName-backups"
+$tempRoot = Join-Path ([IO.Path]::GetTempPath()) $ProjectName
+$tempEnv = Join-Path $tempRoot "production.env"
+$tempBackup = Join-Path $tempRoot "backups"
+$tempTls = Join-Path $tempRoot "tls"
+[IO.Directory]::CreateDirectory($tempRoot) | Out-Null
 [IO.Directory]::CreateDirectory($tempBackup) | Out-Null
+[IO.Directory]::CreateDirectory($tempTls) | Out-Null
 
 function New-RandomHex {
   param([Parameter(Mandatory = $true)][int]$Bytes)
@@ -35,12 +39,30 @@ $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start()
 $httpPort = ([Net.IPEndPoint]$listener.LocalEndpoint).Port
 $listener.Stop()
+$tlsListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$tlsListener.Start()
+$httpsPort = ([Net.IPEndPoint]$tlsListener.LocalEndpoint).Port
+$tlsListener.Stop()
+$publicHost = "rsp07b.example.test"
+$publicOrigin = "https://${publicHost}:${httpsPort}"
+$certFile = Join-Path $tempTls "ephemeral.crt"
+$keyFile = Join-Path $tempTls "ephemeral.key"
+$openssl = (Get-Command openssl.exe -ErrorAction Stop).Source
+$oldErrorPreference = $ErrorActionPreference
+$oldArgConversion = $env:MSYS2_ARG_CONV_EXCL
+$env:MSYS2_ARG_CONV_EXCL = "*"
+$ErrorActionPreference = "Continue"
+try { & $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj "/CN=$publicHost" -addext "subjectAltName=DNS:$publicHost" -keyout $keyFile -out $certFile 2>$null }
+finally { $ErrorActionPreference=$oldErrorPreference; if ($null -eq $oldArgConversion) { Remove-Item Env:MSYS2_ARG_CONV_EXCL -ErrorAction SilentlyContinue } else { $env:MSYS2_ARG_CONV_EXCL=$oldArgConversion } }
+if ($LASTEXITCODE -ne 0) { throw "No se pudo crear TLS efímero." }
 
 $envText = @"
 PGUSER=rsp07b_runtime
 PGPASSWORD=$randomPassword
 PGDATABASE=rsp07b_runtime
 FASTIFY_SECRET=$randomSecret
+PUBLIC_HOST=$publicHost
+PUBLIC_ORIGIN=$publicOrigin
 CORS_ORIGINS=
 MAP_STATIC_URL_TEMPLATE=https://maps.googleapis.com/maps/api/staticmap?center={latitud},{longitud}&zoom=17&size=640x400&key={apiKey}
 MAP_STATIC_ALLOWED_HOST=maps.googleapis.com
@@ -50,6 +72,10 @@ API_IMAGE_REF=rsp07b-runtime-api:$ProjectName
 FRONT_IMAGE_REF=rsp07b-runtime-front:$ProjectName
 HTTP_BIND_ADDRESS=127.0.0.1
 HTTP_PORT=$httpPort
+HTTPS_BIND_ADDRESS=127.0.0.1
+HTTPS_PORT=$httpsPort
+TLS_CERT_FILE=$($certFile.Replace('\','/'))
+TLS_KEY_FILE=$($keyFile.Replace('\','/'))
 BACKUP_DIR=$tempBackup
 APP_VERSION=$ProjectName
 "@
@@ -68,8 +94,8 @@ try {
   $started = $true
   Invoke-Compose up -d --build --wait --wait-timeout 300
 
-  $health = Invoke-RestMethod -Uri "http://127.0.0.1:$httpPort/api/health" -TimeoutSec 10
-  $ready = Invoke-RestMethod -Uri "http://127.0.0.1:$httpPort/api/ready" -TimeoutSec 10
+  $health = (& docker compose @compose exec -T api node -e "fetch('http://127.0.0.1:3000/health').then(r=>r.json()).then(console.log)" | ConvertFrom-Json)
+  $ready = (& docker compose @compose exec -T api node -e "fetch('http://127.0.0.1:3000/ready').then(r=>r.json()).then(console.log)" | ConvertFrom-Json)
   if ($health.status -ne "ok" -or $ready.status -ne "ok") { throw "Health/readiness inesperados." }
 
   $postgresId = (& docker compose @compose ps -q postgres | Out-String).Trim()
@@ -113,6 +139,7 @@ console.log(JSON.stringify({fotoPersistente:true,pdfLeeVolumen:true,pdfBytes:pdf
   [pscustomobject]@{
     project = $ProjectName
     http_port = $httpPort
+    https_port = $httpsPort
     postgres_publicado = $false
     api_uid = $uid
     api_gid = $gid
@@ -125,6 +152,5 @@ finally {
   if ($started) {
     & docker compose @compose down --volumes --remove-orphans
   }
-  if ([IO.File]::Exists($tempEnv)) { [IO.File]::Delete($tempEnv) }
-  if ([IO.Directory]::Exists($tempBackup)) { [IO.Directory]::Delete($tempBackup, $true) }
+  if ([IO.Directory]::Exists($tempRoot)) { [IO.Directory]::Delete($tempRoot, $true) }
 }

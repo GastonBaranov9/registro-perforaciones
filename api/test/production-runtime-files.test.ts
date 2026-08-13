@@ -19,10 +19,26 @@ test("Compose production mantiene PostgreSQL interno y fotos en volumen dedicado
 });
 
 test("proxy y API comparten el contrato de upload", async () => {
-  const proxy = await fs.readFile(path.join(repo, "proxy", "http.conf.template"), "utf8");
+  const proxy = await fs.readFile(path.join(repo, "proxy", "https.conf.template"), "utf8");
   assert.match(proxy, new RegExp(`client_max_body_size ${PROXY_UPLOAD_LIMIT_MIB}m;`));
   assert.match(proxy, /location \/api\//);
-  assert.match(proxy, /location \/ws/);
+  assert.match(proxy, /location = \/ws/);
+});
+
+test("proxy HTTPS es same-origin, redirige y sobrescribe forwarding", async () => {
+  const compose = await fs.readFile(path.join(repo, "docker-compose.production.yaml"), "utf8");
+  const proxy = await fs.readFile(path.join(repo, "proxy", "https.conf.template"), "utf8");
+  assert.match(compose, /HTTPS_PORT:-443}:443/);
+  assert.match(compose, /TLS_CERT_FILE:\?Falta TLS_CERT_FILE/);
+  assert.match(compose, /TLS_KEY_FILE:\?Falta TLS_KEY_FILE/);
+  assert.doesNotMatch(compose.slice(compose.indexOf("  api:"), compose.indexOf("\n  front:")), /^\s+ports:/m);
+  assert.match(proxy, /return 308 \$\{PUBLIC_ORIGIN\}\$request_uri/);
+  assert.match(proxy, /proxy_pass http:\/\/api:3000\//);
+  assert.match(proxy, /proxy_set_header X-Forwarded-For \$remote_addr/);
+  assert.match(proxy, /proxy_set_header X-Forwarded-Proto https/);
+  assert.match(proxy, /if \(\$host != "\$\{PUBLIC_HOST\}"\) \{ return 421; \}/);
+  assert.match(proxy, /ssl_protocols TLSv1\.2 TLSv1\.3/);
+  assert.doesNotMatch(proxy, /ssl_protocols[^;]*(?:SSLv3|TLSv1\.0|TLSv1\.1)/);
 });
 
 test("imágenes base tienen versiones explícitas y API conserva usuario no-root", async () => {

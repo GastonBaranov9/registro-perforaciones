@@ -26,8 +26,10 @@ $checksumDir = Join-Path $fixtures "checksum"
 $originEnv = Join-Path $tempRoot "origin.env"
 $targetEnv = Join-Path $tempRoot "target.env"
 $passwordFile = Join-Path $tempRoot "admin-password"
+$tlsDir = Join-Path $tempRoot "tls"
 [IO.Directory]::CreateDirectory($backupDir) | Out-Null
 [IO.Directory]::CreateDirectory($fixtures) | Out-Null
+[IO.Directory]::CreateDirectory($tlsDir) | Out-Null
 
 $pgUser = "rsp07c_control"
 $pgPassword = New-RandomHex 24
@@ -41,13 +43,28 @@ $originDb = "rsp07c_origin"
 $targetDb = "rsp07c_target"
 $originPort = New-FreePort
 $targetPort = New-FreePort
+$originHttpsPort = New-FreePort
+$targetHttpsPort = New-FreePort
+$publicHost = "rsp07c.example.test"
+$certFile = Join-Path $tlsDir "ephemeral.crt"
+$keyFile = Join-Path $tlsDir "ephemeral.key"
+$openssl = (Get-Command openssl.exe -ErrorAction Stop).Source
+$oldErrorPreference = $ErrorActionPreference
+$oldArgConversion = $env:MSYS2_ARG_CONV_EXCL
+$env:MSYS2_ARG_CONV_EXCL = "*"
+$ErrorActionPreference = "Continue"
+try { & $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj "/CN=$publicHost" -addext "subjectAltName=DNS:$publicHost" -keyout $keyFile -out $certFile 2>$null }
+finally { $ErrorActionPreference=$oldErrorPreference; if ($null -eq $oldArgConversion) { Remove-Item Env:MSYS2_ARG_CONV_EXCL -ErrorAction SilentlyContinue } else { $env:MSYS2_ARG_CONV_EXCL=$oldArgConversion } }
+if ($LASTEXITCODE -ne 0) { throw "No se pudo crear TLS efímero para el test de datos." }
 
-function Write-ControlEnv([string]$Path, [string]$Database, [int]$Port) {
+function Write-ControlEnv([string]$Path, [string]$Database, [int]$Port, [int]$TlsPort) {
   $text = @"
 PGUSER=$pgUser
 PGPASSWORD=$pgPassword
 PGDATABASE=$Database
 FASTIFY_SECRET=$fastifySecret
+PUBLIC_HOST=$publicHost
+PUBLIC_ORIGIN=https://${publicHost}:$TlsPort
 CORS_ORIGINS=
 MAP_STATIC_URL_TEMPLATE=https://maps.googleapis.com/maps/api/staticmap?center={latitud},{longitud}&zoom=17&size=640x400&key={apiKey}
 MAP_STATIC_ALLOWED_HOST=maps.googleapis.com
@@ -57,14 +74,18 @@ API_IMAGE_REF=rsp07c-runtime-api:$ProjectPrefix
 FRONT_IMAGE_REF=rsp07c-runtime-front:$ProjectPrefix
 HTTP_BIND_ADDRESS=127.0.0.1
 HTTP_PORT=$Port
+HTTPS_BIND_ADDRESS=127.0.0.1
+HTTPS_PORT=$TlsPort
+TLS_CERT_FILE=$($certFile.Replace('\','/'))
+TLS_KEY_FILE=$($keyFile.Replace('\','/'))
 BACKUP_DIR=$backupDir
 APP_VERSION=rsp07c-control
 "@
   [IO.File]::WriteAllText($Path, $text, [Text.UTF8Encoding]::new($false))
 }
 
-Write-ControlEnv $originEnv $originDb $originPort
-Write-ControlEnv $targetEnv $targetDb $targetPort
+Write-ControlEnv $originEnv $originDb $originPort $originHttpsPort
+Write-ControlEnv $targetEnv $targetDb $targetPort $targetHttpsPort
 [IO.File]::WriteAllText($passwordFile, "$adminPassword`n", [Text.UTF8Encoding]::new($false))
 
 $origin = @("--project-name", $originProject, "--env-file", $originEnv, "-f", $composeFile)
@@ -159,9 +180,8 @@ try {
   if ($adminState -ne "t") { throw "El admin bootstrap no quedó activo, hasheado y con rol." }
 
   Invoke-Compose -Base $origin -Arguments @("up", "-d", "--build", "--wait", "--wait-timeout", "300")
-  $loginBody = @{ email=$adminEmail; password=$adminPassword } | ConvertTo-Json -Compress
-  $login = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$originPort/api/login" -Method Post -ContentType "application/json" -Body $loginBody -TimeoutSec 15
-  if ($login.StatusCode -ne 200) { throw "Login del admin bootstrap falló." }
+  $loginCheck = (& docker compose @origin exec -T -e "LOGIN_EMAIL=$adminEmail" -e "LOGIN_PASSWORD=$adminPassword" api node -e "fetch('http://127.0.0.1:3000/login',{method:'POST',headers:{'content-type':'application/json',origin:'https://${publicHost}:$originHttpsPort'},body:JSON.stringify({email:process.env.LOGIN_EMAIL,password:process.env.LOGIN_PASSWORD})}).then(r=>{console.log(r.status);process.exit(r.status===200?0:1)})" | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $loginCheck -ne "200") { throw "Login del admin bootstrap falló." }
 
   $ownerId = Invoke-Psql $origin $originDb "INSERT INTO usuario(email,nombre,password,activo,cuenta_acceso) VALUES(NULL,'Propietario control',NULL,TRUE,FALSE) RETURNING id_usuario"
   $perfId = Invoke-Psql $origin $originDb "INSERT INTO usuario(email,nombre,password,activo,cuenta_acceso) VALUES('perforador-rsp07c@example.test','Perforador control','hash-no-login',TRUE,TRUE) RETURNING id_usuario"
@@ -213,8 +233,8 @@ await fs.writeFile(path.join(process.env.FOTOS_DIR,'pozo-$wellId.jpg'),foto.buff
   if ($relations -ne "t") { throw "Los datos/relaciones restaurados no coinciden." }
   $targetPhotoSha = Invoke-ComposeText -Base $target -Arguments @("exec", "-T", "api", "sha256sum", "/var/lib/registro-perforaciones/fotos/pozo-$wellId.jpg")
   if (($sourcePhotoSha -split '\s+')[0] -ne ($targetPhotoSha -split '\s+')[0]) { throw "La foto restaurada no conserva checksum." }
-  $targetLogin = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$targetPort/api/login" -Method Post -ContentType "application/json" -Body $loginBody -TimeoutSec 15
-  if ($targetLogin.StatusCode -ne 200) { throw "Login restaurado falló." }
+  $targetLogin = (& docker compose @target exec -T -e "LOGIN_EMAIL=$adminEmail" -e "LOGIN_PASSWORD=$adminPassword" api node -e "fetch('http://127.0.0.1:3000/login',{method:'POST',headers:{'content-type':'application/json',origin:'https://${publicHost}:$targetHttpsPort'},body:JSON.stringify({email:process.env.LOGIN_EMAIL,password:process.env.LOGIN_PASSWORD})}).then(r=>{console.log(r.status);process.exit(r.status===200?0:1)})" | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $targetLogin -ne "200") { throw "Login restaurado falló." }
   $pdfCheck = @"
 import assert from 'node:assert/strict';
 import { generarPDFBytes } from './dist/pdf/pdf-generate.js';
@@ -223,15 +243,15 @@ const pdf=await generarPDFBytes(r,$wellId);assert.equal(Buffer.from(pdf).subarra
 "@
   $pdfBytes = ($pdfCheck | & docker compose @target exec -T api node --input-type=module - | Out-String).Trim()
   if ($LASTEXITCODE -ne 0 -or [int]$pdfBytes -le 0) { throw "PDF no pudo leer datos/foto restaurados." }
-  $ready = Invoke-RestMethod -Uri "http://127.0.0.1:$targetPort/api/ready" -TimeoutSec 15
-  if ($ready.status -ne "ok") { throw "Readiness restaurado falló." }
+  $ready = (& docker compose @target exec -T api node -e "fetch('http://127.0.0.1:3000/ready').then(r=>r.json()).then(x=>console.log(x.status))" | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $ready -ne "ok") { throw "Readiness restaurado falló." }
 
   [pscustomobject]@{
     migrations_fresh = 7; rerun_noop = $true; checksum_rejected = $true; rollback_ok = $true
     concurrent_lock = $true; adoption_ok = $true; adoption_rejected = $true
     bootstrap_login = $true; bootstrap_second_rejected = $true
     backup_bundle = $bundle; corrupt_restore_rejected = $true; restored_relations = $true
-    restored_photo_sha256 = ($targetPhotoSha -split '\s+')[0]; restored_pdf_bytes = [int]$pdfBytes; ready = $ready.status
+    restored_photo_sha256 = ($targetPhotoSha -split '\s+')[0]; restored_pdf_bytes = [int]$pdfBytes; ready = $ready
   } | ConvertTo-Json -Compress
 }
 finally {
