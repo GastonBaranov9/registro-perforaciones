@@ -12,17 +12,22 @@ param(
 )
 $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "deployment-state.ps1")
+. (Join-Path $PSScriptRoot "deployment-audit.ps1")
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 if($Level-eq 'Application' -and $Confirm-ne 'DATABASE_BACKWARD_COMPATIBLE'){throw "Rollback de aplicacion exige confirmar DATABASE_BACKWARD_COMPATIBLE."}
 if($Level-eq 'Full' -and $Confirm-ne 'RESTORE_EXISTING_TARGET_FROM_BACKUP'){throw "Rollback completo exige RESTORE_EXISTING_TARGET_FROM_BACKUP."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path $EnvFile).Path;$deploymentPath=(Resolve-Path $DeploymentStateFile).Path;$composePath=(Resolve-Path (Join-Path $repo $ComposeFile)).Path;$resolvedState=(Resolve-Path $StateFile).Path
-$state=Get-Content -Raw -LiteralPath $resolvedState|ConvertFrom-Json
-if($state.format-ne 2-or $state.project-ne $ProjectName-or $state.status-ne 'success'){throw "El registro de deploy no corresponde a un deploy exitoso del proyecto."}
-Assert-DeploymentImageRef ([string]$state.previous_api_ref);Assert-DeploymentImageRef ([string]$state.previous_front_ref)
-Assert-DeploymentIdentifier "APP_VERSION" ([string]$state.previous_version);Assert-DeploymentIdentifier "GIT_SHA" ([string]$state.previous_git_sha)
+$state=Read-DeploymentAuditForRollback $resolvedState $ProjectName $deploymentPath
 $current=Read-DeploymentState $deploymentPath
-if($Level-eq 'Application' -and $current.ConfigHash-ne $state.target_config_hash){throw "El deployment state actual no coincide con el target a revertir."}
-if($Level-eq 'Full' -and $current.ConfigHash-notin @($state.target_config_hash,$state.previous_config_hash)){throw "El deployment state actual no pertenece al deploy auditado."}
+if($state.rollback_noop){
+  if($current.ConfigHash-ne $state.previous_config_hash){throw "Preflight fallido pero deployment state no conserva N."}
+  $state|Add-Member -Force NoteProperty rollback_status 'not_required';$state|Add-Member -Force NoteProperty rollback_at_utc ([DateTime]::UtcNow.ToString('o'));Write-DeploymentAuditAtomic $resolvedState $state
+  Write-Output "ROLLBACK_NOT_REQUIRED";return
+}
+if($state.rollback_requires_full-and $Level-ne 'Full'){throw "El audit clasifica la DB como restore_required; exige rollback Full."}
+if($Level-eq 'Full'-and-not $state.backup_completed){throw "Rollback Full exige una fase backup completada."}
+$allowedHashes=if($state.status-eq 'success'-and $Level-eq 'Application'){@($state.target_config_hash)}else{@($state.previous_config_hash,$state.target_config_hash)}
+if($current.ConfigHash-notin $allowedHashes){throw "El deployment state actual no pertenece al deploy auditado."}
 $apiId=(& docker image inspect --format '{{.Id}}' $state.previous_api_ref|Out-String).Trim();$frontId=(& docker image inspect --format '{{.Id}}' $state.previous_front_ref|Out-String).Trim()
 if($LASTEXITCODE-ne 0-or $apiId-ne $state.previous_api_id-or $frontId-ne $state.previous_front_id){throw "Las referencias previas ya no resuelven a las imagenes registradas; no se reconstruiran."}
 $compose=@("--project-name",$ProjectName,"--env-file",$envPath,"--env-file",$deploymentPath,"-f",$composePath)
@@ -49,10 +54,10 @@ try{
   if($smoke-notcontains 'SMOKE_OK'){throw "Smoke posterior al rollback fallo."}
   $written=Write-DeploymentStateAtomic $deploymentPath ([string]$state.previous_api_ref) ([string]$state.previous_front_ref) ([string]$state.previous_version) ([string]$state.previous_git_sha)
   Clear-DeploymentEnvironment;Assert-ComposeState $written
-  $state|Add-Member -Force NoteProperty rollback_level $Level;$state|Add-Member -Force NoteProperty rollback_at_utc ([DateTime]::UtcNow.ToString('o'));$state|Add-Member -Force NoteProperty rollback_status 'success';$state|ConvertTo-Json|Set-Content -LiteralPath $resolvedState -Encoding utf8
+  $state|Add-Member -Force NoteProperty rollback_level $Level;$state|Add-Member -Force NoteProperty rollback_at_utc ([DateTime]::UtcNow.ToString('o'));$state|Add-Member -Force NoteProperty rollback_status 'success';Write-DeploymentAuditAtomic $resolvedState $state
   Log "deployment_state_ok" "config=$($written.ConfigHash)";Write-Output "ROLLBACK_OK"
 }catch{
-  $state|Add-Member -Force NoteProperty rollback_status 'failed';$state|Add-Member -Force NoteProperty rollback_failure 'Ver logs operativos anteriores.';$state|ConvertTo-Json|Set-Content -LiteralPath $resolvedState -Encoding utf8
+  $state|Add-Member -Force NoteProperty rollback_status 'failed';$state|Add-Member -Force NoteProperty rollback_failure 'Ver logs operativos anteriores.';Write-DeploymentAuditAtomic $resolvedState $state
   try{Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance")}catch{}
   Write-Output "ROLLBACK_FAILED";throw
 }finally{Restore-DeploymentEnvironment}

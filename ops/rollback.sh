@@ -4,15 +4,17 @@ set -eu
 : "${STATE_FILE:?Falta STATE_FILE}";: "${LEVEL:?Falta LEVEL}";: "${CONFIRM:?Falta CONFIRM}";: "${BACKUP_DIR:?Falta BACKUP_DIR}"
 : "${ADMIN_EMAIL:?Falta ADMIN_EMAIL}";: "${ADMIN_PASSWORD_FILE:?Falta ADMIN_PASSWORD_FILE}"
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.production.yaml}
-. "$(dirname "$0")/deployment-state.sh";deployment_state_read "$DEPLOYMENT_STATE_FILE";current_hash=$DS_CONFIG_HASH
-audit_value(){ awk -F= -v key="$1" '$1==key{print substr($0,length(key)+2);found=1} END{if(!found)exit 1}' "$STATE_FILE"; }
-[ "$(audit_value FORMAT)" = 1 ]&&[ "$(audit_value PROJECT)" = "$PROJECT_NAME" ]&&[ "$(audit_value STATUS)" = success ]||{ echo "Audit invalido" >&2;exit 2;}
-previous_api=$(audit_value PREVIOUS_API_REF);previous_api_id=$(audit_value PREVIOUS_API_ID);previous_front=$(audit_value PREVIOUS_FRONT_REF);previous_front_id=$(audit_value PREVIOUS_FRONT_ID);previous_version=$(audit_value PREVIOUS_VERSION);previous_sha=$(audit_value PREVIOUS_GIT_SHA);previous_hash=$(audit_value PREVIOUS_CONFIG_HASH);target_hash=$(audit_value TARGET_CONFIG_HASH);bundle=$(audit_value BACKUP_BUNDLE)
+. "$(dirname "$0")/deployment-state.sh";. "$(dirname "$0")/deployment-audit.sh";deployment_state_read "$DEPLOYMENT_STATE_FILE";current_hash=$DS_CONFIG_HASH;deployment_audit_read "$STATE_FILE" "$PROJECT_NAME" "$DEPLOYMENT_STATE_FILE"
+previous_api=$DA_PREVIOUS_API;previous_api_id=$DA_PREVIOUS_API_ID;previous_front=$DA_PREVIOUS_FRONT;previous_front_id=$DA_PREVIOUS_FRONT_ID;previous_version=$DA_PREVIOUS_VERSION;previous_sha=$DA_PREVIOUS_SHA;previous_hash=$DA_PREVIOUS_HASH;target_hash=$DA_TARGET_HASH;bundle=$DA_BUNDLE
 case "$LEVEL:$CONFIRM" in
-  Application:DATABASE_BACKWARD_COMPATIBLE) [ "$current_hash" = "$target_hash" ];;
-  Full:RESTORE_EXISTING_TARGET_FROM_BACKUP) [ "$current_hash" = "$target_hash" ]||[ "$current_hash" = "$previous_hash" ];;
+  Application:DATABASE_BACKWARD_COMPATIBLE) ;;
+  Full:RESTORE_EXISTING_TARGET_FROM_BACKUP) ;;
   *) echo "Nivel/confirmacion invalidos" >&2;exit 2;;
 esac
+if [ "$DA_NOOP" = true ];then [ "$current_hash" = "$previous_hash" ]||{ echo "Preflight fallo pero state no conserva N" >&2;exit 1;};temp="$STATE_FILE.$$.tmp";grep -v '^ROLLBACK_' "$STATE_FILE">"$temp";printf 'ROLLBACK_STATUS=not_required\n'>>"$temp";mv -f "$temp" "$STATE_FILE";echo ROLLBACK_NOT_REQUIRED;exit 0;fi
+if [ "$DA_REQUIRES_FULL" = true ]&&[ "$LEVEL" != Full ];then echo "Deploy fallido alcanzo migrate; exige Full" >&2;exit 2;fi
+if [ "$LEVEL" = Full ]&&[ "$DA_BACKUP_COMPLETED" != true ];then echo "Rollback Full exige backup completado" >&2;exit 2;fi
+if [ "$DA_STATUS" = success ]&&[ "$LEVEL" = Application ];then [ "$current_hash" = "$target_hash" ];else [ "$current_hash" = "$target_hash" ]||[ "$current_hash" = "$previous_hash" ];fi
 [ "$(docker image inspect --format '{{.Id}}' "$previous_api")" = "$previous_api_id" ];[ "$(docker image inspect --format '{{.Id}}' "$previous_front")" = "$previous_front_id" ]
 compose(){ docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$DEPLOYMENT_STATE_FILE" -f "$COMPOSE_FILE" "$@"; }
 rollback_ok=false
@@ -27,5 +29,5 @@ smoke=$(ENV_FILE="$ENV_FILE" DEPLOYMENT_STATE_FILE="$DEPLOYMENT_STATE_FILE" PROJ
 deployment_state_write_atomic "$DEPLOYMENT_STATE_FILE" "$previous_api" "$previous_front" "$previous_version" "$previous_sha"
 unset API_IMAGE_REF FRONT_IMAGE_REF APP_VERSION GIT_SHA;deployment_state_read "$DEPLOYMENT_STATE_FILE";[ "$DS_CONFIG_HASH" = "$previous_hash" ]
 images=$(compose config --images);printf '%s\n' "$images"|grep -Fxq "$previous_api";printf '%s\n' "$images"|grep -Fxq "$previous_front"
-temp="$STATE_FILE.$$.tmp";sed 's/^STATUS=.*/STATUS=rolled_back/' "$STATE_FILE">"$temp";mv -f "$temp" "$STATE_FILE"
+temp="$STATE_FILE.$$.tmp";grep -v '^ROLLBACK_' "$STATE_FILE">"$temp";printf 'ROLLBACK_STATUS=success\nROLLBACK_LEVEL=%s\n' "$LEVEL">>"$temp";mv -f "$temp" "$STATE_FILE"
 rollback_ok=true;trap - EXIT HUP INT TERM;echo ROLLBACK_OK
