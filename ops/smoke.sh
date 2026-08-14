@@ -8,6 +8,7 @@ set -eu
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.production.yaml}
 command -v curl >/dev/null 2>&1 || { echo "Falta curl" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "Falta jq" >&2; exit 2; }
+. "$(dirname "$0")/secret-file.sh"
 env_value(){ awk -v key="$1" 'index($0,key "=")==1{value=substr($0,length(key)+2)} END{print value}' "$ENV_FILE"; }
 origin=$(env_value PUBLIC_ORIGIN);host=$(env_value PUBLIC_HOST)
 [ -n "$origin" ] && [ -n "$host" ] || { echo "Falta origin/host" >&2; exit 2; }
@@ -24,7 +25,7 @@ expect "$(request "$origin/pozos-detail/1")" 200 deep_route
 expect "$(request "$origin/api/health")" 200 health
 expect "$(request "$origin/api/ready")" 200 ready
 expect "$(request "$origin/api/docs")" 404 swagger
-password=$(tr -d '\r\n' < "$ADMIN_PASSWORD_FILE");jq -nc --arg email "$ADMIN_EMAIL" --arg password "$password" '{email:$email,password:$password}' > "$tmp/login.json";unset password
+secret_file_write_login_json "$ADMIN_PASSWORD_FILE" "$ADMIN_EMAIL" "$tmp/login.json"
 expect "$(request -D "$headers" -c "$cookies" -H "Origin: $origin" -H 'Content-Type: application/json' --data-binary @"$tmp/login.json" "$origin/api/login")" 200 login
 grep -Eqi '^set-cookie: rsp_session=.*HttpOnly.*Secure.*SameSite=Lax' "$headers";grep -Eqi '^set-cookie: rsp_csrf=.*Secure.*SameSite=Lax' "$headers"
 csrf=$(awk -F '\t' '$6=="rsp_csrf"{print $7;exit}' "$cookies");[ -n "$csrf" ];cp "$cookies" "$old_cookies"

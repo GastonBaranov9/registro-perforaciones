@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference="Stop"
+. (Join-Path $PSScriptRoot "secret-file.ps1")
 if($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $envPath=(Resolve-Path $EnvFile).Path
@@ -48,7 +49,7 @@ try{
   Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/ready")) "200" "readiness"
   Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/docs")) "404" "Swagger production off"
 
-  $login=@{email=$AdminEmail;password=[IO.File]::ReadAllText($passwordPath).Trim()}|ConvertTo-Json -Compress
+  $login=@{email=$AdminEmail;password=(Read-OpaqueSecretFile $passwordPath)}|ConvertTo-Json -Compress
   [IO.File]::WriteAllText($loginBody,$login,[Text.UTF8Encoding]::new($false))
   Assert-Status (Invoke-Https @("--request","POST","--header","Origin: $($origin.AbsoluteUri.TrimEnd('/'))","--header","Content-Type: application/json","--data-binary","@$loginBody","--cookie-jar",$cookies,"--dump-header",$headers,"$($origin.AbsoluteUri)api/login")) "200" "login"
   $cookieHeaders=[IO.File]::ReadAllText($headers)
