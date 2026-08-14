@@ -2,7 +2,11 @@
 set -eu
 umask 077
 
-[ "${RESTORE_CONFIRM:-}" = "RESTORE_EMPTY_TARGET" ] || { echo "Falta confirmación exacta RESTORE_EMPTY_TARGET" >&2; exit 1; }
+case "${RESTORE_CONFIRM:-}" in
+  RESTORE_EMPTY_TARGET) restore_mode="empty" ;;
+  RESTORE_EXISTING_TARGET_FROM_BACKUP) restore_mode="replace" ;;
+  *) echo "Falta confirmación exacta de restore" >&2; exit 1 ;;
+esac
 printf '%s\n' "${RESTORE_BUNDLE:-}" | grep -Eq '^rsp-backup-[0-9]{8}T[0-9]{6}Z$' || {
   echo "RESTORE_BUNDLE no es un bundle reconocido" >&2
   exit 1
@@ -42,11 +46,12 @@ while IFS= read -r item; do
   printf '%s\n' "$item" | grep -Eq '^fotos(/.*)?$' || exit 1
 done < "$listing" || { echo "El archivo de fotos contiene rutas no permitidas" >&2; exit 1; }
 
-table_count="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
-[ "$table_count" = "0" ] || { echo "Restore rechazado: la base destino no está vacía" >&2; exit 1; }
-
 mkdir -p /data
-if [ -d /data/fotos ]; then
+if [ "$restore_mode" = "empty" ]; then
+  table_count="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+  [ "$table_count" = "0" ] || { echo "Restore rechazado: la base destino no está vacía" >&2; exit 1; }
+fi
+if [ "$restore_mode" = "empty" ] && [ -d /data/fotos ]; then
   [ -z "$(find /data/fotos -mindepth 1 -maxdepth 1 ! -name .trash -print -quit)" ] || { echo "Restore rechazado: el destino de fotos no está vacío" >&2; exit 1; }
   [ ! -d /data/fotos/.trash ] || [ -z "$(find /data/fotos/.trash -mindepth 1 -print -quit)" ] || { echo "Restore rechazado: .trash no está vacío" >&2; exit 1; }
 fi
@@ -57,16 +62,27 @@ trap 'rm -rf "$staging"; rm -f "$listing"' EXIT HUP INT TERM
 tar -xzf "$bundle/$photos_file" -C "$staging"
 [ -d "$staging/fotos" ] || { echo "El archivo no contiene fotos/" >&2; exit 1; }
 
-pg_restore --exit-on-error --single-transaction --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" "$bundle/$db_file"
+if [ "$restore_mode" = "replace" ]; then
+  pg_restore --exit-on-error --single-transaction --clean --if-exists --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" "$bundle/$db_file"
+else
+  pg_restore --exit-on-error --single-transaction --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" "$bundle/$db_file"
+fi
 restored_migrations="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT COALESCE(string_agg(version || ':' || nombre || ':' || btrim(checksum_sha256), ',' ORDER BY version),'') FROM public.schema_migrations")"
 [ "$restored_migrations" = "$(manifest_value MIGRATIONS)" ] || { echo "El ledger restaurado no coincide con el manifest" >&2; exit 1; }
 psql --no-psqlrc --quiet --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="ANALYZE"
 
-if [ -d /data/fotos/.trash ]; then rmdir /data/fotos/.trash; fi
-if [ -d /data/fotos ]; then rmdir /data/fotos; fi
-mv "$staging/fotos" /data/fotos
+previous="/data/.rsp-previous-$$"
+if [ "$restore_mode" = "replace" ] && [ -d /data/fotos ]; then mv /data/fotos "$previous"; fi
+if [ "$restore_mode" = "empty" ] && [ -d /data/fotos/.trash ]; then rmdir /data/fotos/.trash; fi
+if [ "$restore_mode" = "empty" ] && [ -d /data/fotos ]; then rmdir /data/fotos; fi
+if ! mv "$staging/fotos" /data/fotos; then
+  [ ! -d "$previous" ] || mv "$previous" /data/fotos
+  echo "No se pudo promover el conjunto restaurado de fotografías" >&2
+  exit 1
+fi
 chown -R 1000:1000 /data/fotos
+[ ! -d "$previous" ] || rm -rf "$previous"
 rmdir "$staging"
 rm -f "$listing"
 trap - EXIT HUP INT TERM
-echo "RESTORE_OK=$RESTORE_BUNDLE"
+echo "RESTORE_OK=$RESTORE_BUNDLE MODE=$restore_mode"

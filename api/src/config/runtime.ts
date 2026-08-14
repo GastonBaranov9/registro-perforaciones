@@ -8,6 +8,8 @@ export interface RuntimeConfig {
   nodeEnv: string;
   production: boolean;
   apiPort: number;
+  appVersion: string;
+  gitSha: string;
   fotosDir: string;
   fastifySecret?: string;
   publicHost?: string;
@@ -203,6 +205,8 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     nodeEnv,
     production,
     apiPort,
+    appVersion: valor(env,"APP_VERSION")??"unknown",
+    gitSha: valor(env,"GIT_SHA")??"unknown",
     fotosDir: path.resolve(fotosDir),
     fastifySecret,
     publicHost: publico.host,

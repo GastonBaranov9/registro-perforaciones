@@ -47,6 +47,7 @@ server.get("/", async function (request, reply) {
 
 try {
   await server.listen(ListeningOptions);
+  server.log.info({ event:"app_started", app_version:runtime.appVersion, git_sha:runtime.gitSha }, "API iniciada");
 } catch (err) {
   server.log.error(err);
   process.exit(1);

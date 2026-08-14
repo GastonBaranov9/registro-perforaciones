@@ -13,6 +13,10 @@ COPY db ./db
 RUN npm run build
 
 FROM base AS production
+ARG APP_VERSION=unknown
+ARG GIT_SHA=unknown
+ENV APP_VERSION=$APP_VERSION GIT_SHA=$GIT_SHA
+LABEL org.opencontainers.image.version=$APP_VERSION org.opencontainers.image.revision=$GIT_SHA
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --chown=node:node --from=build /api/dist ./dist
