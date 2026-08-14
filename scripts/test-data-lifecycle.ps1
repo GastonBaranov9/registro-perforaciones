@@ -23,12 +23,14 @@ $backupDir = Join-Path $tempRoot "backups"
 $fixtures = Join-Path $tempRoot "fixtures"
 $failureDir = Join-Path $fixtures "failure"
 $checksumDir = Join-Path $fixtures "checksum"
+$restoreFailureDir = Join-Path $fixtures "restore-failure"
 $originEnv = Join-Path $tempRoot "origin.env"
 $targetEnv = Join-Path $tempRoot "target.env"
 $passwordFile = Join-Path $tempRoot "admin-password"
 $tlsDir = Join-Path $tempRoot "tls"
 [IO.Directory]::CreateDirectory($backupDir) | Out-Null
 [IO.Directory]::CreateDirectory($fixtures) | Out-Null
+[IO.Directory]::CreateDirectory($restoreFailureDir) | Out-Null
 [IO.Directory]::CreateDirectory($tlsDir) | Out-Null
 
 $pgUser = "rsp07c_control"
@@ -226,8 +228,56 @@ await fs.writeFile(path.join(process.env.FOTOS_DIR,'pozo-$wellId.jpg'),foto.buff
   Invoke-ExpectedFailure -Base $target -Expected "Checksum" -Arguments @("--profile", "ops", "run", "--rm", "restore") | Out-Null
   if ((Invoke-Psql $target $targetDb "SELECT count(*) FROM pg_tables WHERE schemaname='public'") -ne "0") { throw "Restore corrupto mutó la DB destino." }
 
+  $invalidManifestBundle = "rsp-backup-20990101T000001Z"
+  $invalidManifestPath = Join-Path $backupDir $invalidManifestBundle
+  Copy-Item -LiteralPath (Join-Path $backupDir $bundle) -Destination $invalidManifestPath -Recurse
+  $invalidManifestFile = Join-Path $invalidManifestPath "manifest.txt"
+  $invalidManifest = [IO.File]::ReadAllText($invalidManifestFile).Replace("BUNDLE_ID=$bundle", "BUNDLE_ID=$invalidManifestBundle").Replace("STATUS=complete", "STATUS=invalid")
+  [IO.File]::WriteAllText($invalidManifestFile, $invalidManifest, [Text.UTF8Encoding]::new($false))
+  $env:RESTORE_BUNDLE = $invalidManifestBundle
+  Invoke-ExpectedFailure -Base $target -Expected "backup no est" -Arguments @("--profile", "ops", "run", "--rm", "restore") | Out-Null
+
+  $missingDumpBundle = "rsp-backup-20990101T000002Z"
+  $missingDumpPath = Join-Path $backupDir $missingDumpBundle
+  Copy-Item -LiteralPath (Join-Path $backupDir $bundle) -Destination $missingDumpPath -Recurse
+  $missingDumpManifest = Join-Path $missingDumpPath "manifest.txt"
+  [IO.File]::WriteAllText($missingDumpManifest,([IO.File]::ReadAllText($missingDumpManifest).Replace("BUNDLE_ID=$bundle", "BUNDLE_ID=$missingDumpBundle")),[Text.UTF8Encoding]::new($false))
+  Remove-Item -LiteralPath (Join-Path $missingDumpPath "database.dump") -Force
+  $env:RESTORE_BUNDLE = $missingDumpBundle
+  Invoke-ExpectedFailure -Base $target -Expected "database.dump" -Arguments @("--profile", "ops", "run", "--rm", "restore") | Out-Null
+  if ((Invoke-Psql $target $targetDb "SELECT count(*) FROM pg_tables WHERE schemaname='public'") -ne "0") { throw "Fixtures inválidos mutaron la DB antes de validarse." }
+
   & (Join-Path $repo "ops/restore.ps1") -EnvFile $targetEnv -ProjectName $targetProject -BackupDir $backupDir -Bundle $bundle -Confirm RESTORE_EMPTY_TARGET
   if ($LASTEXITCODE -ne 0) { throw "Restore válido falló." }
+  Invoke-Psql $target $targetDb "CREATE TABLE objeto_post_backup_test(id integer PRIMARY KEY); CREATE INDEX objeto_post_backup_idx ON objeto_post_backup_test(id); CREATE VIEW vista_post_backup_test AS SELECT id FROM objeto_post_backup_test; CREATE FUNCTION funcion_post_backup_test() RETURNS integer LANGUAGE SQL AS 'SELECT 1'; CREATE SCHEMA esquema_post_backup_test; CREATE EXTENSION hstore" | Out-Null
+  $postBackupObjects = Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NOT NULL AND to_regclass('public.objeto_post_backup_idx') IS NOT NULL AND to_regclass('public.vista_post_backup_test') IS NOT NULL AND to_regprocedure('public.funcion_post_backup_test()') IS NOT NULL AND to_regnamespace('esquema_post_backup_test') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')"
+  if ($postBackupObjects -ne 't') { throw 'No se crearon los objetos post-backup del fixture.' }
+
+  Invoke-Compose -Base $target -Arguments @("stop", "api")
+  $env:RESTORE_BUNDLE = $corruptBundle
+  $env:RESTORE_CONFIRM = "RESTORE_EXISTING_TARGET_FROM_BACKUP"
+  Invoke-ExpectedFailure -Base $target -Expected "Checksum" -Arguments @("--profile", "ops", "run", "--rm", "restore") | Out-Null
+  if ((Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NOT NULL AND (SELECT count(*) FROM pozo)=1") -ne 't') { throw 'El bundle corrupto mutó el destino antes de ser validado.' }
+
+  $fakePgRestore = @'
+#!/bin/sh
+if [ "$1" = "--list" ];then exec /usr/local/bin/pg_restore "$@";fi
+echo CONTROLLED_PG_RESTORE_FAILURE >&2
+exit 42
+'@
+  [IO.File]::WriteAllText((Join-Path $restoreFailureDir "pg_restore"), $fakePgRestore, [Text.UTF8Encoding]::new($false))
+  $env:RESTORE_BUNDLE = $bundle
+  $failedRestore = Invoke-ExpectedFailure -Base $target -Expected "RESTORE_FAILED" -Arguments @("--profile", "ops", "run", "--rm", "-e", "PATH=/test-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "-v", "${restoreFailureDir}:/test-bin:ro", "restore")
+  if ($failedRestore -notmatch 'RESTORE_TARGET_RESET') { throw 'El fallo controlado ocurrió antes de recrear el destino.' }
+  if ((Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')") -ne 't') { throw 'El reset no eliminó objetos post-backup.' }
+
+  $retryRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "restore")
+  if ($retryRestore -notmatch "RESTORE_OK=$bundle MODE=replace") { throw 'El retry de full restore no terminó correctamente.' }
+  $objectsGone = Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NULL AND to_regclass('public.objeto_post_backup_idx') IS NULL AND to_regclass('public.vista_post_backup_test') IS NULL AND to_regprocedure('public.funcion_post_backup_test()') IS NULL AND to_regnamespace('esquema_post_backup_test') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')"
+  if ($objectsGone -ne 't') { throw 'Sobrevivieron objetos creados después del backup.' }
+  $migrateAfterRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "migrate")
+  if ($migrateAfterRestore -notmatch 'no hay cambios pendientes' -or (Invoke-Psql $target $targetDb "SELECT count(*)=7 AND max(version)='006' FROM schema_migrations") -ne 't') { throw 'El ledger restaurado no quedó exactamente en N.' }
+
   Invoke-Compose -Base $target -Arguments @("up", "-d", "--build", "--wait", "--wait-timeout", "300")
   $relations = Invoke-Psql $target $targetDb "SELECT (SELECT count(*) FROM pozo)=1 AND (SELECT count(*) FROM intervalo_litologico)=1 AND (SELECT count(*) FROM intervalo_diametro_perforacion)=1 AND (SELECT count(*) FROM intervalo_filtro WHERE ranura_mm=0.75)=1 AND (SELECT count(*) FROM nivel_aporte)=1 AND (SELECT count(*) FROM schema_migrations)=7"
   if ($relations -ne "t") { throw "Los datos/relaciones restaurados no coinciden." }
@@ -250,7 +300,8 @@ const pdf=await generarPDFBytes(r,$wellId);assert.equal(Buffer.from(pdf).subarra
     migrations_fresh = 7; rerun_noop = $true; checksum_rejected = $true; rollback_ok = $true
     concurrent_lock = $true; adoption_ok = $true; adoption_rejected = $true
     bootstrap_login = $true; bootstrap_second_rejected = $true
-    backup_bundle = $bundle; corrupt_restore_rejected = $true; restored_relations = $true
+    backup_bundle = $bundle; corrupt_restore_rejected = $true; invalid_manifest_rejected = $true; missing_dump_rejected = $true; corrupt_replace_preserved_target = $true
+    post_backup_objects_removed = $true; failed_restore_detected = $true; restore_retry = $true; restored_relations = $true
     restored_photo_sha256 = ($targetPhotoSha -split '\s+')[0]; restored_pdf_bytes = [int]$pdfBytes; ready = $ready
   } | ConvertTo-Json -Compress
 }
@@ -260,6 +311,9 @@ finally {
       & docker compose @($entry.Base) down --volumes --remove-orphans
     }
   }
+  $cleanupPreference=$ErrorActionPreference;$ErrorActionPreference='SilentlyContinue'
+  try { & docker image rm --force "rsp07c-runtime-api:$ProjectPrefix" "rsp07c-runtime-front:$ProjectPrefix" 2>$null | Out-Null }
+  finally { $ErrorActionPreference=$cleanupPreference }
   $fullTemp = [IO.Path]::GetFullPath($tempRoot)
   $systemTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
   if ($fullTemp.StartsWith($systemTemp, [StringComparison]::OrdinalIgnoreCase) -and ([IO.Path]::GetFileName($fullTemp) -like 'rsp07c-data-*')) {
