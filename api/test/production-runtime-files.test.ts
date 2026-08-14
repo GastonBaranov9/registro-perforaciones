@@ -113,3 +113,40 @@ test("rollback acepta audits fallidos aptos por fase y conserva password opaca",
   assert.match(smokePosix,/secret_file_write_login_json/);
   assert.doesNotMatch(smokePosix,/tr -d ['"]\\r\\n/);
 });
+
+test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async()=>{
+  const compose=await fs.readFile(path.join(repo,"docker-compose.production.yaml"),"utf8");
+  const deploy=await fs.readFile(path.join(repo,"ops","deploy.ps1"),"utf8");
+  const deployPosix=await fs.readFile(path.join(repo,"ops","deploy.sh"),"utf8");
+  const prepare=await fs.readFile(path.join(repo,"ops","prepare-photo-storage.ps1"),"utf8");
+  const migrateStorage=await fs.readFile(path.join(repo,"ops","photo-storage-migrate.sh"),"utf8");
+  const backup=await fs.readFile(path.join(repo,"ops","backup.sh"),"utf8");
+  const restore=await fs.readFile(path.join(repo,"ops","restore.sh"),"utf8");
+  assert.match(compose,/\n  prepare-photo-storage:\n/);
+  assert.ok(compose.indexOf("  prepare-photo-storage:")<compose.indexOf("  backup:"));
+  assert.match(compose,/source: raul_silva_fotos[\s\S]+target: \/data/);
+  assert.match(prepare,/docker cp "\$\{apiId\}:\/api\/public\/\."/);
+  assert.match(prepare,/filesystem de fotos del API legacy no pudo exportarse/);
+  assert.match(migrateStorage,/sha256sum/);
+  assert.match(migrateStorage,/RSP_PHOTO_STORAGE_LAYOUT=1/);
+  assert.match(migrateStorage,/DB referencia una foto/);
+  assert.match(migrateStorage,/conflicto de contenido/);
+  assert.ok(deploy.indexOf("'photo_storage'")<deploy.indexOf("'backup'"));
+  assert.ok(deployPosix.indexOf("phase_start photo_storage")<deployPosix.indexOf("phase_start backup"));
+  assert.match(deploy,/--adopt-current-schema/);
+  assert.match(backup,/SCHEMA_STATE=\$schema_state/);
+  assert.match(restore,/legacy-unmanaged/);
+
+  const styles=await fs.readFile(path.join(repo,"front","src","styles.css"),"utf8");
+  const app=await fs.readFile(path.join(repo,"front","src","app","app.html"),"utf8");
+  const proxy=await fs.readFile(path.join(repo,"proxy","https.conf.template"),"utf8");
+  const background=await fs.readFile(path.join(repo,"front","public","assets","branding","background.jpeg"));
+  const logo=await fs.readFile(path.join(repo,"front","public","assets","branding","logo.png"));
+  assert.match(styles,/url\('\/assets\/branding\/background\.jpeg'\)/);
+  assert.match(app,/src="\/assets\/branding\/logo\.png"/);
+  assert.doesNotMatch(`${styles}\n${app}`,/imgur\.com/i);
+  assert.match(proxy,/img-src 'self' data: blob:/);
+  assert.doesNotMatch(proxy,/imgur|img-src[^;]*https:/i);
+  assert.deepEqual([...background.subarray(0,3)],[0xff,0xd8,0xff]);
+  assert.deepEqual([...logo.subarray(0,8)],[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
+});
