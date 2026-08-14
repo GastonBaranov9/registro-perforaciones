@@ -50,3 +50,44 @@ test("imágenes base tienen versiones explícitas y API conserva usuario no-root
   assert.match(apiDockerfile, /USER node:node/);
   assert.match(apiDockerfile, /chown -R node:node \/var\/lib\/registro-perforaciones\/fotos/);
 });
+
+test("Compose development migra automáticamente y conserva API host",async()=>{
+  const compose=await fs.readFile(path.join(repo,"docker-compose.development.yaml"),"utf8");
+  assert.match(compose,/\n  migrate:\n/);
+  assert.match(compose,/command: \["npm", "run", "db:migrate"\]/);
+  assert.match(compose,/PGHOST: postgres/);
+  assert.match(compose,/PGPORT: "5432"/);
+  assert.match(compose,/condition: service_healthy/);
+  assert.match(compose,/restart: "no"/);
+  assert.match(compose,/condition: service_completed_successfully/);
+  assert.match(compose,/\n  database-ready:\n/);
+  assert.match(compose,/DEVELOPMENT_DB_READY/);
+  assert.match(compose,/127\.0\.0\.1:\$\{PGPORT\}:5432/);
+  assert.doesNotMatch(compose,/adopt-current-schema/);
+  assert.doesNotMatch(compose,/container_name:/);
+});
+
+test("deploy y rollback persisten una fuente de verdad separada de secretos",async()=>{
+  const deploy=await fs.readFile(path.join(repo,"ops","deploy.ps1"),"utf8");
+  const rollback=await fs.readFile(path.join(repo,"ops","rollback.ps1"),"utf8");
+  const state=await fs.readFile(path.join(repo,"ops","deployment-state.ps1"),"utf8");
+  const posix=await fs.readFile(path.join(repo,"ops","deployment-state.sh"),"utf8");
+  for(const script of [deploy,rollback]){
+    assert.match(script,/DeploymentStateFile/);
+    assert.match(script,/--env-file[^\n]+deploymentPath/);
+    assert.match(script,/Write-DeploymentStateAtomic/);
+    assert.match(script,/Assert-ComposeState/);
+  }
+  assert.match(deploy,/smoke_ok[\s\S]+Write-DeploymentStateAtomic/);
+  assert.match(rollback,/Smoke posterior[\s\S]+Write-DeploymentStateAtomic/);
+  assert.match(state,/DEPLOY_CONFIG_SHA256/);
+  assert.doesNotMatch(state,/FASTIFY_SECRET|PGPASSWORD|DATABASE_URL/);
+  assert.match(posix,/deployment_state_write_atomic/);
+  assert.match(posix,/mv -f/);
+  const deployPosix=await fs.readFile(path.join(repo,"ops","deploy.sh"),"utf8");
+  const rollbackPosix=await fs.readFile(path.join(repo,"ops","rollback.sh"),"utf8");
+  assert.match(deployPosix,/smoke=.*smoke\.sh[\s\S]+deployment_state_write_atomic/);
+  assert.match(rollbackPosix,/smoke=.*smoke\.sh[\s\S]+deployment_state_write_atomic/);
+  assert.match(deployPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
+  assert.match(rollbackPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
+});

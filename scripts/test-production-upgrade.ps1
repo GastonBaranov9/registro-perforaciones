@@ -2,7 +2,7 @@ param([string]$ProjectName="rsp07f-final-$PID")
 $ErrorActionPreference="Stop"
 if($ProjectName-notmatch '^rsp07f-final-[A-Za-z0-9-]+$'){throw "ProjectName debe comenzar con rsp07f-final-."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$composeFile=Join-Path $repo "docker-compose.production.yaml"
-$tempRoot=Join-Path ([IO.Path]::GetTempPath()) $ProjectName;$backupDir=Join-Path $tempRoot "backups";$stateDir=Join-Path $tempRoot "state";$tlsDir=Join-Path $tempRoot "tls";$envFile=Join-Path $tempRoot "production.env";$passwordFile=Join-Path $tempRoot "admin-password"
+$tempRoot=Join-Path ([IO.Path]::GetTempPath()) $ProjectName;$backupDir=Join-Path $tempRoot "backups";$stateDir=Join-Path $tempRoot "state";$tlsDir=Join-Path $tempRoot "tls";$envFile=Join-Path $tempRoot "production.env";$deploymentStateFile=Join-Path $tempRoot "deployment.env";$passwordFile=Join-Path $tempRoot "admin-password"
 foreach($dir in @($tempRoot,$backupDir,$stateDir,$tlsDir)){[IO.Directory]::CreateDirectory($dir)|Out-Null}
 function RandomHex([int]$Bytes){$b=New-Object byte[] $Bytes;$g=[Security.Cryptography.RandomNumberGenerator]::Create();try{$g.GetBytes($b)}finally{$g.Dispose()};return -join($b|ForEach-Object{$_.ToString('x2')})}
 function FreePort{$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$l.Start();try{return ([Net.IPEndPoint]$l.LocalEndpoint).Port}finally{$l.Stop()}}
@@ -38,7 +38,9 @@ BACKUP_DIR=$($backupDir.Replace('\','/'))
 HSTS_ENABLED=false
 "@
 [IO.File]::WriteAllText($envFile,$envText,[Text.UTF8Encoding]::new($false))
-$compose=@("--project-name",$ProjectName,"--env-file",$envFile,"-f",$composeFile);$started=$false
+. (Join-Path $repo "ops/deployment-state.ps1")
+Write-DeploymentStateAtomic $deploymentStateFile $apiN $frontN "rsp07f-n" $gitSha|Out-Null
+$compose=@("--project-name",$ProjectName,"--env-file",$envFile,"--env-file",$deploymentStateFile,"-f",$composeFile);$started=$false
 function Compose([string[]]$Arguments){& docker compose @compose @Arguments;if($LASTEXITCODE-ne 0){throw "docker compose falló: $($Arguments-join ' ')"}}
 function Psql([string]$Sql){$value=(& docker compose @compose exec -T postgres psql --no-psqlrc -U rsp07f -d rsp07f -qAtc $Sql|Out-String).Trim();if($LASTEXITCODE-ne 0){throw "Consulta controlada falló."};return $value}
 try{
@@ -55,26 +57,32 @@ try{
   $photoSha=(& docker compose @compose exec -T api sha256sum "/var/lib/registro-perforaciones/fotos/pozo-$well.jpg"|Out-String).Trim().Split(' ')[0]
   $countsBefore=Psql "SELECT (SELECT count(*) FROM usuario)||','||(SELECT count(*) FROM sitio)||','||(SELECT count(*) FROM pozo)||','||(SELECT count(*) FROM intervalo_litologico)||','||(SELECT count(*) FROM intervalo_filtro)";$migrationsBefore=Psql "SELECT string_agg(version||':'||nombre,',' ORDER BY version) FROM schema_migrations"
 
-  $deploy=& (Join-Path $repo "ops/deploy.ps1") -EnvFile $envFile -ProjectName $ProjectName -BackupDir $backupDir -StateDir $stateDir -TargetApiImage $apiN1 -TargetFrontImage $frontN1 -TargetVersion "rsp07f-n1" -GitSha $gitSha -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile -BuildImages
+  $deploy=& (Join-Path $repo "ops/deploy.ps1") -EnvFile $envFile -DeploymentStateFile $deploymentStateFile -ProjectName $ProjectName -BackupDir $backupDir -StateDir $stateDir -TargetApiImage $apiN1 -TargetFrontImage $frontN1 -TargetVersion "rsp07f-n1" -GitSha $gitSha -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile -BuildImages
   if($deploy-notcontains 'DEPLOY_OK'){throw "Deploy N+1 no declaró DEPLOY_OK."};$stateFile=Join-Path $stateDir "deploy-$ProjectName.json";$state=Get-Content -Raw $stateFile|ConvertFrom-Json
   if($state.backup_bundle-notmatch '^rsp-backup-'){throw "Deploy no registró backup."}
   $runningVersion=(& docker compose @compose exec -T api node -e "console.log(process.env.APP_VERSION)"|Out-String).Trim();if($runningVersion-ne 'rsp07f-n1'){throw "N+1 no quedó identificada."}
 
+  $persistedN1=Read-DeploymentState $deploymentStateFile;if($persistedN1.ApiImage-ne $apiN1-or $persistedN1.FrontImage-ne $frontN1-or $persistedN1.AppVersion-ne 'rsp07f-n1'){throw "Deploy no persistio N+1."}
+  Compose @("up","-d","--no-deps","--force-recreate","--wait","--wait-timeout","180","api","front")
+  $cleanApi=(& docker compose @compose ps -q api|Out-String).Trim();$cleanFront=(& docker compose @compose ps -q front|Out-String).Trim();if((& docker inspect --format '{{.Config.Image}}' $cleanApi|Out-String).Trim()-ne $apiN1-or (& docker inspect --format '{{.Config.Image}}' $cleanFront|Out-String).Trim()-ne $frontN1){throw "Compose limpio regreso a referencias N."}
   $oldApi=$env:API_IMAGE_REF;$oldFront=$env:FRONT_IMAGE_REF;$oldVersion=$env:APP_VERSION;$oldSha=$env:GIT_SHA;$oldSecret=$env:FASTIFY_SECRET
   $env:API_IMAGE_REF=$apiN1;$env:FRONT_IMAGE_REF=$frontN1;$env:APP_VERSION='rsp07f-n1';$env:GIT_SHA=$gitSha;$env:FASTIFY_SECRET='fallo-controlado'
   $faultDetected=$false;$oldPref=$ErrorActionPreference;$ErrorActionPreference='Continue';try{& docker compose @compose up -d --no-deps --force-recreate --wait --wait-timeout 30 api;if($LASTEXITCODE-ne 0){$faultDetected=$true}}finally{$ErrorActionPreference=$oldPref;if($null-eq $oldApi){Remove-Item Env:API_IMAGE_REF -ErrorAction SilentlyContinue}else{$env:API_IMAGE_REF=$oldApi};if($null-eq $oldFront){Remove-Item Env:FRONT_IMAGE_REF -ErrorAction SilentlyContinue}else{$env:FRONT_IMAGE_REF=$oldFront};if($null-eq $oldVersion){Remove-Item Env:APP_VERSION -ErrorAction SilentlyContinue}else{$env:APP_VERSION=$oldVersion};if($null-eq $oldSha){Remove-Item Env:GIT_SHA -ErrorAction SilentlyContinue}else{$env:GIT_SHA=$oldSha};if($null-eq $oldSecret){Remove-Item Env:FASTIFY_SECRET -ErrorAction SilentlyContinue}else{$env:FASTIFY_SECRET=$oldSecret}}
   if(-not $faultDetected){throw "El fallo controlado de configuración no fue detectado."}
-  $rollbackApp=& (Join-Path $repo "ops/rollback.ps1") -EnvFile $envFile -ProjectName $ProjectName -StateFile $stateFile -Level Application -Confirm DATABASE_BACKWARD_COMPATIBLE -BackupDir $backupDir -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile
+  $rollbackApp=& (Join-Path $repo "ops/rollback.ps1") -EnvFile $envFile -DeploymentStateFile $deploymentStateFile -ProjectName $ProjectName -StateFile $stateFile -Level Application -Confirm DATABASE_BACKWARD_COMPATIBLE -BackupDir $backupDir -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile
   if($rollbackApp-notcontains 'ROLLBACK_OK'){throw "Rollback de aplicación no terminó correctamente."}
 
+  $persistedN=Read-DeploymentState $deploymentStateFile;if($persistedN.ApiImage-ne $apiN-or $persistedN.FrontImage-ne $frontN-or $persistedN.AppVersion-ne 'rsp07f-n'){throw "Rollback no persistio N."}
+  Compose @("up","-d","--no-deps","--force-recreate","--wait","--wait-timeout","180","api","front")
+  $cleanApi=(& docker compose @compose ps -q api|Out-String).Trim();$cleanFront=(& docker compose @compose ps -q front|Out-String).Trim();if((& docker inspect --format '{{.Config.Image}}' $cleanApi|Out-String).Trim()-ne $apiN-or (& docker inspect --format '{{.Config.Image}}' $cleanFront|Out-String).Trim()-ne $frontN){throw "Compose limpio no conservo rollback N."}
   Psql "INSERT INTO sitio(departamento,localidad) VALUES('Artigas','POST_BACKUP_DEBE_PERDERSE'); UPDATE pozo SET empresa='ESTADO_INCOMPATIBLE' WHERE id_pozo=$well"|Out-Null
   $corruptPhoto="import fs from 'node:fs/promises';await fs.writeFile('/var/lib/registro-perforaciones/fotos/pozo-$well.jpg',Buffer.from([0xff,0xd8,0xff,0,1]));";& docker compose @compose exec -T api node --input-type=module -e $corruptPhoto;if($LASTEXITCODE-ne 0){throw "No se pudo crear estado incompatible controlado."}
-  $rollbackFull=& (Join-Path $repo "ops/rollback.ps1") -EnvFile $envFile -ProjectName $ProjectName -StateFile $stateFile -Level Full -Confirm RESTORE_EXISTING_TARGET_FROM_BACKUP -BackupDir $backupDir -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile
+  $rollbackFull=& (Join-Path $repo "ops/rollback.ps1") -EnvFile $envFile -DeploymentStateFile $deploymentStateFile -ProjectName $ProjectName -StateFile $stateFile -Level Full -Confirm RESTORE_EXISTING_TARGET_FROM_BACKUP -BackupDir $backupDir -SmokeAdminEmail $adminEmail -SmokeAdminPasswordFile $passwordFile
   if($rollbackFull-notcontains 'ROLLBACK_OK'){throw "Rollback completo no terminó correctamente."}
   $countsAfter=Psql "SELECT (SELECT count(*) FROM usuario)||','||(SELECT count(*) FROM sitio)||','||(SELECT count(*) FROM pozo)||','||(SELECT count(*) FROM intervalo_litologico)||','||(SELECT count(*) FROM intervalo_filtro)";$migrationsAfter=Psql "SELECT string_agg(version||':'||nombre,',' ORDER BY version) FROM schema_migrations";$company=Psql "SELECT empresa FROM pozo WHERE id_pozo=$well";$postBackup=Psql "SELECT count(*) FROM sitio WHERE localidad='POST_BACKUP_DEBE_PERDERSE'";$photoShaAfter=(& docker compose @compose exec -T api sha256sum "/var/lib/registro-perforaciones/fotos/pozo-$well.jpg"|Out-String).Trim().Split(' ')[0]
   if($countsAfter-ne $countsBefore-or $migrationsAfter-ne $migrationsBefore-or $company-ne 'Version N'-or $postBackup-ne '0'-or $photoShaAfter-ne $photoSha){throw "Restore completo no recuperó exactamente datos/foto N."}
   $reconcile=(& docker compose @compose --profile ops run --rm reconcile-fotos|Out-String);if($LASTEXITCODE-ne 0-or $reconcile-notmatch '"referencia_sin_archivo":0' -or $reconcile-notmatch '"archivo_sin_referencia":0' -or $reconcile-notmatch '"trash_total":0'){throw "Reconciliación final no quedó limpia."}
-  [pscustomobject]@{project=$ProjectName;version_n='rsp07f-n';version_n1='rsp07f-n1';backup_bundle=$state.backup_bundle;deploy_ok=$true;fault_detected=$faultDetected;rollback_app=$true;restore_full=$true;counts=$countsAfter;migrations_ok=$true;photo_sha256=$photoShaAfter;post_backup_data_lost=($postBackup-eq '0');reconcile_clean=$true}|ConvertTo-Json -Compress
+  [pscustomobject]@{project=$ProjectName;version_n='rsp07f-n';version_n1='rsp07f-n1';backup_bundle=$state.backup_bundle;deploy_ok=$true;persisted_n1=$true;clean_process_n1=$true;fault_detected=$faultDetected;rollback_app=$true;persisted_n=$true;clean_process_n=$true;restore_full=$true;counts=$countsAfter;migrations_ok=$true;photo_sha256=$photoShaAfter;post_backup_data_lost=($postBackup-eq '0');reconcile_clean=$true}|ConvertTo-Json -Compress
 }finally{
   if($started-and $ProjectName-match '^rsp07f-final-[A-Za-z0-9-]+$'){& docker compose @compose --profile ops down --volumes --remove-orphans}
   $cleanupPreference=$ErrorActionPreference;$ErrorActionPreference='SilentlyContinue';try{foreach($image in @($apiN,$frontN,$apiN1,$frontN1)){& docker image rm $image 2>$null|Out-Null}}finally{$ErrorActionPreference=$cleanupPreference}
