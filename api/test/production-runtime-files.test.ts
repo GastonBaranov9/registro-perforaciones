@@ -91,3 +91,25 @@ test("deploy y rollback persisten una fuente de verdad separada de secretos",asy
   assert.match(deployPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
   assert.match(rollbackPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
 });
+
+test("rollback acepta audits fallidos aptos por fase y conserva password opaca",async()=>{
+  const deploy=await fs.readFile(path.join(repo,"ops","deploy.ps1"),"utf8");
+  const rollback=await fs.readFile(path.join(repo,"ops","rollback.ps1"),"utf8");
+  const audit=await fs.readFile(path.join(repo,"ops","deployment-audit.ps1"),"utf8");
+  const smoke=await fs.readFile(path.join(repo,"ops","smoke.ps1"),"utf8");
+  const smokePosix=await fs.readFile(path.join(repo,"ops","smoke.sh"),"utf8");
+  assert.match(deploy,/format=3/);
+  assert.match(deploy,/phase_started/);
+  assert.match(deploy,/phase_completed/);
+  assert.match(deploy,/database_recovery/);
+  assert.match(deploy,/Write-DeploymentAuditAtomic/);
+  assert.match(rollback,/Read-DeploymentAuditForRollback/);
+  assert.doesNotMatch(rollback,/status-ne 'success'/);
+  assert.match(audit,/restore_required/);
+  assert.match(audit,/rollback_noop/);
+  assert.match(audit,/Checksum de configuracion corrupto/);
+  assert.match(smoke,/Read-OpaqueSecretFile/);
+  assert.doesNotMatch(smoke,/ReadAllText\(\$passwordPath\)\.Trim/);
+  assert.match(smokePosix,/secret_file_write_login_json/);
+  assert.doesNotMatch(smokePosix,/tr -d ['"]\\r\\n/);
+});
