@@ -23,9 +23,19 @@ manifest_value() {
   ' "$manifest"
 }
 
+manifest_value_optional() {
+  awk -F= -v key="$1" '
+    index($0,key "=")==1 { count++; value=substr($0,length(key)+2) }
+    END { if(count>1)exit 2; if(count==1)print value }
+  ' "$manifest"
+}
+
 [ "$(manifest_value RSP_BACKUP_FORMAT)" = "1" ] || { echo "Formato de backup no soportado" >&2; exit 1; }
 [ "$(manifest_value STATUS)" = "complete" ] || { echo "El backup no está completo" >&2; exit 1; }
 [ "$(manifest_value BUNDLE_ID)" = "$RESTORE_BUNDLE" ] || { echo "El manifest no corresponde al bundle" >&2; exit 1; }
+schema_state="$(manifest_value_optional SCHEMA_STATE)"
+[ -n "$schema_state" ] || schema_state=managed
+case "$schema_state" in managed|legacy-unmanaged) :;;*) echo "Estado de esquema no soportado" >&2;exit 1;;esac
 db_file="$(manifest_value DATABASE_FILE)"
 photos_file="$(manifest_value PHOTOS_FILE)"
 [ "$db_file" = "database.dump" ] || { echo "Nombre de dump no permitido" >&2; exit 1; }
@@ -67,8 +77,16 @@ if [ "$restore_mode" = "replace" ]; then
 else
   pg_restore --exit-on-error --single-transaction --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" "$bundle/$db_file"
 fi
-restored_migrations="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT COALESCE(string_agg(version || ':' || nombre || ':' || btrim(checksum_sha256), ',' ORDER BY version),'') FROM public.schema_migrations")"
-[ "$restored_migrations" = "$(manifest_value MIGRATIONS)" ] || { echo "El ledger restaurado no coincide con el manifest" >&2; exit 1; }
+if [ "$schema_state" = legacy-unmanaged ]; then
+  psql --no-psqlrc --quiet --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="DROP TABLE IF EXISTS public.schema_migrations"
+fi
+if [ "$schema_state" = managed ]; then
+  restored_migrations="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT COALESCE(string_agg(version || ':' || nombre || ':' || btrim(checksum_sha256), ',' ORDER BY version),'') FROM public.schema_migrations")"
+  [ "$restored_migrations" = "$(manifest_value MIGRATIONS)" ] || { echo "El ledger restaurado no coincide con el manifest" >&2; exit 1; }
+else
+  [ "$(manifest_value MIGRATIONS)" = legacy-unmanaged ] || { echo "Manifest legacy incoherente" >&2;exit 1; }
+  [ "$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT to_regclass('public.schema_migrations') IS NULL")" = t ] || { echo "El restore legacy creó un ledger inesperado" >&2;exit 1; }
+fi
 psql --no-psqlrc --quiet --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="ANALYZE"
 
 previous="/data/.rsp-previous-$$"
@@ -81,6 +99,9 @@ if ! mv "$staging/fotos" /data/fotos; then
   exit 1
 fi
 chown -R 1000:1000 /data/fotos
+printf 'RSP_PHOTO_STORAGE_LAYOUT=1\n' > /data/.rsp-photo-storage-layout
+chown 1000:1000 /data/.rsp-photo-storage-layout
+chmod 0640 /data/.rsp-photo-storage-layout
 [ ! -d "$previous" ] || rm -rf "$previous"
 rmdir "$staging"
 rm -f "$listing"

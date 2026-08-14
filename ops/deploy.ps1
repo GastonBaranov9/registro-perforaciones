@@ -11,7 +11,8 @@ param(
   [Parameter(Mandatory=$true)][string]$SmokeAdminEmail,
   [Parameter(Mandatory=$true)][string]$SmokeAdminPasswordFile,
   [switch]$BuildImages,
-  [ValidateSet("","preflight","maintenance","backup","images","migrate","services","services_incompatible","health","smoke","persist_state")][string]$TestFailAfterPhase="",
+  [ValidateSet("","preflight","maintenance","photo_storage","backup","images","migrate","services","services_incompatible","health","smoke","persist_state")][string]$TestFailAfterPhase="",
+  [int]$TestPhotoCopyFailAfter=0,
   [string]$ComposeFile="docker-compose.production.yaml"
 )
 $ErrorActionPreference="Stop"
@@ -20,7 +21,7 @@ $ErrorActionPreference="Stop"
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 Assert-DeploymentImageRef $TargetApiImage;Assert-DeploymentImageRef $TargetFrontImage
 Assert-DeploymentIdentifier "APP_VERSION" $TargetVersion;Assert-DeploymentIdentifier "GIT_SHA" $GitSha
-if($TestFailAfterPhase-and $ProjectName-notmatch '^rsp07f-r2-[a-z0-9_-]+$'){throw "La inyeccion de fallo solo se permite en proyectos RSP-07F-R2 aislados."}
+if(($TestFailAfterPhase-or $TestPhotoCopyFailAfter-gt 0)-and $ProjectName-notmatch '^rsp07f-r[23]-[a-z0-9_-]+$'){throw "La inyeccion de fallo solo se permite en proyectos RSP-07F-R2/R3 aislados."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path $EnvFile).Path;$deploymentPath=(Resolve-Path $DeploymentStateFile).Path;$composePath=(Resolve-Path (Join-Path $repo $ComposeFile)).Path
 $backupPath=[IO.Path]::GetFullPath($BackupDir);$statePath=[IO.Path]::GetFullPath($StateDir);[IO.Directory]::CreateDirectory($backupPath)|Out-Null;[IO.Directory]::CreateDirectory($statePath)|Out-Null
 $compose=@("--project-name",$ProjectName,"--env-file",$envPath,"--env-file",$deploymentPath,"-f",$composePath)
@@ -43,7 +44,8 @@ function Assert-ComposeState([object]$Expected){
 }
 function Test-PhaseFailure([string]$Phase){if($TestFailAfterPhase-eq $Phase){throw "Fallo controlado RSP-07F-R2 despues de $Phase."}}
 
-$audit=[ordered]@{format=3;project=$ProjectName;started_at_utc=[DateTime]::UtcNow.ToString('o');updated_at_utc=[DateTime]::UtcNow.ToString('o');status='started';phase_started='preflight';phase_completed='none';database_recovery='not_required';deployment_state=$deploymentPath;deployment_state_persisted=$false;previous_config_hash=$previous.ConfigHash;previous_api_ref=$previous.ApiImage;previous_api_id='';previous_front_ref=$previous.FrontImage;previous_front_id='';previous_version=$previous.AppVersion;previous_git_sha=$previous.GitSha;target_config_hash=(Get-DeploymentConfigHash $TargetApiImage $TargetFrontImage $TargetVersion $GitSha);target_api_ref=$TargetApiImage;target_front_ref=$TargetFrontImage;target_version=$TargetVersion;git_sha=$GitSha;backup_bundle=''}
+$audit=[ordered]@{format=3;project=$ProjectName;started_at_utc=[DateTime]::UtcNow.ToString('o');updated_at_utc=[DateTime]::UtcNow.ToString('o');status='started';phase_started='preflight';phase_completed='none';database_recovery='not_required';legacy_schema_without_ledger=$false;deployment_state=$deploymentPath;deployment_state_persisted=$false;previous_config_hash=$previous.ConfigHash;previous_api_ref=$previous.ApiImage;previous_api_id='';previous_front_ref=$previous.FrontImage;previous_front_id='';previous_version=$previous.AppVersion;previous_git_sha=$previous.GitSha;target_config_hash=(Get-DeploymentConfigHash $TargetApiImage $TargetFrontImage $TargetVersion $GitSha);target_api_ref=$TargetApiImage;target_front_ref=$TargetFrontImage;target_version=$TargetVersion;git_sha=$GitSha;backup_bundle=''}
+$previousApiContainerId='';$previousProxyContainerId=''
 try{
   Write-DeploymentAuditAtomic $auditFile $audit
   Clear-DeploymentEnvironment
@@ -51,6 +53,8 @@ try{
   Assert-ComposeState $previous;Compose @("config","--quiet")
   $runningApi=ContainerValue "api" '{{.Config.Image}}';$runningFront=ContainerValue "front" '{{.Config.Image}}';$runningVersion=EnvVersion "api"
   if($runningApi-ne $previous.ApiImage-or $runningFront-ne $previous.FrontImage-or $runningVersion-ne $previous.AppVersion){throw "El runtime no coincide con el deployment state previo; reconciliar antes de desplegar."}
+  $previousApiContainerId=(& docker compose @compose ps -a -q api|Out-String).Trim();$previousProxyContainerId=(& docker compose @compose ps -a -q proxy|Out-String).Trim()
+  if(-not $previousApiContainerId-or-not $previousProxyContainerId){throw "Faltan containers previos necesarios para una recuperación sin recreate."}
   $audit.previous_api_id=ContainerValue "api" '{{.Image}}';$audit.previous_front_id=ContainerValue "front" '{{.Image}}'
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
 
@@ -59,6 +63,16 @@ try{
   Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance");$maintenance=$true
   Compose @("stop","api")
   Complete-DeploymentAuditPhase $audit 'maintenance' $auditFile;Test-PhaseFailure 'maintenance'
+
+  Start-DeploymentAuditPhase $audit 'photo_storage' $auditFile
+  Log "photo_storage_start"
+  $prepareArgs=@{EnvFile=$envPath;DeploymentStateFile=$deploymentPath;ProjectName=$ProjectName;ComposeFile=$ComposeFile}
+  if($TestPhotoCopyFailAfter-gt 0){$prepareArgs.TestFailAfter=$TestPhotoCopyFailAfter}
+  $photoOutput=(& (Join-Path $PSScriptRoot "prepare-photo-storage.ps1") @prepareArgs|Out-String)
+  if($photoOutput-notmatch 'PHOTO_STORAGE_READY[\s\S]*DB_LEDGER=(present|absent)'){throw "La preparación de fotos no produjo evidencia válida."}
+  $audit.legacy_schema_without_ledger=($matches[1]-eq 'absent')
+  Complete-DeploymentAuditPhase $audit 'photo_storage' $auditFile;Log "photo_storage_ok";Test-PhaseFailure 'photo_storage'
+
   Start-DeploymentAuditPhase $audit 'backup' $auditFile
   Log "backup_start"
   $backupOutput=(& (Join-Path $PSScriptRoot "backup.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -BackupDir $backupPath -ComposeFile $ComposeFile|Out-String)
@@ -72,7 +86,9 @@ try{
   Complete-DeploymentAuditPhase $audit 'images' $auditFile;Test-PhaseFailure 'images'
   $audit.database_recovery='operator_assessment_required'
   Start-DeploymentAuditPhase $audit 'migrate' $auditFile
-  Log "migrate_start";Compose @("--profile","ops","run","--rm","migrate");Log "migrate_ok";Complete-DeploymentAuditPhase $audit 'migrate' $auditFile;Test-PhaseFailure 'migrate'
+  Log "migrate_start"
+  if($audit.legacy_schema_without_ledger){Compose @("--profile","ops","run","--rm","migrate","npm","run","db:migrate","--","--adopt-current-schema")}else{Compose @("--profile","ops","run","--rm","migrate")}
+  Log "migrate_ok";Complete-DeploymentAuditPhase $audit 'migrate' $auditFile;Test-PhaseFailure 'migrate'
   Start-DeploymentAuditPhase $audit 'services' $auditFile
   Log "services_start";Compose @("up","-d","--no-deps","--wait","--wait-timeout","180","api","front")
   Compose @("stop","maintenance");Compose @("rm","-f","maintenance");$maintenance=$false
@@ -94,8 +110,13 @@ try{
   Write-Output "DEPLOY_OK";Write-Output "DEPLOY_AUDIT=$auditFile";Write-Output "DEPLOYMENT_STATE=$deploymentPath"
 }catch{
   $audit.status='failed';$audit.failed_at_utc=[DateTime]::UtcNow.ToString('o');$audit.failure='Ver logs operativos anteriores.';Write-DeploymentAuditAtomic $auditFile $audit
-  if($audit.phase_started-ne 'preflight'-and-not $maintenance){try{Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance");$maintenance=$true}catch{}}
+  $restoredWithoutRecreate=$false
+  $phaseRank=$script:DeploymentAuditPhases[[string]$audit.phase_started]
+  if($audit.database_recovery-eq 'not_required'-and-not $audit.deployment_state_persisted-and $phaseRank-le $script:DeploymentAuditPhases.images-and $previousApiContainerId-and $previousProxyContainerId){
+    try{Compose @("stop","maintenance");Compose @("rm","-f","maintenance");& docker start $previousApiContainerId $previousProxyContainerId|Out-Null;if($LASTEXITCODE-ne 0){throw "No se pudo reiniciar el runtime previo."};$maintenance=$false;$restoredWithoutRecreate=$true}catch{}
+  }
+  if(-not $restoredWithoutRecreate-and $audit.phase_started-ne 'preflight'-and-not $maintenance){try{Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance");$maintenance=$true}catch{}}
   Write-Output "DEPLOY_FAILED";Write-Output "DEPLOYMENT_STATE_PERSISTED=$persisted"
-  if($audit.phase_started-eq 'preflight'){Write-Output "ROLLBACK_NOT_REQUIRED=$auditFile"}else{Write-Output "ROLLBACK_REQUIRED=$auditFile"}
+  if($audit.phase_started-eq 'preflight'-or $restoredWithoutRecreate){Write-Output "ROLLBACK_NOT_REQUIRED=$auditFile"}else{Write-Output "ROLLBACK_REQUIRED=$auditFile"}
   throw
 }finally{Restore-DeploymentEnvironment}

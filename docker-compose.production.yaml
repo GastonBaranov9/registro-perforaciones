@@ -73,6 +73,39 @@ services:
     networks:
       - backend
 
+  prepare-photo-storage:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/photo-storage-migrate.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      PHOTO_LEGACY_SOURCE_STATUS: ${PHOTO_LEGACY_SOURCE_STATUS:-unavailable}
+      PHOTO_STORAGE_PROJECT_NAME: ${PHOTO_STORAGE_PROJECT_NAME:-unknown}
+      PHOTO_STORAGE_TEST_FAIL_AFTER: ${PHOTO_STORAGE_TEST_FAIL_AFTER:-}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+      - type: bind
+        source: ${PHOTO_STORAGE_IMPORT_DIR:-./ops/empty-photo-import}
+        target: /legacy
+        read_only: true
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   backup:
     profiles: ["ops"]
     image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777

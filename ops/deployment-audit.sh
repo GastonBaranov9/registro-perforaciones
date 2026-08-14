@@ -2,7 +2,7 @@
 set -eu
 
 deployment_audit_phase_rank(){
-  case "$1" in none) echo 0;;preflight) echo 1;;maintenance) echo 2;;backup) echo 3;;images) echo 4;;migrate) echo 5;;services) echo 6;;health) echo 7;;smoke) echo 8;;persist_state) echo 9;;complete) echo 10;;*) return 1;;esac
+  case "$1" in none) echo 0;;preflight) echo 1;;maintenance) echo 2;;photo_storage) echo 3;;backup) echo 4;;images) echo 5;;migrate) echo 6;;services) echo 7;;health) echo 8;;smoke) echo 9;;persist_state) echo 10;;complete) echo 11;;*) return 1;;esac
 }
 
 deployment_audit_value(){
@@ -28,9 +28,9 @@ deployment_audit_read(){
   printf '%s' "$DA_PREVIOUS_FRONT_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
   [ "$DA_PREVIOUS_HASH" = "$(deployment_state_hash "$DA_PREVIOUS_API" "$DA_PREVIOUS_FRONT" "$DA_PREVIOUS_VERSION" "$DA_PREVIOUS_SHA")" ]&&[ "$DA_TARGET_HASH" = "$(deployment_state_hash "$DA_TARGET_API" "$DA_TARGET_FRONT" "$DA_TARGET_VERSION" "$DA_TARGET_SHA")" ]||{ echo "Checksum de config corrupto" >&2;return 1; }
   case "$DA_STATE_PERSISTED" in true|false) ;;*) return 1;;esac
-  DA_BACKUP_COMPLETED=false;[ "$cr" -lt 3 ]||DA_BACKUP_COMPLETED=true
+  DA_BACKUP_COMPLETED=false;[ "$cr" -lt 4 ]||DA_BACKUP_COMPLETED=true
   if [ "$DA_BACKUP_COMPLETED" = true ];then printf '%s' "$DA_BUNDLE"|grep -Eq '^rsp-backup-[0-9]{8}T[0-9]{6}Z$'||{ echo "Bundle faltante" >&2;return 1;};fi
   DA_NOOP=false;DA_REQUIRES_FULL=false
-  if [ "$DA_STATUS" != success ]&&[ "$sr" -le 1 ];then DA_NOOP=true;fi
+  if [ "$DA_STATUS" != success ]&&[ "$DA_DATABASE_RECOVERY" = not_required ]&&[ "$DA_STATE_PERSISTED" = false ]&&[ "$sr" -le 5 ];then DA_NOOP=true;fi
   if [ "$DA_DATABASE_RECOVERY" = restore_required ];then DA_REQUIRES_FULL=true;fi
 }

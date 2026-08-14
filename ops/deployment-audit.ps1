@@ -2,7 +2,7 @@ if(-not (Get-Command Assert-DeploymentImageRef -ErrorAction SilentlyContinue)){
   . (Join-Path $PSScriptRoot "deployment-state.ps1")
 }
 
-$script:DeploymentAuditPhases=[ordered]@{none=0;preflight=1;maintenance=2;backup=3;images=4;migrate=5;services=6;health=7;smoke=8;persist_state=9;complete=10}
+$script:DeploymentAuditPhases=[ordered]@{none=0;preflight=1;maintenance=2;photo_storage=3;backup=4;images=5;migrate=6;services=7;health=8;smoke=9;persist_state=10;complete=11}
 
 function Write-DeploymentAuditAtomic{
   param([Parameter(Mandatory=$true)][string]$Path,[Parameter(Mandatory=$true)]$Audit)
@@ -57,7 +57,7 @@ function Read-DeploymentAuditForRollback{
   if($audit.deployment_state_persisted-isnot [bool]){throw "Indicador de persistencia invalido."}
   $backupCompleted=$script:DeploymentAuditPhases[$completed]-ge $script:DeploymentAuditPhases.backup
   if($backupCompleted-and [string]$audit.backup_bundle-notmatch '^rsp-backup-\d{8}T\d{6}Z$'){throw "Audit completo de backup sin bundle valido."}
-  $noOp=([string]$audit.status-ne 'success'-and $script:DeploymentAuditPhases[$started]-le $script:DeploymentAuditPhases.preflight)
+  $noOp=([string]$audit.status-ne 'success'-and [string]$audit.database_recovery-eq 'not_required'-and -not [bool]$audit.deployment_state_persisted-and $script:DeploymentAuditPhases[$started]-le $script:DeploymentAuditPhases.images)
   $requiresFull=([string]$audit.database_recovery-eq 'restore_required')
   $audit|Add-Member -Force NoteProperty rollback_noop $noOp
   $audit|Add-Member -Force NoteProperty rollback_requires_full $requiresFull
