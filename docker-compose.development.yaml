@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
-    container_name: registro-perforaciones-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PGUSER}
@@ -16,6 +15,64 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  migrate:
+    image: ${DEV_API_IMAGE_REF:-registro-perforaciones-api:development}
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: development
+        GIT_SHA: development
+    restart: "no"
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  database-ready:
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    command: ["sh", "-c", "echo DEVELOPMENT_DB_READY; exec tail -f /dev/null"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api-check:
+    profiles: ["test"]
+    image: ${DEV_API_IMAGE_REF:-registro-perforaciones-api:development}
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: development
+        GIT_SHA: development
+    restart: "no"
+    environment:
+      NODE_ENV: development
+      API_PORT: "3000"
+      FASTIFY_SECRET: ${FASTIFY_SECRET:?Falta FASTIFY_SECRET para api-check}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /tmp/registro-perforaciones-fotos
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
 volumes:
   registro_perforaciones_db:
