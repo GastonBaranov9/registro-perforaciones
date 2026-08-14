@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$EnvFile,
+  [string]$DeploymentStateFile="",
   [Parameter(Mandatory=$true)][string]$ProjectName,
   [Parameter(Mandatory=$true)][string]$AdminEmail,
   [Parameter(Mandatory=$true)][string]$AdminPasswordFile,
@@ -23,7 +24,9 @@ $origin=[Uri](Get-EnvValue "PUBLIC_ORIGIN")
 $hostName=Get-EnvValue "PUBLIC_HOST"
 if($origin.Scheme -ne "https" -or $origin.Host -ne $hostName){throw "PUBLIC_ORIGIN/PUBLIC_HOST no forman la origin HTTPS canónica."}
 $port=$origin.Port
-$compose=@("--project-name",$ProjectName,"--env-file",$envPath,"-f",$composePath)
+$compose=@("--project-name",$ProjectName,"--env-file",$envPath)
+if($DeploymentStateFile){$compose+=@("--env-file",(Resolve-Path $DeploymentStateFile).Path)}
+$compose+=@("-f",$composePath)
 $tempRoot=Join-Path ([IO.Path]::GetTempPath()) "rsp-smoke-$PID-$([Guid]::NewGuid().ToString('N'))"
 [IO.Directory]::CreateDirectory($tempRoot)|Out-Null
 $body=Join-Path $tempRoot "body.bin";$headers=Join-Path $tempRoot "headers.txt";$cookies=Join-Path $tempRoot "cookies.txt";$cookiesCopy=Join-Path $tempRoot "cookies-copy.txt";$loginBody=Join-Path $tempRoot "login.json"

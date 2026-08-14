@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$EnvFile,
+  [string]$DeploymentStateFile="",
   [Parameter(Mandatory=$true)][string]$ProjectName,
   [Parameter(Mandatory=$true)][string]$BackupDir,
   [Parameter(Mandatory=$true)][string]$Bundle,
@@ -14,7 +15,9 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path 
 $bundlePath=(Resolve-Path (Join-Path $backupPath $Bundle)).Path
 if([IO.Directory]::GetParent($bundlePath).FullName-ne $backupPath){throw "El bundle debe ser hijo directo de BackupDir."}
 $env:BACKUP_DIR=$backupPath;$env:RESTORE_BUNDLE=$Bundle;$env:RESTORE_CONFIRM=$Confirm
-$compose=@("--project-name",$ProjectName,"--env-file",$envPath,"-f",$composePath)
+$compose=@("--project-name",$ProjectName,"--env-file",$envPath)
+if($DeploymentStateFile){$compose+=@("--env-file",(Resolve-Path $DeploymentStateFile).Path)}
+$compose+=@("-f",$composePath)
 & docker compose @compose stop api
 if($LASTEXITCODE-ne 0){throw "No se pudo detener API antes del restore completo."}
 & docker compose @compose --profile ops run --rm restore

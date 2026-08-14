@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][string]$EnvFile,
+  [string]$DeploymentStateFile = "",
   [Parameter(Mandatory = $true)][string]$ProjectName,
   [Parameter(Mandatory = $true)][string]$BackupDir,
   [string]$ComposeFile = "docker-compose.production.yaml"
@@ -13,7 +14,9 @@ $composePath = (Resolve-Path (Join-Path $repo $ComposeFile)).Path
 $backupPath = [IO.Path]::GetFullPath($BackupDir)
 [IO.Directory]::CreateDirectory($backupPath) | Out-Null
 $env:BACKUP_DIR = $backupPath
-$compose = @("--project-name", $ProjectName, "--env-file", $envPath, "-f", $composePath)
+$compose = @("--project-name", $ProjectName, "--env-file", $envPath)
+if ($DeploymentStateFile) { $compose += @("--env-file", (Resolve-Path $DeploymentStateFile).Path) }
+$compose += @("-f", $composePath)
 
 function Invoke-Compose {
   param([string[]]$Arguments)
