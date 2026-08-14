@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { cargarConfiguracionRuntime } from "../src/config/runtime.ts";
+import { cargarConfiguracionRuntime, normalizarOriginsPermitidos } from "../src/config/runtime.ts";
 
 function entornoProduccion(): NodeJS.ProcessEnv {
   return {
@@ -80,6 +80,15 @@ test("producción exige dominio concreto y origin HTTPS coherente", () => {
   assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PUBLIC_ORIGIN: "http://perforaciones.example.test" }), /PUBLIC_ORIGIN/);
   assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PUBLIC_ORIGIN: "https://otro.example.test" }), /PUBLIC_ORIGIN/);
   assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), CORS_ORIGINS: "http://localhost:4200" }), /CORS_ORIGINS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), CORS_ORIGINS: "*" }), /CORS_ORIGINS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), CORS_ORIGINS: "https://cliente.example.test,ruta-malformada" }), /CORS_ORIGINS/);
+});
+
+test("allowlist canónica elimina duplicados y normaliza whitespace y slash final",()=>{
+  assert.deepEqual(normalizarOriginsPermitidos("  https://cliente.example.test/ , https://app.example.test,https://cliente.example.test  ",true,"https://app.example.test"),[
+    "https://app.example.test","https://cliente.example.test",
+  ]);
+  assert.throws(()=>normalizarOriginsPermitidos("https://cliente.example.test,   ",true,"https://app.example.test"),/CORS_ORIGINS/);
 });
 
 test("development conserva defaults locales sin exigir variables production", () => {

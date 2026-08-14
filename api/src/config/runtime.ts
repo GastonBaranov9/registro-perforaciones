@@ -127,7 +127,7 @@ function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { h
   return { host, origin: url.origin };
 }
 
-function originsCors(entrada: string | undefined, production: boolean, publicOrigin?: string): string[] {
+export function normalizarOriginsPermitidos(entrada: string | undefined, production: boolean, publicOrigin?: string): string[] {
   if (!entrada) return production ? [publicOrigin!] : DEV_CORS_ORIGINS;
   const origins = entrada.split(",").map((item) => {
     const candidato = item.trim();
@@ -212,7 +212,7 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     publicHost: publico.host,
     publicOrigin: publico.origin,
     trustProxy: production ? 1 : false,
-    corsOrigins: originsCors(valor(env, "CORS_ORIGINS"), production, publico.origin),
+    corsOrigins: normalizarOriginsPermitidos(valor(env, "CORS_ORIGINS"), production, publico.origin),
     enableApiDocs,
     hstsEnabled,
     logLevel: valor(env, "LOG_LEVEL") ?? (production ? "info" : "debug"),
