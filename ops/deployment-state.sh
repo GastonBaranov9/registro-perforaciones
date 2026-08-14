@@ -56,7 +56,7 @@ deployment_state_read() {
   [ "$DS_CONFIG_HASH" = "$expected" ] || { echo "deployment state: checksum invalido" >&2; return 1; }
 }
 
-deployment_state_write_atomic() {
+deployment_state_write_atomic() (
   target=$1; api=$2; front=$3; version=$4; git_sha=$5
   parent=$(dirname "$target")
   [ -d "$parent" ] || { echo "deployment state: directorio inexistente" >&2; return 1; }
@@ -70,4 +70,4 @@ deployment_state_write_atomic() {
   mv -f "$temp" "$target"
   trap - EXIT HUP INT TERM
   deployment_state_read "$target"
-}
+)

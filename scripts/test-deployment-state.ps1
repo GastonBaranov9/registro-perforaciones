@@ -16,8 +16,9 @@ try{
   $n1=Write-DeploymentStateAtomic $statePath $apiN1 $frontN1 'n1' 'def456'
   $bash=(Get-Command bash.exe -ErrorAction Stop).Source
   $repoUnix=$repo.Replace('\','/');$stateUnix=$statePath.Replace('\','/');$testUnix=(Join-Path $repo 'scripts/test-deployment-state-posix.sh').Replace('\','/')
-  $parity=(& $bash $testUnix $repoUnix $stateUnix|Out-String).Trim()
-  if($LASTEXITCODE-ne 0-or $parity-ne "n1|$($n1.ConfigHash)"){throw "PowerShell/POSIX no interpretan el mismo deployment state."}
+  $parity=@(& $bash $testUnix $repoUnix $stateUnix)
+  if($LASTEXITCODE-ne 0-or $parity[0]-ne "n1|$($n1.ConfigHash)"-or (Read-DeploymentState $statePath).AppVersion-ne 'n2'){throw "PowerShell/POSIX no leen y escriben el mismo deployment state."}
+  $n1=Write-DeploymentStateAtomic $statePath $apiN1 $frontN1 'n1' 'def456'
   $base=@"
 PGUSER=test
 PGPASSWORD=test-only
