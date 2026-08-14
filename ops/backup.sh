@@ -41,6 +41,18 @@ photos_sha="$(sha256sum "$temporal/$photos_name" | awk '{print $1}')"
 db_size="$(wc -c < "$temporal/$dump_name" | tr -d ' ')"
 photos_size="$(wc -c < "$temporal/$photos_name" | tr -d ' ')"
 created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+db_owner="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()")"
+db_encoding="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname=current_database()")"
+db_collate="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT datcollate FROM pg_database WHERE datname=current_database()")"
+db_ctype="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT datctype FROM pg_database WHERE datname=current_database()")"
+schemas="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT COALESCE(string_agg(nspname,',' ORDER BY nspname),'') FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'")"
+extensions="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT COALESCE(string_agg(extname || ':' || extversion,',' ORDER BY extname),'') FROM pg_extension")"
+[ "$db_owner" = "$PGUSER" ] || { echo "El owner de la base no coincide con el usuario operativo" >&2;exit 1; }
+printf '%s\n' "$db_owner" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]{0,62}$' || { echo "Owner de base no permitido" >&2;exit 1; }
+printf '%s\n' "$db_encoding" | grep -Eq '^[A-Z0-9_-]+$' || { echo "Encoding de base no permitido" >&2;exit 1; }
+for metadata in "$db_collate" "$db_ctype" "$schemas" "$extensions";do
+  [ -n "$metadata" ] && ! printf '%s' "$metadata" | grep -q '[[:cntrl:]]' || { echo "Metadata de base no permitida" >&2;exit 1; }
+done
 
 cat > "$temporal/manifest.txt" <<EOF
 RSP_BACKUP_FORMAT=1
@@ -52,6 +64,12 @@ SCHEMA_STATE=$schema_state
 DATABASE_FILE=$dump_name
 DATABASE_SHA256=$db_sha
 DATABASE_SIZE=$db_size
+DATABASE_OWNER=$db_owner
+DATABASE_ENCODING=$db_encoding
+DATABASE_COLLATE=$db_collate
+DATABASE_CTYPE=$db_ctype
+SCHEMAS=$schemas
+EXTENSIONS=$extensions
 PHOTOS_FILE=$photos_name
 PHOTOS_SHA256=$photos_sha
 PHOTOS_SIZE=$photos_size
