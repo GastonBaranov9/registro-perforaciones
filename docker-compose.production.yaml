@@ -130,6 +130,32 @@ services:
     networks:
       - backend
 
+  reconcile-fotos:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+    restart: "no"
+    command: ["npm", "run", "fotos:reconcile"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /var/lib/registro-perforaciones
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   api:
     image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
     build:

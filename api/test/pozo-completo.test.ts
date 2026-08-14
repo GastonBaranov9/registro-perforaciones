@@ -156,7 +156,7 @@ test("fotografía válida se nombra solo desde id_pozo y se relaciona antes del 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp06b-"));
   try {
     await crearPozoCompleto(30, data, dir, falso.pool as never);
-    assert.deepEqual(await fs.readdir(dir), ["pozo-101.jpg"]);
+    assert.deepEqual((await fs.readdir(dir)).sort(), [".trash", "pozo-101.jpg"]);
     const update = falso.consultas.findIndex((sql) => sql.includes("UPDATE pozo SET foto_url"));
     const commit = falso.consultas.indexOf("COMMIT");
     assert.ok(update >= 0 && update < commit);

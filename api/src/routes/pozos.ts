@@ -6,12 +6,11 @@ import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
 import { isAdmin, isPerf, isProp } from "../services/roles-services.ts";
 import fs from "fs/promises";
-import path from "path";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
-import { eliminarFotoPersistida, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
+import { eliminarFotoPersistida, eliminarPozoPersistido, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
 import { crearPropietarioOperativo, listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
-import { validarFotoBuffer } from "../services/foto-archivo-service.ts";
+import { leerFotoPozo, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 import { FOTO_JSON_BODY_LIMIT_BYTES, MAX_FOTO_BYTES } from "../constants/fotos.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
@@ -326,12 +325,9 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       };
 
       const pozo = await funcPozo.getPozoById(id_pozo)
+      if (!pozo) throw new err.T05PozoNoEncontrado();
+      await eliminarPozoPersistido(id_pozo, fotosDir, undefined, { logger: req.log });
       fastify.notifyClient(pozo.id_propietario, { type: "deletepozo" })
-      const borrado = await funcPozo.deletePozo(id_pozo);
-
-      if (!borrado) {
-        throw new err.T05PozoNoEncontrado();
-      }
 
       return rep.code(204).send();
     }
@@ -431,12 +427,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const { id_pozo } = req.params as { id_pozo: number };
       const pozo = await funcPozo.getPozoById(id_pozo);
       if (!pozo?.foto_url) throw new err.T05PozoNoEncontrado();
-      const matches = await fs.readdir(fotosDir);
-      const fileName = matches.find((name) => name.startsWith(`pozo-${id_pozo}.`));
-      if (!fileName) throw new err.T05PozoNoEncontrado();
-      const extension = path.extname(fileName).toLowerCase();
-      const contentType = extension === ".png" ? "image/png" : "image/jpeg";
-      return rep.type(contentType).send(await fs.readFile(path.join(fotosDir, fileName)));
+      const foto = await leerFotoPozo(id_pozo, fotosDir);
+      if (!foto) throw new err.T05PozoNoEncontrado();
+      const contentType = foto.nombre.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+      return rep.type(contentType).send(foto.buffer);
     }
   );
 };
