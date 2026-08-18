@@ -76,6 +76,17 @@ function requerido(env: NodeJS.ProcessEnv, nombre: string): string {
   return resultado;
 }
 
+function secreto(env: NodeJS.ProcessEnv, nombre: string): string | undefined {
+  const resultado = env[nombre];
+  return resultado === undefined || resultado.length === 0 ? undefined : resultado;
+}
+
+function secretoRequerido(env: NodeJS.ProcessEnv, nombre: string): string {
+  const resultado = secreto(env, nombre);
+  if (resultado === undefined) throw new Error(`Falta configurar ${nombre}`);
+  return resultado;
+}
+
 function puerto(nombre: string, entrada: string | undefined, porDefecto?: number): number {
   if (!entrada && porDefecto !== undefined) return porDefecto;
   if (!entrada || !/^\d+$/.test(entrada)) throw new Error(`${nombre} debe ser un puerto válido`);
@@ -230,7 +241,7 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     },
     postgres: {
       user: production ? requerido(env, "PGUSER") : valor(env, "PGUSER"),
-      password: production ? requerido(env, "PGPASSWORD") : valor(env, "PGPASSWORD"),
+      password: production ? secretoRequerido(env, "PGPASSWORD") : secreto(env, "PGPASSWORD"),
       host: production ? requerido(env, "PGHOST") : valor(env, "PGHOST"),
       port: puerto("PGPORT", valor(env, "PGPORT"), production ? undefined : 5432),
       database: production ? requerido(env, "PGDATABASE") : valor(env, "PGDATABASE"),

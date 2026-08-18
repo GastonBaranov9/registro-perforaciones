@@ -6,6 +6,12 @@ function requerida(env: NodeJS.ProcessEnv, nombre: string): string {
   return valor;
 }
 
+function secretoRequerido(env: NodeJS.ProcessEnv, nombre: string): string {
+  const valor = env[nombre];
+  if (valor === undefined || valor.length === 0) throw new Error(`Falta configurar ${nombre}`);
+  return valor;
+}
+
 export function cargarConfigDbOperaciones(env: NodeJS.ProcessEnv = process.env): PoolConfig {
   const portText = requerida(env, "PGPORT");
   if (!/^\d+$/.test(portText)) throw new Error("PGPORT debe ser un puerto válido");
@@ -17,7 +23,7 @@ export function cargarConfigDbOperaciones(env: NodeJS.ProcessEnv = process.env):
     host: requerida(env, "PGHOST"),
     port,
     user: requerida(env, "PGUSER"),
-    password: requerida(env, "PGPASSWORD"),
+    password: secretoRequerido(env, "PGPASSWORD"),
     database: requerida(env, "PGDATABASE"),
     max: 1,
     connectionTimeoutMillis: 5_000,
