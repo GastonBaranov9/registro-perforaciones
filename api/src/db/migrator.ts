@@ -241,6 +241,7 @@ export async function ejecutarMigraciones(pool: Pick<Pool, "connect">, opciones:
   const logger = opciones.logger ?? ((mensaje: string) => console.log(mensaje));
   const client = await pool.connect();
   let lockTomado = false;
+  let errorPrincipal: unknown;
   let adoptoBaseline = false;
   const aplicadasAhora: string[] = [];
   try {
@@ -287,8 +288,22 @@ export async function ejecutarMigraciones(pool: Pick<Pool, "connect">, opciones:
     if (errores.length) throw new Error(`El esquema final no pasó la verificación: ${errores.join("; ")}`);
     if (!pendientes.length) logger("Migraciones al día; no hay cambios pendientes.");
     return { aplicadas: aplicadasAhora, pendientes: 0, adoptoBaseline };
+  } catch (error) {
+    errorPrincipal = error;
+    throw error;
   } finally {
-    if (lockTomado) await soltarLock(client);
-    client.release();
+    let errorUnlock: unknown;
+    try {
+      if (lockTomado) await soltarLock(client);
+    } catch (error) {
+      errorUnlock = error;
+      if (errorPrincipal !== undefined) {
+        try { logger("Falló la liberación del lock de migraciones después de un error principal."); }
+        catch { /* logging best effort: release y error principal tienen prioridad */ }
+      }
+      else throw error;
+    } finally {
+      client.release(errorUnlock instanceof Error ? errorUnlock : errorUnlock === undefined ? undefined : true);
+    }
   }
 }
