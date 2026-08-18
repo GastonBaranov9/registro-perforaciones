@@ -17,7 +17,7 @@ export default fp(async function rateLimits(fastify) {
 
   fastify.addHook("onRequest", async (req, rep) => {
     const route = req.routeOptions?.url;
-    if (route === "/health" || route === "/ready" || route === "/login" || route === "/ws") return;
+    if (route === "/health" || route === "/ready" || route === "/ws") return;
     const result = limiters.api.consume(`api:ip:${req.ip}`);
     if (result.allowed) return;
     req.log.warn({ event: "rate_limit_rejected", area: "api" }, "Solicitud limitada");

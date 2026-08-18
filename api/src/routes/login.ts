@@ -30,13 +30,12 @@ const authRoutes = async function (fastify: FastifyInstance) {
             authenticated: Type.Literal(true),
           }),
             400: err.ErrorSchema,
-            401: err.ErrorSchema,
+          401: err.ErrorSchema,
         },
       },
+      onRequest: [fastify.rateLimitLogin],
     },
     async function (req, rep) {
-      await fastify.rateLimitLogin(req, rep);
-      if (rep.sent) return;
       const { email, password } = req.body as UsuarioLoginData;
 
       const user = await logUser(email, password);
