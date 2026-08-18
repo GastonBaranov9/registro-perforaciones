@@ -1,5 +1,5 @@
 import { type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { clientConnections } from "../plugins/websocket.ts";
+import { registrarConexionWebsocket, type WebsocketSocket } from "../plugins/websocket.ts";
 import type { FastifyInstance } from "fastify";
 import { isAdmin } from "../services/roles-services.ts";
 const websocketRoute = async function (fastify: FastifyInstance) {
@@ -17,9 +17,9 @@ const websocketRoute = async function (fastify: FastifyInstance) {
     },
     async (socket, req) => {
       const { sub: id_usuario } = req.user;
-      clientConnections.push({
+      registrarConexionWebsocket({
         id_usuario,
-        socket: socket,
+        socket: socket as WebsocketSocket,
         isAdmin: await isAdmin(id_usuario),
       });
       socket.send(
@@ -28,14 +28,6 @@ const websocketRoute = async function (fastify: FastifyInstance) {
           id_usuario,
         })
       );
-
-      socket.on("close", () => {
-        const index = clientConnections.findIndex(
-          (connection) => connection.id_usuario === id_usuario && connection.socket === socket
-        );
-        if (index >= 0) clientConnections.splice(index, 1);
-      });
-
       // Las notificaciones son exclusivamente de servidor a cliente. No se
       // aceptan IDs aportados por mensajes del navegador.
     }
