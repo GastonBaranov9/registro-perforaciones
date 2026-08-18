@@ -8,10 +8,58 @@ export { MAX_FOTO_BYTES } from "../constants/fotos.ts";
 export type MimeFoto = "image/jpeg" | "image/png";
 export interface LoggerPurga { warn(datos: Record<string, unknown>, mensaje: string): void }
 export interface FotoAislada { original: string; aislado: string }
+export interface ResultadoCompensacionFotos { errorRollback?: unknown; errorFilesystem?: unknown }
 export interface DependenciasReemplazoFoto {
   escribir?: (ruta: string, contenido: Buffer) => Promise<void>;
   promover?: (origen: string, destino: string) => Promise<void>;
   eliminar?: (ruta: string) => Promise<void>;
+}
+
+function codigoErrorSeguro(error: unknown, fallback: string): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = String((error as { code: unknown }).code);
+    if (/^[A-Za-z0-9_-]{1,64}$/.test(code)) return code;
+  }
+  if (error instanceof Error && /^[A-Za-z0-9_-]{1,64}$/.test(error.name)) return error.name;
+  return fallback;
+}
+
+function logCompensacion(
+  logger: LoggerPurga | undefined,
+  idPozo: number,
+  operacion: string,
+  etapa: "rollback_db" | "filesystem_restore",
+  error: unknown,
+): void {
+  try {
+    logger?.warn(
+      { id_pozo: idPozo, operacion, etapa, codigo: codigoErrorSeguro(error, "COMPENSATION_FAILED") },
+      "Falló una fase de compensación de fotografías",
+    );
+  } catch { /* el logger nunca debe cortar la compensación */ }
+}
+
+export async function compensarFalloTransaccionalFotos(opciones: {
+  idPozo: number;
+  operacion: string;
+  rollback?: () => Promise<void>;
+  restaurar: () => Promise<void>;
+  logger?: LoggerPurga;
+}): Promise<ResultadoCompensacionFotos> {
+  const resultado: ResultadoCompensacionFotos = {};
+  if (opciones.rollback) {
+    try { await opciones.rollback(); }
+    catch (error) {
+      resultado.errorRollback = error;
+      logCompensacion(opciones.logger, opciones.idPozo, opciones.operacion, "rollback_db", error);
+    }
+  }
+  try { await opciones.restaurar(); }
+  catch (error) {
+    resultado.errorFilesystem = error;
+    logCompensacion(opciones.logger, opciones.idPozo, opciones.operacion, "filesystem_restore", error);
+  }
+  return resultado;
 }
 
 export function validarFotoBuffer(buffer: Buffer, mime?: string): { buffer: Buffer; extension: "jpg" | "png"; mime: MimeFoto } {
@@ -139,8 +187,11 @@ export async function reemplazarFotoReversible<T>(
     promovida = true;
     return { resultado: await confirmar(fotoUrl), anterior: anteriores[0] ?? null, anteriores };
   } catch (error) {
-    try { await eliminar(promovida ? destino : staging); } catch { /* la restauración tiene prioridad */ }
-    await restaurarFotosAisladas(anteriores);
+    const fallosCompensacion: unknown[] = [];
+    try { await eliminar(promovida ? destino : staging); } catch (fallo) { fallosCompensacion.push(fallo); }
+    try { await restaurarFotosAisladas(anteriores); } catch (fallo) { fallosCompensacion.push(fallo); }
+    if (fallosCompensacion.length)
+      throw new err.T05ErrorDesconocido("Falló el reemplazo y la compensación de fotografías quedó incompleta.", { cause: error });
     throw error;
   }
 }

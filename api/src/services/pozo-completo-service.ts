@@ -6,7 +6,7 @@ import { myPool } from "../db/pool.ts";
 import type { PerfilLitologicoVistaPreviaBody, Pozo, PozoCompletoBody, PozoCompletoUpdateBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { validarPersonaPozo } from "./candidatos-pozo-service.ts";
-import { aislarFotosExistentes, decodificarFotoBase64, purgarFotosConfirmadas, restaurarFotosAisladas, rutaContenida, type FotoAislada, type LoggerPurga } from "./foto-archivo-service.ts";
+import { aislarFotosExistentes, compensarFalloTransaccionalFotos, decodificarFotoBase64, purgarFotosConfirmadas, restaurarFotosAisladas, rutaContenida, type FotoAislada, type LoggerPurga } from "./foto-archivo-service.ts";
 import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 import { DATOS_TECNICOS_ESTANDAR, datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 
@@ -253,13 +253,24 @@ export async function actualizarPozoCompleto(
     await client.query("COMMIT");
     resultado = { pozo, sitio, ...hijos };
   } catch (error) {
-    await client.query("ROLLBACK");
-    if (temporalNuevo) await fs.rm(temporalNuevo, { force: true });
-    if (nuevo) await fs.rm(nuevo, { force: true });
-    if (fotosAisladas.length) {
-      try { await restaurarFotosAisladas(fotosAisladas); }
-      catch (restauracion) { throw new err.T05ErrorDesconocido("Falló la actualización y no se pudo restaurar la fotografía anterior.", { cause: restauracion }); }
-    }
+    const compensacion = await compensarFalloTransaccionalFotos({
+      idPozo,
+      operacion: "actualizar_pozo_completo",
+      logger: opciones.logger,
+      rollback: async () => { await client.query("ROLLBACK"); },
+      restaurar: async () => {
+        const errores: unknown[] = [];
+        for (const ruta of [temporalNuevo, nuevo]) {
+          if (ruta) try { await fs.rm(ruta, { force: true }); } catch (fallo) { errores.push(fallo); }
+        }
+        if (fotosAisladas.length) {
+          try { await restaurarFotosAisladas(fotosAisladas); } catch (fallo) { errores.push(fallo); }
+        }
+        if (errores.length) throw new Error("Compensación de archivos incompleta");
+      },
+    });
+    if (compensacion.errorFilesystem)
+      throw new err.T05ErrorDesconocido("Falló la actualización y no se pudo restaurar la fotografía anterior.", { cause: error });
     throw error;
   } finally { client.release(); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "actualizar_pozo_completo", opciones.logger, opciones.eliminarPostCommit);
