@@ -3,6 +3,7 @@ import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 10_000] as const;
+const SLOW_RECONNECT_DELAY_MS = 30_000;
 const WEBSOCKET_CONNECTING = 0;
 const WEBSOCKET_OPEN = 1;
 
@@ -75,11 +76,8 @@ export class WebsocketService implements OnDestroy {
 
   private scheduleReconnect(): void {
     if (!this.reconnectEnabled || this.destroyed || this.authService.userId() === null || this.reconnectTimer) return;
-    if (this.reconnectAttempt >= RECONNECT_DELAYS_MS.length) {
-      this.reconnectEnabled = false;
-      return;
-    }
-    const delay = RECONNECT_DELAYS_MS[this.reconnectAttempt++];
+    const delay = RECONNECT_DELAYS_MS[this.reconnectAttempt] ?? SLOW_RECONNECT_DELAY_MS;
+    if (this.reconnectAttempt < RECONNECT_DELAYS_MS.length) this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.openSocket();
