@@ -47,6 +47,16 @@ describe('WebsocketService', () => {
     (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket = originalWebSocket;
   });
 
+  function reachSlowRetry(): void {
+    service.connect();
+    WebSocketControlado.instances[0].serverClose();
+    for (const delay of [1_000, 2_000, 5_000, 10_000, 10_000]) {
+      jasmine.clock().tick(delay);
+      WebSocketControlado.instances.at(-1)!.serverClose();
+    }
+    expect(WebSocketControlado.instances.length).toBe(6);
+  }
+
   it('abre una sola conexion y no duplica listeners al repetir connect', () => {
     service.connect();service.connect();
     expect(WebSocketControlado.instances.length).toBe(1);
@@ -81,33 +91,50 @@ describe('WebsocketService', () => {
     expect(WebSocketControlado.instances.length).toBe(1);
   });
 
-  it('una sesion revocada no inicia un loop de reconexion', () => {
-    service.connect();
-    const socket = WebSocketControlado.instances[0];
-    socket.open();
+  it('una sesion revocada detiene el retry lento', () => {
+    reachSlowRetry();
     userId = null;
-    socket.serverClose();
     jasmine.clock().tick(60_000);
-    expect(WebSocketControlado.instances.length).toBe(1);
+    expect(WebSocketControlado.instances.length).toBe(6);
   });
 
-  it('limita los reintentos fallidos a cinco con backoff acotado', () => {
-    service.connect();
-    WebSocketControlado.instances[0].serverClose();
-    for (const delay of [1_000, 2_000, 5_000, 10_000, 10_000]) {
-      jasmine.clock().tick(delay);
+  it('continua con retry lento tras una caida mayor al backoff rapido y recupera sin reload', () => {
+    reachSlowRetry();
+    jasmine.clock().tick(29_999);
+    expect(WebSocketControlado.instances.length).toBe(6);
+    jasmine.clock().tick(1);
+    expect(WebSocketControlado.instances.length).toBe(7);
+    WebSocketControlado.instances[6].open();
+    expect(service.connected()).toBeTrue();
+    service.connect();service.connect();
+    jasmine.clock().tick(60_000);
+    expect(WebSocketControlado.instances.length).toBe(7);
+  });
+
+  it('tolera maintenance prolongado con un solo intento cada treinta segundos', () => {
+    reachSlowRetry();
+    for (let intento = 0; intento < 3; intento += 1) {
+      jasmine.clock().tick(30_000);
+      expect(WebSocketControlado.instances.length).toBe(7 + intento);
       WebSocketControlado.instances.at(-1)!.serverClose();
     }
-    expect(WebSocketControlado.instances.length).toBe(6);
-    jasmine.clock().tick(60_000);
+    jasmine.clock().tick(30_000);
+    expect(WebSocketControlado.instances.length).toBe(10);
+    WebSocketControlado.instances.at(-1)!.open();
+    expect(service.connected()).toBeTrue();
+  });
+
+  it('logout durante retry lento cancela el timer y no reconecta', () => {
+    reachSlowRetry();
+    service.disconnect();
+    jasmine.clock().tick(90_000);
     expect(WebSocketControlado.instances.length).toBe(6);
   });
 
-  it('destruir el servicio limpia timers pendientes', () => {
-    service.connect();
-    WebSocketControlado.instances[0].serverClose();
+  it('destruir el servicio durante retry lento limpia timers pendientes', () => {
+    reachSlowRetry();
     service.ngOnDestroy();
-    jasmine.clock().tick(60_000);
-    expect(WebSocketControlado.instances.length).toBe(1);
+    jasmine.clock().tick(90_000);
+    expect(WebSocketControlado.instances.length).toBe(6);
   });
 });
