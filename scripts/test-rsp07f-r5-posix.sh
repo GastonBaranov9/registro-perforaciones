@@ -5,11 +5,14 @@ repo=${1:?Falta repo}
 case "$repo" in /*|[A-Za-z]:/*) ;;*) echo "Repo no absoluto" >&2;exit 2;;esac
 repo_physical=$(CDPATH= cd -- "$repo"&&pwd)
 
-temp=${TMPDIR:-/tmp}/rsp07f-r5-posix-$$
+temp_root=$(CDPATH= cd -- "${TMPDIR:-/tmp}"&&pwd)
+temp=$(mktemp -d "$temp_root/rsp07f-r5-posix-XXXXXX")
 fixture="$temp/fixture with spaces"
 external="$temp/external cwd"
 fakebin="$temp/fake bin"
-cleanup(){ rm -rf "$temp"; }
+cleanup(){
+  case "$temp" in "$temp_root"/rsp07f-r5-posix-??????) rm -rf -- "$temp";;*) echo "Temporal R5 inseguro: $temp" >&2;;esac
+}
 trap cleanup EXIT HUP INT TERM
 mkdir -p "$fixture/scripts" "$fixture/ops" "$external" "$fakebin"
 
