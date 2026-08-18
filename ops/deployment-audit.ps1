@@ -48,17 +48,18 @@ function Read-DeploymentAuditForRollback{
   if(-not $script:DeploymentAuditPhases.Contains($started)-or-not $script:DeploymentAuditPhases.Contains($completed)-or $script:DeploymentAuditPhases[$completed]-gt $script:DeploymentAuditPhases[$started]){throw "Fases del audit invalidas."}
   try{[DateTimeOffset]::Parse([string]$audit.started_at_utc)|Out-Null;[DateTimeOffset]::Parse([string]$audit.updated_at_utc)|Out-Null}catch{throw "Timestamps del audit invalidos."}
   if([IO.Path]::GetFullPath([string]$audit.deployment_state)-ne [IO.Path]::GetFullPath($DeploymentStateFile)){throw "El deployment state del audit no coincide con el indicado."}
+  if($audit.deployment_state_persisted-isnot [bool]){throw "Indicador de persistencia invalido."}
+  $backupCompleted=$script:DeploymentAuditPhases[$completed]-ge $script:DeploymentAuditPhases.backup
+  $noOp=([string]$audit.status-ne 'success'-and [string]$audit.database_recovery-eq 'not_required'-and -not [bool]$audit.deployment_state_persisted-and $script:DeploymentAuditPhases[$started]-le $script:DeploymentAuditPhases.images)
+  $requiresFull=([string]$audit.database_recovery-eq 'restore_required')
   Assert-DeploymentImageRef ([string]$audit.previous_api_ref);Assert-DeploymentImageRef ([string]$audit.previous_front_ref);Assert-DeploymentImageRef ([string]$audit.target_api_ref);Assert-DeploymentImageRef ([string]$audit.target_front_ref)
   Assert-DeploymentIdentifier 'APP_VERSION' ([string]$audit.previous_version);Assert-DeploymentIdentifier 'GIT_SHA' ([string]$audit.previous_git_sha);Assert-DeploymentIdentifier 'TARGET_VERSION' ([string]$audit.target_version);Assert-DeploymentIdentifier 'TARGET_GIT_SHA' ([string]$audit.git_sha)
-  foreach($id in @([string]$audit.previous_api_id,[string]$audit.previous_front_id)){if($id-notmatch '^sha256:[a-f0-9]{64}$'){throw "Audit sin image ID previo valido."}}
+  if(-not $noOp){foreach($id in @([string]$audit.previous_api_id,[string]$audit.previous_front_id)){if($id-notmatch '^sha256:[a-f0-9]{64}$'){throw "Audit sin image ID previo valido."}}}
   $previousHash=Get-DeploymentConfigHash $audit.previous_api_ref $audit.previous_front_ref $audit.previous_version $audit.previous_git_sha
   $targetHash=Get-DeploymentConfigHash $audit.target_api_ref $audit.target_front_ref $audit.target_version $audit.git_sha
   if($audit.previous_config_hash-cne $previousHash-or $audit.target_config_hash-cne $targetHash){throw "Checksum de configuracion corrupto en audit."}
-  if($audit.deployment_state_persisted-isnot [bool]){throw "Indicador de persistencia invalido."}
-  $backupCompleted=$script:DeploymentAuditPhases[$completed]-ge $script:DeploymentAuditPhases.backup
   if($backupCompleted-and [string]$audit.backup_bundle-notmatch '^rsp-backup-\d{8}T\d{6}Z$'){throw "Audit completo de backup sin bundle valido."}
-  $noOp=([string]$audit.status-ne 'success'-and [string]$audit.database_recovery-eq 'not_required'-and -not [bool]$audit.deployment_state_persisted-and $script:DeploymentAuditPhases[$started]-le $script:DeploymentAuditPhases.images)
-  $requiresFull=([string]$audit.database_recovery-eq 'restore_required')
+  if($requiresFull-and-not $backupCompleted){throw "Audit restore_required sin backup completado."}
   $audit|Add-Member -Force NoteProperty rollback_noop $noOp
   $audit|Add-Member -Force NoteProperty rollback_requires_full $requiresFull
   $audit|Add-Member -Force NoteProperty backup_completed $backupCompleted

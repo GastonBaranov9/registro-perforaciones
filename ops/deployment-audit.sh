@@ -22,15 +22,18 @@ deployment_audit_read(){
   sr=$(deployment_audit_phase_rank "$DA_PHASE_STARTED")||{ echo "Fase iniciada desconocida" >&2;return 1;};cr=$(deployment_audit_phase_rank "$DA_PHASE_COMPLETED")||{ echo "Fase completada desconocida" >&2;return 1;};[ "$cr" -le "$sr" ]||return 1
   printf '%s' "$DA_STARTED_AT"|grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'||{ echo "Timestamp de audit invalido" >&2;return 1; }
   printf '%s' "$DA_UPDATED_AT"|grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'||{ echo "Timestamp de audit invalido" >&2;return 1; }
-  deployment_state_validate_image "$DA_PREVIOUS_API";deployment_state_validate_image "$DA_PREVIOUS_FRONT";deployment_state_validate_image "$DA_TARGET_API";deployment_state_validate_image "$DA_TARGET_FRONT"
-  deployment_state_validate_identifier "$DA_PREVIOUS_VERSION";deployment_state_validate_identifier "$DA_PREVIOUS_SHA";deployment_state_validate_identifier "$DA_TARGET_VERSION";deployment_state_validate_identifier "$DA_TARGET_SHA"
-  printf '%s' "$DA_PREVIOUS_API_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
-  printf '%s' "$DA_PREVIOUS_FRONT_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
-  [ "$DA_PREVIOUS_HASH" = "$(deployment_state_hash "$DA_PREVIOUS_API" "$DA_PREVIOUS_FRONT" "$DA_PREVIOUS_VERSION" "$DA_PREVIOUS_SHA")" ]&&[ "$DA_TARGET_HASH" = "$(deployment_state_hash "$DA_TARGET_API" "$DA_TARGET_FRONT" "$DA_TARGET_VERSION" "$DA_TARGET_SHA")" ]||{ echo "Checksum de config corrupto" >&2;return 1; }
-  case "$DA_STATE_PERSISTED" in true|false) ;;*) return 1;;esac
+  case "$DA_STATE_PERSISTED" in true|false) ;;*) echo "Indicador de persistencia invalido" >&2;return 1;;esac
   DA_BACKUP_COMPLETED=false;[ "$cr" -lt 4 ]||DA_BACKUP_COMPLETED=true
-  if [ "$DA_BACKUP_COMPLETED" = true ];then printf '%s' "$DA_BUNDLE"|grep -Eq '^rsp-backup-[0-9]{8}T[0-9]{6}Z$'||{ echo "Bundle faltante" >&2;return 1;};fi
   DA_NOOP=false;DA_REQUIRES_FULL=false
   if [ "$DA_STATUS" != success ]&&[ "$DA_DATABASE_RECOVERY" = not_required ]&&[ "$DA_STATE_PERSISTED" = false ]&&[ "$sr" -le 5 ];then DA_NOOP=true;fi
   if [ "$DA_DATABASE_RECOVERY" = restore_required ];then DA_REQUIRES_FULL=true;fi
+  deployment_state_validate_image "$DA_PREVIOUS_API";deployment_state_validate_image "$DA_PREVIOUS_FRONT";deployment_state_validate_image "$DA_TARGET_API";deployment_state_validate_image "$DA_TARGET_FRONT"
+  deployment_state_validate_identifier "$DA_PREVIOUS_VERSION";deployment_state_validate_identifier "$DA_PREVIOUS_SHA";deployment_state_validate_identifier "$DA_TARGET_VERSION";deployment_state_validate_identifier "$DA_TARGET_SHA"
+  if [ "$DA_NOOP" != true ];then
+    printf '%s' "$DA_PREVIOUS_API_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
+    printf '%s' "$DA_PREVIOUS_FRONT_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
+  fi
+  [ "$DA_PREVIOUS_HASH" = "$(deployment_state_hash "$DA_PREVIOUS_API" "$DA_PREVIOUS_FRONT" "$DA_PREVIOUS_VERSION" "$DA_PREVIOUS_SHA")" ]&&[ "$DA_TARGET_HASH" = "$(deployment_state_hash "$DA_TARGET_API" "$DA_TARGET_FRONT" "$DA_TARGET_VERSION" "$DA_TARGET_SHA")" ]||{ echo "Checksum de config corrupto" >&2;return 1; }
+  if [ "$DA_BACKUP_COMPLETED" = true ];then printf '%s' "$DA_BUNDLE"|grep -Eq '^rsp-backup-[0-9]{8}T[0-9]{6}Z$'||{ echo "Bundle faltante" >&2;return 1;};fi
+  if [ "$DA_REQUIRES_FULL" = true ]&&[ "$DA_BACKUP_COMPLETED" != true ];then echo "Restore requerido sin backup completado" >&2;return 1;fi
 }
