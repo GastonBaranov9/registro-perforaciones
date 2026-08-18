@@ -37,4 +37,10 @@ export async function registrarValidacionOrigin(
   });
 }
 
-export default fastifyPlugin(registrarValidacionOrigin);
+interface OriginPluginOptions {
+  runtime?: Pick<RuntimeConfig, "production" | "publicOrigin" | "corsOrigins">;
+}
+
+export default fastifyPlugin(async function originPlugin(fastify, options: OriginPluginOptions) {
+  await registrarValidacionOrigin(fastify, options.runtime ?? cargarConfiguracionRuntime());
+});

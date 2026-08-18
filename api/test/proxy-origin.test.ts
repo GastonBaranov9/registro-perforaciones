@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import cookies, { CSRF_COOKIE, SESSION_COOKIE } from "../src/plugins/cookies.ts";
 import csrf from "../src/plugins/csrf.ts";
-import { origenPublicoValido, registrarValidacionOrigin } from "../src/plugins/origin.ts";
+import originPlugin, { origenPublicoValido, registrarValidacionOrigin } from "../src/plugins/origin.ts";
 
 test("Origin de producción protege mutaciones y WebSocket", () => {
   const origin = "https://perforaciones.example.test";
@@ -37,6 +37,23 @@ test("CORS y Origin comparten allowlist HTTP sin debilitar CSRF ni WebSocket",as
   assert.equal((await app.inject({method:"POST",url:"/recurso",headers:{origin:additional},cookies:{[SESSION_COOKIE]:"jwt"}})).statusCode,403);
   assert.equal((await app.inject({method:"POST",url:"/recurso",headers:{origin:additional,"x-csrf-token":"control"},cookies:{[SESSION_COOKIE]:"jwt",[CSRF_COOKIE]:"control"}})).statusCode,200);
   assert.equal(origenPublicoValido(true,canonical,allowed,"GET",additional,"websocket"),false);
+  await app.close();
+});
+
+test("el plugin Origin usa la configuracion runtime al registrarse", async () => {
+  const canonical = "https://app.example.test";
+  const app = Fastify();
+  await app.register(originPlugin, {
+    runtime: { production: true, publicOrigin: canonical, corsOrigins: [canonical] },
+  });
+  app.post("/recurso", async () => ({ ok: true }));
+
+  assert.equal((await app.inject({ method: "POST", url: "/recurso", headers: { origin: canonical } })).statusCode, 200);
+  assert.equal((await app.inject({
+    method: "POST",
+    url: "/recurso",
+    headers: { origin: "https://evil.example.test" },
+  })).statusCode, 403);
   await app.close();
 });
 
