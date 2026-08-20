@@ -5,8 +5,12 @@
     "ng": "ng ",
     "start": "ng serve --host 0.0.0.0",
     "build": "ng build",
+    "build:native": "node scripts/build-native.mjs",
+    "capacitor:sync": "npm run build:native && cap sync",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:config": "node --test scripts/*.test.mjs",
+    "test:build-targets": "node scripts/test-build-targets.mjs",
     "check:utf8": "node scripts/check-interface-mojibake.mjs"
   },
   "prettier": {
