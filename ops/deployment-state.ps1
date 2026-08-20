@@ -9,8 +9,40 @@ $script:DeploymentStateKeys = @(
 
 function Assert-DeploymentImageRef {
   param([Parameter(Mandatory = $true)][string]$Value)
-  if ($Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._/@:-]+$' -or $Value -match '(^|:)latest$') {
+  if ($Value -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._/@:-]*$' -or ([regex]::Matches($Value, '@').Count -gt 1)) {
     throw "Las imagenes del estado deben usar tag/digest explicito y nunca latest."
+  }
+
+  $repository = $Value
+  $hasDigest = $false
+  $at = $Value.IndexOf('@')
+  if ($at -ge 0) {
+    $repository = $Value.Substring(0, $at)
+    $digest = $Value.Substring($at + 1)
+    $hasDigest = $true
+    if (-not $repository -or $digest -cnotmatch '^sha256:[a-f0-9]{64}$') {
+      throw "La imagen debe usar un digest sha256 completo en minusculas."
+    }
+  }
+
+  $slash = $repository.LastIndexOf('/')
+  $finalComponent = $repository.Substring($slash + 1)
+  if (-not $finalComponent) { throw "La referencia de imagen no contiene repositorio." }
+  $colon = $finalComponent.LastIndexOf(':')
+  $tag = $null
+  if ($colon -ge 0) {
+    $imageName = $finalComponent.Substring(0, $colon)
+    $tag = $finalComponent.Substring($colon + 1)
+    if (-not $imageName -or $tag -cnotmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
+      throw "El tag explicito de la imagen no es valido."
+    }
+    if ($tag.Equals('latest', [StringComparison]::OrdinalIgnoreCase)) {
+      throw "El tag latest no es reproducible."
+    }
+  }
+
+  if (-not $tag -and -not $hasDigest) {
+    throw "La imagen debe incluir tag explicito o digest sha256."
   }
 }
 

@@ -2,11 +2,45 @@
 set -eu
 
 deployment_state_validate_image() {
-  case "$1" in
-    ''|latest|*:latest) echo "deployment state: image ref invalida" >&2; return 1 ;;
-    *[!A-Za-z0-9._/@:-]*) echo "deployment state: image ref invalida" >&2; return 1 ;;
+  image_ref=$1
+  case "$image_ref" in
+    ''|*[!A-Za-z0-9._/@:-]*|*@*@*)
+      echo "deployment state: image ref invalida" >&2; return 1 ;;
   esac
-  case "$1" in [A-Za-z0-9]*) ;; *) return 1 ;; esac
+  case "$image_ref" in [A-Za-z0-9]*) ;; *) echo "deployment state: image ref invalida" >&2; return 1 ;; esac
+
+  repository=$image_ref
+  has_digest=false
+  case "$image_ref" in
+    *@*)
+      repository=${image_ref%@*}
+      digest=${image_ref##*@}
+      has_digest=true
+      [ -n "$repository" ] && printf '%s\n' "$digest" | grep -Eq '^sha256:[a-f0-9]{64}$' || {
+        echo "deployment state: digest sha256 invalido" >&2; return 1;
+      }
+      ;;
+  esac
+
+  final_component=${repository##*/}
+  [ -n "$final_component" ] || { echo "deployment state: image ref invalida" >&2; return 1; }
+  tag=
+  case "$final_component" in
+    *:*)
+      tag=${final_component##*:}
+      image_name=${final_component%:*}
+      [ -n "$image_name" ] && printf '%s\n' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$' || {
+        echo "deployment state: tag invalido" >&2; return 1;
+      }
+      [ "$(printf '%s' "$tag" | tr '[:upper:]' '[:lower:]')" != latest ] || {
+        echo "deployment state: latest no es reproducible" >&2; return 1;
+      }
+      ;;
+  esac
+
+  [ -n "$tag" ] || [ "$has_digest" = true ] || {
+    echo "deployment state: falta tag explicito o digest sha256" >&2; return 1;
+  }
 }
 
 deployment_state_validate_identifier() {
