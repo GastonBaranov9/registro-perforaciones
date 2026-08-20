@@ -145,6 +145,16 @@ try {
   if ($noop -notmatch "no hay cambios pendientes" -or (Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations") -ne "7") {
     throw "La segunda ejecución de migraciones no fue no-op."
   }
+  $migration006 = [IO.File]::ReadAllText((Join-Path $repo "api/db/migrations/006_roles_base.sql")).Replace("`r`n", "`n").Replace("`r", "`n")
+  $legacyCrlfBytes = [Text.UTF8Encoding]::new($false).GetBytes($migration006.Replace("`n", "`r`n"))
+  $legacyHasher = [Security.Cryptography.SHA256]::Create()
+  try { $legacyCrlfHash = -join ($legacyHasher.ComputeHash($legacyCrlfBytes) | ForEach-Object { $_.ToString('x2') }) }
+  finally { $legacyHasher.Dispose() }
+  Invoke-Psql $origin $originDb "UPDATE schema_migrations SET checksum_sha256='$legacyCrlfHash' WHERE version='006'" | Out-Null
+  $legacyLedger = Invoke-ComposeText -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "migrate")
+  if ($legacyLedger -notmatch "no hay cambios pendientes" -or (Invoke-Psql $origin $originDb "SELECT btrim(checksum_sha256)='$legacyCrlfHash' FROM schema_migrations WHERE version='006'") -ne 't') {
+    throw "El ledger CRLF legacy exacto no fue reconocido."
+  }
 
   $adoptDb = "rsp07c_adopt"
   Invoke-Psql $origin "postgres" "CREATE DATABASE $adoptDb" | Out-Null
@@ -247,11 +257,19 @@ await fs.writeFile(path.join(process.env.FOTOS_DIR,'pozo-$wellId.jpg'),foto.buff
   Invoke-ExpectedFailure -Base $target -Expected "database.dump" -Arguments @("--profile", "ops", "run", "--rm", "restore") | Out-Null
   if ((Invoke-Psql $target $targetDb "SELECT count(*) FROM pg_tables WHERE schemaname='public'") -ne "0") { throw "Fixtures inválidos mutaron la DB antes de validarse." }
 
+  $env:RESTORE_BUNDLE = $bundle
+  $env:RESTORE_CONFIRM = "RESTORE_EMPTY_TARGET"
+  Invoke-ExpectedFailure -Base $target -Expected "RESTORE_TEST_FAILURE=after_photo_switch" -Arguments @("--profile", "ops", "run", "--rm", "-e", "RESTORE_TEST_FAIL_AT=after_photo_switch", "restore") | Out-Null
+  if ((Invoke-Psql $target $targetDb "SELECT count(*) FROM pg_tables WHERE schemaname='public'") -ne "0") { throw "El fallo de fotos del empty restore mutó la DB." }
   & (Join-Path $repo "ops/restore.ps1") -EnvFile $targetEnv -ProjectName $targetProject -BackupDir $backupDir -Bundle $bundle -Confirm RESTORE_EMPTY_TARGET
   if ($LASTEXITCODE -ne 0) { throw "Restore válido falló." }
   Invoke-Psql $target $targetDb "CREATE TABLE objeto_post_backup_test(id integer PRIMARY KEY); CREATE INDEX objeto_post_backup_idx ON objeto_post_backup_test(id); CREATE VIEW vista_post_backup_test AS SELECT id FROM objeto_post_backup_test; CREATE FUNCTION funcion_post_backup_test() RETURNS integer LANGUAGE SQL AS 'SELECT 1'; CREATE SCHEMA esquema_post_backup_test; CREATE EXTENSION hstore" | Out-Null
   $postBackupObjects = Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NOT NULL AND to_regclass('public.objeto_post_backup_idx') IS NOT NULL AND to_regclass('public.vista_post_backup_test') IS NOT NULL AND to_regprocedure('public.funcion_post_backup_test()') IS NOT NULL AND to_regnamespace('esquema_post_backup_test') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')"
   if ($postBackupObjects -ne 't') { throw 'No se crearon los objetos post-backup del fixture.' }
+  Invoke-Compose -Base $target -Arguments @("exec", "-T", "api", "node", "--input-type=module", "-e", "import fs from 'node:fs';fs.writeFileSync('/var/lib/registro-perforaciones/fotos/pozo-$wellId.jpg',Buffer.from([255,216,0,255,217]))")
+  $preReplacePhotoSha = Invoke-ComposeText -Base $target -Arguments @("exec", "-T", "api", "sha256sum", "/var/lib/registro-perforaciones/fotos/pozo-$wellId.jpg")
+  $preReplacePhotoHash = [regex]::Match($preReplacePhotoSha, '\b[a-f0-9]{64}\b').Value
+  if (-not $preReplacePhotoHash) { throw 'No se pudo medir la foto M previa al full restore.' }
 
   Invoke-Compose -Base $target -Arguments @("stop", "api")
   $env:RESTORE_BUNDLE = $corruptBundle
@@ -268,13 +286,24 @@ exit 42
   [IO.File]::WriteAllText((Join-Path $restoreFailureDir "pg_restore"), $fakePgRestore, [Text.UTF8Encoding]::new($false))
   $env:RESTORE_BUNDLE = $bundle
   $failedRestore = Invoke-ExpectedFailure -Base $target -Expected "RESTORE_FAILED" -Arguments @("--profile", "ops", "run", "--rm", "-e", "PATH=/test-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "-v", "${restoreFailureDir}:/test-bin:ro", "restore")
-  if ($failedRestore -notmatch 'RESTORE_TARGET_RESET') { throw 'El fallo controlado ocurrió antes de recrear el destino.' }
-  if ((Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')") -ne 't') { throw 'El reset no eliminó objetos post-backup.' }
+  if ((Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')") -ne 't') { throw 'El fallo en DB staging mutó el destino activo.' }
+
+  foreach ($fault in @('before_current_move','after_current_preserved','before_staged_switch','after_photo_switch','before_db_swap','after_target_preserved')) {
+    Invoke-ExpectedFailure -Base $target -Expected "RESTORE_FAILED" -Arguments @("--profile", "ops", "run", "--rm", "-e", "RESTORE_TEST_FAIL_AT=$fault", "restore") | Out-Null
+    if ((Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')") -ne 't') { throw "Fault $fault no preservó la DB M." }
+    $compensatedPhotoSha = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "--entrypoint", "sha256sum", "restore", "/data/fotos/pozo-$wellId.jpg")
+    $compensatedPhotoHash = [regex]::Match($compensatedPhotoSha, '\b[a-f0-9]{64}\b').Value
+    if ($compensatedPhotoHash -ne $preReplacePhotoHash) { throw "Fault $fault no restauró las fotos M." }
+  }
 
   $retryRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "restore")
   if ($retryRestore -notmatch "RESTORE_OK=$bundle MODE=replace") { throw 'El retry de full restore no terminó correctamente.' }
   $objectsGone = Invoke-Psql $target $targetDb "SELECT to_regclass('public.objeto_post_backup_test') IS NULL AND to_regclass('public.objeto_post_backup_idx') IS NULL AND to_regclass('public.vista_post_backup_test') IS NULL AND to_regprocedure('public.funcion_post_backup_test()') IS NULL AND to_regnamespace('esquema_post_backup_test') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_extension WHERE extname='hstore')"
   if ($objectsGone -ne 't') { throw 'Sobrevivieron objetos creados después del backup.' }
+  $cleanupRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "-e", "RESTORE_TEST_FAIL_AT=cleanup", "restore")
+  if ($cleanupRestore -notmatch "RESTORE_CLEANUP_PENDING=$bundle" -or $cleanupRestore -notmatch "RESTORE_OK=$bundle MODE=replace") { throw 'El fallo de cleanup no conservó commit funcional y residuo detectable.' }
+  $cleanupRetry = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "restore")
+  if ($cleanupRetry -notmatch "RESTORE_OK=$bundle MODE=replace") { throw 'No se pudo limpiar/reintentar luego del cleanup pendiente.' }
   $migrateAfterRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "migrate")
   if ($migrateAfterRestore -notmatch 'no hay cambios pendientes' -or (Invoke-Psql $target $targetDb "SELECT count(*)=7 AND max(version)='006' FROM schema_migrations") -ne 't') { throw 'El ledger restaurado no quedó exactamente en N.' }
 
@@ -297,11 +326,12 @@ const pdf=await generarPDFBytes(r,$wellId);assert.equal(Buffer.from(pdf).subarra
   if ($LASTEXITCODE -ne 0 -or $ready -ne "ok") { throw "Readiness restaurado falló." }
 
   [pscustomobject]@{
-    migrations_fresh = 7; rerun_noop = $true; checksum_rejected = $true; rollback_ok = $true
+    migrations_fresh = 7; rerun_noop = $true; legacy_crlf_ledger = $true; checksum_rejected = $true; rollback_ok = $true
     concurrent_lock = $true; adoption_ok = $true; adoption_rejected = $true
     bootstrap_login = $true; bootstrap_second_rejected = $true
     backup_bundle = $bundle; corrupt_restore_rejected = $true; invalid_manifest_rejected = $true; missing_dump_rejected = $true; corrupt_replace_preserved_target = $true
-    post_backup_objects_removed = $true; failed_restore_detected = $true; restore_retry = $true; restored_relations = $true
+    empty_photo_failure_compensated = $true; empty_retry = $true; full_fault_points = 6
+    post_backup_objects_removed = $true; failed_restore_detected = $true; restore_retry = $true; cleanup_pending_retry = $true; restored_relations = $true
     restored_photo_sha256 = ($targetPhotoSha -split '\s+')[0]; restored_pdf_bytes = [int]$pdfBytes; ready = $ready
   } | ConvertTo-Json -Compress
 }
