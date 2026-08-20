@@ -151,6 +151,7 @@ services:
       PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
       RESTORE_BUNDLE: ${RESTORE_BUNDLE:-}
       RESTORE_CONFIRM: ${RESTORE_CONFIRM:-}
+      RESTORE_TEST_FAIL_AT: ${RESTORE_TEST_FAIL_AT:-}
     volumes:
       - type: volume
         source: raul_silva_fotos
