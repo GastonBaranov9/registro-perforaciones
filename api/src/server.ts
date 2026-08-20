@@ -15,6 +15,9 @@ const server: FastifyInstance = fastify({
   logger: loggerOptions(runtime.logLevel),
   disableRequestLogging: true,
   requestIdHeader: runtime.production ? "x-request-id" : false,
+  // Rechazar trabajo nuevo y cerrar conexiones idle sin cortar requests activas.
+  return503OnClosing: true,
+  forceCloseConnections: "idle",
   // La API no publica puertos; el único salto confiable es el proxy de la red edge.
   trustProxy: runtime.trustProxy,
 }).withTypeProvider<TypeBoxTypeProvider>();
