@@ -14,6 +14,7 @@ export interface Migracion {
   nombre: string;
   archivo: string;
   checksum: string;
+  checksumsLegacy: string[];
   sql: string;
 }
 
@@ -48,6 +49,26 @@ export function checksumSha256(contenido: string | Uint8Array): string {
   return createHash("sha256").update(contenido).digest("hex");
 }
 
+export function normalizarSaltosLineaSQL(contenido: string): string {
+  return contenido.replace(/\r\n?/g, "\n");
+}
+
+export function checksumMigracion(contenido: string): string {
+  return checksumSha256(normalizarSaltosLineaSQL(contenido));
+}
+
+export function checksumsLegacyMigracion(contenido: string): string[] {
+  const canonico = normalizarSaltosLineaSQL(contenido);
+  const checksumCanonico = checksumSha256(canonico);
+  const checksumCrlf = checksumSha256(canonico.replace(/\n/g, "\r\n"));
+  return checksumCrlf === checksumCanonico ? [] : [checksumCrlf];
+}
+
+export function checksumMigracionAplicadaValido(migracion: Migracion, checksum: string): boolean {
+  const registrado = checksum.trim();
+  return migracion.checksum === registrado || migracion.checksumsLegacy.includes(registrado);
+}
+
 export async function leerMigraciones(directorio = DIRECTORIO_MIGRACIONES): Promise<Migracion[]> {
   const entradas = await fs.readdir(directorio, { withFileTypes: true });
   const archivos = entradas.filter((x) => x.isFile() && ARCHIVO_MIGRACION.test(x.name)).map((x) => x.name).sort();
@@ -61,11 +82,19 @@ export async function leerMigraciones(directorio = DIRECTORIO_MIGRACIONES): Prom
     if (versiones.has(version)) throw new Error(`Versión de migración duplicada: ${version}`);
     versiones.add(version);
     const bytes = await fs.readFile(path.join(directorio, archivo));
-    const sql = bytes.toString("utf8");
+    const contenido = bytes.toString("utf8");
+    const sql = normalizarSaltosLineaSQL(contenido);
     if (/^\s*(?:BEGIN|COMMIT|ROLLBACK)\s*;/im.test(sql))
       throw new Error(`La migración ${archivo} no debe controlar su propia transacción`);
     if (/^\s*\\/m.test(sql)) throw new Error(`La migración ${archivo} contiene comandos exclusivos de psql`);
-    migraciones.push({ version, nombre: coincidencia[2], archivo, checksum: checksumSha256(bytes), sql });
+    migraciones.push({
+      version,
+      nombre: coincidencia[2],
+      archivo,
+      checksum: checksumMigracion(contenido),
+      checksumsLegacy: checksumsLegacyMigracion(contenido),
+      sql,
+    });
   }
   return migraciones;
 }
@@ -231,7 +260,7 @@ function validarLedger(aplicadas: MigracionAplicada[], migraciones: Migracion[])
     const local = locales.get(aplicada.version);
     if (!local) throw new Error(`La base registra una migración desconocida para esta imagen: ${aplicada.version}`);
     if (local.nombre !== aplicada.nombre) throw new Error(`El nombre de la migración ${aplicada.version} no coincide`);
-    if (local.checksum !== aplicada.checksum_sha256.trim())
+    if (!checksumMigracionAplicadaValido(local, aplicada.checksum_sha256))
       throw new Error(`Checksum diferente para la migración ya aplicada ${aplicada.version}_${aplicada.nombre}`);
   }
 }
