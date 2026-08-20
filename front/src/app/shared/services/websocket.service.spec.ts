@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { AuthService } from './auth-service/auth.service';
 import { WebsocketService } from './websocket.service';
+import { environment } from '../../../environments/environment';
 
 class WebSocketControlado {
   static instances: WebSocketControlado[] = [];
@@ -60,6 +61,7 @@ describe('WebsocketService', () => {
   it('abre una sola conexion y no duplica listeners al repetir connect', () => {
     service.connect();service.connect();
     expect(WebSocketControlado.instances.length).toBe(1);
+    expect(WebSocketControlado.instances[0].url).toBe(environment.wsUrl);
     WebSocketControlado.instances[0].open();
     expect(service.connected()).toBeTrue();
     service.connect();
