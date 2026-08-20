@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_USER: rsp_test
+      POSTGRES_PASSWORD: fixture-only-not-a-secret
+      POSTGRES_DB: rsp_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rsp_test -d rsp_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    image: ${RSP_TEST_API_IMAGE}
+    build:
+      context: ../../../api
+      target: production
+    init: true
+    stop_grace_period: 360s
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: rsp_test
+      PGPASSWORD: fixture-only-not-a-secret
+      PGDATABASE: rsp_test
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+      RSP_TEST_STATE_DIR: /test-state
+      RSP_TEST_MODE: ${RSP_TEST_MODE}
+      RSP_TEST_DELAY_MS: ${RSP_TEST_DELAY_MS}
+      RSP_TEST_STATEMENT_TIMEOUT_MS: ${RSP_TEST_STATEMENT_TIMEOUT_MS:-3000}
+    command: ["node", "/api/rsp07f-r11-shutdown.mjs"]
+    ports:
+      - "127.0.0.1:${RSP_TEST_API_PORT}:3000"
+    volumes:
+      - photos:/var/lib/registro-perforaciones
+      - ./server.mjs:/api/rsp07f-r11-shutdown.mjs:ro
+      - ${RSP_TEST_STATE_DIR}:/test-state
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  photos:
