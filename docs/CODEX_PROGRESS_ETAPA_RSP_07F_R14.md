@@ -1,5 +1,7 @@
 # ETAPA RSP-07F-R14 — referencias reproducibles y timeouts end-to-end
 
+> Nota R16: la validación native citada en este registro era sólo de routing y quedó retirada. RSP-07 publica exclusivamente producción web; Android productivo requiere primero P2-10 Android Auth.
+
 ## Alcance
 
 Se cerraron exclusivamente los dos hallazgos del review global posterior a R13: deployment state aceptaba tags Docker mutables distintos de `latest`, y Nginx cortaba requests HTTP a 90 s aunque PostgreSQL admite queries de hasta 310 s. No se modificaron funcionalidades de negocio, contratos de autenticación, migraciones, restore ni despliegues externos.

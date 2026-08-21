@@ -1,5 +1,7 @@
 # ETAPA RSP-07F-R12 - backend especifico para Capacitor
 
+> **Superseded por RSP-07F-R16 para producción Android.** R12 demostró separación de routing, pero no resolvió el transporte de sesión entre un WebView local y el backend remoto. `build:native`, `capacitor:sync`, `NATIVE_BACKEND_ORIGIN` y el target Angular native fueron retirados. No existe un build Android productivo soportado hasta diseñar P2-10 Android Auth; los comandos descritos abajo son evidencia histórica y ya no están disponibles.
+
 ## Causa del hallazgo
 
 El build web productivo usa correctamente `/api` y deriva `/ws` desde el origin de la pagina. `capacitor.config.ts` empaqueta ese mismo `dist/front/browser` como assets locales, pero el origin de esos assets dentro de Android pertenece al WebView. Por eso una ruta relativa o un WebSocket derivado de `window.location` apuntaban al host local del WebView y no al backend remoto.

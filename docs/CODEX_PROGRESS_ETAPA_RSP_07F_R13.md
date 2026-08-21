@@ -1,5 +1,7 @@
 # ETAPA RSP-07F-R13 — build local, reconciliación de fotos y ledger prefijo
 
+> Nota R16: las referencias históricas al test/build native quedaron superseded. Producción RSP-07 ofrece sólo el build web same-origin; Android productivo permanece bloqueado por P2-10 Android Auth.
+
 ## Alcance
 
 Se cerraron exclusivamente los tres hallazgos del review global posterior a R12:
