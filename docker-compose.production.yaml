@@ -203,7 +203,7 @@ services:
     image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
     # El maximo configurable de query es 310 s. El margen restante permite
     # ejecutar rollback/compensacion antes del SIGKILL final de Docker.
-    stop_grace_period: 360s
+    stop_grace_period: 480s
     build:
       context: ./api
       target: production
