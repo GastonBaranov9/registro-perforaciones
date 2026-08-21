@@ -165,9 +165,15 @@ test("build local de frontend usa Angular production web compatible y el deploy 
   assert.doesNotMatch(`${frontDockerfile}\n${JSON.stringify(packageJson.scripts)}`, /(?:^|\s)--prod(?:\s|$)/);
 
   assert.match(deploy, /if\(\$BuildImages\)[^{]*\{[^}]*Compose @\("build","api","front"\)[^}]*\}else\{[^}]*Compose @\("pull","api","front"\)/);
+  assert.equal([...deploy.matchAll(/Compose @\("build","api","front"\)/g)].length, 1);
+  assert.ok(deploy.indexOf('Compose @("build","api","front")') < deploy.indexOf("Start-DeploymentAuditPhase $audit 'maintenance'"));
   assert.ok(deploy.indexOf('Compose @("build","api","front")') < deploy.indexOf("Start-DeploymentAuditPhase $audit 'migrate'"));
   assert.match(deployPosix, /case "\$BUILD_IMAGES" in true\) compose build api front;;false\) compose pull api front;;/);
+  assert.equal([...deployPosix.matchAll(/compose build api front/g)].length, 1);
+  assert.ok(deployPosix.indexOf("compose build api front") < deployPosix.indexOf("phase_start maintenance"));
   assert.ok(deployPosix.indexOf("compose build api front") < deployPosix.indexOf("phase_start migrate"));
   assert.match(deployPosix, /^set -eu$/m);
   assert.match(deploy, /\$ErrorActionPreference="Stop"/);
+  assert.match(deploy, /if\(\$audit\.phase_started-eq 'preflight'\)\{\$restoredWithoutRecreate=\$true\}/);
+  assert.match(deployPosix, /preflight:not_required:false\) restored=true/);
 });
