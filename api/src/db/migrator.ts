@@ -254,11 +254,31 @@ async function leerAplicadas(client: PoolClient): Promise<MigracionAplicada[]> {
   return rows;
 }
 
-function validarLedger(aplicadas: MigracionAplicada[], migraciones: Migracion[]): void {
+export function validarLedger(aplicadas: MigracionAplicada[], migraciones: Migracion[]): void {
   const locales = new Map(migraciones.map((x) => [x.version, x]));
+  const versiones = new Set<string>();
+  const nombres = new Set<string>();
   for (const aplicada of aplicadas) {
-    const local = locales.get(aplicada.version);
-    if (!local) throw new Error(`La base registra una migración desconocida para esta imagen: ${aplicada.version}`);
+    if (!/^\d{3}$/.test(aplicada.version))
+      throw new Error(`Formato de versión inválido en el ledger de migraciones: ${aplicada.version}`);
+    if (versiones.has(aplicada.version) || nombres.has(aplicada.nombre))
+      throw new Error(`El ledger de migraciones contiene una entrada duplicada: ${aplicada.version}_${aplicada.nombre}`);
+    versiones.add(aplicada.version);
+    nombres.add(aplicada.nombre);
+    if (!locales.has(aplicada.version))
+      throw new Error(`La base registra una migración desconocida para esta imagen: ${aplicada.version}`);
+  }
+  for (const [indice, aplicada] of aplicadas.entries()) {
+    const esperada = migraciones[indice];
+    if (!esperada || aplicada.version !== esperada.version)
+      throw new Error(
+        `El ledger de migraciones no es un prefijo contiguo de las migraciones locales: `
+        + `se esperaba ${esperada?.version ?? "el final del ledger"} en la posición ${indice + 1}, `
+        + `pero se encontró ${aplicada.version}`,
+      );
+  }
+  for (const aplicada of aplicadas) {
+    const local = locales.get(aplicada.version)!;
     if (local.nombre !== aplicada.nombre) throw new Error(`El nombre de la migración ${aplicada.version} no coincide`);
     if (!checksumMigracionAplicadaValido(local, aplicada.checksum_sha256))
       throw new Error(`Checksum diferente para la migración ya aplicada ${aplicada.version}_${aplicada.nombre}`);
