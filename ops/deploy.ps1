@@ -58,6 +58,10 @@ try{
   $audit.previous_api_id=ContainerValue "api" '{{.Image}}';$audit.previous_front_id=ContainerValue "front" '{{.Image}}'
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
 
+  Set-DeploymentEnvironment $TargetApiImage $TargetFrontImage $TargetVersion $GitSha
+  Compose @("config","--quiet")
+  if($BuildImages){Log "image_build_start";Compose @("build","api","front")}else{Log "image_pull_start";Compose @("pull","api","front")}
+
   Start-DeploymentAuditPhase $audit 'maintenance' $auditFile
   Log "maintenance_start"
   Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance");$maintenance=$true
@@ -79,10 +83,8 @@ try{
   $match=[regex]::Match($backupOutput,'BACKUP_BUNDLE=(rsp-backup-\d{8}T\d{6}Z)');if(-not $match.Success){throw "El backup previo no produjo un bundle valido."};$audit.backup_bundle=$match.Groups[1].Value
   Complete-DeploymentAuditPhase $audit 'backup' $auditFile;Log "backup_ok" "bundle=$($audit.backup_bundle)";Test-PhaseFailure 'backup'
 
-  Set-DeploymentEnvironment $TargetApiImage $TargetFrontImage $TargetVersion $GitSha
   Start-DeploymentAuditPhase $audit 'images' $auditFile
   Compose @("config","--quiet")
-  if($BuildImages){Log "image_build_start";Compose @("build","api","front")}else{Log "image_pull_start";Compose @("pull","api","front")}
   Complete-DeploymentAuditPhase $audit 'images' $auditFile;Test-PhaseFailure 'images'
   $audit.database_recovery='operator_assessment_required'
   Start-DeploymentAuditPhase $audit 'migrate' $auditFile
@@ -112,7 +114,8 @@ try{
   $audit.status='failed';$audit.failed_at_utc=[DateTime]::UtcNow.ToString('o');$audit.failure='Ver logs operativos anteriores.';Write-DeploymentAuditAtomic $auditFile $audit
   $restoredWithoutRecreate=$false
   $phaseRank=$script:DeploymentAuditPhases[[string]$audit.phase_started]
-  if($audit.database_recovery-eq 'not_required'-and-not $audit.deployment_state_persisted-and $phaseRank-le $script:DeploymentAuditPhases.images-and $previousApiContainerId-and $previousProxyContainerId){
+  if($audit.phase_started-eq 'preflight'){$restoredWithoutRecreate=$true}
+  elseif($audit.database_recovery-eq 'not_required'-and-not $audit.deployment_state_persisted-and $phaseRank-le $script:DeploymentAuditPhases.images-and $previousApiContainerId-and $previousProxyContainerId){
     try{Compose @("stop","maintenance");Compose @("rm","-f","maintenance");& docker start $previousApiContainerId $previousProxyContainerId|Out-Null;if($LASTEXITCODE-ne 0){throw "No se pudo reiniciar el runtime previo."};$maintenance=$false;$restoredWithoutRecreate=$true}catch{}
   }
   if(-not $restoredWithoutRecreate-and $audit.phase_started-ne 'preflight'-and-not $maintenance){try{Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance");$maintenance=$true}catch{}}
