@@ -21,7 +21,7 @@ ng build --configuration production
 
 El Dockerfile web usa únicamente `build:production`. No invoca `build:native`, no recibe `NATIVE_BACKEND_ORIGIN` y conserva `src/environments/environment.ts`: API `/api` y WebSocket `/ws` derivados del origin del navegador.
 
-La rama `BUILD_IMAGES=true` de ambos deploys continúa construyendo `api` y `front`; la rama falsa continúa haciendo pull. Los comandos de imágenes están antes de la fase de migración y los scripts conservan terminación inmediata (`set -eu` y `$ErrorActionPreference="Stop"`), por lo que un fallo del build no avanza a migraciones ni al arranque de los nuevos servicios.
+La rama `BUILD_IMAGES=true` de ambos deploys continúa construyendo `api` y `front`; la rama falsa continúa haciendo pull. La preparación de imágenes ocurre inmediatamente después del preflight y antes de entrar en mantenimiento. Los scripts conservan terminación inmediata (`set -eu` y `$ErrorActionPreference="Stop"`), por lo que un fallo del build no detiene el runtime previo ni avanza a backup, migraciones o arranque de servicios. La fase auditada `images` se conserva en su posición histórica para mantener compatibles los audits y rollback R2; en ella se revalida la configuración ya preparada, sin repetir build/pull.
 
 La construcción aislada equivalente a `BUILD_IMAGES=true` produjo las imágenes locales `rsp07f-r13-api:local` y `rsp07f-r13-front:local`. La inspección del artefacto confirmó `/api/`, `/ws` y ausencia del fixture `native-backend.example`.
 
@@ -71,7 +71,7 @@ Después de validar el prefijo se siguen comprobando nombre y checksum. R10 se p
 - ledger: vacío, prefijos parciales, completo, huecos, sólo `006`, orden inválido, checksum alterado y CRLF legacy cubiertos;
 - ledger no-prefix con `--adopt-current-schema`: falla bajo lock antes de `BEGIN`, SQL o `INSERT`;
 - fotos: JPG único, PNG único, JPG+PNG, otro pozo, huérfano, faltante, trash, entrada insegura, symlink y no borrado automático cubiertos;
-- contratos `BUILD_IMAGES=true/false`, orden previo a migrate, ausencia de `--prod` y separación web/native cubiertos;
+- contratos `BUILD_IMAGES=true/false`, fallo previo a mantenimiento/migrate, ausencia de `--prod` y separación web/native cubiertos;
 - contratos de deployment R2, R5 y modos POSIX R7: OK;
 - `git diff --check`: OK.
 
