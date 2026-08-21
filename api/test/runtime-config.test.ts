@@ -109,3 +109,18 @@ test("hardening falla temprano ante booleanos, timeouts y capacidad imposibles",
   assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PDF_MAX_CONCURRENT: "99" }), /PDF_MAX_CONCURRENT/);
   assert.throws(() => cargarConfiguracionRuntime({ NODE_ENV: "development", HSTS_ENABLED: "true" }), /HSTS_ENABLED/);
 });
+
+test("presupuestos maximos de PostgreSQL y cola PDF quedan acotados antes del proxy", () => {
+  const config = cargarConfiguracionRuntime({
+    ...entornoProduccion(),
+    PG_STATEMENT_TIMEOUT_MS: "300000",
+    PG_QUERY_TIMEOUT_MS: "310000",
+    PDF_QUEUE_TIMEOUT_MS: "120000",
+  });
+  assert.equal(config.postgres.statementTimeoutMs, 300_000);
+  assert.equal(config.postgres.queryTimeoutMs, 310_000);
+  assert.equal(config.pdf.queueTimeoutMs, 120_000);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PG_STATEMENT_TIMEOUT_MS: "300001", PG_QUERY_TIMEOUT_MS: "310000" }), /PG_STATEMENT_TIMEOUT_MS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PG_QUERY_TIMEOUT_MS: "310001" }), /PG_QUERY_TIMEOUT_MS/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...entornoProduccion(), PDF_QUEUE_TIMEOUT_MS: "120001" }), /PDF_QUEUE_TIMEOUT_MS/);
+});

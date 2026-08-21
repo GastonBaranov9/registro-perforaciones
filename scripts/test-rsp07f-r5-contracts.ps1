@@ -17,8 +17,9 @@ $backupPath=Join-Path $temp 'backups'
 [IO.File]::WriteAllText($envPath,"RSP_R5_FIXTURE=1`n",[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($passwordPath,"fixture-only",[Text.UTF8Encoding]::new($false))
 
-$apiN='example/api:n';$frontN='example/front:n';$apiN1='example/api:n1';$frontN1='example/front:n1'
-$shaN='abc123';$shaN1='def456';$validBundle='rsp-backup-20260818T120000Z'
+$shaN='a'*40;$shaN1='b'*40
+$apiN="example/api:$shaN";$frontN="example/front:$shaN";$apiN1="example/api:$shaN1";$frontN1="example/front:$shaN1"
+$validBundle='rsp-backup-20260818T120000Z'
 
 function New-Audit{
   param(

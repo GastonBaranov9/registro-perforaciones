@@ -5,7 +5,7 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $repo 'ops/deployment-state.ps1');. (Join-Path $repo 'ops/deployment-audit.ps1');. (Join-Path $repo 'ops/secret-file.ps1')
 $temp=Join-Path ([IO.Path]::GetTempPath()) "$ProjectName-$([Guid]::NewGuid().ToString('N'))";[IO.Directory]::CreateDirectory($temp)|Out-Null
 $statePath=Join-Path $temp 'deployment.env';$auditPath=Join-Path $temp 'audit.json';$secretPath=Join-Path $temp 'secret';$jsonPath=Join-Path $temp 'login.json'
-$apiN='example/api:n';$frontN='example/front:n';$apiN1='example/api:n1';$frontN1='example/front:n1';$shaN='abc123';$shaN1='def456'
+$shaN='a'*40;$shaN1='b'*40;$apiN="example/api:$shaN";$frontN="example/front:$shaN";$apiN1="example/api:$shaN1";$frontN1="example/front:$shaN1"
 function New-Audit([string]$Status,[string]$Started,[string]$Completed,[string]$DbRecovery,[string]$Bundle='rsp-backup-20260814T120000Z'){
   [ordered]@{format=3;project=$ProjectName;started_at_utc='2026-08-14T12:00:00.0000000Z';updated_at_utc='2026-08-14T12:01:00.0000000Z';status=$Status;phase_started=$Started;phase_completed=$Completed;database_recovery=$DbRecovery;deployment_state=$statePath;deployment_state_persisted=($Completed-in @('persist_state','complete'));previous_config_hash=(Get-DeploymentConfigHash $apiN $frontN 'n' $shaN);previous_api_ref=$apiN;previous_api_id=('sha256:'+'a'*64);previous_front_ref=$frontN;previous_front_id=('sha256:'+'b'*64);previous_version='n';previous_git_sha=$shaN;target_config_hash=(Get-DeploymentConfigHash $apiN1 $frontN1 'n1' $shaN1);target_api_ref=$apiN1;target_front_ref=$frontN1;target_version='n1';git_sha=$shaN1;backup_bundle=$Bundle}
 }

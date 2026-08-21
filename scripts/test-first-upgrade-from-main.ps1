@@ -6,7 +6,7 @@ foreach($dir in @($tempRoot,$legacyRoot,$backupDir,$stateDir,$tlsDir)){[IO.Direc
 function RandomHex([int]$Bytes){$b=New-Object byte[] $Bytes;$rng=[Security.Cryptography.RandomNumberGenerator]::Create();try{$rng.GetBytes($b)}finally{$rng.Dispose()};return -join($b|ForEach-Object{$_.ToString('x2')})}
 function FreePort{$listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();try{return ([Net.IPEndPoint]$listener.LocalEndpoint).Port}finally{$listener.Stop()}}
 & git archive --format=tar --output=$archive main;if($LASTEXITCODE-ne 0){throw 'No se pudo archivar main.'};& $tarExe -xf $archive -C $legacyRoot;if($LASTEXITCODE-ne 0){throw 'No se pudo extraer main.'};[IO.Directory]::CreateDirectory((Join-Path $legacyRoot 'api/public'))|Out-Null
-$pgPassword=RandomHex 24;$fastifySecret=RandomHex 48;$mapKey=RandomHex 16;$adminPassword="RSP07F-R3-$(RandomHex 12)!";$adminEmail="admin-$ProjectName@example.test";$hostName='rsp07f-r3.example.test';$httpPort=FreePort;$httpsPort=FreePort;$origin="https://${hostName}:$httpsPort";$gitSha=(& git rev-parse HEAD|Out-String).Trim();$apiLegacy="rsp07f-r3-api:${ProjectName}-main";$frontLegacy="rsp07f-r3-front:${ProjectName}-main";$apiTarget="rsp07f-r3-api:${ProjectName}-target";$frontTarget="rsp07f-r3-front:${ProjectName}-target"
+$pgPassword=RandomHex 24;$fastifySecret=RandomHex 48;$mapKey=RandomHex 16;$adminPassword="RSP07F-R3-$(RandomHex 12)!";$adminEmail="admin-$ProjectName@example.test";$hostName='rsp07f-r3.example.test';$httpPort=FreePort;$httpsPort=FreePort;$origin="https://${hostName}:$httpsPort";$gitSha=(& git rev-parse HEAD|Out-String).Trim();$imageNamespace=$ProjectName.ToLowerInvariant();$apiLegacy="rsp07f-r3-api-${imageNamespace}-main:$gitSha";$frontLegacy="rsp07f-r3-front-${imageNamespace}-main:$gitSha";$apiTarget="rsp07f-r3-api-${imageNamespace}-target:$gitSha";$frontTarget="rsp07f-r3-front-${imageNamespace}-target:$gitSha"
 $cert=Join-Path $tlsDir 'ephemeral.crt';$key=Join-Path $tlsDir 'ephemeral.key';$openssl=(Get-Command openssl.exe -ErrorAction Stop).Source;$oldArg=$env:MSYS2_ARG_CONV_EXCL;$env:MSYS2_ARG_CONV_EXCL='*';$oldPref=$ErrorActionPreference;$ErrorActionPreference='Continue';try{& $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj "/CN=$hostName" -addext "subjectAltName=DNS:$hostName" -keyout $key -out $cert 2>$null}finally{$ErrorActionPreference=$oldPref;if($null-eq $oldArg){Remove-Item Env:MSYS2_ARG_CONV_EXCL -ErrorAction SilentlyContinue}else{$env:MSYS2_ARG_CONV_EXCL=$oldArg}};if($LASTEXITCODE-ne 0){throw 'No se pudo crear TLS efímero.'}
 [IO.File]::WriteAllText($passwordFile,$adminPassword+"`n",[Text.UTF8Encoding]::new($false))
 $envText=@"
@@ -29,7 +29,7 @@ PDF_MAP_ATTRIBUTION=Google Maps
 API_IMAGE_REF=$apiLegacy
 FRONT_IMAGE_REF=$frontLegacy
 APP_VERSION=unknown
-GIT_SHA=main
+GIT_SHA=$gitSha
 HTTP_BIND_ADDRESS=127.0.0.1
 HTTP_PORT=$httpPort
 HTTPS_BIND_ADDRESS=127.0.0.1
@@ -90,7 +90,7 @@ networks:
   backend: { internal: true }
 "@
 [IO.File]::WriteAllText($legacyCompose,$legacyYaml,[Text.UTF8Encoding]::new($false))
-. (Join-Path $repo 'ops/deployment-state.ps1');Write-DeploymentStateAtomic $deploymentFile $apiLegacy $frontLegacy 'unknown' 'main'|Out-Null
+. (Join-Path $repo 'ops/deployment-state.ps1');Write-DeploymentStateAtomic $deploymentFile $apiLegacy $frontLegacy 'unknown' $gitSha|Out-Null
 $currentCompose=Join-Path $repo 'docker-compose.production.yaml';$legacyArgs=@('--project-name',$ProjectName,'--env-file',$envFile,'-f',$legacyCompose);$currentArgs=@('--project-name',$ProjectName,'--env-file',$envFile,'--env-file',$deploymentFile,'-f',$currentCompose);$started=$false
 function Legacy([string[]]$Arguments){& docker compose @legacyArgs @Arguments;if($LASTEXITCODE-ne 0){throw "Legacy Compose falló: $($Arguments-join ' ')"}}
 function Current([string[]]$Arguments){& docker compose @currentArgs @Arguments;if($LASTEXITCODE-ne 0){throw "Current Compose falló: $($Arguments-join ' ')"}}

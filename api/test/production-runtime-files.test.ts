@@ -25,6 +25,34 @@ test("proxy y API comparten el contrato de upload", async () => {
   assert.match(proxy, /location = \/ws/);
 });
 
+test("timeouts HTTP cubren PostgreSQL y PDF sin alterar WebSocket", async () => {
+  const proxy = await fs.readFile(path.join(repo, "proxy", "https.conf.template"), "utf8");
+  const compose = await fs.readFile(path.join(repo, "docker-compose.production.yaml"), "utf8");
+  const runtime = await fs.readFile(path.join(repo, "api", "src", "config", "runtime.ts"), "utf8");
+  const reports = await fs.readFile(path.join(repo, "api", "src", "routes", "informes.ts"), "utf8");
+  const wsStart = proxy.indexOf("location = /ws");
+  const frontStart = proxy.indexOf("location / {", wsStart);
+  const apiLocation = proxy.slice(proxy.indexOf("location /api/"), wsStart);
+  const wsLocation = proxy.slice(wsStart, frontStart);
+  const frontLocation = proxy.slice(frontStart);
+  const readSeconds = Number(apiLocation.match(/proxy_read_timeout (\d+)s/)?.[1]);
+  const stopGraceSeconds = Number(compose.match(/stop_grace_period: (\d+)s/)?.[1]);
+
+  assert.equal(readSeconds, 450);
+  assert.equal(stopGraceSeconds, 480);
+  assert.match(apiLocation, /proxy_connect_timeout 5s/);
+  assert.match(apiLocation, /proxy_send_timeout 30s/);
+  assert.match(wsLocation, /proxy_read_timeout 180s/);
+  assert.match(frontLocation, /proxy_read_timeout 30s/);
+  assert.doesNotMatch(apiLocation, /proxy_read_timeout 90s/);
+  assert.match(runtime, /PG_STATEMENT_TIMEOUT_MS[^\n]+300_000/);
+  assert.match(runtime, /PG_QUERY_TIMEOUT_MS[^\n]+310_000/);
+  assert.match(runtime, /PDF_QUEUE_TIMEOUT_MS[^\n]+120_000/);
+  assert.match(reports, /header\("Retry-After", String\(error\.retryAfterSeconds\)\)\.code\(503\)/);
+  assert.ok(readSeconds > (120 + 310 + 3), "proxy debe cubrir cola PDF, query maxima, mapa y respuesta");
+  assert.ok(stopGraceSeconds > readSeconds, "SIGTERM debe dejar terminar el presupuesto publicado por el proxy");
+});
+
 test("proxy HTTPS es same-origin, redirige y sobrescribe forwarding", async () => {
   const compose = await fs.readFile(path.join(repo, "docker-compose.production.yaml"), "utf8");
   const proxy = await fs.readFile(path.join(repo, "proxy", "https.conf.template"), "utf8");
@@ -90,6 +118,20 @@ test("deploy y rollback persisten una fuente de verdad separada de secretos",asy
   assert.match(rollbackPosix,/smoke=.*smoke\.sh[\s\S]+deployment_state_write_atomic/);
   assert.match(deployPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
   assert.match(rollbackPosix,/--env-file "\$DEPLOYMENT_STATE_FILE"/);
+});
+
+test("preflight distingue digest remoto de tag SHA para build local", async () => {
+  const deploy = await fs.readFile(path.join(repo, "ops", "deploy.ps1"), "utf8");
+  const deployPosix = await fs.readFile(path.join(repo, "ops", "deploy.sh"), "utf8");
+  const state = await fs.readFile(path.join(repo, "ops", "deployment-state.ps1"), "utf8");
+  const statePosix = await fs.readFile(path.join(repo, "ops", "deployment-state.sh"), "utf8");
+  assert.match(state, /\^\[a-f0-9\]\{40\}\$/);
+  assert.match(state, /tag -cne \$GitSha/);
+  assert.match(state, /Una imagen remota debe usar un digest sha256 completo/);
+  assert.match(statePosix, /tag" = "\$git_sha"/);
+  assert.match(statePosix, /una imagen remota debe usar digest sha256/);
+  assert.match(deploy, /if\(\$BuildImages\)[\s\S]+Assert-DeploymentRemoteImageRef/);
+  assert.match(deployPosix, /true\) deployment_state_validate_image[\s\S]+false\) deployment_state_validate_remote_image/);
 });
 
 test("rollback acepta audits fallidos aptos por fase y conserva password opaca",async()=>{

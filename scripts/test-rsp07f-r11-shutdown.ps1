@@ -131,7 +131,7 @@ BACKUP_DIR=$fakeBackup
   if ($LASTEXITCODE -ne 0) { throw 'docker compose config fallo para produccion.' }
   $config = $rendered | ConvertFrom-Json
   $grace = [string]$config.services.api.stop_grace_period
-  if ($grace -notin @('360000000000','360s','6m0s')) { throw "Compose no aplico stop_grace_period=360s (valor: $grace)." }
+  if ($grace -notin @('480000000000','480s','8m0s')) { throw "Compose no aplico stop_grace_period=480s (valor: $grace)." }
 
   $opsStopOverrides = Get-ChildItem (Join-Path $repo 'ops') -File | Where-Object { $_.Extension -in @('.sh','.ps1') } | Select-String -CaseSensitive -Pattern 'docker\s+kill|docker\s+stop|(?:^|[\s,"''])-t(?:[\s,"''=]|$)|(?:^|[\s,"''])--(?:time|timeout)(?:[\s,"''=]|$)'
   if ($opsStopOverrides) { throw "Un flujo ops sobreescribe el grace: $($opsStopOverrides.Path -join ', ')" }
@@ -140,7 +140,7 @@ BACKUP_DIR=$fakeBackup
   $results += Invoke-ShutdownCase -Name 'long-success' -Mode success -DelayMs 12000 -ExpectedStatus 204 -ExpectPhoto $false -ExpectOverOldGrace $true -Build $true
   $results += Invoke-ShutdownCase -Name 'long-error' -Mode error -DelayMs 12000 -ExpectedStatus 500 -ExpectPhoto $true -ExpectOverOldGrace $true -Build $false
   $results += Invoke-ShutdownCase -Name 'bounded-timeout' -Mode timeout -DelayMs 20000 -ExpectedStatus 500 -ExpectPhoto $true -ExpectOverOldGrace $false -Build $false
-  [pscustomobject]@{production_stop_grace_period_seconds=360;compose_stop_honored=$true;no_ops_timeout_override=$true;cases=$results} | ConvertTo-Json -Depth 5 -Compress
+  [pscustomobject]@{production_stop_grace_period_seconds=480;compose_stop_honored=$true;no_ops_timeout_override=$true;cases=$results} | ConvertTo-Json -Depth 5 -Compress
 } finally {
   foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
   $savedPreference = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

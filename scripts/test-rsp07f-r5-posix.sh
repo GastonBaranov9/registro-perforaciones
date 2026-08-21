@@ -29,12 +29,12 @@ mkdir -p "$backup_dir" "$state_dir"
 : > "$env_file"
 printf '%s' fixture-only > "$password_file"
 
-api_n=example/api:n
-front_n=example/front:n
-api_n1=example/api:n1
-front_n1=example/front:n1
-sha_n=abc123
-sha_n1=def456
+sha_n=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+sha_n1=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+api_n="example/api:$sha_n"
+front_n="example/front:$sha_n"
+api_n1="example/api:$sha_n1"
+front_n1="example/front:$sha_n1"
 id_api=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 id_front=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bundle=rsp-backup-20260818T120000Z
@@ -83,7 +83,7 @@ deployment_audit_read "$audit" rsp07f-r5-posix "$state"
 [ "$DA_NOOP" = false ]&&[ "$DA_REQUIRES_FULL" = false ]
 
 write_audit failed preflight none not_required '' '' ''
-sed 's|PREVIOUS_API_REF=example/api:n|PREVIOUS_API_REF=|' "$audit" > "$audit.invalid"
+sed "s|PREVIOUS_API_REF=$api_n|PREVIOUS_API_REF=|" "$audit" > "$audit.invalid"
 mv "$audit.invalid" "$audit"
 expect_rejected noop-incompleto
 
@@ -92,7 +92,7 @@ cat > "$fakebin/docker" <<'EOF'
 #!/bin/sh
 : > "${RSP_R5_DOCKER_MARKER:?}"
 if [ "${1:-}" = image ]&&[ "${2:-}" = inspect ];then
-  case "$*" in *example/api:n) printf '%s\n' sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;*) printf '%s\n' sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;;esac
+  case "$*" in *example/api:*) printf '%s\n' sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;*) printf '%s\n' sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;;esac
 fi
 exit 0
 EOF
@@ -117,7 +117,7 @@ run_launcher(){
   mkdir -p "$run_state_dir"
   : > "$launcher_log"
   set +e
-  (cd "$caller"&&PATH="$fakebin:$PATH" RSP_R5_LAUNCHER_LOG="$launcher_log" ENV_FILE="$env_file" DEPLOYMENT_STATE_FILE="$state" PROJECT_NAME="rsp07f-r5-$label" BACKUP_DIR="$backup_dir" STATE_DIR="$run_state_dir" TARGET_API_IMAGE="$api_n1" TARGET_FRONT_IMAGE="$front_n1" TARGET_VERSION=n1 TARGET_GIT_SHA="$sha_n1" ADMIN_EMAIL=fixture@example.test ADMIN_PASSWORD_FILE="$password_file" "$repo/scripts/deploy.sh" "--probe-$label" "value with spaces") > "$temp/launcher-$label.out" 2>&1
+  (cd "$caller"&&PATH="$fakebin:$PATH" RSP_R5_LAUNCHER_LOG="$launcher_log" ENV_FILE="$env_file" DEPLOYMENT_STATE_FILE="$state" PROJECT_NAME="rsp07f-r5-$label" BACKUP_DIR="$backup_dir" STATE_DIR="$run_state_dir" TARGET_API_IMAGE="$api_n1" TARGET_FRONT_IMAGE="$front_n1" TARGET_VERSION=n1 TARGET_GIT_SHA="$sha_n1" BUILD_IMAGES=true ADMIN_EMAIL=fixture@example.test ADMIN_PASSWORD_FILE="$password_file" "$repo/scripts/deploy.sh" "--probe-$label" "value with spaces") > "$temp/launcher-$label.out" 2>&1
   code=$?
   set -e
   [ "$code" -ne 0 ]
@@ -185,9 +185,9 @@ cat > "$fakebin/docker" <<'EOF'
 #!/bin/sh
 : > "${RSP_R5_DOCKER_MARKER:?}"
 if [ "${1:-}" = image ]&&[ "${2:-}" = inspect ];then
-  case "$*" in *example/api:n) printf '%s\n' sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;*) printf '%s\n' sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;;esac
+  case "$*" in *example/api:*) printf '%s\n' sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;*) printf '%s\n' sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;;esac
 elif [ "${1:-}" = compose ];then
-  case "$*" in *' config --images') printf '%s\n' example/api:n example/front:n;;esac
+  case "$*" in *' config --images') printf '%s\n' example/api:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa example/front:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;esac
 fi
 exit 0
 EOF
