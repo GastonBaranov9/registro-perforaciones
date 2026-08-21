@@ -8,7 +8,11 @@ $script:DeploymentStateKeys = @(
 )
 
 function Assert-DeploymentImageRef {
-  param([Parameter(Mandatory = $true)][string]$Value)
+  param(
+    [Parameter(Mandatory = $true)][string]$Value,
+    [Parameter(Mandatory = $true)][string]$GitSha
+  )
+  Assert-DeploymentGitSha $GitSha
   if ($Value -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._/@:-]*$' -or ([regex]::Matches($Value, '@').Count -gt 1)) {
     throw "Las imagenes del estado deben usar tag/digest explicito y nunca latest."
   }
@@ -36,14 +40,25 @@ function Assert-DeploymentImageRef {
     if (-not $imageName -or $tag -cnotmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
       throw "El tag explicito de la imagen no es valido."
     }
-    if ($tag.Equals('latest', [StringComparison]::OrdinalIgnoreCase)) {
-      throw "El tag latest no es reproducible."
-    }
   }
 
-  if (-not $tag -and -not $hasDigest) {
-    throw "La imagen debe incluir tag explicito o digest sha256."
+  if (-not $hasDigest -and (-not $tag -or $tag -cne $GitSha)) {
+    throw "Sin digest, el tag de imagen debe coincidir exactamente con GIT_SHA."
   }
+}
+
+function Assert-DeploymentRemoteImageRef {
+  param(
+    [Parameter(Mandatory = $true)][string]$Value,
+    [Parameter(Mandatory = $true)][string]$GitSha
+  )
+  Assert-DeploymentImageRef $Value $GitSha
+  if (-not $Value.Contains('@')) { throw "Una imagen remota debe usar un digest sha256 completo." }
+}
+
+function Assert-DeploymentGitSha {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  if ($Value -cnotmatch '^[a-f0-9]{40}$') { throw "GIT_SHA debe ser el SHA completo de 40 hexadecimales minusculos." }
 }
 
 function Assert-DeploymentIdentifier {
@@ -58,10 +73,10 @@ function Get-DeploymentCanonicalText {
     [Parameter(Mandatory = $true)][string]$AppVersion,
     [Parameter(Mandatory = $true)][string]$GitSha
   )
-  Assert-DeploymentImageRef $ApiImage
-  Assert-DeploymentImageRef $FrontImage
+  Assert-DeploymentGitSha $GitSha
+  Assert-DeploymentImageRef $ApiImage $GitSha
+  Assert-DeploymentImageRef $FrontImage $GitSha
   Assert-DeploymentIdentifier "APP_VERSION" $AppVersion
-  Assert-DeploymentIdentifier "GIT_SHA" $GitSha
   return "DEPLOYMENT_STATE_FORMAT=1`nAPI_IMAGE_REF=$ApiImage`nFRONT_IMAGE_REF=$FrontImage`nAPP_VERSION=$AppVersion`nGIT_SHA=$GitSha`n"
 }
 

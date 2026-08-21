@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 
-deployment_state_validate_image() {
+deployment_state_validate_image() (
   image_ref=$1
+  git_sha=$2
+  deployment_state_validate_git_sha "$git_sha"
   case "$image_ref" in
     ''|*[!A-Za-z0-9._/@:-]*|*@*@*)
       echo "deployment state: image ref invalida" >&2; return 1 ;;
@@ -32,14 +34,24 @@ deployment_state_validate_image() {
       [ -n "$image_name" ] && printf '%s\n' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$' || {
         echo "deployment state: tag invalido" >&2; return 1;
       }
-      [ "$(printf '%s' "$tag" | tr '[:upper:]' '[:lower:]')" != latest ] || {
-        echo "deployment state: latest no es reproducible" >&2; return 1;
-      }
       ;;
   esac
 
-  [ -n "$tag" ] || [ "$has_digest" = true ] || {
-    echo "deployment state: falta tag explicito o digest sha256" >&2; return 1;
+  if [ "$has_digest" != true ]; then
+    [ -n "$tag" ] && [ "$tag" = "$git_sha" ] || {
+      echo "deployment state: sin digest el tag debe coincidir exactamente con GIT_SHA" >&2; return 1;
+    }
+  fi
+)
+
+deployment_state_validate_remote_image() {
+  deployment_state_validate_image "$1" "$2"
+  case "$1" in *@*) ;; *) echo "deployment state: una imagen remota debe usar digest sha256" >&2; return 1 ;; esac
+}
+
+deployment_state_validate_git_sha() {
+  printf '%s\n' "$1" | grep -Eq '^[a-f0-9]{40}$' || {
+    echo "deployment state: GIT_SHA debe ser el SHA completo de 40 hex minusculos" >&2; return 1;
   }
 }
 
@@ -48,10 +60,10 @@ deployment_state_validate_identifier() {
 }
 
 deployment_state_canonical() {
-  deployment_state_validate_image "$1"
-  deployment_state_validate_image "$2"
+  deployment_state_validate_git_sha "$4"
+  deployment_state_validate_image "$1" "$4"
+  deployment_state_validate_image "$2" "$4"
   deployment_state_validate_identifier "$3"
-  deployment_state_validate_identifier "$4"
   printf 'DEPLOYMENT_STATE_FORMAT=1\nAPI_IMAGE_REF=%s\nFRONT_IMAGE_REF=%s\nAPP_VERSION=%s\nGIT_SHA=%s\n' "$1" "$2" "$3" "$4"
 }
 

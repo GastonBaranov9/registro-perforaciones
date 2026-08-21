@@ -9,8 +9,12 @@ TEST_FAIL_AFTER_PHASE=${TEST_FAIL_AFTER_PHASE:-}
 case "$PROJECT_NAME" in ''|*[!a-z0-9_-]*) echo "ProjectName no es seguro" >&2;exit 2;;esac
 if [ -n "$TEST_FAIL_AFTER_PHASE" ];then case "$PROJECT_NAME:$TEST_FAIL_AFTER_PHASE" in rsp07f-r2-*:preflight|rsp07f-r2-*:maintenance|rsp07f-r2-*:backup|rsp07f-r2-*:images|rsp07f-r2-*:migrate|rsp07f-r2-*:services|rsp07f-r2-*:services_incompatible|rsp07f-r2-*:health|rsp07f-r2-*:smoke|rsp07f-r2-*:persist_state|rsp07f-r3-*:preflight|rsp07f-r3-*:maintenance|rsp07f-r3-*:photo_storage|rsp07f-r3-*:backup|rsp07f-r3-*:images|rsp07f-r3-*:migrate|rsp07f-r3-*:services|rsp07f-r3-*:services_incompatible|rsp07f-r3-*:health|rsp07f-r3-*:smoke|rsp07f-r3-*:persist_state) ;;*) echo "Inyeccion de fallo no permitida" >&2;exit 2;;esac;fi
 . "$(dirname "$0")/deployment-state.sh"
-deployment_state_validate_image "$TARGET_API_IMAGE"
-deployment_state_validate_image "$TARGET_FRONT_IMAGE"
+deployment_state_validate_git_sha "$TARGET_GIT_SHA"
+case "$BUILD_IMAGES" in
+  true) deployment_state_validate_image "$TARGET_API_IMAGE" "$TARGET_GIT_SHA";deployment_state_validate_image "$TARGET_FRONT_IMAGE" "$TARGET_GIT_SHA" ;;
+  false) deployment_state_validate_remote_image "$TARGET_API_IMAGE" "$TARGET_GIT_SHA";deployment_state_validate_remote_image "$TARGET_FRONT_IMAGE" "$TARGET_GIT_SHA" ;;
+  *) echo "BUILD_IMAGES invalido" >&2;exit 2 ;;
+esac
 deployment_state_read "$DEPLOYMENT_STATE_FILE"
 unset API_IMAGE_REF FRONT_IMAGE_REF APP_VERSION GIT_SHA
 previous_api=$DS_API_IMAGE;previous_front=$DS_FRONT_IMAGE;previous_version=$DS_APP_VERSION;previous_sha=$DS_GIT_SHA;previous_hash=$DS_CONFIG_HASH

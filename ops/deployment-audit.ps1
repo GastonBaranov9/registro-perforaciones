@@ -52,8 +52,9 @@ function Read-DeploymentAuditForRollback{
   $backupCompleted=$script:DeploymentAuditPhases[$completed]-ge $script:DeploymentAuditPhases.backup
   $noOp=([string]$audit.status-ne 'success'-and [string]$audit.database_recovery-eq 'not_required'-and -not [bool]$audit.deployment_state_persisted-and $script:DeploymentAuditPhases[$started]-le $script:DeploymentAuditPhases.images)
   $requiresFull=([string]$audit.database_recovery-eq 'restore_required')
-  Assert-DeploymentImageRef ([string]$audit.previous_api_ref);Assert-DeploymentImageRef ([string]$audit.previous_front_ref);Assert-DeploymentImageRef ([string]$audit.target_api_ref);Assert-DeploymentImageRef ([string]$audit.target_front_ref)
-  Assert-DeploymentIdentifier 'APP_VERSION' ([string]$audit.previous_version);Assert-DeploymentIdentifier 'GIT_SHA' ([string]$audit.previous_git_sha);Assert-DeploymentIdentifier 'TARGET_VERSION' ([string]$audit.target_version);Assert-DeploymentIdentifier 'TARGET_GIT_SHA' ([string]$audit.git_sha)
+  Assert-DeploymentGitSha ([string]$audit.previous_git_sha);Assert-DeploymentGitSha ([string]$audit.git_sha)
+  Assert-DeploymentImageRef ([string]$audit.previous_api_ref) ([string]$audit.previous_git_sha);Assert-DeploymentImageRef ([string]$audit.previous_front_ref) ([string]$audit.previous_git_sha);Assert-DeploymentImageRef ([string]$audit.target_api_ref) ([string]$audit.git_sha);Assert-DeploymentImageRef ([string]$audit.target_front_ref) ([string]$audit.git_sha)
+  Assert-DeploymentIdentifier 'APP_VERSION' ([string]$audit.previous_version);Assert-DeploymentIdentifier 'TARGET_VERSION' ([string]$audit.target_version)
   if(-not $noOp){foreach($id in @([string]$audit.previous_api_id,[string]$audit.previous_front_id)){if($id-notmatch '^sha256:[a-f0-9]{64}$'){throw "Audit sin image ID previo valido."}}}
   $previousHash=Get-DeploymentConfigHash $audit.previous_api_ref $audit.previous_front_ref $audit.previous_version $audit.previous_git_sha
   $targetHash=Get-DeploymentConfigHash $audit.target_api_ref $audit.target_front_ref $audit.target_version $audit.git_sha

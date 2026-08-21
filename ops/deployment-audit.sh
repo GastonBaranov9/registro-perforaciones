@@ -27,8 +27,9 @@ deployment_audit_read(){
   DA_NOOP=false;DA_REQUIRES_FULL=false
   if [ "$DA_STATUS" != success ]&&[ "$DA_DATABASE_RECOVERY" = not_required ]&&[ "$DA_STATE_PERSISTED" = false ]&&[ "$sr" -le 5 ];then DA_NOOP=true;fi
   if [ "$DA_DATABASE_RECOVERY" = restore_required ];then DA_REQUIRES_FULL=true;fi
-  deployment_state_validate_image "$DA_PREVIOUS_API";deployment_state_validate_image "$DA_PREVIOUS_FRONT";deployment_state_validate_image "$DA_TARGET_API";deployment_state_validate_image "$DA_TARGET_FRONT"
-  deployment_state_validate_identifier "$DA_PREVIOUS_VERSION";deployment_state_validate_identifier "$DA_PREVIOUS_SHA";deployment_state_validate_identifier "$DA_TARGET_VERSION";deployment_state_validate_identifier "$DA_TARGET_SHA"
+  deployment_state_validate_git_sha "$DA_PREVIOUS_SHA";deployment_state_validate_git_sha "$DA_TARGET_SHA"
+  deployment_state_validate_image "$DA_PREVIOUS_API" "$DA_PREVIOUS_SHA";deployment_state_validate_image "$DA_PREVIOUS_FRONT" "$DA_PREVIOUS_SHA";deployment_state_validate_image "$DA_TARGET_API" "$DA_TARGET_SHA";deployment_state_validate_image "$DA_TARGET_FRONT" "$DA_TARGET_SHA"
+  deployment_state_validate_identifier "$DA_PREVIOUS_VERSION";deployment_state_validate_identifier "$DA_TARGET_VERSION"
   if [ "$DA_NOOP" != true ];then
     printf '%s' "$DA_PREVIOUS_API_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }
     printf '%s' "$DA_PREVIOUS_FRONT_ID"|grep -Eq '^sha256:[a-f0-9]{64}$'||{ echo "Image ID previo invalido" >&2;return 1; }

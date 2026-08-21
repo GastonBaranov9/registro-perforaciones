@@ -19,8 +19,10 @@ $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "deployment-state.ps1")
 . (Join-Path $PSScriptRoot "deployment-audit.ps1")
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
-Assert-DeploymentImageRef $TargetApiImage;Assert-DeploymentImageRef $TargetFrontImage
-Assert-DeploymentIdentifier "APP_VERSION" $TargetVersion;Assert-DeploymentIdentifier "GIT_SHA" $GitSha
+Assert-DeploymentGitSha $GitSha
+if($BuildImages){Assert-DeploymentImageRef $TargetApiImage $GitSha;Assert-DeploymentImageRef $TargetFrontImage $GitSha}
+else{Assert-DeploymentRemoteImageRef $TargetApiImage $GitSha;Assert-DeploymentRemoteImageRef $TargetFrontImage $GitSha}
+Assert-DeploymentIdentifier "APP_VERSION" $TargetVersion
 if(($TestFailAfterPhase-or $TestPhotoCopyFailAfter-gt 0)-and $ProjectName-notmatch '^rsp07f-r[23]-[a-z0-9_-]+$'){throw "La inyeccion de fallo solo se permite en proyectos RSP-07F-R2/R3 aislados."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path $EnvFile).Path;$deploymentPath=(Resolve-Path $DeploymentStateFile).Path;$composePath=(Resolve-Path (Join-Path $repo $ComposeFile)).Path
 $backupPath=[IO.Path]::GetFullPath($BackupDir);$statePath=[IO.Path]::GetFullPath($StateDir);[IO.Directory]::CreateDirectory($backupPath)|Out-Null;[IO.Directory]::CreateDirectory($statePath)|Out-Null
