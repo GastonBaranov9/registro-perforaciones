@@ -150,3 +150,24 @@ test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async
   assert.deepEqual([...background.subarray(0,3)],[0xff,0xd8,0xff]);
   assert.deepEqual([...logo.subarray(0,8)],[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
 });
+
+test("build local de frontend usa Angular production web compatible y el deploy corta antes de migrar", async () => {
+  const packageJson = JSON.parse(await fs.readFile(path.join(repo, "front", "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  const frontDockerfile = await fs.readFile(path.join(repo, "front", "Dockerfile"), "utf8");
+  const deploy = await fs.readFile(path.join(repo, "ops", "deploy.ps1"), "utf8");
+  const deployPosix = await fs.readFile(path.join(repo, "ops", "deploy.sh"), "utf8");
+
+  assert.equal(packageJson.scripts["build:production"], "ng build --configuration production");
+  assert.match(frontDockerfile, /RUN npm run build:production/);
+  assert.doesNotMatch(frontDockerfile, /build:native|NATIVE_BACKEND_ORIGIN/);
+  assert.doesNotMatch(`${frontDockerfile}\n${JSON.stringify(packageJson.scripts)}`, /(?:^|\s)--prod(?:\s|$)/);
+
+  assert.match(deploy, /if\(\$BuildImages\)[^{]*\{[^}]*Compose @\("build","api","front"\)[^}]*\}else\{[^}]*Compose @\("pull","api","front"\)/);
+  assert.ok(deploy.indexOf('Compose @("build","api","front")') < deploy.indexOf("Start-DeploymentAuditPhase $audit 'migrate'"));
+  assert.match(deployPosix, /case "\$BUILD_IMAGES" in true\) compose build api front;;false\) compose pull api front;;/);
+  assert.ok(deployPosix.indexOf("compose build api front") < deployPosix.indexOf("phase_start migrate"));
+  assert.match(deployPosix, /^set -eu$/m);
+  assert.match(deploy, /\$ErrorActionPreference="Stop"/);
+});

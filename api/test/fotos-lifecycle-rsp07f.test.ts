@@ -90,3 +90,50 @@ test("paths absolutos, traversal y symlink de foto se rechazan",()=>temporal("rs
     assert.equal(await fs.readFile(destino,"utf8"),"fuera");
   }finally{await fs.rm(destino,{force:true});}
 }));
+
+test("reconciliador clasifica candidatos duplicados sin borrarlos ni marcarlos como huerfanos",()=>temporal("rsp07f-duplicates-",async(dir)=>{
+  const archivos={
+    "pozo-91.jpg":"jpg-91",
+    "pozo-91.png":"png-91",
+    "pozo-92.jpg":"jpg-92",
+    "pozo-93.png":"png-93",
+    "pozo-94.jpg":"orphan-94",
+  } as const;
+  for(const [nombre,contenido] of Object.entries(archivos))await fs.writeFile(path.join(dir,nombre),contenido);
+
+  const reporte=await reconciliarFotos(dir,[
+    {id_pozo:91,foto_url:"/foto"},
+    {id_pozo:92,foto_url:"/foto"},
+    {id_pozo:93,foto_url:"/foto"},
+    {id_pozo:95,foto_url:"/foto"},
+  ]);
+
+  assert.equal(reporte.archivos_duplicados,1);
+  assert.deepEqual(reporte.hallazgos.filter((x)=>x.tipo==="archivos_duplicados"),[{
+    tipo:"archivos_duplicados",id_pozo:91,cantidad:2,paths:["pozo-91.jpg","pozo-91.png"],
+  }]);
+  assert.equal(reporte.hallazgos.some((x)=>x.tipo==="archivo_sin_referencia"&&x.id_pozo===91),false);
+  assert.deepEqual(reporte.hallazgos.filter((x)=>x.tipo==="archivo_sin_referencia"),[{
+    tipo:"archivo_sin_referencia",id_pozo:94,path:"pozo-94.jpg",
+  }]);
+  assert.deepEqual(reporte.hallazgos.filter((x)=>x.tipo==="referencia_sin_archivo"),[{
+    tipo:"referencia_sin_archivo",id_pozo:95,
+  }]);
+  assert.equal(reporte.hallazgos.some((x)=>x.id_pozo===92||x.id_pozo===93),false);
+  for(const [nombre,contenido] of Object.entries(archivos))assert.equal(await fs.readFile(path.join(dir,nombre),"utf8"),contenido);
+}));
+
+test("reconciliador reporta entradas inseguras y symlinks sin seguirlos",()=>temporal("rsp07f-reconcile-unsafe-",async(dir)=>{
+  await fs.writeFile(path.join(dir,"nombre-inesperado.jpg"),"inseguro");
+  const destino=path.join(dir,"..","fuera-reconcile-rsp07f.jpg");
+  await fs.writeFile(destino,"fuera");
+  try{
+    try{await fs.symlink(destino,path.join(dir,"pozo-96.jpg"));}
+    catch(error){if((error as NodeJS.ErrnoException).code!=="EPERM")throw error;}
+    const reporte=await reconciliarFotos(dir,[]);
+    const paths=reporte.hallazgos.filter((x)=>x.tipo==="entrada_no_permitida").map((x)=>x.path).sort();
+    assert.ok(paths.includes("nombre-inesperado.jpg"));
+    if(await fs.lstat(path.join(dir,"pozo-96.jpg")).then(()=>true,()=>false))assert.ok(paths.includes("pozo-96.jpg"));
+    assert.equal(await fs.readFile(destino,"utf8"),"fuera");
+  }finally{await fs.rm(destino,{force:true});}
+}));

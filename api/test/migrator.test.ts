@@ -8,8 +8,12 @@ import {
   checksumMigracionAplicadaValido,
   checksumSha256,
   checksumsLegacyMigracion,
+  ejecutarMigraciones,
   leerMigraciones,
   normalizarSaltosLineaSQL,
+  validarLedger,
+  type Migracion,
+  type MigracionAplicada,
 } from "../src/db/migrator.ts";
 
 test("descubre migraciones en orden determinista y calcula SHA-256", async () => {
@@ -75,4 +79,106 @@ test("el inicializador destructivo histórico queda retirado", async () => {
   assert.match(scripts, /fue retirado por RSP-07C/);
   assert.match(scripts, /\\quit 3/);
   assert.doesNotMatch(scripts, /DROP TABLE/i);
+});
+
+function migracionesLedgerFixture(): Migracion[] {
+  return ["000", "001", "002", "003", "004", "005", "006"].map((version) => {
+    const sql = `SELECT '${version}';\n`;
+    return {
+      version,
+      nombre: `migration_${version}`,
+      archivo: `${version}_migration_${version}.sql`,
+      checksum: checksumMigracion(sql),
+      checksumsLegacy: checksumsLegacyMigracion(sql),
+      sql,
+    };
+  });
+}
+
+function aplicada(migracion: Migracion, checksum = migracion.checksum): MigracionAplicada {
+  return { version: migracion.version, nombre: migracion.nombre, checksum_sha256: checksum };
+}
+
+test("ledger aplicado debe ser exactamente un prefijo contiguo de las migraciones locales", () => {
+  const migraciones = migracionesLedgerFixture();
+  for (const cantidad of [0, 1, 3, migraciones.length]) {
+    assert.doesNotThrow(() => validarLedger(migraciones.slice(0, cantidad).map((x) => aplicada(x)), migraciones));
+  }
+
+  for (const versiones of [["000", "002"], ["000", "001", "003"], ["006"], ["001"], ["001", "000"]]) {
+    const ledger = versiones.map((version) => aplicada(migraciones.find((x) => x.version === version)!));
+    assert.throws(() => validarLedger(ledger, migraciones), /no es un prefijo contiguo/, versiones.join(","));
+  }
+});
+
+test("prefijo conserva checksums canonico y CRLF legacy pero rechaza contenido distinto", () => {
+  const migraciones = migracionesLedgerFixture();
+  const primera = migraciones[0];
+  const legacy = primera.checksumsLegacy[0];
+  assert.ok(legacy);
+  assert.doesNotThrow(() => validarLedger([aplicada(primera, legacy)], migraciones));
+  assert.throws(
+    () => validarLedger([aplicada(primera, checksumSha256("SELECT 'alterada';\n"))], migraciones),
+    /Checksum diferente/,
+  );
+});
+
+test("ledger mantiene rechazo de formato duplicados versiones desconocidas y nombres alterados", () => {
+  const migraciones = migracionesLedgerFixture();
+  const primera = aplicada(migraciones[0]);
+  assert.throws(() => validarLedger([{ ...primera, version: "0" }], migraciones), /Formato de versi.n inv.lido/);
+  assert.throws(() => validarLedger([primera, primera], migraciones), /entrada duplicada/);
+  assert.throws(
+    () => validarLedger([{ ...primera, version: "999" }], migraciones),
+    /migraci.n desconocida/,
+  );
+  assert.throws(
+    () => validarLedger([{ ...primera, nombre: "nombre_alterado" }], migraciones),
+    /nombre de la migraci.n 000 no coincide/,
+  );
+});
+
+test("ledger con hueco falla bajo advisory lock antes de transaccion incluso con adoption", async () => {
+  const directorio = await fs.mkdtemp(path.join(os.tmpdir(), "rsp07f-r13-ledger-"));
+  try {
+    await Promise.all([
+      fs.writeFile(path.join(directorio, "000_cero.sql"), "SELECT 0;\n"),
+      fs.writeFile(path.join(directorio, "001_uno.sql"), "SELECT 1;\n"),
+      fs.writeFile(path.join(directorio, "002_dos.sql"), "SELECT 2;\n"),
+    ]);
+    const migraciones = await leerMigraciones(directorio);
+    const consultas: string[] = [];
+    let liberado = false;
+    const client = {
+      async query(sql: string) {
+        const normalizado = sql.trim();
+        consultas.push(normalizado);
+        if (normalizado.includes("pg_try_advisory_lock")) return { rows: [{ obtenido: true }] };
+        if (normalizado.includes("to_regclass('public.schema_migrations')")) return { rows: [{ existe: true }] };
+        if (normalizado.includes("FROM public.schema_migrations")) return {
+          rows: [aplicada(migraciones[0]), aplicada(migraciones[2])],
+        };
+        return { rows: [] };
+      },
+      release() { liberado = true; },
+    };
+
+    await assert.rejects(
+      () => ejecutarMigraciones({ async connect() { return client; } } as never, {
+        directorio,
+        adoptarEsquemaActual: true,
+        logger: () => undefined,
+      }),
+      /no es un prefijo contiguo/,
+    );
+    assert.equal(consultas.some((sql) => sql === "BEGIN"), false);
+    assert.equal(consultas.some((sql) => sql.startsWith("INSERT INTO public.schema_migrations")), false);
+    assert.equal(consultas.includes("SELECT 0;"), false);
+    assert.equal(consultas.includes("SELECT 1;"), false);
+    assert.equal(consultas.includes("SELECT 2;"), false);
+    assert.ok(consultas.some((sql) => sql.includes("pg_advisory_unlock")));
+    assert.equal(liberado, true);
+  } finally {
+    await fs.rm(directorio, { recursive: true, force: true });
+  }
 });
