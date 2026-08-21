@@ -206,10 +206,15 @@ test("build local de frontend usa Angular production web compatible y el deploy 
     scripts: Record<string, string>;
   };
   const frontDockerfile = await fs.readFile(path.join(repo, "front", "Dockerfile"), "utf8");
+  const angularJson = JSON.parse(await fs.readFile(path.join(repo, "front", "angular.json"), "utf8"));
   const deploy = await fs.readFile(path.join(repo, "ops", "deploy.ps1"), "utf8");
   const deployPosix = await fs.readFile(path.join(repo, "ops", "deploy.sh"), "utf8");
 
   assert.equal(packageJson.scripts["build:production"], "ng build --configuration production");
+  assert.equal(packageJson.scripts["build:native"], undefined);
+  assert.equal(packageJson.scripts["capacitor:sync"], undefined);
+  assert.equal(packageJson.scripts["test:build-targets"], undefined);
+  assert.equal(angularJson.projects.front.architect.build.configurations.native, undefined);
   assert.match(frontDockerfile, /RUN npm run build:production/);
   assert.doesNotMatch(frontDockerfile, /build:native|NATIVE_BACKEND_ORIGIN/);
   assert.doesNotMatch(`${frontDockerfile}\n${JSON.stringify(packageJson.scripts)}`, /(?:^|\s)--prod(?:\s|$)/);
