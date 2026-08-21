@@ -88,6 +88,7 @@ services:
       PHOTO_LEGACY_SOURCE_STATUS: ${PHOTO_LEGACY_SOURCE_STATUS:-unavailable}
       PHOTO_STORAGE_PROJECT_NAME: ${PHOTO_STORAGE_PROJECT_NAME:-unknown}
       PHOTO_STORAGE_TEST_FAIL_AFTER: ${PHOTO_STORAGE_TEST_FAIL_AFTER:-}
+      PHOTO_STORAGE_TEST_FAIL_AT: ${PHOTO_STORAGE_TEST_FAIL_AT:-}
     volumes:
       - type: volume
         source: raul_silva_fotos
