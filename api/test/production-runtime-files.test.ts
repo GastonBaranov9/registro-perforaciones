@@ -161,6 +161,7 @@ test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async
   const deploy=await fs.readFile(path.join(repo,"ops","deploy.ps1"),"utf8");
   const deployPosix=await fs.readFile(path.join(repo,"ops","deploy.sh"),"utf8");
   const prepare=await fs.readFile(path.join(repo,"ops","prepare-photo-storage.ps1"),"utf8");
+  const preparePosix=await fs.readFile(path.join(repo,"ops","prepare-photo-storage.sh"),"utf8");
   const migrateStorage=await fs.readFile(path.join(repo,"ops","photo-storage-migrate.sh"),"utf8");
   const backup=await fs.readFile(path.join(repo,"ops","backup.sh"),"utf8");
   const restore=await fs.readFile(path.join(repo,"ops","restore.sh"),"utf8");
@@ -169,10 +170,17 @@ test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async
   assert.match(compose,/source: raul_silva_fotos[\s\S]+target: \/data/);
   assert.match(prepare,/docker cp "\$\{apiId\}:\/api\/public\/\."/);
   assert.match(prepare,/filesystem de fotos del API legacy no pudo exportarse/);
+  assert.match(prepare,/State\.Running/);
+  assert.match(prepare,/API previo debe estar detenido/);
+  assert.match(preparePosix,/State\.Running/);
+  assert.match(preparePosix,/API previo debe estar detenido/);
   assert.match(migrateStorage,/sha256sum/);
   assert.match(migrateStorage,/RSP_PHOTO_STORAGE_LAYOUT=1/);
+  assert.match(migrateStorage,/RSP_PHOTO_STORAGE_SNAPSHOT_SHA256/);
   assert.match(migrateStorage,/DB referencia una foto/);
-  assert.match(migrateStorage,/conflicto de contenido/);
+  assert.match(migrateStorage,/PHOTO_LEGACY_SOURCE_STATUS/);
+  assert.match(migrateStorage,/mv "\$photos" "\$previous"/);
+  assert.match(migrateStorage,/cmp -s "\$source_manifest" "\$verified_manifest"/);
   assert.ok(deploy.indexOf("'photo_storage'")<deploy.indexOf("'backup'"));
   assert.ok(deployPosix.indexOf("phase_start photo_storage")<deployPosix.indexOf("phase_start backup"));
   assert.match(deploy,/--adopt-current-schema/);
