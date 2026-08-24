@@ -34,15 +34,19 @@ function updateBody(): PozoCompletoUpdateBody {
     intervalos_diametro: [{ desde_m: 0, hasta_m: 40, diametro_pulg: 6, material_tuberia: "PVC" }], intervalos_filtro: [], niveles_aporte: [{ profundidad_m: 20 }], foto_accion: "conservar" };
 }
 
-function poolActualizacion(fallar = false, rechazarLitologia = false) {
+function poolActualizacion(fallar = false, rechazarLitologia = false, fallarRollback = false, fallarSitio = false) {
   const consultas: string[] = [];
   let parametrosUpdate: unknown[] | undefined;
   const client = { async query(sql: string, params?:unknown[]) {
     consultas.push(sql);
+    if (fallarRollback && sql === "ROLLBACK") throw Object.assign(new Error("rollback controlado"), { code: "ECONNRESET" });
     if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 2 }] };
     if (sql.includes("SELECT id_pozo,id_sitio FROM pozo")) return { rows: [{ id_pozo: 55, id_sitio: 4 }] };
     if (sql.includes("UPDATE pozo SET id_propietario")) { parametrosUpdate=params; return { rows: [{ id_pozo: 55, id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: "40", foto_url: "/foto" }] }; }
-    if (sql.includes("FROM public.sitio WHERE id_sitio")) return { rows: [{ id_sitio:4,departamento:"Salto",localidad:"Salto",latitud:"-31",longitud:"-57" }] };
+    if (sql.includes("FROM public.sitio WHERE id_sitio")) {
+      if (fallarSitio) throw new Error("fallo posterior a foto");
+      return { rows: [{ id_sitio:4,departamento:"Salto",localidad:"Salto",latitud:"-31",longitud:"-57" }] };
+    }
     if (fallar && sql.includes("INSERT INTO intervalo_diametro")) throw new Error("fallo intermedio");
     if (sql.includes("INSERT INTO intervalo_litologico")) return rechazarLitologia ? { rows: [] } : { rows: [{ id_intervalo_litologico: 7, id_pozo: 55, desde_m: "0", hasta_m: "15", material: "Arena", id_litologia: 7 }] };
     if (sql.includes("INSERT INTO intervalo_diametro")) return { rows: [{ id_intervalo_diametro_perforacion: 8, id_pozo: 55, desde_m: "0", hasta_m: "40", diametro_pulg: "6" }] };
@@ -93,6 +97,28 @@ test("fallo intermedio revierte datos generales e hijos", async () => {
   try {
     await assert.rejects(() => actualizarPozoCompleto(55, updateBody(), dir, falso.pool as never));
     assert.ok(falso.consultas.includes("ROLLBACK")); assert.ok(!falso.consultas.includes("COMMIT"));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("actualizacion completa restaura fotos aunque falle el rollback DB", async () => {
+  const falso = poolActualizacion(false, false, true, true);
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rsp07f-r6-completo-"));
+  const avisos: Array<Record<string, unknown>> = [];
+  try {
+    await fs.writeFile(path.join(dir, "pozo-55.jpg"), "anterior");
+    await assert.rejects(
+      () => actualizarPozoCompleto(
+        55,
+        { ...updateBody(), foto_accion: "eliminar" },
+        dir,
+        falso.pool as never,
+        { logger: { warn(datos) { avisos.push(datos); } } },
+      ),
+      /fallo posterior a foto/,
+    );
+    assert.equal(await fs.readFile(path.join(dir, "pozo-55.jpg"), "utf8"), "anterior");
+    assert.deepEqual(await fs.readdir(path.join(dir, ".trash")), []);
+    assert.deepEqual(avisos, [{ id_pozo: 55, operacion: "actualizar_pozo_completo", etapa: "rollback_db", codigo: "ECONNRESET" }]);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 

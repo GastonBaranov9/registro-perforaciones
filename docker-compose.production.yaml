@@ -1,73 +1,362 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
-  api:
-    image: gastonbaranov9/proyecto-api:foto-fix
-    environment:
-      - FASTIFY_SECRET=${FASTIFY_SECRET}
-      - PGHOST=postgres
-      - PGPASSWORD=${PGPASSWORD}
-      - PGPORT=${PGPORT}
-      - PGUSER=${PGUSER}
-      - PGDATABASE=${PGDATABASE}
-      - MAP_STATIC_URL_TEMPLATE=${MAP_STATIC_URL_TEMPLATE}
-      - MAP_STATIC_ALLOWED_HOST=${MAP_STATIC_ALLOWED_HOST}
-      - MAP_STATIC_API_KEY=${MAP_STATIC_API_KEY}
-      - MAP_STATIC_ATTRIBUTION=${MAP_STATIC_ATTRIBUTION}
-      - PDF_MAP_STATIC_URL_TEMPLATE=${PDF_MAP_STATIC_URL_TEMPLATE}
-      - PDF_MAP_ALLOWED_HOST=${PDF_MAP_ALLOWED_HOST}
-      - PDF_MAP_STATIC_API_KEY=${PDF_MAP_STATIC_API_KEY}
-      - PDF_MAP_ATTRIBUTION=${PDF_MAP_ATTRIBUTION}
-      - NODE_ENV=production
-    networks:
-      - raul_silva_net
-  proxy:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - 80:80
-      - 443:443
-    environment:
-      - REMOTE_HOST=${REMOTE_HOST}
-    depends_on:
-      - api
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt
-      - certbot:/var/www/certbot
-      - ./proxy/https.conf.template:/etc/nginx/templates/default.conf.template
-    networks:
-      - raul_silva_net
-  front:
-    image: ${DOCKER_USER}/front
-    networks:
-      - raul_silva_net
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    logging: *default-logging
     environment:
-      POSTGRES_USER: ${PGUSER}
-      POSTGRES_PASSWORD: ${PGPASSWORD}
-      POSTGRES_DB: ${PGDATABASE}
+      POSTGRES_USER: ${PGUSER:?Falta PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      POSTGRES_DB: ${PGDATABASE:?Falta PGDATABASE}
     volumes:
       - raul_silva_db:/var/lib/postgresql/data
-      - ./api/db:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     networks:
-      - raul_silva_net
-  # certbot:
-  #   image: certbot/certbot
-  #   container_name: certbot
-  #   command: "certonly --webroot -w /var/www/certbot --email jorge.melnik@ucu.edu.uy --agree-tos --no-eff-email -d ${REMOTE_HOST}"
-  #   environment:
-  #     - REMOTE_HOST=${REMOTE_HOST}
-  #   volumes:
-  #     - certs:/etc/letsencrypt
-  #     - certbot:/var/www/certbot
-  #   depends_on:
-  #     - proxy
+      - backend
+
+  migrate:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
+    restart: "no"
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  bootstrap-admin:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
+    restart: "no"
+    command: ["npm", "run", "bootstrap:admin"]
+    environment:
+      NODE_ENV: production
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  prepare-photo-storage:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/photo-storage-migrate.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      PHOTO_LEGACY_SOURCE_STATUS: ${PHOTO_LEGACY_SOURCE_STATUS:-unavailable}
+      PHOTO_STORAGE_PROJECT_NAME: ${PHOTO_STORAGE_PROJECT_NAME:-unknown}
+      PHOTO_STORAGE_TEST_FAIL_AFTER: ${PHOTO_STORAGE_TEST_FAIL_AFTER:-}
+      PHOTO_STORAGE_TEST_FAIL_AT: ${PHOTO_STORAGE_TEST_FAIL_AT:-}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+      - type: bind
+        source: ${PHOTO_STORAGE_IMPORT_DIR:-./ops/empty-photo-import}
+        target: /legacy
+        read_only: true
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  backup:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      APP_VERSION: ${APP_VERSION:-unknown}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+        read_only: true
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  restore:
+    profiles: ["ops"]
+    image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "/ops/restore.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      RESTORE_BUNDLE: ${RESTORE_BUNDLE:-}
+      RESTORE_CONFIRM: ${RESTORE_CONFIRM:-}
+      RESTORE_TEST_FAIL_AT: ${RESTORE_TEST_FAIL_AT:-}
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /data
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+        read_only: true
+      - type: bind
+        source: ./ops
+        target: /ops
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  reconcile-fotos:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
+    restart: "no"
+    command: ["npm", "run", "fotos:reconcile"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+    volumes:
+      - type: volume
+        source: raul_silva_fotos
+        target: /var/lib/registro-perforaciones
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  api:
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    # El maximo configurable de query es 310 s. El margen restante permite
+    # ejecutar rollback/compensacion antes del SIGKILL final de Docker.
+    stop_grace_period: 480s
+    build:
+      context: ./api
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      APP_VERSION: ${APP_VERSION:-unknown}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      API_PORT: "3000"
+      FASTIFY_SECRET: ${FASTIFY_SECRET:?Falta FASTIFY_SECRET}
+      PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+      MAP_STATIC_URL_TEMPLATE: ${MAP_STATIC_URL_TEMPLATE:?Falta MAP_STATIC_URL_TEMPLATE}
+      MAP_STATIC_ALLOWED_HOST: ${MAP_STATIC_ALLOWED_HOST:?Falta MAP_STATIC_ALLOWED_HOST}
+      MAP_STATIC_API_KEY: ${MAP_STATIC_API_KEY:?Falta MAP_STATIC_API_KEY}
+      MAP_STATIC_ATTRIBUTION: ${MAP_STATIC_ATTRIBUTION:?Falta MAP_STATIC_ATTRIBUTION}
+      ENABLE_API_DOCS: "false"
+      HSTS_ENABLED: ${HSTS_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RATE_LIMIT_API_MAX: ${RATE_LIMIT_API_MAX:-600}
+      RATE_LIMIT_LOGIN_MAX: ${RATE_LIMIT_LOGIN_MAX:-10}
+      RATE_LIMIT_MAP_MAX: ${RATE_LIMIT_MAP_MAX:-30}
+      RATE_LIMIT_PDF_MAX: ${RATE_LIMIT_PDF_MAX:-10}
+      RATE_LIMIT_UPLOAD_MAX: ${RATE_LIMIT_UPLOAD_MAX:-30}
+      PG_POOL_MAX: ${PG_POOL_MAX:-10}
+      PG_CONNECTION_TIMEOUT_MS: ${PG_CONNECTION_TIMEOUT_MS:-5000}
+      PG_STATEMENT_TIMEOUT_MS: ${PG_STATEMENT_TIMEOUT_MS:-30000}
+      PG_IDLE_TRANSACTION_TIMEOUT_MS: ${PG_IDLE_TRANSACTION_TIMEOUT_MS:-15000}
+      PG_QUERY_TIMEOUT_MS: ${PG_QUERY_TIMEOUT_MS:-35000}
+      PDF_MAX_CONCURRENT: ${PDF_MAX_CONCURRENT:-2}
+      PDF_MAX_QUEUE: ${PDF_MAX_QUEUE:-4}
+      PDF_QUEUE_TIMEOUT_MS: ${PDF_QUEUE_TIMEOUT_MS:-15000}
+    volumes:
+      - raul_silva_fotos:/var/lib/registro-perforaciones
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - edge
+      - backend
+
+  front:
+    image: ${FRONT_IMAGE_REF:?Defina FRONT_IMAGE_REF con tag inmutable o digest}
+    build:
+      context: ./front
+      target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-unknown}
+        GIT_SHA: ${GIT_SHA:-unknown}
+    restart: unless-stopped
+    logging: *default-logging
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+
+  proxy:
+    image: nginx:1.30.4-alpine3.24@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${HTTP_BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTPS_BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      HSTS_ENABLED: ${HSTS_ENABLED:-false}
+    depends_on:
+      api:
+        condition: service_healthy
+      front:
+        condition: service_healthy
+    volumes:
+      - ./proxy/https.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./proxy/start.sh:/opt/rsp/start.sh:ro
+      - type: bind
+        source: ${TLS_CERT_FILE:?Falta TLS_CERT_FILE}
+        target: /etc/nginx/tls/tls.crt
+        read_only: true
+      - type: bind
+        source: ${TLS_KEY_FILE:?Falta TLS_KEY_FILE}
+        target: /etc/nginx/tls/tls.key
+        read_only: true
+    entrypoint: ["/bin/sh", "/opt/rsp/start.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate --header=Host:$$PUBLIC_HOST -O /dev/null https://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+
+  maintenance:
+    profiles: ["ops"]
+    image: nginx:1.30.4-alpine3.24@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${HTTP_BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTPS_BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+    volumes:
+      - ./proxy/maintenance.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - type: bind
+        source: ${TLS_CERT_FILE:?Falta TLS_CERT_FILE}
+        target: /etc/nginx/tls/tls.crt
+        read_only: true
+      - type: bind
+        source: ${TLS_KEY_FILE:?Falta TLS_KEY_FILE}
+        target: /etc/nginx/tls/tls.key
+        read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate --header=Host:$$PUBLIC_HOST -O /dev/null https://127.0.0.1/maintenance-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - edge
+
 volumes:
-  certs:
-  certbot:
   raul_silva_db:
+  raul_silva_fotos:
 
 networks:
-  raul_silva_net:
-    driver: bridge
+  edge:
+  backend:
+    internal: true

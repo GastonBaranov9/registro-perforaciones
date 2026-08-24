@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+deployment.env
+*.deployment.env
 
 # Dependencias
 node_modules/
@@ -52,6 +54,11 @@ front/android/app/src/main/assets/capacitor.config.json
 front/android/app/src/main/assets/capacitor.plugins.json
 *.jks
 *.keystore
+
+# Certificados/llaves TLS locales o accidentales. La producción los monta fuera de Git.
+*.crt
+*.key
+*.pem
 
 # Archivos cargados por usuarios o generados durante pruebas
 api/public/*

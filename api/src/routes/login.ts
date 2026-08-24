@@ -6,7 +6,7 @@ import {
   type UsuarioLogin as UsuarioLoginData,
 } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
-import { logUser } from "../services/auth-services.ts";
+import { logUser, revocarSesionesUsuario } from "../services/auth-services.ts";
 import { getUsuarioById } from "../services/usuarios-service.ts";
 import { getRoles } from "../services/roles-services.ts";
 import { randomBytes } from "node:crypto";
@@ -30,9 +30,10 @@ const authRoutes = async function (fastify: FastifyInstance) {
             authenticated: Type.Literal(true),
           }),
             400: err.ErrorSchema,
-            401: err.ErrorSchema,
+          401: err.ErrorSchema,
         },
       },
+      onRequest: [fastify.rateLimitLogin],
     },
     async function (req, rep) {
       const { email, password } = req.body as UsuarioLoginData;
@@ -73,7 +74,8 @@ const authRoutes = async function (fastify: FastifyInstance) {
       },
       onRequest: [fastify.authenticate],
     },
-    async function (_req, rep) {
+    async function (req, rep) {
+      if (!(await revocarSesionesUsuario(req.user.sub))) throw new err.T05NoAutorizado();
       rep.clearCookie(SESSION_COOKIE, { path: "/" });
       rep.clearCookie(CSRF_COOKIE, { path: "/" });
       return rep.code(204).send();

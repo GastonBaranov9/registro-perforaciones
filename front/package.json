@@ -5,8 +5,11 @@
     "ng": "ng ",
     "start": "ng serve --host 0.0.0.0",
     "build": "ng build",
+    "build:production": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:config": "node --test scripts/*.test.mjs",
+    "test:production-build": "node scripts/test-production-build.mjs",
     "check:utf8": "node scripts/check-interface-mojibake.mjs"
   },
   "prettier": {

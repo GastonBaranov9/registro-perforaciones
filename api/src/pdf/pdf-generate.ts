@@ -1,16 +1,16 @@
 import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFPage, type PDFFont } from "pdf-lib";
 import * as fs from "fs/promises";
-import path, { dirname } from "path";
-import { fileURLToPath } from "url";
 import type { ReportePozo } from "../services/generar-informe-consultas.ts";
 import { crearPerfilLitologico, dibujarPerfilLitologico } from "./perfil-litologico.ts";
 import { configuracionMapaDesdeEntorno, leerCoordenadas, obtenerMapaEstatico, type ConfiguracionMapa } from "./mapa-estatico.ts";
 import { formatearFechaCalendario } from "../utils/fechas.ts";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+import { MAX_FOTO_BYTES } from "../constants/fotos.ts";
+import { leerFotoPozo } from "../services/foto-archivo-service.ts";
 
 const A4: [number, number] = [595.28, 841.89];
 const AZUL = rgb(0.03, 0.24, 0.48);
 const GRIS = rgb(0.34, 0.39, 0.44);
-const PUBLIC_DIR = path.join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
 
 export interface OpcionesPDF { directorioFotos?: string; mapa?: ConfiguracionMapa; fetchMapa?: typeof fetch }
 export interface DiagnosticoTabla {
@@ -103,7 +103,7 @@ export async function crearPDF(reporte: ReportePozo, pozoId: number, opciones: O
 
 export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: number, opciones: OpcionesPDF = {}) {
   const doc=await PDFDocument.create(); const font=await doc.embedFont(StandardFonts.Helvetica); const bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const flujo=new FlujoPDF(doc,font,bold); const imagen=await cargarFoto(doc,reporte,pozoId,opciones.directorioFotos??PUBLIC_DIR);
+  const flujo=new FlujoPDF(doc,font,bold); const imagen=await cargarFoto(doc,reporte,pozoId,opciones.directorioFotos??cargarConfiguracionRuntime().fotosDir);
   dibujarPortada(flujo,reporte,pozoId,imagen);
   const coordenadas=leerCoordenadas(reporte.latitud??null,reporte.longitud??null);
   const mapa=coordenadas ? await obtenerMapaEstatico(coordenadas,opciones.mapa??configuracionMapaDesdeEntorno(),opciones.fetchMapa) : { estado:"no-disponible" as const, motivo:"Sin coordenadas" };
@@ -349,8 +349,8 @@ async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longi
   dato("Fecha de finalización",formatearFechaCalendario(r.fecha_fin)); dato("Profundidad final",unidad(r.profundidad_final_m,"m"));
 }
 
-async function cargarFoto(doc:PDFDocument,r:ReportePozo,id:number,dir:string){if(!r.foto_url)return null;try{const nombres=await fs.readdir(dir);const nombre=nombres.find(n=>n.startsWith(`pozo-${id}.`)&&/^pozo-\d+\.(?:jpe?g|png)$/i.test(n));if(!nombre)return null;const bytes=await fs.readFile(path.join(dir,nombre));if(bytes.length>5_000_000)return null;if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)return await doc.embedPng(bytes);if(bytes[0]===0xff&&bytes[1]===0xd8)return await doc.embedJpg(bytes);}catch{return null;}return null;}
+async function cargarFoto(doc:PDFDocument,r:ReportePozo,id:number,dir:string){if(!r.foto_url)return null;try{const foto=await leerFotoPozo(id,dir);if(!foto)return null;const bytes=foto.buffer;if(bytes.length>MAX_FOTO_BYTES)return null;if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)return await doc.embedPng(bytes);if(bytes[0]===0xff&&bytes[1]===0xd8)return await doc.embedJpg(bytes);}catch{return null;}return null;}
 function envolver(texto:string,font:PDFFont,size:number,width:number){const limpio=texto.replace(/[^\x20-\x7E\xA0-\xFF]/g,"?").trim();const palabras:string[]=[];for(const palabra of (limpio||"No especificado").split(/\s+/)){if(font.widthOfTextAtSize(palabra,size)<=width){palabras.push(palabra);continue;}let fragmento="";for(const caracter of palabra){const candidato=fragmento+caracter;if(fragmento&&font.widthOfTextAtSize(candidato,size)>width){palabras.push(fragmento);fragmento=caracter;}else fragmento=candidato;}if(fragmento)palabras.push(fragmento);}const lineas:string[]=[];let actual="";for(const palabra of palabras){const candidato=actual?`${actual} ${palabra}`:palabra;if(font.widthOfTextAtSize(candidato,size)<=width)actual=candidato;else{if(actual)lineas.push(actual);actual=palabra;}}if(actual)lineas.push(actual);return lineas;}
 function unidad(v:number|null,u:string){return v==null?"No especificado":`${formatearNumero(v)} ${u}`;} function formatearNumero(v:number){return new Intl.NumberFormat("es-UY",{maximumFractionDigits:3}).format(v);}
 export async function generarPDF(reporte:ReportePozo,pozoId:number){const bytes=await generarPDFBytes(reporte,pozoId);await fs.mkdir("./output",{recursive:true});await fs.writeFile(`./output/informe_pozo_${pozoId}.pdf`,bytes);}
-export async function generarPDFBytes(reporte:ReportePozo,pozoId:number){return await (await crearPDF(reporte,pozoId)).save();}
+export async function generarPDFBytes(reporte:ReportePozo,pozoId:number,opciones:OpcionesPDF={}){return await (await crearPDF(reporte,pozoId,opciones)).save();}

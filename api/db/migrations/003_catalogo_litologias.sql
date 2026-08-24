@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION litologia_normalizar(valor TEXT)
 RETURNS TEXT
 LANGUAGE SQL
@@ -65,8 +63,6 @@ UPDATE intervalo_litologico i
 SET id_litologia = c.id_litologia
 FROM catalogo_litologia c
 WHERE litologia_normalizar(i.material) = c.nombre_normalizado;
-
-COMMIT;
 
 -- Rollback manual (conserva material y todos los intervalos):
 -- BEGIN; ALTER TABLE intervalo_litologico DROP CONSTRAINT intervalo_litologico_catalogo_fk;

@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, OnDestroy, signal } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import {
   IonApp,
@@ -47,7 +47,7 @@ import { AuthService } from './shared/services/auth-service/auth.service';
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App {
+export class App implements OnDestroy {
   protected readonly title = signal('front');
   public mainStore = inject(MainStore);
   public webSocketService = inject(WebsocketService);
@@ -62,6 +62,10 @@ export class App {
   public wsConnection = effect(() => {
     if (this.mainStore.user()) {
       this.webSocketService.connect();
-    }
+    } else this.webSocketService.disconnect();
   });
+
+  ngOnDestroy(): void {
+    this.webSocketService.disconnect();
+  }
 }

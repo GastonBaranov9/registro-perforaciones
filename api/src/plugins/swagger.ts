@@ -2,6 +2,7 @@ import swagger from "@fastify/swagger";
 import type { FastifySwaggerOptions } from "@fastify/swagger";
 import swaggerui from "@fastify/swagger-ui";
 import fp from "fastify-plugin";
+import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
 // declare namespace fastify {
 //   export interface FastifySchema {
@@ -13,6 +14,7 @@ import fp from "fastify-plugin";
 
 //En vez de exportar la función la encapsulamos con fastify plugin.
 export default fp<FastifySwaggerOptions>(async (fastify) => {
+  if (!cargarConfiguracionRuntime().enableApiDocs) return;
   await fastify.register(swagger, {
     openapi: {
       openapi: "3.0.0",
@@ -23,8 +25,8 @@ export default fp<FastifySwaggerOptions>(async (fastify) => {
       },
       servers: [
         {
-          url: "http://localhost:3000",
-          description: "Development server",
+          url: "/",
+          description: "Servidor de desarrollo",
         },
       ],
       tags: [

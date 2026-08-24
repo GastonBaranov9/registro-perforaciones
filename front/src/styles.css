@@ -1,7 +1,7 @@
 /* ===== APP BACKGROUND ===== */
 ion-app {
   --background: none;
-  background: url('https://i.imgur.com/90zjO3q.jpeg') no-repeat center center fixed;
+  background: url('/assets/branding/background.jpeg') no-repeat center center fixed;
   background-size: cover;
 }
 

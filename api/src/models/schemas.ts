@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { MAX_FOTO_BASE64_CHARS } from "../constants/fotos.ts";
 
 export const RevestimientoValores = {
   PVC_6: "PVC: 6",
@@ -306,7 +307,7 @@ export type PozoModerno = Static<typeof PozoModerno>;
 
 export const FotoNuevaPozo = Type.Object({
   mime_type: Type.Union([Type.Literal("image/jpeg"), Type.Literal("image/png")]),
-  base64: Type.String({ minLength: 1, maxLength: 7_000_000 }),
+  base64: Type.String({ minLength: 1, maxLength: MAX_FOTO_BASE64_CHARS }),
 });
 
 export const PozoCompletoBody = Type.Object({

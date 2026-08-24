@@ -1,0 +1,22 @@
+server {
+    listen 80;
+    server_name ${PUBLIC_HOST};
+    return 308 ${PUBLIC_ORIGIN}$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${PUBLIC_HOST};
+    ssl_certificate /etc/nginx/tls/tls.crt;
+    ssl_certificate_key /etc/nginx/tls/tls.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Retry-After "120" always;
+    location = /maintenance-health { return 200 "ok\n"; }
+    location / {
+        default_type application/json;
+        return 503 '{"status":"maintenance"}';
+    }
+}

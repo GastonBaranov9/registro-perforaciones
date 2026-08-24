@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE intervalo_diametro_perforacion
   ADD COLUMN IF NOT EXISTS material_tuberia VARCHAR(5),
   ADD CONSTRAINT intervalo_diametro_material_chk
@@ -18,8 +16,6 @@ CREATE TABLE IF NOT EXISTS intervalo_filtro (
 
 CREATE INDEX IF NOT EXISTS intervalo_filtro_pozo_profundidad_idx
   ON intervalo_filtro (id_pozo, desde_m, hasta_m);
-
-COMMIT;
 
 -- Rollback manual, no destructivo para la tabla histórica:
 -- DROP TABLE IF EXISTS intervalo_filtro;
