@@ -135,7 +135,8 @@ export async function actualizarPropietarioOperativo(
 
 async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number, busqueda?: string, limite = 20, idExacto?: number): Promise<CandidatoPozo[]> {
   const { rows } = await db.query(
-    `SELECT u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.propietario_email AS email,
+    `SELECT u.id_usuario,u.nombre,u.documento_rut,u.telefono,
+       CASE WHEN $1='propietario' THEN u.propietario_email ELSE u.email::text END AS email,
        u.direccion,u.localidad,u.departamento,u.observaciones,ARRAY[$1::text] AS roles
      FROM usuario u
      JOIN usuario_rol ur ON ur.id_usuario = u.id_usuario
