@@ -66,6 +66,37 @@ test("búsqueda remota incluye nombre documento teléfono y email, admite un car
   const resultado=await listarCandidatosPozo(3,true,db as never,{propietario:"1",limite:20});
   assert.equal(resultado.propietarios[0].documento_rut,"1.2");assert.equal(params[3],"1");assert.equal(params[4],20);
   assert.match(sql,/documento_rut/);assert.match(sql,/telefono/);assert.match(sql,/propietario_email/);
+  assert.match(sql,/ORDER BY lower\(u\.nombre\), lower\(COALESCE\(u\.documento_rut,''\)\), u\.id_usuario/);
+});
+
+test("candidato perforador busca y devuelve el email de login aunque el contacto sea distinto", async () => {
+  let sql="";let params:unknown[]=[];
+  const db={async query(q:string,p?:unknown[]){sql=q;params=p??[];return{rows:[{
+    id_usuario:8,nombre:"Juan Perforador",email:"perforador@empresa.com",
+    propietario_email:"contacto-distinto@example.com",roles:["perforador"],
+  }]};}};
+  const resultado=await listarCandidatosPozo(3,true,db as never,{perforador:"perforador@empresa.com",limite:20});
+  assert.equal(params[0],"perforador");assert.equal(params[3],"perforador@empresa.com");assert.equal(params[4],20);
+  assert.equal(resultado.perforadores[0]?.nombre,"Juan Perforador");
+  assert.equal(resultado.perforadores[0]?.email,"perforador@empresa.com");
+  assert.notEqual(resultado.perforadores[0]?.email,"contacto-distinto@example.com");
+  assert.match(sql,/CASE WHEN \$1='propietario' THEN u\.propietario_email ELSE u\.email::text END AS email/);
+  assert.match(sql,/lower\(u\.nombre\)/);assert.match(sql,/LIMIT \$5/);
+});
+
+test("candidato propietario busca por nombre documento y contacto y devuelve email de contacto", async () => {
+  const consultas:Array<{sql:string;params:unknown[]}>=[];
+  const db={async query(sql:string,params?:unknown[]){consultas.push({sql,params:params??[]});return{rows:[{
+    id_usuario:9,nombre:"Ana Propietaria",documento_rut:"1.234.567-8",email:"contacto@cliente.com",roles:["propietario"],
+  }]};}};
+  for(const busqueda of ["Ana","1.234","contacto@cliente.com"]){
+    const resultado=await listarCandidatosPozo(3,true,db as never,{propietario:busqueda,limite:20});
+    assert.equal(resultado.propietarios[0]?.email,"contacto@cliente.com");
+    assert.equal(resultado.propietarios[0]?.documento_rut,"1.234.567-8");
+  }
+  assert.deepEqual(consultas.map((x)=>x.params[0]),["propietario","propietario","propietario"]);
+  assert.deepEqual(consultas.map((x)=>x.params[3]),["Ana","1.234","contacto@cliente.com"]);
+  assert.ok(consultas.every((x)=>x.sql.includes("u.propietario_email")&&x.sql.includes("u.email::text")));
 });
 
 test("un usuario sin rol autorizado recibe 403 antes de crear propietario", async () => {

@@ -25,6 +25,14 @@ describe('SelectorPersonaPozoComponent', () => {
     component.busqueda.set('repetido'); expect(component.filtrados().length).toBe(2);
     component.busqueda.set('bea@'); expect(component.filtrados().map((x) => x.id_usuario)).toEqual([2]);
   });
+  it('conserva un perforador encontrado por su email de login en filtro y display', () => {
+    const perforador = { id_usuario: 8, nombre: 'Juan', email: 'perforador@empresa.com', roles: ['perforador'] };
+    fixture.componentRef.setInput('rol', 'perforador');
+    fixture.componentRef.setInput('etiqueta', 'Perforador');
+    component.resultados.set([perforador]); component.busqueda.set('perforador@empresa.com'); fixture.detectChanges();
+    expect(component.filtrados()).toEqual([perforador]);
+    expect(fixture.nativeElement.textContent).toContain('perforador@empresa.com');
+  });
   it('distingue nombres duplicados y conserva identidad por id_usuario', () => {
     component.elegir(2); expect(component.seleccionado()).toBe(2); expect(component.actual()?.email).toContain('bea@');
   });
