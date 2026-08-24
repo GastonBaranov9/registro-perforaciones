@@ -52,7 +52,31 @@ describe('PozosFormComponent', () => {
     const emitir = spyOn(component.crearPropietario, 'emit');
     component.propietarioNuevo.nombre = 'Operativo';
     component.registrarPropietario();
-    expect(emitir).toHaveBeenCalledWith({ nombre: 'Operativo' });
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({ nombre: 'Operativo', documento_rut: '', observaciones: '' }));
+  });
+
+  it('registra formulario completo y ofrece selector controlado de departamento', () => {
+    component.limpiarPropietario(); fixture.detectChanges();
+    Object.assign(component.propietarioNuevo,{nombre:'Ana Pérez',documento_rut:'1.234.567-8',telefono:'+598 99 123 456',email:'ana@example.test',direccion:'Ruta 3',localidad:'Young',departamento:'Río Negro',observaciones:'Texto simple'});
+    const emitir=spyOn(component.crearPropietario,'emit');component.registrarPropietario();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({nombre:'Ana Pérez',departamento:'Río Negro',observaciones:'Texto simple'}));
+    expect(fixture.nativeElement.querySelector('ion-select[name="propietario_nuevo_departamento"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('ion-textarea[name="propietario_nuevo_observaciones"]')).not.toBeNull();
+  });
+
+  it('carga NULL como vacío y permite limpiar opcionales al editar', () => {
+    component.seleccionarPropietario({id_usuario:1,nombre:'Histórico',documento_rut:null,email:null,roles:['propietario']});
+    component.abrirEditorPropietario();
+    expect(component.propietarioEdicion()?.documento_rut).toBe('');expect(component.propietarioEdicion()?.email).toBe('');
+    component.propietarioEdicion()!.telefono='';
+    const emitir=spyOn(component.actualizarPropietario,'emit');component.guardarEditorPropietario();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({id:1,body:jasmine.objectContaining({telefono:''})}));
+  });
+
+  it('padrón viaja con el sitio nuevo sin alterar el borrador', () => {
+    const sitio={departamento:'Salto',padron:'001-A',latitud:'-31',longitud:'-57'};
+    fixture.componentRef.setInput('sitioNuevo',sitio);const emitir=spyOn(component.saved,'emit');component.handlePozo();
+    expect(sitio.padron).toBe('001-A');expect(emitir).toHaveBeenCalled();
   });
 
   it('quitar foto antes de guardar solo limpia la selección local', () => {

@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import { myPool } from "../src/db/pool.ts";
 import sitiosRoutes from "../src/routes/sitios.ts";
 
-const body = { departamento: "Salto", localidad: "Centro", latitud: "-31", longitud: "-57" };
+const body = { departamento: "Salto", localidad: "Centro", latitud: "-31", longitud: "-57", padron: "001-AB" };
 
 async function appConUsuario(idUsuario: number) {
   const app = Fastify();

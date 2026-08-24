@@ -41,4 +41,12 @@ describe('SitiosFormComponent', () => {
     const emitir=spyOn(component.saved,'emit');component.handleSitio();
     expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({latitud:'-31.4439167',longitud:'-57.9865556'}));
   });
+
+  it('crea y limpia padrón como texto', () => {
+    fixture.componentRef.setInput('sitio',{departamento:'Salto',padron:'001-A'});
+    const emitir=spyOn(component.saved,'emit');component.handleSitio();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({padron:'001-A'}));
+    component.sitio().padron='';component.handleSitio();
+    expect(emitir).toHaveBeenCalledWith(jasmine.objectContaining({padron:''}));
+  });
 });

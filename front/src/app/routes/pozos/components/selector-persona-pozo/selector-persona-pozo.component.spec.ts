@@ -5,14 +5,20 @@ describe('SelectorPersonaPozoComponent', () => {
   let fixture: ComponentFixture<SelectorPersonaPozoComponent>;
   let component: SelectorPersonaPozoComponent;
   const personas = [
-    { id_usuario: 1, nombre: 'Nombre repetido', email: 'ana@example.test', roles: ['propietario'] },
-    { id_usuario: 2, nombre: 'Nombre repetido', email: 'bea@example.test', roles: ['propietario'] },
+    { id_usuario: 1, nombre: 'Nombre repetido', documento_rut: '1.234.567-8', email: 'ana@example.test', roles: ['propietario'] },
+    { id_usuario: 2, nombre: 'Nombre repetido', documento_rut: '2.345.678-9', email: 'bea@example.test', roles: ['propietario'] },
   ];
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [SelectorPersonaPozoComponent] }).compileComponents();
     fixture = TestBed.createComponent(SelectorPersonaPozoComponent); component = fixture.componentInstance;
     fixture.componentRef.setInput('etiqueta', 'Propietario'); fixture.componentRef.setInput('candidatos', personas);
     fixture.componentRef.setInput('seleccionado', 1); fixture.detectChanges();
+  });
+  it('busca y muestra documento sin recargar la opción con contacto', () => {
+    component.resultados.set(personas); component.busqueda.set('2.345'); fixture.detectChanges();
+    expect(component.filtrados().map((x) => x.id_usuario)).toEqual([2]);
+    expect(fixture.nativeElement.textContent).toContain('CI/RUT: 2.345.678-9');
+    expect(fixture.nativeElement.textContent).not.toContain('bea@example.test');
   });
   it('busca por nombre y email', () => {
     component.resultados.set(personas);
