@@ -119,10 +119,13 @@ export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> 
       p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
       p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
       CASE WHEN p.foto_url IS NULL THEN NULL ELSE '/usuarios/' || p.id_propietario || '/pozos/' || p.id_pozo || '/foto' END AS foto_url,
-      p.fecha_creado, prop.nombre AS propietario_nombre, prop.email AS propietario_email,
+      p.fecha_creado, prop.nombre AS propietario_nombre, prop.propietario_email AS propietario_email,
+      prop.documento_rut AS propietario_documento_rut, prop.telefono AS propietario_telefono,
+      prop.direccion AS propietario_direccion, prop.localidad AS propietario_localidad,
+      prop.departamento AS propietario_departamento, prop.observaciones AS propietario_observaciones,
       perf.nombre AS perforador_nombre, perf.email AS perforador_email,
       json_build_object('id_sitio',s.id_sitio,'departamento',s.departamento,'localidad',s.localidad,
-        'latitud',s.latitud,'longitud',s.longitud) AS sitio
+        'latitud',s.latitud,'longitud',s.longitud,'padron',s.padron) AS sitio
      FROM public.pozo p
      JOIN public.usuario prop ON prop.id_usuario=p.id_propietario
      JOIN public.usuario perf ON perf.id_usuario=p.id_perforador

@@ -7,15 +7,16 @@ export async function createSitio(data: SitioBody): Promise<Sitio> {
   const normalizado = validarSitio(data);
   const sql = `
             INSERT INTO sitio
-              (departamento, localidad, latitud, longitud)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id_sitio, departamento, localidad, latitud, longitud;
+              (departamento, localidad, latitud, longitud, padron)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
           `;
   const { rows } = await myPool.query(sql, [
     normalizado.departamento,
     normalizado.localidad,
     normalizado.latitud,
     normalizado.longitud,
+    normalizado.padron,
   ]);
   return rows[0] as Sitio;
 }
@@ -36,9 +37,10 @@ export async function updateSitio(
       departamento = $2,
       localidad = $3,
       latitud = $4,
-      longitud = $5
+      longitud = $5,
+      padron = $6
     WHERE id_sitio = $1
-    RETURNING id_sitio, departamento, localidad, latitud, longitud;
+    RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
   `;
   const { rows } = await myPool.query(sql, [
     id_sitio,
@@ -46,6 +48,7 @@ export async function updateSitio(
     normalizado.localidad,
     normalizado.latitud,
     normalizado.longitud,
+    normalizado.padron,
   ]);
   return rows[0] ?? null;
 }
@@ -55,7 +58,9 @@ function validarSitio(data: SitioBody): SitioBody {
   const tieneLatitud=Boolean(data.latitud?.trim()),tieneLongitud=Boolean(data.longitud?.trim());
   const coordenadas = normalizarCoordenadasTexto(data.latitud, data.longitud);
   if(tieneLatitud!==tieneLongitud || (tieneLatitud && !coordenadas)) throw new err.T05DatosIncorrectos("Las coordenadas no son v\u00e1lidas.");
-  return { ...data, departamento: data.departamento.trim(), localidad: data.localidad?.trim() || undefined, latitud: coordenadas?.latitud, longitud: coordenadas?.longitud };
+  return { ...data, departamento: data.departamento.trim(), localidad: data.localidad?.trim() || null,
+    latitud: coordenadas?.latitud ?? null, longitud: coordenadas?.longitud ?? null,
+    padron: data.padron?.trim() || null };
 }
 
 export async function deleteSitio(id_sitio: number): Promise<Boolean> {
@@ -73,7 +78,7 @@ export async function deleteSitio(id_sitio: number): Promise<Boolean> {
 export async function getSitioById(id_sitio: number): Promise<Sitio> {
   const { rows } = await myPool.query(
     `
-    SELECT id_sitio, departamento, localidad, latitud, longitud
+    SELECT id_sitio, departamento, localidad, latitud, longitud, padron
     FROM sitio
     WHERE id_sitio = $1
     `,
@@ -85,7 +90,7 @@ export async function getSitioById(id_sitio: number): Promise<Sitio> {
 export async function getAllSitios(): Promise<Sitio[]> {
   const { rows } = await myPool.query(
     `
-    SELECT id_sitio, departamento, localidad, latitud, longitud
+    SELECT id_sitio, departamento, localidad, latitud, longitud, padron
     FROM sitio
     `
   );
@@ -94,7 +99,7 @@ export async function getAllSitios(): Promise<Sitio[]> {
 
 export async function getSitioPropioById(id_sitio: number, id_usuario: number): Promise<Sitio | null> {
   const { rows } = await myPool.query(
-    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
+    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud, s.padron
        FROM sitio s
       WHERE s.id_sitio = $1
         AND EXISTS (
@@ -108,7 +113,7 @@ export async function getSitioPropioById(id_sitio: number, id_usuario: number): 
 
 export async function getSitiosByPropietario(id_usuario: number): Promise<Sitio[]> {
   const { rows } = await myPool.query(
-    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
+    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud, s.padron
        FROM sitio s
       WHERE EXISTS (
         SELECT 1 FROM pozo p
@@ -127,7 +132,7 @@ export async function sitioTienePozos(id_sitio: number, db: Pick<Pool, "query"> 
 
 export async function getSitiosByPerforador(id_usuario: number, db: Pick<Pool, "query"> = myPool): Promise<Sitio[]> {
   const { rows } = await db.query(
-    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud
+    `SELECT s.id_sitio, s.departamento, s.localidad, s.latitud, s.longitud, s.padron
        FROM sitio s
       WHERE EXISTS (
         SELECT 1 FROM pozo p

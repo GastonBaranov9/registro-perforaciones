@@ -404,17 +404,17 @@ async function insertarSitio(client: PoolClient, sitio: PozoCompletoBody["sitio_
   const coordenadas = normalizarCoordenadasTexto(sitio.latitud, sitio.longitud, true);
   if (!coordenadas) throw new err.T05DatosIncorrectos("Las coordenadas del sitio son invÃ¡lidas.");
   const { rows } = await client.query(
-    `INSERT INTO public.sitio (departamento,localidad,latitud,longitud)
-     VALUES ($1,$2,$3,$4)
-     RETURNING id_sitio,departamento,localidad,latitud,longitud`,
-    [sitio.departamento.trim(), sitio.localidad?.trim() || null, coordenadas.latitud, coordenadas.longitud],
+    `INSERT INTO public.sitio (departamento,localidad,latitud,longitud,padron)
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING id_sitio,departamento,localidad,latitud,longitud,padron`,
+    [sitio.departamento.trim(), sitio.localidad?.trim() || null, coordenadas.latitud, coordenadas.longitud, sitio.padron?.trim() || null],
   );
   return { ...rows[0], id_sitio: Number(rows[0].id_sitio) };
 }
 
 async function obtenerSitioTransaccional(client: PoolClient, idSitio: number): Promise<import("../models/schemas.ts").Sitio> {
   const { rows } = await client.query(
-    "SELECT id_sitio,departamento,localidad,latitud,longitud FROM public.sitio WHERE id_sitio=$1",
+    "SELECT id_sitio,departamento,localidad,latitud,longitud,padron FROM public.sitio WHERE id_sitio=$1",
     [idSitio],
   );
   if (!rows[0]) throw new err.T05SitioNoEncontrado();

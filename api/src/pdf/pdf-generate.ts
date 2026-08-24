@@ -317,7 +317,7 @@ async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longi
   f.pagina("ubicacion"); f.marcar("ubicacion"); const p=f.page;
   p.drawText("Ubicación y resumen del pozo",{x:48,y:772,size:20,font:f.bold,color:AZUL});
   let y=735;
-  const dato=(e:string,v:string)=>{p.drawText(e,{x:48,y,size:11.5,font:f.bold,color:GRIS});p.drawText(v,{x:175,y,size:12,font:f.font});y-=25;};
+  const dato=(e:string,v:string)=>{p.drawText(e,{x:48,y,size:11.5,font:f.bold,color:GRIS});p.drawText(ajustarLinea(v,f.font,12,372),{x:175,y,size:12,font:f.font});y-=25;};
   dato("Departamento",r.departamento||"No especificado"); dato("Localidad",r.localidad||"No especificada");
   dato("Coordenadas",c?`${c.latitud.toFixed(6)}, ${c.longitud.toFixed(6)}`:"No registradas");
   const mapaImagen=mapa.estado==="disponible"?mapa:null;
@@ -345,12 +345,18 @@ async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longi
     const motivo=mapa.estado==="no-disponible"?mapa.motivo:"La imagen del proveedor no pudo procesarse";
     p.drawText(motivo,{x:62,y:superior-50,size:10.5,font:f.font,color:GRIS}); y=inferior-30;
   }
+  dato("Propietario",r.propietario||"No especificado");
+  if(r.propietario_documento_rut)dato("Documento / RUT",r.propietario_documento_rut);
+  if(r.propietario_telefono)dato("Teléfono",r.propietario_telefono);
+  if(r.propietario_email)dato("Email",r.propietario_email);
+  if(r.padron)dato("Padrón",r.padron);
   dato("Perforador",r.perforador||"No especificado"); dato("Fecha de inicio",formatearFechaCalendario(r.fecha_inicio));
   dato("Fecha de finalización",formatearFechaCalendario(r.fecha_fin)); dato("Profundidad final",unidad(r.profundidad_final_m,"m"));
 }
 
 async function cargarFoto(doc:PDFDocument,r:ReportePozo,id:number,dir:string){if(!r.foto_url)return null;try{const foto=await leerFotoPozo(id,dir);if(!foto)return null;const bytes=foto.buffer;if(bytes.length>MAX_FOTO_BYTES)return null;if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)return await doc.embedPng(bytes);if(bytes[0]===0xff&&bytes[1]===0xd8)return await doc.embedJpg(bytes);}catch{return null;}return null;}
 function envolver(texto:string,font:PDFFont,size:number,width:number){const limpio=texto.replace(/[^\x20-\x7E\xA0-\xFF]/g,"?").trim();const palabras:string[]=[];for(const palabra of (limpio||"No especificado").split(/\s+/)){if(font.widthOfTextAtSize(palabra,size)<=width){palabras.push(palabra);continue;}let fragmento="";for(const caracter of palabra){const candidato=fragmento+caracter;if(fragmento&&font.widthOfTextAtSize(candidato,size)>width){palabras.push(fragmento);fragmento=caracter;}else fragmento=candidato;}if(fragmento)palabras.push(fragmento);}const lineas:string[]=[];let actual="";for(const palabra of palabras){const candidato=actual?`${actual} ${palabra}`:palabra;if(font.widthOfTextAtSize(candidato,size)<=width)actual=candidato;else{if(actual)lineas.push(actual);actual=palabra;}}if(actual)lineas.push(actual);return lineas;}
+function ajustarLinea(texto:string,font:PDFFont,size:number,width:number){const limpio=texto.replace(/[^\x20-\x7E\xA0-\xFF]/g,"?").trim();if(font.widthOfTextAtSize(limpio,size)<=width)return limpio;let salida=limpio;while(salida.length&&font.widthOfTextAtSize(`${salida}…`,size)>width)salida=salida.slice(0,-1);return `${salida}…`;}
 function unidad(v:number|null,u:string){return v==null?"No especificado":`${formatearNumero(v)} ${u}`;} function formatearNumero(v:number){return new Intl.NumberFormat("es-UY",{maximumFractionDigits:3}).format(v);}
 export async function generarPDF(reporte:ReportePozo,pozoId:number){const bytes=await generarPDFBytes(reporte,pozoId);await fs.mkdir("./output",{recursive:true});await fs.writeFile(`./output/informe_pozo_${pozoId}.pdf`,bytes);}
 export async function generarPDFBytes(reporte:ReportePozo,pozoId:number,opciones:OpcionesPDF={}){return await (await crearPDF(reporte,pozoId,opciones)).save();}

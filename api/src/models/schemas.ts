@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { MAX_FOTO_BASE64_CHARS } from "../constants/fotos.ts";
+import { DEPARTAMENTOS_URUGUAY } from "../constants/departamentos-uruguay.ts";
 
 export const RevestimientoValores = {
   PVC_6: "PVC: 6",
@@ -95,9 +96,10 @@ export type Rol_Permiso = Static<typeof Rol_Permiso>;
 export const Sitio = Type.Object({
   id_sitio: Type.Integer(),
   departamento: Type.String(),
-  localidad: Type.Optional(Type.String()),
-  latitud: Type.Optional(Type.String()),
-  longitud: Type.Optional(Type.String()),
+  localidad: Type.Union([Type.String(), Type.Null()]),
+  latitud: Type.Union([Type.String(), Type.Null()]),
+  longitud: Type.Union([Type.String(), Type.Null()]),
+  padron: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 export type Sitio = Static<typeof Sitio>;
@@ -288,7 +290,13 @@ export type IntervaloFiltroCreateBody = Static<typeof IntervaloFiltroCreateBody>
 export const NivelAporteBody = Type.Pick(NivelAporte, ["profundidad_m"]);
 export type NivelAporteBody = Static<typeof NivelAporteBody>;
 
-export const SitioBody = Type.Omit(Sitio, ["id_sitio"]);
+export const SitioBody = Type.Object({
+  departamento: Type.String({ minLength: 1, maxLength: 160 }),
+  localidad: Type.Optional(Type.Union([Type.String({ maxLength: 160 }), Type.Null()])),
+  latitud: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
+  longitud: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
+  padron: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+});
 export type SitioBody = Static<typeof SitioBody>;
 
 export const SitioNuevoPozoBody = Type.Object({
@@ -296,6 +304,7 @@ export const SitioNuevoPozoBody = Type.Object({
   localidad: Type.Optional(Type.String({ maxLength: 160 })),
   latitud: Type.String({ minLength: 1, maxLength: 32 }),
   longitud: Type.String({ minLength: 1, maxLength: 32 }),
+  padron: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
 });
 export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
 
@@ -350,20 +359,57 @@ export const CandidatoPozo = Type.Object({
   id_usuario: Type.Integer(),
   nombre: Type.String(),
   email: Type.Optional(Type.String({ format: "email" })),
+  documento_rut: Type.Optional(Type.String()),
+  telefono: Type.Optional(Type.String()),
+  direccion: Type.Optional(Type.String()),
+  localidad: Type.Optional(Type.String()),
+  departamento: Type.Optional(Type.Union(DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)))),
+  observaciones: Type.Optional(Type.String()),
   roles: Type.Array(Type.String()),
 });
 export type CandidatoPozo = Static<typeof CandidatoPozo>;
 
 export const PropietarioOperativoCrearBody = Type.Object({
   nombre: Type.String({ minLength: 1, maxLength: 160 }),
+  documento_rut: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  telefono: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  email: Type.Optional(Type.Union([Type.String({ maxLength: 254 }), Type.Null()])),
+  direccion: Type.Optional(Type.Union([Type.String({ maxLength: 300 }), Type.Null()])),
+  localidad: Type.Optional(Type.Union([Type.String({ maxLength: 160 }), Type.Null()])),
+  departamento: Type.Optional(Type.Union([
+    ...DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)), Type.Null(), Type.Literal("")
+  ])),
+  observaciones: Type.Optional(Type.Union([Type.String({ maxLength: 2000 }), Type.Null()])),
 });
 export type PropietarioOperativoCrearBody = Static<typeof PropietarioOperativoCrearBody>;
+
+export const PropietarioOperativoActualizarBody = Type.Partial(PropietarioOperativoCrearBody, { minProperties: 1 });
+export type PropietarioOperativoActualizarBody = Static<typeof PropietarioOperativoActualizarBody>;
+
+export const PropietarioOperativo = Type.Object({
+  id_usuario: Type.Integer(),
+  nombre: Type.String(),
+  documento_rut: Type.Union([Type.String(), Type.Null()]),
+  telefono: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.String({ format: "email" }), Type.Null()]),
+  direccion: Type.Union([Type.String(), Type.Null()]),
+  localidad: Type.Union([Type.String(), Type.Null()]),
+  departamento: Type.Union([...DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)), Type.Null()]),
+  observaciones: Type.Union([Type.String(), Type.Null()]),
+});
+export type PropietarioOperativo = Static<typeof PropietarioOperativo>;
 
 export const PozoDetalle = Type.Intersect([
   Pozo,
   Type.Object({
     propietario_nombre: Type.String(),
     propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
+    propietario_documento_rut: Type.Union([Type.String(), Type.Null()]),
+    propietario_telefono: Type.Union([Type.String(), Type.Null()]),
+    propietario_direccion: Type.Union([Type.String(), Type.Null()]),
+    propietario_localidad: Type.Union([Type.String(), Type.Null()]),
+    propietario_departamento: Type.Union([...DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)), Type.Null()]),
+    propietario_observaciones: Type.Union([Type.String(), Type.Null()]),
     perforador_nombre: Type.String(),
     perforador_email: Type.String({ format: "email" }),
     sitio: Sitio,
