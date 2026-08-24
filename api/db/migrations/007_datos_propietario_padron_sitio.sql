@@ -20,4 +20,3 @@ ALTER TABLE public.usuario
 
 ALTER TABLE public.sitio
   ADD COLUMN padron VARCHAR(80);
-
