@@ -1,7 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea } from '@ionic/angular/standalone';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
@@ -9,6 +9,7 @@ import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-
 import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
 import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
 import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
 
 @Component({
   selector: 'app-pozos-form',
@@ -19,6 +20,8 @@ import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnico
     IonLabel,
     IonInput,
     IonTextarea,
+    IonSelect,
+    IonSelectOption,
     IonButton,
     IonList,
     IonText,
@@ -43,6 +46,7 @@ export class PozosFormComponent {
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearPropietario = output<PropietarioOperativoCrearBody>();
+  public actualizarPropietario = output<{ id: number; body: PropietarioOperativoActualizarBody }>();
   public editarSitio = output<void>();
   public eliminarFotoPersistida = output<void>();
   public cambiado = output<NuevoPozo>();
@@ -54,7 +58,10 @@ export class PozosFormComponent {
   public ubicacionPrecision = signal<number | null>(null);
   public ubicacionError = signal('');
   public capturandoUbicacion = signal(false);
-  public propietarioNuevo = { nombre: '' };
+  readonly departamentos = DEPARTAMENTOS_URUGUAY;
+  public propietarioNuevo: PropietarioOperativoCrearBody = propietarioVacio();
+  public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
+  public propietarioEdicion = signal<PropietarioOperativoCrearBody | null>(null);
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
   datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
@@ -106,8 +113,26 @@ export class PozosFormComponent {
 
   registrarPropietario() {
     const nombre = this.propietarioNuevo.nombre.trim();
-    if (nombre) this.crearPropietario.emit({ nombre });
+    if (!nombre) return;
+    this.crearPropietario.emit({ ...this.propietarioNuevo, nombre });
   }
+
+  seleccionarPropietario(persona: CandidatoPozo) { this.propietarioSeleccionadoDatos.set(persona); }
+  abrirEditorPropietario() {
+    const persona = this.propietarioSeleccionadoDatos() ?? this.propietarios().find((p) => p.id_usuario === Number(this.pozo().id_propietario));
+    if (!persona) return;
+    this.propietarioEdicion.set({
+      nombre: persona.nombre, documento_rut: persona.documento_rut ?? '', telefono: persona.telefono ?? '',
+      email: persona.email ?? '', direccion: persona.direccion ?? '', localidad: persona.localidad ?? '',
+      departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
+    });
+  }
+  guardarEditorPropietario() {
+    const body = this.propietarioEdicion();
+    const id = Number(this.pozo().id_propietario);
+    if (body?.nombre.trim() && id > 0) this.actualizarPropietario.emit({ id, body: { ...body, nombre: body.nombre.trim() } });
+  }
+  cerrarEditorPropietario() { this.propietarioEdicion.set(null); }
 
   limpiarPropietario() {
     this.pozo().id_propietario = 0;
@@ -161,6 +186,8 @@ getFoto() {
 
   return environment.serverURL + path;
 }
+}
 
-
+function propietarioVacio(): PropietarioOperativoCrearBody {
+  return { nombre: '', documento_rut: '', telefono: '', email: '', direccion: '', localidad: '', departamento: '', observaciones: '' };
 }

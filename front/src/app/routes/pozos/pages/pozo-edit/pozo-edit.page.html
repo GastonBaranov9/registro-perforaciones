@@ -21,6 +21,7 @@
           [agregareditar]="true"
           [guardando]="disabled()"
           (editarSitio)="editarSitio()"
+          (actualizarPropietario)="actualizarPropietario($event)"
           (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
         >
           <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [versionDescartar]="versionDescartar()" [profundidad]="editor.pozo.profundidad_final_m"

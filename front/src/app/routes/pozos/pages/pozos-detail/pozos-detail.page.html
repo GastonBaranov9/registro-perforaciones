@@ -21,12 +21,19 @@
           <ion-label>Propietario</ion-label>
           <ion-label>{{ this.pozo()?.propietario_nombre || 'Identificación no disponible' }}</ion-label>
         </ion-item>
+        @if (this.pozo()?.propietario_documento_rut) { <ion-item><ion-label>Documento / RUT</ion-label><ion-label>{{ this.pozo()?.propietario_documento_rut }}</ion-label></ion-item> }
+        @if (this.pozo()?.propietario_telefono) { <ion-item><ion-label>Teléfono</ion-label><ion-label>{{ this.pozo()?.propietario_telefono }}</ion-label></ion-item> }
+        @if (this.pozo()?.propietario_email) { <ion-item><ion-label>Email de contacto</ion-label><ion-label>{{ this.pozo()?.propietario_email }}</ion-label></ion-item> }
+        @if (this.pozo()?.propietario_direccion) { <ion-item><ion-label>Dirección</ion-label><ion-label>{{ this.pozo()?.propietario_direccion }}</ion-label></ion-item> }
+        @if (this.pozo()?.propietario_localidad || this.pozo()?.propietario_departamento) { <ion-item><ion-label>Ubicación del propietario</ion-label><ion-label>{{ ubicacionPropietario() }}</ion-label></ion-item> }
+        @if (this.pozo()?.propietario_observaciones) { <ion-item><ion-label>Observaciones</ion-label><ion-label>{{ this.pozo()?.propietario_observaciones }}</ion-label></ion-item> }
 
         <ion-item>
           <ion-label>Sitio</ion-label>
           <ion-label>{{ representarSitio(this.pozo()?.sitio) }}</ion-label>
         </ion-item>
         @if (this.pozo()?.sitio; as sitioActual) {
+          <ion-item><ion-label>Padrón</ion-label><ion-label>{{ sitioActual.padron || 'No especificado' }}</ion-label></ion-item>
           <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario"
             [latitud]="sitioActual.latitud" [longitud]="sitioActual.longitud" />
         }

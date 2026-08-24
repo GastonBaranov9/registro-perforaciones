@@ -102,6 +102,10 @@ export class PozosDetailPage implements ViewWillEnter {
   public irAEditarPozo() {
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);
   }
+  ubicacionPropietario(): string {
+    const pozo = this.pozo();
+    return [pozo?.propietario_localidad, pozo?.propietario_departamento].filter((valor): valor is string => Boolean(valor)).join(', ');
+  }
 getFoto() {
   const foto = this.pozo()?.foto_url;
   if (!foto) return null;

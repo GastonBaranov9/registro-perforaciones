@@ -21,6 +21,7 @@
           [agregareditar]="false"
           [guardando]="disabled()"
           (crearPropietario)="crearPropietario($event)"
+          (actualizarPropietario)="actualizarPropietario($event)"
         >
           <app-datos-tecnicos-borrador
             [profundidad]="nuevoPozo().profundidad_final_m"

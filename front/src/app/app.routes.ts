@@ -169,7 +169,7 @@ export const routes: Routes = [
   },
 
   {
-    path: 'sitio-detail',
+    path: 'sitio-detail/:id_sitio',
     canActivate: [isloggedGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitio-detail/sitio-detail.page')).SitioDetailPage,

@@ -6,19 +6,57 @@
     </ion-item>
 
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
-      [(seleccionado)]="pozo().id_propietario" [deshabilitado]="guardando() || !catalogosDisponibles()" />
+      [(seleccionado)]="pozo().id_propietario" (personaSeleccionada)="seleccionarPropietario($event)"
+      [deshabilitado]="guardando() || !catalogosDisponibles()" />
 
     @if (propietarioSeleccionado()) {
       <ion-button type="button" fill="clear" (click)="limpiarPropietario()" [disabled]="guardando()">CAMBIAR</ion-button>
+      <ion-button type="button" fill="clear" (click)="abrirEditorPropietario()" [disabled]="guardando()">EDITAR DATOS DEL PROPIETARIO</ion-button>
     }
 
     @if (!agregareditar() && !propietarioSeleccionado()) {
       <fieldset class="propietario-nuevo">
         <legend>Registrar propietario</legend>
-        <ion-item><ion-input label="Nombre" labelPlacement="stacked" name="propietario_nuevo_nombre"
-          [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" name="propietario_nuevo_nombre" maxlength="160"
+          [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" required /></ion-item>
+        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" name="propietario_nuevo_documento" maxlength="80"
+          [(ngModel)]="propietarioNuevo.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" name="propietario_nuevo_telefono" maxlength="80"
+          [(ngModel)]="propietarioNuevo.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Email" labelPlacement="stacked" name="propietario_nuevo_email" type="email" maxlength="254"
+          [(ngModel)]="propietarioNuevo.email" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Dirección" labelPlacement="stacked" name="propietario_nuevo_direccion" maxlength="300"
+          [(ngModel)]="propietarioNuevo.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="propietario_nuevo_localidad" maxlength="160"
+          [(ngModel)]="propietarioNuevo.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" name="propietario_nuevo_departamento"
+          [(ngModel)]="propietarioNuevo.departamento" [ngModelOptions]="{standalone: true}">
+          <ion-select-option value="">Sin especificar</ion-select-option>
+          @for (departamento of departamentos; track departamento) { <ion-select-option [value]="departamento">{{ departamento }}</ion-select-option> }
+        </ion-select></ion-item>
+        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" name="propietario_nuevo_observaciones" maxlength="2000" [autoGrow]="true" rows="3"
+          [(ngModel)]="propietarioNuevo.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
         <ion-button type="button" fill="outline" (click)="registrarPropietario()"
           [disabled]="guardando() || !propietarioNuevo.nombre.trim()">REGISTRAR PROPIETARIO</ion-button>
+      </fieldset>
+    }
+
+    @if (propietarioEdicion(); as propietarioEditar) {
+      <fieldset class="propietario-nuevo">
+        <legend>Editar propietario</legend>
+        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.nombre" [ngModelOptions]="{standalone: true}" required /></ion-item>
+        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" maxlength="254" [(ngModel)]="propietarioEditar.email" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Dirección" labelPlacement="stacked" maxlength="300" [(ngModel)]="propietarioEditar.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Localidad" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" [(ngModel)]="propietarioEditar.departamento" [ngModelOptions]="{standalone: true}">
+          <ion-select-option value="">Sin especificar</ion-select-option>
+          @for (departamento of departamentos; track departamento) { <ion-select-option [value]="departamento">{{ departamento }}</ion-select-option> }
+        </ion-select></ion-item>
+        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" maxlength="2000" [autoGrow]="true" rows="3" [(ngModel)]="propietarioEditar.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-button type="button" fill="outline" (click)="guardarEditorPropietario()" [disabled]="guardando() || !propietarioEditar.nombre.trim()">GUARDAR PROPIETARIO</ion-button>
+        <ion-button type="button" fill="clear" (click)="cerrarEditorPropietario()" [disabled]="guardando()">CANCELAR</ion-button>
       </fieldset>
     }
 
@@ -36,6 +74,8 @@
           [(ngModel)]="sitio.departamento" required /></ion-item>
         <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="localidad"
           [(ngModel)]="sitio.localidad" /></ion-item>
+        <ion-item><ion-input label="Padrón" labelPlacement="stacked" name="padron" maxlength="80"
+          [(ngModel)]="sitio.padron" /></ion-item>
         <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="text"
           [(ngModel)]="sitio.latitud" (ionBlur)="normalizarCoordenadaNueva('latitud')" required /></ion-item>
         <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="text"

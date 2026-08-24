@@ -6,9 +6,13 @@
         type="text"
         name="depertamento"
         [(ngModel)]="this.sitio().departamento"
-        
         required
       ></ion-input>
+    </ion-item>
+
+    <ion-item>
+      <ion-label position="stacked">Padrón</ion-label>
+      <ion-input type="text" name="padron" maxlength="80" [(ngModel)]="this.sitio().padron"></ion-input>
     </ion-item>
 
     <ion-item>
@@ -17,7 +21,6 @@
         type="text"
         name="localidad"
         [(ngModel)]="this.sitio().localidad"
-        required
       ></ion-input>
     </ion-item>
 

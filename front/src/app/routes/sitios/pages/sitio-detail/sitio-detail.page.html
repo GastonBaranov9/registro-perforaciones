@@ -1,1 +1,18 @@
-<p>sitio-detail works!</p>
+<ion-content class="ion-padding">
+  @if (sitio.hasValue()) {
+    @let dato = sitio.value()!;
+    <ion-card>
+      <ion-card-header><ion-card-title>{{ dato.padron ? 'Padrón ' + dato.padron : 'Sitio sin padrón' }}</ion-card-title></ion-card-header>
+      <ion-card-content><ion-list>
+        <ion-item><ion-label>Departamento</ion-label><ion-label>{{ dato.departamento }}</ion-label></ion-item>
+        <ion-item><ion-label>Localidad</ion-label><ion-label>{{ dato.localidad || 'No especificada' }}</ion-label></ion-item>
+        <ion-item><ion-label>Padrón</ion-label><ion-label>{{ dato.padron || 'No especificado' }}</ion-label></ion-item>
+        <ion-item><ion-label>Latitud</ion-label><ion-label>{{ dato.latitud || 'No especificada' }}</ion-label></ion-item>
+        <ion-item><ion-label>Longitud</ion-label><ion-label>{{ dato.longitud || 'No especificada' }}</ion-label></ion-item>
+      </ion-list>
+      <app-mapa-aereo [idSitio]="dato.id_sitio" [idUsuario]="auth.userId() || 0" [latitud]="dato.latitud" [longitud]="dato.longitud" />
+      </ion-card-content>
+    </ion-card>
+  } @else if (sitio.isLoading()) { <p role="status">Cargando sitio…</p> }
+  @else { <p role="alert">No se pudo cargar el sitio.</p> }
+</ion-content>
