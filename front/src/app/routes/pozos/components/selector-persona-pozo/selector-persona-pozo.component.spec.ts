@@ -5,8 +5,8 @@ describe('SelectorPersonaPozoComponent', () => {
   let fixture: ComponentFixture<SelectorPersonaPozoComponent>;
   let component: SelectorPersonaPozoComponent;
   const personas = [
-    { id_usuario: 1, nombre: 'Nombre repetido', email: 'ana@example.test', roles: ['propietario'] },
-    { id_usuario: 2, nombre: 'Nombre repetido', email: 'bea@example.test', roles: ['propietario'] },
+    { id_usuario: 1, nombre: 'Nombre repetido', documento_rut: '1.234.567-8', email: 'ana@example.test', roles: ['propietario'] },
+    { id_usuario: 2, nombre: 'Nombre repetido', documento_rut: '2.345.678-9', email: 'bea@example.test', roles: ['propietario'] },
   ];
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [SelectorPersonaPozoComponent] }).compileComponents();
@@ -14,10 +14,24 @@ describe('SelectorPersonaPozoComponent', () => {
     fixture.componentRef.setInput('etiqueta', 'Propietario'); fixture.componentRef.setInput('candidatos', personas);
     fixture.componentRef.setInput('seleccionado', 1); fixture.detectChanges();
   });
+  it('busca y muestra documento sin recargar la opción con contacto', () => {
+    component.resultados.set(personas); component.busqueda.set('2.345'); fixture.detectChanges();
+    expect(component.filtrados().map((x) => x.id_usuario)).toEqual([2]);
+    expect(fixture.nativeElement.textContent).toContain('CI/RUT: 2.345.678-9');
+    expect(fixture.nativeElement.textContent).not.toContain('bea@example.test');
+  });
   it('busca por nombre y email', () => {
     component.resultados.set(personas);
     component.busqueda.set('repetido'); expect(component.filtrados().length).toBe(2);
     component.busqueda.set('bea@'); expect(component.filtrados().map((x) => x.id_usuario)).toEqual([2]);
+  });
+  it('conserva un perforador encontrado por su email de login en filtro y display', () => {
+    const perforador = { id_usuario: 8, nombre: 'Juan', email: 'perforador@empresa.com', roles: ['perforador'] };
+    fixture.componentRef.setInput('rol', 'perforador');
+    fixture.componentRef.setInput('etiqueta', 'Perforador');
+    component.resultados.set([perforador]); component.busqueda.set('perforador@empresa.com'); fixture.detectChanges();
+    expect(component.filtrados()).toEqual([perforador]);
+    expect(fixture.nativeElement.textContent).toContain('perforador@empresa.com');
   });
   it('distingue nombres duplicados y conserva identidad por id_usuario', () => {
     component.elegir(2); expect(component.seleccionado()).toBe(2); expect(component.actual()?.email).toContain('bea@');

@@ -80,7 +80,7 @@ test("imágenes base tienen versiones explícitas y API conserva usuario no-root
 });
 
 test("Compose development migra automáticamente y conserva API host",async()=>{
-  const compose=await fs.readFile(path.join(repo,"docker-compose.development.yaml"),"utf8");
+  const compose=(await fs.readFile(path.join(repo,"docker-compose.development.yaml"),"utf8")).replace(/\r\n?/g,"\n");
   assert.match(compose,/\n  migrate:\n/);
   assert.match(compose,/command: \["npm", "run", "db:migrate"\]/);
   assert.match(compose,/PGHOST: postgres/);
@@ -157,7 +157,7 @@ test("rollback acepta audits fallidos aptos por fase y conserva password opaca",
 });
 
 test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async()=>{
-  const compose=await fs.readFile(path.join(repo,"docker-compose.production.yaml"),"utf8");
+  const compose=(await fs.readFile(path.join(repo,"docker-compose.production.yaml"),"utf8")).replace(/\r\n?/g,"\n");
   const deploy=await fs.readFile(path.join(repo,"ops","deploy.ps1"),"utf8");
   const deployPosix=await fs.readFile(path.join(repo,"ops","deploy.sh"),"utf8");
   const prepare=await fs.readFile(path.join(repo,"ops","prepare-photo-storage.ps1"),"utf8");

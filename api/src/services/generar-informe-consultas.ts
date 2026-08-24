@@ -4,6 +4,9 @@ import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 export interface ReportePozo {
   id_pozo: number;
   propietario: string;
+  propietario_documento_rut?: string | null;
+  propietario_telefono?: string | null;
+  propietario_email?: string | null;
   empresa: string;
   perforador: string;
   sitio: string;
@@ -11,6 +14,7 @@ export interface ReportePozo {
   localidad?: string | null;
   latitud?: string | null;
   longitud?: string | null;
+  padron?: string | null;
   fecha_inicio: string | null;
   fecha_fin: string | null;
   profundidad_final_m: number | null;
@@ -44,6 +48,9 @@ export async function getReportePozo(
     SELECT
       p.id_pozo,
       prop.nombre AS propietario,
+      prop.documento_rut AS propietario_documento_rut,
+      prop.telefono AS propietario_telefono,
+      prop.propietario_email AS propietario_email,
       p.empresa AS empresa,
       perf.nombre AS perforador,
       s.departamento || COALESCE(' - ' || s.localidad, '') AS sitio,
@@ -51,6 +58,7 @@ export async function getReportePozo(
       s.localidad,
       s.latitud,
       s.longitud,
+      s.padron,
       p.fecha_inicio,
       p.fecha_fin,
       p.profundidad_final_m,

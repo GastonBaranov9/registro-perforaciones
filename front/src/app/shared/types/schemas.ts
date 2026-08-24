@@ -59,6 +59,12 @@ export type Pozo = {
   foto_url?: string;
   propietario_nombre?: string;
   propietario_email?: string | null;
+  propietario_documento_rut?: string | null;
+  propietario_telefono?: string | null;
+  propietario_direccion?: string | null;
+  propietario_localidad?: string | null;
+  propietario_departamento?: string | null;
+  propietario_observaciones?: string | null;
   perforador_nombre?: string;
   perforador_email?: string;
   sitio?: Sitio;
@@ -111,16 +117,18 @@ export type Credenciales = {
 export type Sitio = {
   id_sitio: number;
   departamento: string;
-  localidad?: string;
-  latitud?: string;
-  longitud?: string;
+  localidad?: string | null;
+  latitud?: string | null;
+  longitud?: string | null;
+  padron?: string | null;
 };
 
 export type SitioBody = {
   departamento: string;
-  localidad?: string;
-  latitud?: string;
-  longitud?: string;
+  localidad?: string | null;
+  latitud?: string | null;
+  longitud?: string | null;
+  padron?: string | null;
 };
 
 export type IntervaloLitologico = {
@@ -209,7 +217,11 @@ export type PerfilLitologicoVistaPreviaBody = Omit<PozoCompletoBody, 'pozo' | 'f
   profundidad_final_m: number;
 };
 
-export type CandidatoPozo = { id_usuario: number; nombre: string; email?: string; roles: string[] };
+export type CandidatoPozo = {
+  id_usuario: number; nombre: string; documento_rut?: string | null; telefono?: string | null; email?: string | null;
+  direccion?: string | null; localidad?: string | null; departamento?: import('../constants/departamentos-uruguay').DepartamentoUruguay | null;
+  observaciones?: string | null; roles: string[];
+};
 export type CatalogosPersonasPozo = { propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] };
 export type AccionFotoEdicion = 'conservar' | 'eliminar' | 'reemplazar';
 export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 'sitio_nuevo'> & {
@@ -227,7 +239,19 @@ export type PozoCompletoResultado = {
   niveles_aporte: NivelAporte[];
 };
 
-export type PropietarioOperativoCrearBody = { nombre: string };
+export type PropietarioOperativoCrearBody = {
+  nombre: string; documento_rut?: string | null; telefono?: string | null; email?: string | null;
+  direccion?: string | null; localidad?: string | null;
+  departamento?: import('../constants/departamentos-uruguay').DepartamentoUruguay | '' | null;
+  observaciones?: string | null;
+};
+export type PropietarioOperativoActualizarBody = Partial<PropietarioOperativoCrearBody>;
+export type PropietarioOperativo = {
+  id_usuario: number; nombre: string; documento_rut: string | null; telefono: string | null; email: string | null;
+  direccion: string | null; localidad: string | null;
+  departamento: import('../constants/departamentos-uruguay').DepartamentoUruguay | null;
+  observaciones: string | null;
+};
 
 import type { PatronCatalogo } from '../canonical/litologia-patrones';
 

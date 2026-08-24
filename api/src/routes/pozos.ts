@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoUpdateBody, PozoDetalle, PropietarioOperativoCrearBody, Usuario } from "../models/schemas.ts";
+import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoUpdateBody, PozoDetalle, PropietarioOperativo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
@@ -9,7 +9,7 @@ import fs from "fs/promises";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
 import { eliminarFotoPersistida, eliminarPozoPersistido, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
-import { crearPropietarioOperativo, listarCandidatosPozo } from "../services/candidatos-pozo-service.ts";
+import { actualizarPropietarioOperativo, crearPropietarioOperativo, listarCandidatosPozo, obtenerPropietarioOperativo } from "../services/candidatos-pozo-service.ts";
 import { leerFotoPozo, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 import { FOTO_JSON_BODY_LIMIT_BYTES, MAX_FOTO_BYTES } from "../constants/fotos.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
@@ -29,6 +29,41 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       preHandler: [fastify.userIsAdminOrPerforador],
     },
     async (req, rep) => rep.code(201).send(await crearPropietarioOperativo(req.body as import("../models/schemas.ts").PropietarioOperativoCrearBody)),
+  );
+  fastify.get(
+    "/pozos/propietarios/:id_propietario",
+    {
+      schema: {
+        summary: "Obtener un propietario operativo", tags: ["pozos"],
+        params: Type.Object({ id_propietario: Type.Integer({ minimum: 1 }) }),
+        response: { 200: PropietarioOperativo, 404: err.ErrorSchema },
+      },
+      onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+    },
+    async (req) => {
+      const { id_propietario } = req.params as { id_propietario: number };
+      const propietario = await obtenerPropietarioOperativo(id_propietario);
+      if (!propietario) throw new err.T05UsuarioNoEncontrado();
+      return propietario;
+    },
+  );
+  fastify.put(
+    "/pozos/propietarios/:id_propietario",
+    {
+      schema: {
+        summary: "Actualizar datos de un propietario operativo", tags: ["pozos"],
+        params: Type.Object({ id_propietario: Type.Integer({ minimum: 1 }) }),
+        body: PropietarioOperativoActualizarBody,
+        response: { 200: PropietarioOperativo, 400: err.ErrorSchema, 404: err.ErrorSchema },
+      },
+      onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+    },
+    async (req) => {
+      const { id_propietario } = req.params as { id_propietario: number };
+      const propietario = await actualizarPropietarioOperativo(id_propietario, req.body as import("../models/schemas.ts").PropietarioOperativoActualizarBody);
+      if (!propietario) throw new err.T05UsuarioNoEncontrado();
+      return propietario;
+    },
   );
   fastify.get(
     "/pozos/candidatos-personas",

@@ -51,9 +51,9 @@ test("rechaza coordenadas vacías y conserva cero explícito normalizado", async
     await assert.rejects(() => createSitio({ departamento: "Salto", latitud: "   ", longitud: "0" }), /coordenadas/i);
     const creado = await createSitio({ departamento: " Salto ", latitud: " 0 ", longitud: " 0.0 " });
     assert.equal(creado.id_sitio, 12);
-    assert.deepEqual(consultas.at(-1)?.params?.slice(2), ["0", "0"]);
+    assert.deepEqual(consultas.at(-1)?.params?.slice(2), ["0", "0", null]);
     await updateSitio(12, { departamento: " Salto ", latitud: " 0 ", longitud: " 0.0 " });
-    assert.deepEqual(consultas.at(-1)?.params?.slice(3), ["0", "0"]);
+    assert.deepEqual(consultas.at(-1)?.params?.slice(3), ["0", "0", null]);
   } finally { pool.query = original; }
 });
 

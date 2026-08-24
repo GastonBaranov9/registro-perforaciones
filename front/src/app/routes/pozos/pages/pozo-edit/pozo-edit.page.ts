@@ -1,7 +1,7 @@
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { Router } from '@angular/router';
-import { AccionFotoEdicion, DatosTecnicosBorrador, NuevoPozo, Sitio } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, DatosTecnicosBorrador, NuevoPozo, PropietarioOperativoActualizarBody, Sitio } from '../../../../shared/types/schemas';
 import {
   IonButton,
   IonContent,
@@ -28,6 +28,7 @@ import { PerfilLitologicoVistaPreviaComponent } from '../../components/perfil-li
 import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas';
 import { mensajeHumano } from '../../../../shared/utils/errores';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { PropietariosOperativosService } from '../../../../shared/services/propietarios-operativos.service';
 @Component({
   selector: 'app-pozo-edit',
   imports: [
@@ -53,6 +54,7 @@ export class PozoEditPage {
   public fotoPozoService = inject(FotoPozoService);
   private candidatos = inject(CandidatosPozoService);
   public authService = inject(AuthService);
+  private propietariosOperativos = inject(PropietariosOperativosService);
   buscarPropietarios = (texto: string) => this.candidatos.buscar('propietario', texto);
   buscarPerforadores = (texto: string) => this.candidatos.buscar('perforador', texto);
   private litologia = inject(IntervaloLitologicoListService);
@@ -150,5 +152,15 @@ export class PozoEditPage {
     this.router.navigate(['/sitios-edit', pozo.id_sitio], {
       state: { returnTo: this.router.url },
     });
+  }
+  async actualizarPropietario(evento: { id: number; body: PropietarioOperativoActualizarBody }) {
+    if (this.disabled()) return;
+    try {
+      this.disabled.set(true); this.errorMessage.set('');
+      const actualizado = await this.propietariosOperativos.actualizar(evento.id, evento.body);
+      const candidato = this.pozoResource.value()?.personas.propietarios.find((p) => p.id_usuario === evento.id);
+      if (candidato) Object.assign(candidato, actualizado, { roles: candidato.roles });
+    } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar el propietario.')); }
+    finally { this.disabled.set(false); }
   }
 }

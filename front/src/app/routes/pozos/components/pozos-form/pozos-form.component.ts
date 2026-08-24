@@ -1,7 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea } from '@ionic/angular/standalone';
+import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
@@ -9,6 +9,12 @@ import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-
 import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
 import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
 import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
+
+type PropietarioEdicionEstado = {
+  id_usuario: number;
+  body: PropietarioOperativoCrearBody;
+};
 
 @Component({
   selector: 'app-pozos-form',
@@ -19,6 +25,8 @@ import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnico
     IonLabel,
     IonInput,
     IonTextarea,
+    IonSelect,
+    IonSelectOption,
     IonButton,
     IonList,
     IonText,
@@ -43,6 +51,7 @@ export class PozosFormComponent {
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearPropietario = output<PropietarioOperativoCrearBody>();
+  public actualizarPropietario = output<{ id: number; body: PropietarioOperativoActualizarBody }>();
   public editarSitio = output<void>();
   public eliminarFotoPersistida = output<void>();
   public cambiado = output<NuevoPozo>();
@@ -54,7 +63,10 @@ export class PozosFormComponent {
   public ubicacionPrecision = signal<number | null>(null);
   public ubicacionError = signal('');
   public capturandoUbicacion = signal(false);
-  public propietarioNuevo = { nombre: '' };
+  readonly departamentos = DEPARTAMENTOS_URUGUAY;
+  public propietarioNuevo: PropietarioOperativoCrearBody = propietarioVacio();
+  public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
+  public propietarioEdicion = signal<PropietarioEdicionEstado | null>(null);
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
   datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
@@ -106,11 +118,59 @@ export class PozosFormComponent {
 
   registrarPropietario() {
     const nombre = this.propietarioNuevo.nombre.trim();
-    if (nombre) this.crearPropietario.emit({ nombre });
+    if (!nombre) return;
+    this.propietarioSeleccionadoDatos.set(null);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
+    this.crearPropietario.emit({ ...this.propietarioNuevo, nombre });
   }
+
+  seleccionarPropietario(persona: CandidatoPozo) {
+    this.pozo().id_propietario = persona.id_usuario;
+    this.propietarioSeleccionadoDatos.set(persona);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
+    this.notificarCambio();
+  }
+  abrirEditorPropietario() {
+    const id = Number(this.pozo().id_propietario);
+    const cache = this.propietarioSeleccionadoDatos();
+    const persona = this.propietarios().find((p) => p.id_usuario === id)
+      ?? (cache?.id_usuario === id ? cache : null);
+    if (!persona) {
+      this.propietarioEdicion.set(null);
+      this.errorMessage.set('No se pudieron cargar los datos del propietario seleccionado. Vuelva a seleccionarlo.');
+      return;
+    }
+    this.errorMessage.set('');
+    this.propietarioEdicion.set({
+      id_usuario: id,
+      body: {
+        nombre: persona.nombre, documento_rut: persona.documento_rut ?? '', telefono: persona.telefono ?? '',
+        email: persona.email ?? '', direccion: persona.direccion ?? '', localidad: persona.localidad ?? '',
+        departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
+      },
+    });
+  }
+  guardarEditorPropietario() {
+    const editor = this.propietarioEdicion();
+    const idActual = Number(this.pozo().id_propietario);
+    if (!editor?.body.nombre.trim() || idActual <= 0) return;
+    if (editor.id_usuario !== idActual) {
+      this.propietarioEdicion.set(null);
+      this.errorMessage.set('La selección de propietario cambió durante la edición. Abra nuevamente el editor.');
+      return;
+    }
+    this.errorMessage.set('');
+    this.actualizarPropietario.emit({ id: editor.id_usuario, body: { ...editor.body, nombre: editor.body.nombre.trim() } });
+  }
+  cerrarEditorPropietario() { this.propietarioEdicion.set(null); this.errorMessage.set(''); }
 
   limpiarPropietario() {
     this.pozo().id_propietario = 0;
+    this.propietarioSeleccionadoDatos.set(null);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
     this.notificarCambio();
   }
 
@@ -161,6 +221,8 @@ getFoto() {
 
   return environment.serverURL + path;
 }
+}
 
-
+function propietarioVacio(): PropietarioOperativoCrearBody {
+  return { nombre: '', documento_rut: '', telefono: '', email: '', direccion: '', localidad: '', departamento: '', observaciones: '' };
 }

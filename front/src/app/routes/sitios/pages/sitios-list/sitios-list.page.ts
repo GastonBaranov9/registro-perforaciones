@@ -56,6 +56,7 @@ export class SitiosListPage implements OnInit, ViewWillEnter {
   irAEditar(sitio: Sitio) {
     this.router.navigate(['/sitios-edit', sitio.id_sitio]);
   }
+  irADetalle(sitio: Sitio) { this.router.navigate(['/sitio-detail', sitio.id_sitio]); }
 
   public async borrarSitio(sitio: Sitio) {
     try {

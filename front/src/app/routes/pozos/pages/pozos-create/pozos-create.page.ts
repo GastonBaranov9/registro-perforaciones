@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { PozosCreateService } from '../../../../shared/services/pozos-create.service';
 import { Router } from '@angular/router';
-import { AccionFotoEdicion, CatalogosPersonasPozo, DatosTecnicosBorrador, NuevoPozo, PropietarioOperativoCrearBody, SitioBody } from '../../../../shared/types/schemas';
+import { AccionFotoEdicion, CatalogosPersonasPozo, DatosTecnicosBorrador, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, SitioBody } from '../../../../shared/types/schemas';
 import {
   IonContent,
   IonCard,
@@ -105,5 +105,13 @@ export class PozosCreatePage {
     } catch (error: unknown) {
       this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo crear el propietario.');
     } finally { this.disabled.set(false); }
+  }
+  async actualizarPropietario(evento: { id: number; body: PropietarioOperativoActualizarBody }) {
+    try {
+      this.errorMessage.set(''); this.disabled.set(true);
+      const actualizado = await this.propietariosOperativos.actualizar(evento.id, evento.body);
+      this.catalogos.update((actual) => actual ? { ...actual, propietarios: actual.propietarios.map((p) => p.id_usuario === evento.id ? { ...p, ...actualizado, roles: p.roles } : p) } : actual);
+    } catch (error: unknown) { this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo actualizar el propietario.'); }
+    finally { this.disabled.set(false); }
   }
 }

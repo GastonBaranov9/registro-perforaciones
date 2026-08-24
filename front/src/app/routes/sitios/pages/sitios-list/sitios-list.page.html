@@ -3,7 +3,7 @@
   @for (sitio of this.sitios(); track sitio.id_sitio) {
     <ion-card>
       <ion-card-header>
-        <ion-card-title>Sitio: {{ sitio.id_sitio }}</ion-card-title>
+        <ion-card-title>{{ sitio.padron ? 'Padrón ' + sitio.padron : 'Sitio sin padrón' }}</ion-card-title>
       </ion-card-header>
 
       <ion-card-content>
@@ -15,7 +15,12 @@
 
           <ion-item>
             <ion-label>Localidad</ion-label>
-            <ion-label>{{ sitio.localidad }}</ion-label>
+            <ion-label>{{ sitio.localidad || 'No especificada' }}</ion-label>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>Padrón</ion-label>
+            <ion-label>{{ sitio.padron || 'No especificado' }}</ion-label>
           </ion-item>
 
           <ion-item>
@@ -31,6 +36,7 @@
         </ion-list>
 
 
+          <ion-button fill="outline" (click)="irADetalle(sitio)">Ver detalle</ion-button>
           <ion-button (click)="irAEditar(sitio)">Editar</ion-button>
           @if (this.authService.tieneRol('administracion')) {
           <ion-button  color="danger" (click)="borrarSitio(sitio)">
