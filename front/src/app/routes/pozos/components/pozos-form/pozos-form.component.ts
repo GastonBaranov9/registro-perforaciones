@@ -11,6 +11,11 @@ import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/uti
 import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
 
+type PropietarioEdicionEstado = {
+  id_usuario: number;
+  body: PropietarioOperativoCrearBody;
+};
+
 @Component({
   selector: 'app-pozos-form',
   templateUrl: './pozos-form.component.html',
@@ -61,7 +66,7 @@ export class PozosFormComponent {
   readonly departamentos = DEPARTAMENTOS_URUGUAY;
   public propietarioNuevo: PropietarioOperativoCrearBody = propietarioVacio();
   public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
-  public propietarioEdicion = signal<PropietarioOperativoCrearBody | null>(null);
+  public propietarioEdicion = signal<PropietarioEdicionEstado | null>(null);
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
   datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
@@ -114,28 +119,58 @@ export class PozosFormComponent {
   registrarPropietario() {
     const nombre = this.propietarioNuevo.nombre.trim();
     if (!nombre) return;
+    this.propietarioSeleccionadoDatos.set(null);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
     this.crearPropietario.emit({ ...this.propietarioNuevo, nombre });
   }
 
-  seleccionarPropietario(persona: CandidatoPozo) { this.propietarioSeleccionadoDatos.set(persona); }
+  seleccionarPropietario(persona: CandidatoPozo) {
+    this.pozo().id_propietario = persona.id_usuario;
+    this.propietarioSeleccionadoDatos.set(persona);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
+    this.notificarCambio();
+  }
   abrirEditorPropietario() {
-    const persona = this.propietarioSeleccionadoDatos() ?? this.propietarios().find((p) => p.id_usuario === Number(this.pozo().id_propietario));
-    if (!persona) return;
+    const id = Number(this.pozo().id_propietario);
+    const cache = this.propietarioSeleccionadoDatos();
+    const persona = this.propietarios().find((p) => p.id_usuario === id)
+      ?? (cache?.id_usuario === id ? cache : null);
+    if (!persona) {
+      this.propietarioEdicion.set(null);
+      this.errorMessage.set('No se pudieron cargar los datos del propietario seleccionado. Vuelva a seleccionarlo.');
+      return;
+    }
+    this.errorMessage.set('');
     this.propietarioEdicion.set({
-      nombre: persona.nombre, documento_rut: persona.documento_rut ?? '', telefono: persona.telefono ?? '',
-      email: persona.email ?? '', direccion: persona.direccion ?? '', localidad: persona.localidad ?? '',
-      departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
+      id_usuario: id,
+      body: {
+        nombre: persona.nombre, documento_rut: persona.documento_rut ?? '', telefono: persona.telefono ?? '',
+        email: persona.email ?? '', direccion: persona.direccion ?? '', localidad: persona.localidad ?? '',
+        departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
+      },
     });
   }
   guardarEditorPropietario() {
-    const body = this.propietarioEdicion();
-    const id = Number(this.pozo().id_propietario);
-    if (body?.nombre.trim() && id > 0) this.actualizarPropietario.emit({ id, body: { ...body, nombre: body.nombre.trim() } });
+    const editor = this.propietarioEdicion();
+    const idActual = Number(this.pozo().id_propietario);
+    if (!editor?.body.nombre.trim() || idActual <= 0) return;
+    if (editor.id_usuario !== idActual) {
+      this.propietarioEdicion.set(null);
+      this.errorMessage.set('La selección de propietario cambió durante la edición. Abra nuevamente el editor.');
+      return;
+    }
+    this.errorMessage.set('');
+    this.actualizarPropietario.emit({ id: editor.id_usuario, body: { ...editor.body, nombre: editor.body.nombre.trim() } });
   }
-  cerrarEditorPropietario() { this.propietarioEdicion.set(null); }
+  cerrarEditorPropietario() { this.propietarioEdicion.set(null); this.errorMessage.set(''); }
 
   limpiarPropietario() {
     this.pozo().id_propietario = 0;
+    this.propietarioSeleccionadoDatos.set(null);
+    this.propietarioEdicion.set(null);
+    this.errorMessage.set('');
     this.notificarCambio();
   }
 

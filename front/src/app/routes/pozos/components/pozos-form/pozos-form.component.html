@@ -44,21 +44,22 @@
     @if (propietarioEdicion(); as propietarioEditar) {
       <fieldset class="propietario-nuevo">
         <legend>Editar propietario</legend>
-        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.nombre" [ngModelOptions]="{standalone: true}" required /></ion-item>
-        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" maxlength="254" [(ngModel)]="propietarioEditar.email" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Dirección" labelPlacement="stacked" maxlength="300" [(ngModel)]="propietarioEditar.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Localidad" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" [(ngModel)]="propietarioEditar.departamento" [ngModelOptions]="{standalone: true}">
+        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.nombre" [ngModelOptions]="{standalone: true}" required /></ion-item>
+        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" maxlength="254" [(ngModel)]="propietarioEditar.body.email" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Dirección" labelPlacement="stacked" maxlength="300" [(ngModel)]="propietarioEditar.body.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input label="Localidad" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" [(ngModel)]="propietarioEditar.body.departamento" [ngModelOptions]="{standalone: true}">
           <ion-select-option value="">Sin especificar</ion-select-option>
           @for (departamento of departamentos; track departamento) { <ion-select-option [value]="departamento">{{ departamento }}</ion-select-option> }
         </ion-select></ion-item>
-        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" maxlength="2000" [autoGrow]="true" rows="3" [(ngModel)]="propietarioEditar.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-button type="button" fill="outline" (click)="guardarEditorPropietario()" [disabled]="guardando() || !propietarioEditar.nombre.trim()">GUARDAR PROPIETARIO</ion-button>
+        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" maxlength="2000" [autoGrow]="true" rows="3" [(ngModel)]="propietarioEditar.body.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-button type="button" fill="outline" (click)="guardarEditorPropietario()" [disabled]="guardando() || !propietarioEditar.body.nombre.trim()">GUARDAR PROPIETARIO</ion-button>
         <ion-button type="button" fill="clear" (click)="cerrarEditorPropietario()" [disabled]="guardando()">CANCELAR</ion-button>
       </fieldset>
     }
+    @if (errorMessage()) { <ion-text color="danger"><p role="alert">{{ errorMessage() }}</p></ion-text> }
 
     @if (agregareditar()) {
     <ion-item>
