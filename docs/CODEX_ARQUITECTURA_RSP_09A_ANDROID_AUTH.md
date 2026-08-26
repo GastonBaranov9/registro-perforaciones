@@ -2,9 +2,11 @@
 
 Fecha de cierre arquitectónico: 2026-08-24
 Generalización RSP-09A-R1: 2026-08-26
+Corrección RSP-09A-R2: 2026-08-26
 Rama auditada: `feature/rsp-09-android-auth`
 Base y HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial de RSP-09A-R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
+HEAD inicial de RSP-09A-R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
 
 ## 1. Resumen y decisión
 
@@ -301,7 +303,42 @@ sesion_nativa
 
 `last_used_at` es auditoría/soporte, no sliding expiry en el modelo inicial. Se actualiza con throttling para no escribir en cada request.
 
-Para tickets WS se recomienda tabla separada `ticket_ws_nativo` con hash HMAC, `id_sesion_nativa`, `created_at`, `expires_at` y `used_at`; consumo atómico mediante `UPDATE ... WHERE used_at IS NULL AND expires_at > now() RETURNING`. Evita depender de memoria de un único proceso y permite múltiples instancias futuras. Un job oportunista elimina expirados/consumidos.
+Para tickets WS se recomienda una tabla separada ligada inequívocamente a la sesión padre:
+
+```text
+ticket_ws_nativo
+- id_ticket_ws_nativo BIGSERIAL PRIMARY KEY
+- id_sesion_nativa BIGINT NOT NULL REFERENCES sesion_nativa(id_sesion_nativa) ON DELETE CASCADE
+- ticket_hash BYTEA NOT NULL UNIQUE             -- HMAC de 32 bytes
+- created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+- expires_at TIMESTAMPTZ NOT NULL               -- TTL corto, ~30 s configurable
+- used_at TIMESTAMPTZ NULL
+```
+
+El cliente presenta un único ticket raw; el servidor calcula su HMAC según la decisión arquitectónica existente y busca **sólo** el `ticket_hash` resultante. Nunca persiste, selecciona ni registra el raw. La unicidad de `ticket_hash` garantiza que una redención devuelve como máximo una fila.
+
+El consumo conceptual debe incluir, como mínimo:
+
+```sql
+UPDATE ticket_ws_nativo AS t
+SET used_at = now()
+FROM sesion_nativa AS s
+JOIN usuario AS u ON u.id_usuario = s.id_usuario
+WHERE t.ticket_hash = $HASH_PRESENTADO
+  AND t.used_at IS NULL
+  AND t.expires_at > now()
+  AND s.id_sesion_nativa = t.id_sesion_nativa
+  AND s.revoked_at IS NULL
+  AND s.expires_at > now()
+  AND u.activo = TRUE
+  AND u.cuenta_acceso = TRUE
+  AND s.version_sesion_emitida = u.version_sesion
+RETURNING t.id_ticket_ws_nativo, s.id_sesion_nativa, u.id_usuario;
+```
+
+Es pseudocódigo arquitectónico: los nombres finales seguirán el schema real y la autorización/ownership existente. La invariante no cambia: `ticket_hash = $HASH_PRESENTADO`, single-use, expiración y validez de la sesión padre se evalúan en una operación atómica o en una transacción con locking equivalente sobre ticket/sesión/usuario. Queda prohibido `SELECT` y luego `UPDATE` si dos handshakes pueden observar el ticket sin usar. Dos redenciones simultáneas del mismo raw producen exactamente un éxito y un rechazo; dos tickets distintos no se consumen entre sí.
+
+Cero filas significa ticket inexistente, usado, expirado o sesión padre inválida/revocada indirectamente y siempre rechaza el handshake; nunca se busca o consume otro ticket. Un job oportunista puede eliminar tickets expirados/consumidos, pero la seguridad no depende del borrado físico.
 
 ### 9.1 `installation_id` multiplataforma
 
@@ -486,22 +523,58 @@ Authorization: Bearer <sesion>
         -> { ticket: <256 bits>, expires_at: +30 s }
 
 new WebSocket("wss://backend.example/ws?ticket=<efimero>")
-        -> consumo atomico single-use
-        -> conexión asociada a usuario + id_sesion_nativa + version_sesion
+        -> HMAC(raw) y consumo atómico sólo de ticket_hash presentado
+        -> revalidación obligatoria de sesión padre + usuario
+        -> conexión asociada a id_sesion_nativa + id_usuario + version_sesion
 ```
 
 Reglas:
 
-- ticket de 256 bits, raw sólo en respuesta y query, HMAC en DB;
-- TTL recomendado 30 s, un único uso y consumo atómico antes de enviar eventos;
+- ticket de 256 bits, raw sólo en respuesta y query, HMAC en DB; nunca buscar o registrar raw;
+- TTL recomendado 30 s configurable, un único uso y consumo atómico acotado por `ticket_hash` antes de registrar el socket o enviar eventos;
 - query, errores, proxy, Fastify, Logcat, Xcode console y crash reports deben redactarlo; Nginx actual usa `$uri`, pero la defensa no dependerá sólo de eso;
 - Origin native exacto si el WebView lo envía; nunca autentica por sí solo;
 - `/ws` cookie conserva `Origin === PUBLIC_ORIGIN` y auth web actual;
-- handshake con ticket inválido/usado/expirado falla sin fallback a cookie;
+- handshake con ticket inválido/usado/expirado o sesión padre inválida falla sin fallback a cookie y sin registrar subscripciones;
 - al reconectar se solicita ticket nuevo; nunca se reusa;
-- logout de dispositivo cierra conexiones de esa sesión; logout global/desactivación/version change cierra todas las del usuario;
-- heartbeat de 30 s se conserva y puede revalidar revocación/version, además de cierre dirigido por eventos locales;
+- logout de dispositivo cierra conexiones de esa sesión y vuelve inutilizables sus tickets pendientes sin necesidad de borrarlos; logout global/desactivación/version change cierra todas las del usuario e invalida tickets de versiones anteriores;
+- el registry native indexa por `id_sesion_nativa` e `id_usuario`; los cierres dirigidos por eventos conocidos son best-effort y complementarios;
+- el heartbeat existente de aproximadamente 30 s se conserva y **debe** revalidar la sesión padre de cada conexión native en cada ciclo, con intervalo final configurable y nunca mayor a ese ciclo recomendado;
 - límites propuestos: máximo 30 tickets/min por sesión/IP, pocos tickets simultáneos y máximo 2 conexiones por sesión, configurables.
+
+### Validación obligatoria al redimir
+
+La emisión del ticket no congela el estado de autenticación. Dentro de la operación/transacción de redención y antes de autenticar o registrar el socket se comprueba obligatoriamente:
+
+- ticket ligado por FK a una `sesion_nativa` concreta;
+- sesión existente, `revoked_at IS NULL` y `expires_at > now()`;
+- usuario existente, activo y con cuenta de acceso;
+- `version_sesion_emitida === usuario.version_sesion`;
+- roles/permisos actuales mediante el mismo mecanismo autoritativo usado por HTTP;
+- coherencia del `installation_id`/binding almacenado en la sesión, sin tratarlo como secreto.
+
+Si cualquiera falla, la conexión se rechaza/cierra antes de registrar subscripciones. Caso de carrera obligatorio:
+
+```text
+T0 emite ticket cuando la sesión es válida
+T1 logout dispositivo/global, desactivación, cambio de versión o expiración
+T2 intenta redimir ticket dentro de sus ~30 s
+   -> RECHAZADO: se vuelve a evaluar la sesión padre en T2
+```
+
+Las escrituras que revocan sesión/cambian versión y la redención deben usar transacciones/locking coherentes para que una revocación confirmada antes de T2 no pueda intercalarse como estado antiguo. Si el consumo devuelve cero filas o falla cualquier comprobación posterior dentro de la transacción, no se autentica el socket.
+
+### Validez continua del socket native
+
+Un handshake válido no concede acceso indefinido. Cada conexión native conserva `id_sesion_nativa`, `id_usuario`, versión observada y hora de última validación. En cada ciclo del heartbeat existente —recomendado 30 s, configurable— el servidor consulta el estado autoritativo indexado y vuelve a exigir sesión existente/no revocada/no expirada, usuario activo/con acceso y versión coincidente. Al fallar, quita inmediatamente el socket del registry y lo cierra antes de entregarle más eventos.
+
+La expiración natural no espera otra request HTTP: al llegar `sesion_nativa.expires_at`, la siguiente revalidación la detecta y cierra el socket. El intervalo limita la ventana residual a como máximo un ciclo configurado; si al despachar un evento la validación ya está vencida, se revalida antes de enviarlo. No se crea un segundo timer de alta frecuencia.
+
+Logout de dispositivo, logout global, desactivación y cambios conocidos de `version_sesion` deben además localizar y cerrar inmediatamente, best-effort, los sockets del `id_sesion_nativa`/`id_usuario` local. Esto reduce latencia pero **no sustituye** la revalidación periódica: puede haber expiración natural, otra instancia, una escritura directa en DB o un evento local perdido.
+
+Si DB/error interno impide conocer el estado durante una revalidación, la política es fail-closed: retirar/cerrar la conexión y no seguir entregando datos autenticados. El cliente podrá obtener un ticket nuevo y reconectar por el flujo normal cuando el backend se recupere.
+
+El registry directo sólo conoce sockets de la instancia API local. La seguridad multi-instancia descansa en la revalidación contra PostgreSQL autoritativo, no exclusivamente en ese registry; RSP-09A-R2 no introduce Redis ni pub/sub. Para los pocos usuarios/conexiones previstos, una consulta indexada por heartbeat es aceptable. Las migraciones futuras deberán indexar `sesion_nativa.id_sesion_nativa`, `token_hash`, `id_usuario` y las FK/lookups de ticket; se medirá antes de cualquier cache que amplíe la ventana de revocación.
 
 ## 16. Revocación, `version_sesion` y autorización
 
@@ -513,14 +586,14 @@ Cada fila native guarda `version_sesion_emitida`. En cada autenticación se cons
 - versión emitida igual a `usuario.version_sesion`;
 - roles/ownership actuales en los guards existentes.
 
-Esto da revocación inmediata para usuario desactivado/eliminado, password/rol que incremente versión y logout global. El costo de una query por request ya existe para web y es aceptable; se medirá e indexará antes de optimizar. No se cacheará un usuario activo durante minutos porque abriría una ventana de revocación.
+Esto da revocación inmediata para HTTP y sirve como condición autoritativa de redención/revalidación WS cuando el usuario se desactiva/elimina, password/rol incrementa versión o se ejecuta logout global. El costo de una query por request ya existe para web; para los pocos sockets previstos, la misma validación indexada cada ~30 s es aceptable. Se medirá e indexará antes de optimizar y no se cacheará un usuario activo durante minutos porque abriría una ventana de revocación.
 
 Semántica UX:
 
-- **Cerrar sesión en este dispositivo:** revoca sólo la fila native actual. No incrementa versión.
-- **Cerrar todas las sesiones:** incrementa `version_sesion`; revoca web y todos los dispositivos. Debe advertirse explícitamente.
-- **Logout web actual:** sigue incrementando `version_sesion`, por tanto también revocará Android e iOS. Se conserva por contrato.
-- **Administración:** desactivar/eliminar/cambiar roles relevantes invalida en el siguiente request y cierra WS al detectarse.
+- **Cerrar sesión en este dispositivo:** revoca sólo la fila native actual. HTTP posterior falla, tickets pendientes de esa sesión no redimen y sus WS se cierran por evento local best-effort o, como máximo, en la siguiente revalidación obligatoria. No incrementa versión.
+- **Cerrar todas las sesiones:** incrementa `version_sesion`; revoca web y todos los dispositivos. Tickets de versiones anteriores no redimen y WS native se cierran. Debe advertirse explícitamente.
+- **Logout web actual:** sigue incrementando `version_sesion`, por tanto también revocará Android e iOS, incluidos tickets/WS native de la versión anterior. Se conserva por contrato.
+- **Administración:** desactivar/eliminar/cambiar roles relevantes invalida HTTP/tickets y cierra WS native por evento conocido o heartbeat autoritativo.
 
 Una sesión puede conservar metadatos de instalación para que el usuario/admin vea y revoque dispositivos, pero `installation_id` nunca concede acceso.
 
@@ -657,7 +730,8 @@ Tests de artifact deben probar que web sigue `/api/` y `/ws` same-origin y que s
 | secretos en logs | redacción proxy/Fastify/app/Logcat/iOS/crash, no query principal | SDK o log nuevo mal configurado requiere regresión continua |
 | backup/migración | Android backup/D2D excluido; iOS `ThisDeviceOnly` + no sync; binding con installation ID | OEM/Apple y restores pueden variar; probar dispositivos y reinstalación |
 | screenshots/clipboard | token nunca se muestra ni copia; pantallas sensibles minimizan PII y se revisan por OS | el MVP no promete bloquear toda captura; cámara externa/OS comprometido permanece |
-| replay ticket WS | 256 bits, HMAC, 30 s, single-use atómico | atacante que lo roba antes del consumo puede ganar la carrera |
+| replay ticket WS | 256 bits, HMAC, lookup por hash exacto, 30 s, single-use atómico y parent session válida | atacante que lo roba antes del consumo puede ganar la única redención |
+| WS native con sesión inválida | parent validada al redimir, revalidación DB obligatoria cada ciclo y cierre fail-closed | ventana residual acotada al intervalo configurable, recomendado máximo 30 s |
 | confusión CORS | allowlists web/native separadas, exactas, sin wildcard | CORS no limita clientes native fuera de browser |
 | confusión CSRF | branching por mecanismo autenticado; cookie conserva double-submit | bug de orden de hooks; cubrir matriz exhaustiva |
 | session fixation | servidor genera token, no acepta valor cliente, rotación transaccional | malware con control de proceso puede sustituir estado local |
@@ -687,7 +761,7 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 
 ### Tests obligatorios RSP-09B
 
-- migración fresh/upgrade/rerun y constraints/índices;
+- migración fresh/upgrade/rerun y constraints/índices, incluidos lookup por token/session id e `id_usuario` usados por WS;
 - token CSPRNG/formato, HMAC y ausencia raw en DB/log;
 - login activo/inactivo/inexistente/password/rol con error no enumerable y rate limit compartido;
 - no `Set-Cookie` ni CSRF en login native común;
@@ -700,11 +774,37 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 - inventario automático: todo endpoint protegido usa el resolver común;
 - multipart, foto, PDF y respuestas binarias autenticadas con Bearer.
 
+### Tests obligatorios RSP-09D
+
+Ticket/redemption:
+
+1. ticket correcto y sesión padre válida: consume exactamente una fila y registra un socket;
+2. ticket incorrecto: rechazo y ningún otro ticket consumido;
+3. ticket expirado: rechazo;
+4. ticket ya usado: rechazo;
+5. dos handshakes concurrentes con el mismo ticket: sólo uno gana y el otro se rechaza;
+6. dos tickets distintos concurrentes: ambos se aíslan y uno nunca consume al otro;
+7. ticket de sesión revocada: rechazo;
+8. ticket cuya `version_sesion_emitida` quedó vieja: rechazo;
+9. ticket cuyo usuario está inactivo/sin acceso: rechazo.
+
+Socket establecido:
+
+10. expiración natural de la sesión: siguiente revalidación cierra y desregistra el socket;
+11. logout de dispositivo: HTTP posterior falla, ticket pendiente no redime y WS de esa sesión cierra;
+12. logout global: sockets/tickets native de versiones anteriores quedan inválidos, además del contrato web vigente;
+13. usuario desactivado: socket cierra;
+14. cambio de `version_sesion`: socket cierra;
+15. error transitorio de DB/revalidación: fail-closed, no entrega eventos y el cliente reconecta por flujo normal;
+16. revocar/fallar una sesión o usuario no consume tickets ni cierra sockets de otra sesión/usuario.
+
+Los tests de concurrencia deben usar barreras reales o transacciones coordinadas, no una secuencia que simule carreras. También deben demostrar que el cierre directo del registry es sólo una optimización y que la revalidación autoritativa funciona aunque el evento local no se entregue.
+
 ### Roadmap
 
 1. **RSP-09B — backend auth native común + DB + tests:** una migración y una implementación HMAC/pepper, login/session/logout/logout-all, resolver dual, branching CSRF/CORS/Origin por mecanismo, rate limits, redaction y tests; sirve a Android+iOS y no incluye cliente productivo.
 2. **RSP-09C — cliente Capacitor compartido + secure storage Android/iOS + transport:** auditar/instalar el plugin, integrar Keystore/Keychain, transport Bearer, CSP local, políticas backup/migración, lifecycle, configuración por entorno y pruebas de JSON/multipart/blob/PDF. Recién entonces se reintroduce build native controlado.
-3. **RSP-09D — WebSocket native + lifecycle + revocación:** tabla/endpoint común de tickets, consumo single-use, origins Android/iOS, cierre por revocación, heartbeat/reconnect y tests de replay/carreras; también cierra/revalida la ventana WS web ya abierta tras logout.
+3. **RSP-09D — WebSocket native + lifecycle + revocación:** tabla/endpoint común de tickets, consumo atómico por hash exacto, validación/revalidación obligatoria de sesión padre, origins Android/iOS, cierre fail-closed, heartbeat/reconnect y tests de replay/carreras; también cierra/revalida la ventana WS web ya abierta tras logout.
 4. **RSP-09E — build piloto Android + preparación iOS + pruebas reales GPS:** appId/firma y APK privado Android; preparación macOS/Xcode/bundle ID/distribución Apple; hardware real Android+iPhone en misma ubicación, cámara/GPS/red, permisos, instalación/upgrade/uninstall y fail-fast. No genera el proyecto iOS desde Windows.
 5. **RSP-09F — resiliencia offline:** drafts cifrados si contienen datos sensibles, cola/idempotencia, conflictos, reintentos y UX rural.
 
@@ -722,7 +822,7 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 - no IMEI, Android ID como auth, serial, IDFA ni identificadores de tracking;
 - no pinning, biometría o root detection como bloqueo inicial;
 - no API de negocio duplicada en `/api/native`;
-- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1.
+- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1/R2.
 
 ### Riesgos/decisiones pendientes antes del piloto
 

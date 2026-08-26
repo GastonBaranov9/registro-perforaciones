@@ -2,13 +2,15 @@
 
 Fecha: 2026-08-24
 Generalización RSP-09A-R1: 2026-08-26
+Corrección RSP-09A-R2: 2026-08-26
 Rama: `feature/rsp-09-android-auth`
 HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
+HEAD inicial R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
 
 ## 1. Resultado
 
-RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
+RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. RSP-09A-R2 corrigió dos P2 del contrato WebSocket native: consumo atómico acotado al hash presentado y revalidación obligatoria de la sesión padre. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
 
 No se crearon rutas, migraciones, tokens, secrets, plugins, target iOS ni APK/IPA. El documento principal conserva su nombre histórico `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md` para evitar ruido de rename; su título y contrato ya son Mobile/Native.
 
@@ -91,9 +93,10 @@ La viabilidad de ticket WS se verificó arquitectónicamente contra `@fastify/we
 
 ## 7. Archivos modificados
 
-- `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md`: auditoría, matriz, decisión, contratos, threat model y roadmap, generalizados a Android+iOS en R1.
-- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addendum R1.
+- `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md`: auditoría, matriz, decisión, contratos, threat model y roadmap; generalizados en R1 y endurecidos para WS native en R2.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R1.md`: evidencia específica de la generalización Mobile/Native.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R2.md`: evidencia de corrección de consumo/revalidación WS native.
 
 No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose, migraciones, package manifests ni locks.
 
@@ -114,7 +117,7 @@ No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose
 
 - RSP-09B: backend auth native común, DB, resolver dual, CORS/Origin/CSRF branch, logout y tests Android+iOS.
 - RSP-09C: cliente Capacitor compartido, Keystore/Keychain, transport Bearer, CSP/backup/lifecycle/config.
-- RSP-09D: WebSocket native común, lifecycle, replay/revocación/reconnect y ventana WS web tras logout.
+- RSP-09D: WebSocket native común, consumo por hash exacto, revalidación obligatoria cada heartbeat, replay/revocación/reconnect y ventana WS web tras logout.
 - RSP-09E: APK piloto Android, preparación macOS/Xcode/distribución iOS y pruebas GPS reales Android+iPhone en la misma ubicación.
 - RSP-09F: drafts, idempotencia y resiliencia offline.
 
@@ -123,3 +126,18 @@ No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose
 Antes del piloto deben cerrarse appId/bundle ID, firmas, dominio, revisión física Android+iOS del plugin, reglas backup/migración, distribución Apple, valores configurables finales y política de datos offline. Keystore/Keychain no eliminan el riesgo de XSS, dispositivo desbloqueado, root o jailbreak; la mitigación combina TTL, revocación, TLS, CSP y ausencia de logs.
 
 No se realizó ni se realizará en esta etapa push, merge, rebase, reset, clean, cambio de rama, deploy externo, servicio externo real, Google real ni uso de secretos reales.
+
+## 11. Corrección RSP-09A-R2
+
+El review detectó que el pseudo-`UPDATE` de tickets no incluía `ticket_hash`, por lo que podía consumir múltiples tickets vigentes, y que la revalidación de la sesión padre figuraba como opcional. R2 deja obligatorio:
+
+- derivar HMAC desde el raw presentado y filtrar `ticket_hash = $HASH_PRESENTADO`;
+- consumo single-use atómico que devuelve como máximo una fila;
+- FK ticket → `id_sesion_nativa` y validación completa de sesión/usuario/versión al redimir;
+- rechazo del ticket si logout, expiración, desactivación o cambio de versión ocurre después de emitirlo;
+- revalidación DB de sockets native en cada heartbeat, recomendada/configurable en 30 s máximo;
+- cierre directo best-effort por registry, complementario y nunca sustituto del heartbeat;
+- fail-closed y reconexión normal si no puede comprobarse el estado;
+- matriz futura de concurrencia, revocación, expiración, aislamiento y fallos para RSP-09B/09D.
+
+El WebSocket web conserva cookie/`PUBLIC_ORIGIN` y su hallazgo histórico: una conexión ya abierta aún no se revalida proactivamente. Su hardening permanece asignado a RSP-09D; R2 no modifica runtime.
