@@ -1,8 +1,10 @@
-# RSP-09A — Arquitectura de autenticación Android/Capacitor
+# RSP-09A — Arquitectura de autenticación Mobile/Native (Android + iOS)
 
 Fecha de cierre arquitectónico: 2026-08-24
+Generalización RSP-09A-R1: 2026-08-26
 Rama auditada: `feature/rsp-09-android-auth`
 Base y HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
+HEAD inicial de RSP-09A-R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
 
 ## 1. Resumen y decisión
 
@@ -14,14 +16,17 @@ https://dominio/ + /api/ + /ws
         |
         `-- cookie rsp_session HttpOnly + rsp_csrf + Origin web
 
-ANDROID (assets empaquetados en https://localhost)
+MOBILE/NATIVE (un cliente y un backend compartidos)
         |
-        `-- Authorization: Bearer <sesión opaca nativa>
+        |-- Android: assets en https://localhost
+        |-- iOS:     assets en capacitor://localhost
+        |
+        `-- Authorization: Bearer <sesión opaca nativa común>
                |
                `-- identidad normalizada -> roles y ownership existentes
 ```
 
-La arquitectura recomendada es una **sesión nativa opaca única, aleatoria, revocable y con expiración server-side**, no JWT y no pareja access/refresh en el piloto. La aplicación conservará la credencial persistente en almacenamiento cifrado respaldado por Android Keystore, la cargará en memoria sólo mientras sea necesaria y la enviará explícitamente en `Authorization`. Web continúa sin cambios con cookie HttpOnly, doble submit CSRF y same-origin.
+RSP-09A nació para resolver Android, pero su diseño final es **Mobile/Native** y cubre Android e iOS sin crear dos sistemas de autenticación. La arquitectura recomendada es una **sesión nativa opaca única, aleatoria, revocable y con expiración server-side**, no JWT y no pareja access/refresh en el piloto. La aplicación compartida conservará la credencial persistente en almacenamiento seguro respaldado por Android Keystore o iOS Keychain, la cargará en memoria sólo cuando sea necesaria y la enviará explícitamente en `Authorization`. Web continúa sin cambios con cookie HttpOnly, doble submit CSRF y same-origin.
 
 Los handlers de pozos, propietarios, sitios, fotos, informes y catálogos no se duplicarán. Un resolver de autenticación futuro distinguirá explícitamente cookie web y Bearer nativo, y entregará a los guards actuales la misma identidad `sub`. Sólo login, estado de sesión, logout y ticket WebSocket tendrán namespace nativo.
 
@@ -29,7 +34,7 @@ Esta decisión cumple el objetivo de revocación inmediata usando PostgreSQL y `
 
 ## 2. Alcance y restricciones congeladas
 
-En RSP-09A no se crean rutas, tokens, tablas ni builds Android productivos. Tampoco se instala un plugin. Quedan congelados:
+En RSP-09A/R1 no se crean rutas, tokens, tablas ni builds mobile productivos. Tampoco se instala un plugin ni se genera el proyecto iOS. Quedan congelados:
 
 - login web y su respuesta;
 - `rsp_session` HttpOnly;
@@ -42,7 +47,7 @@ En RSP-09A no se crean rutas, tokens, tablas ni builds Android productivos. Tamp
 - topología productiva `https://dominio/`, `https://dominio/api/`, `wss://dominio/ws`;
 - ausencia de target/build native productivo introducida por RSP-07F-R16.
 
-La URL del backend incluida en un APK futuro será configuración pública, nunca un secreto. Contraseñas, tokens, pepper, claves de firma y credenciales de Google no se incorporarán al bundle.
+La URL del backend incluida en un APK/IPA futuro será configuración pública, nunca un secreto. Contraseñas, tokens, pepper, claves de firma y credenciales de terceros no se incorporarán al bundle.
 
 ## 3. Auditoría del contrato web actual
 
@@ -99,7 +104,9 @@ Los límites por defecto son 600 requests API/min/IP y 10 intentos de login/min/
 
 Nginx termina TLS 1.2/1.3, redirige HTTP, enruta `/api/` y `/ws`, propaga exactamente un salto confiable y registra `$uri`, no query string ni headers. Fastify deshabilita el request log automático y su logger redacta `authorization`, cookie, `x-csrf-token`, `set-cookie`, password, base64 y parámetros denominados token. Las rutas de error también sanitizan query strings sensibles. Este contrato debe ampliarse, no reemplazarse.
 
-## 4. Entorno Capacitor/Android real
+## 4. Entorno Capacitor Mobile real
+
+### 4.1 Base compartida y Android actual
 
 Versiones efectivamente resueltas por `front/package-lock.json` y `npm ls`:
 
@@ -132,28 +139,53 @@ https://localhost
 
 No es una inferencia basada en una versión anterior: coincide el código `CapConfig.java` instalado con la referencia v8. `server.url` está ausente y la documentación de Capacitor lo declara para live reload, no para producción. El `appId` actual es además un placeholder que deberá bloquear un build piloto/productivo hasta ser reemplazado por uno controlado.
 
+### 4.2 Estado iOS y requisitos de Capacitor 8
+
+El estado del repositorio en RSP-09A-R1 es inequívoco:
+
+- no existe `front/ios/`;
+- `@capacitor/ios` no figura en `front/package.json`, `front/package-lock.json` ni `front/node_modules`;
+- no se ejecutó `npx cap add ios`, no hay proyecto Xcode, workspace, scheme, provisioning profile ni build iOS;
+- la ausencia es esperada: R1 sólo generaliza el contrato y no intenta generar la plataforma.
+
+Capacitor 8 soporta iOS 15 o posterior y, según su documentación v8 vigente al 2026-08-26, requiere Node.js 22+, macOS, Xcode 26.0+ y Xcode Command Line Tools para crear, compilar y probar el target iOS. Swift Package Manager es el gestor recomendado; CocoaPods sigue siendo una alternativa cuando una dependencia lo exige. Windows puede desarrollar y probar el código Angular/TypeScript compartido, contratos HTTP/WS, schemas, fixtures, lógica offline y configuración pública, pero **no puede producir directamente un build iOS firmado/productivo ni sustituir pruebas en Xcode, simulador y iPhone**.
+
+Una etapa posterior en macOS/Xcode deberá instalar una versión de `@capacitor/ios` alineada con core 8, ejecutar controladamente `cap add/sync ios`, fijar bundle ID y firma, integrar plugins, declarar permisos/privacy manifest, compilar y probar en iPhone. RSP-09E prepara ese trabajo; la creación y distribución iOS efectiva se cerrará sólo cuando exista el entorno Apple autorizado.
+
+### 4.3 Origins nativos concretos
+
+`capacitor.config.ts` no define `server.hostname`, `server.androidScheme`, `server.iosScheme` ni `server.url`. Los defaults documentados por Capacitor 8 son `hostname=localhost`, `androidScheme=https` e `iosScheme=capacitor`. Por tanto, con assets empaquetados y la configuración actual, la matriz prevista es:
+
+| Plataforma | Scheme | Host | Origin enviado por WebView |
+|---|---|---|---|
+| Android | `https` | `localhost` | `https://localhost` |
+| iOS | `capacitor` | `localhost` | `capacitor://localhost` |
+
+La allowlist native futura debe contener sólo esos valores exactos para los targets que realmente se distribuyan. No se asumirá que ambos sistemas exponen el mismo scheme, no se aceptarán variantes como `http://localhost`, `ionic://localhost`, puertos arbitrarios ni wildcard, y cualquier override futuro exigirá actualizar configuración, contrato y tests juntos. RSP-09A-R1 no toca la allowlist productiva.
+
 ## 5. Por qué la cookie web no se reutiliza directamente
 
-Supuesto analizado:
+Supuestos analizados:
 
 ```text
-assets:  https://localhost
+assets Android: https://localhost
+assets iOS:     capacitor://localhost
 fetch:   https://backend.example/api/
 ws:      wss://backend.example/ws
 ```
 
 | Control | Resultado con el contrato actual |
 |---|---|
-| Origin HTTP | el navegador envía `Origin: https://localhost`; producción no permite localhost y la mutación se rechaza |
+| Origin HTTP | el WebView envía el origin de su plataforma (`https://localhost` o `capacitor://localhost`); producción no los permite hoy y la mutación se rechaza |
 | Preflight | JSON, `X-CSRF-Token` o futuro `Authorization` disparan OPTIONS; el origin no está permitido y `Authorization` ni integra los headers actuales |
 | CORS | `credentials: true` no concede acceso sin allowlist exacta; `*` sería inválido con credenciales y no se propone |
-| Cookie host-only | pertenece a `backend.example`; no es cookie de `localhost` |
+| Cookie host-only | pertenece a `backend.example`; no es cookie del origin local mobile |
 | SameSite=Lax | localhost y backend son cross-site; una cookie Lax no acompaña un `fetch` cross-site subresource aunque se use `credentials: include` |
-| Third-party cookies | su aceptación depende de WebView/Android y políticas del usuario; no es base estable para autenticación |
+| Third-party cookies | su aceptación depende de WebView, OS y políticas del usuario; no es base estable para autenticación |
 | HttpOnly | correctamente impide que JS extraiga `rsp_session`; por tanto no puede convertirla en header |
-| Double-submit CSRF | JS de `https://localhost` no puede leer la cookie `rsp_csrf` host-only de `backend.example`, así que no puede producir el header esperado |
+| Double-submit CSRF | JS del origin local mobile no puede leer la cookie `rsp_csrf` host-only de `backend.example`, así que no puede producir el header esperado |
 | `withCredentials` | solicita cookies pero no supera SameSite, host scope, third-party policy, CORS ni Origin |
-| WebSocket | el API browser no permite fijar libremente `Authorization`; el Origin sería `https://localhost` y el servidor sólo acepta `PUBLIC_ORIGIN` |
+| WebSocket | el API browser no permite fijar libremente `Authorization`; el Origin sería el local de Android/iOS y el servidor sólo acepta `PUBLIC_ORIGIN` |
 
 Ampliar la allowlist no arregla las cookies ni CSRF. Cambiar a `SameSite=None`, sincronizar cookies o desactivar CSRF debilitaría el contrato web y seguiría dependiendo de third-party cookies. Por eso no se hará un bypass.
 
@@ -162,18 +194,18 @@ Ampliar la allowlist no arregla las cookies ni CSRF. Cambiar a `SameSite=None`, 
 | Alternativa | Seguridad web | Revocación/operación | Offline y binarios | Resultado |
 |---|---|---|---|---|
 | A. cookies web cross-origin | obliga a rediseñar SameSite, CSRF, CORS y Origin; depende de cookies ambientales | posible, pero frágil en WebView | fetch binario funciona si las cookies funcionan | descartada |
-| B. `server.url` con web remota | conserva same-origin si carga toda la app remota, pero transforma el APK en un contenedor de código remoto | sesión web actual | sin arranque útil offline; cada pantalla depende de red | descartada para producción |
+| B. `server.url` con web remota | conserva same-origin si carga toda la app remota, pero transforma el build mobile en un contenedor de código remoto | sesión web actual | sin arranque útil offline; cada pantalla depende de red | descartada para producción |
 | C. HTTP nativo + cookie bridge | duplica/sincroniza jars, dificulta preservar HttpOnly y double-submit | logout y cookies quedan repartidos | multipart/PDF necesitan caminos especiales; WS queda sin resolver | descartada |
 | D. Bearer nativo | separa claramente el canal sin tocar cookies web | revocación inmediata server-side | fetch, multipart, Blob y futuros drafts son compatibles | **recomendada** |
 | E. OAuth/OIDC con Authorization Code + PKCE | arquitectura estándar si existiera un IdP | buena revocación según proveedor | buena UX potencial | reservar si se incorpora identidad central; hoy añade IdP y complejidad sin necesidad |
 
 ### A. Cookies web cross-origin
 
-No se recomienda aunque parezca requerir menos backend. Exige `SameSite=None; Secure` o una topología especial, cookies de terceros habilitadas, CORS con credenciales, un nuevo transporte CSRF y una rama WS. Hace depender la app de comportamiento variable de Android System WebView y amplía la superficie web.
+No se recomienda aunque parezca requerir menos backend. Exige `SameSite=None; Secure` o una topología especial, cookies de terceros habilitadas, CORS con credenciales, un nuevo transporte CSRF y una rama WS. Hace depender la app de comportamiento variable de Android System WebView/WKWebView y amplía la superficie web.
 
 ### B. `server.url` / web remota
 
-Capacitor documenta `server.url` para live reload y dice que no está pensado para producción. Elimina la ventaja de assets empaquetados, impide una evolución offline fiable, ata el arranque a red y permite que cambios de servidor alteren el código servido sin actualización de APK. No se usará como workaround.
+Capacitor documenta `server.url` para live reload y dice que no está pensado para producción. Elimina la ventaja de assets empaquetados, impide una evolución offline fiable, ata el arranque a red y permite que cambios de servidor alteren el código servido sin actualización del build mobile. No se usará como workaround.
 
 ### C. HTTP nativo y cookie bridge
 
@@ -271,35 +303,51 @@ sesion_nativa
 
 Para tickets WS se recomienda tabla separada `ticket_ws_nativo` con hash HMAC, `id_sesion_nativa`, `created_at`, `expires_at` y `used_at`; consumo atómico mediante `UPDATE ... WHERE used_at IS NULL AND expires_at > now() RETURNING`. Evita depender de memoria de un único proceso y permite múltiples instancias futuras. Un job oportunista elimina expirados/consumidos.
 
-## 10. Almacenamiento Android
+### 9.1 `installation_id` multiplataforma
+
+Android e iOS usarán exactamente el mismo concepto: un UUID v4 aleatorio generado por la propia app al inicializar una instalación. No es secreto, factor de autenticación, identidad de persona ni prueba criptográfica del dispositivo. Se envía para asociar/reemplazar la sesión de esa instalación y para soporte/revocación, pero sólo el Bearer acredita la sesión.
+
+Quedan prohibidos IMEI, Android ID como autenticación, serial, MAC, IDFA y cualquier identificador Apple de tracking. El UUID se guarda separado del token en almacenamiento privado local, excluido de backup y transferencia entre dispositivos. En una actualización in-place con el mismo appId/bundle ID permanece; tras borrar datos o uninstall/reinstall se genera uno nuevo. En iOS el Keychain puede sobrevivir al uninstall: si reaparece un token sin el `installation_id` correspondiente, el cliente debe borrar ese token residual y exigir login, nunca adoptar la sesión de la instalación anterior. Una restauración o migración que produzca token/UUID inconsistentes también falla cerrada y crea una instalación nueva.
+
+El servidor no hace `installation_id` único global, no confía en su estabilidad y conserva historial. Un atacante que conozca o copie el UUID no puede autenticar sin el token/password.
+
+## 10. Secure storage Mobile/Native
 
 No se permite `localStorage`, `sessionStorage`, IndexedDB, Preferences sin cifrar ni archivo plano.
 
-Candidato principal para el spike de RSP-09C: `@aparajita/capacitor-secure-storage` **8.0.0**, MIT. La versión publicada el 2026-02-10 declara soporte Capacitor 8; en Android cifra con AES-GCM usando una clave generada en Android Keystore y guarda ciphertext en SharedPreferences. La documentación indica que uninstall elimina esos datos. No está instalado en RSP-09A.
+Candidato principal para el spike de RSP-09C: `@aparajita/capacitor-secure-storage` **8.0.0**, MIT. La versión publicada el 2026-02-10 declara soporte Capacitor 8 y el repositorio mantiene implementaciones, demo y verificación para Android e iOS mediante CocoaPods y Swift Package Manager. En Android cifra con AES-GCM usando una clave generada en Android Keystore y guarda ciphertext en SharedPreferences; en iOS usa el Keychain cifrado del sistema. No está instalado en RSP-09A-R1.
+
+El candidato sigue siendo razonable para ambas plataformas, pero no se aprueba a ciegas:
+
+- **Android:** Keystore protege la clave no exportable y uninstall elimina el almacenamiento de la app en condiciones normales. El manifest actual tiene `allowBackup=true` sin reglas; copiar ciphertext/SharedPreferences sin su clave puede causar restauración corrupta, y ninguna sesión ligada a una instalación debe transferirse. RSP-09C debe identificar el archivo exacto y excluir tanto token cifrado como `installation_id` de Auto Backup y device-to-device mediante `dataExtractionRules`/`fullBackupContent`, o justificar `allowBackup=false` para todo el producto;
+- **iOS:** Keychain puede persistir después de desinstalar y su semántica cambia según accessibility, backup y `synchronizable`. El plugin permite sync iCloud y su default documentado de accessibility es `whenUnlocked`, que puede migrar con backups cifrados. Para este contrato, RSP-09C debe mantener `synchronizable=false` y probar una clase `ThisDeviceOnly`, inicialmente `whenUnlockedThisDeviceOnly`; `whenPasscodeSetThisDeviceOnly` es más restrictiva pero cambia disponibilidad y borra el ítem si se quita el passcode. La elección final debe probar foreground/resume/restart y no prometer background services;
+- **binding:** el token no debe migrar a otro teléfono. Si Keychain/backup conserva una credencial pero el identificador local no coincide, el cliente la elimina y reautentica. El backend sigue validando fila, expiry, revocación y `version_sesion`; `installation_id` no se convierte en un segundo secreto;
+- **mantenimiento/licencia:** la línea 8.0.0 es reciente, MIT y declara soporte explícito de Capacitor 8, pero es un plugin comunitario con concentración de mantenimiento. Antes de fijarlo deben revisarse source, dependencias transitivas, issues/releases, lockfile, builds reproducibles y dispositivos reales de ambos sistemas.
 
 Alternativas evaluadas:
 
 - `@capawesome-team/capacitor-secure-preferences` 0.2.x declara soporte activo para Capacitor >=8 y Keystore, pero requiere suscripción/registry privado; es válido si se acepta el costo y soporte comercial;
-- `capacitor-secure-storage-plugin` mantiene una línea Capacitor 8 y usa Keystore/SharedPreferences, pero el candidato principal presenta contrato y release 8 más claros;
-- un plugin Android pequeño propio será preferible a almacenamiento inseguro si el candidato principal falla revisión, backup o pruebas en dispositivos; aumenta obligación de mantenimiento y no es primera opción;
+- `capacitor-secure-storage-plugin` mantiene una línea Capacitor 8 y usa Keystore/Keychain, pero el candidato principal presenta contrato de accessibility/sync y release 8 más claros;
+- un plugin nativo mínimo propio, con Android Keystore e iOS Keychain, será preferible a almacenamiento inseguro si el candidato falla revisión, backup o pruebas; aumenta obligación de mantenimiento y no es primera opción;
 - Identity Vault puede evaluarse si se compra soporte enterprise/biometría, pero no es necesario para el piloto.
 
 Requisitos de aceptación antes de instalar:
 
 - revisar implementación y dependencias fijadas, licencia y release notes;
-- probar minSdk 23, Capacitor 8.0.0 y dispositivos reales objetivo;
-- confirmar AES-GCM, alias/clave Keystore no exportable y manejo de corrupción;
-- excluir explícitamente el archivo cifrado de cloud backup y device-to-device transfer con `fullBackupContent` y `dataExtractionRules` para APIs correspondientes;
-- cambiar el manifest actual, que hoy tiene `allowBackup=true` sin exclusiones, antes del piloto;
+- probar minSdk 23, iOS soportado por Capacitor 8, core 8.0.0 y dispositivos reales objetivo;
+- confirmar Android AES-GCM/Keystore y iOS Keychain/accessibility/sync, además del manejo de corrupción;
+- excluir explícitamente token e installation ID de backup/cloud/device-to-device en ambas plataformas;
+- cambiar el manifest Android actual, que hoy tiene `allowBackup=true` sin exclusiones, antes del piloto;
 - verificar que uninstall/clear data invalida almacenamiento local y genera un `installation_id` nuevo al reinstalar;
-- verificar actualización in-place con el mismo appId y firma: debe conservar token; una incompatibilidad debe fallar cerrada y pedir login, nunca caer a storage plano;
+- verificar en iOS que un ítem Keychain sobreviviente al uninstall se descarta al faltar la identidad de instalación;
+- verificar actualización in-place con el mismo appId/bundle ID y firma: debe conservar token; una incompatibilidad debe fallar cerrada y pedir login, nunca caer a storage plano;
 - no habilitar implementación web del plugin: el servicio de auth debe comprobar plataforma nativa y fallar cerrado en browser/PWA.
 
-El Keystore del candidato cifra en reposo, pero no se ha decidido exigir autenticación de usuario por cada lectura. Screen lock/biometría será hardening futuro. Un dispositivo desbloqueado, rooteado o un XSS dentro del proceso puede seguir usando la credencial.
+Keystore/Keychain cifran en reposo, pero no se ha decidido exigir autenticación local por cada lectura. Screen lock/biometría será hardening futuro. Un dispositivo desbloqueado, rooteado, con jailbreak o un XSS dentro del proceso puede seguir usando la credencial.
 
 ## 11. Token accesible a JavaScript
 
-Se elige inicialmente la opción A: el servicio native obtiene el token desde el plugin seguro al arrancar/reanudar, lo mantiene en un campo privado en memoria y un interceptor exclusivo native agrega `Authorization`. Nunca lo copia a estado reactivo, logs, errores, URL, DOM ni almacenamiento web.
+Se elige inicialmente la opción A: el servicio native obtiene el token desde el plugin seguro sólo al preparar una operación autenticada, lo retiene en memoria el mínimo tiempo práctico y un interceptor exclusivo native agrega `Authorization`. No debe existir una copia permanente en un singleton durante toda la vida del proceso; en background/suspensión se limpian referencias cuando sea seguro y la fuente persistente sigue siendo secure storage. Nunca se copia a estado reactivo, logs, errores, URL, DOM, clipboard ni almacenamiento web.
 
 La opción B —plugin nativo que retiene token y ejecuta toda request sin entregarlo a JS— reduce la extracción directa por XSS, pero no evita que un XSS invoque el plugin para realizar requests autorizadas y exfiltre respuestas. Además obliga a recrear interceptores, cancelación, multipart, blobs, PDF, progreso y errores, y no resuelve el WebSocket browser por sí sola. Para 1–2 usuarios el costo no es proporcional.
 
@@ -315,7 +363,7 @@ Mitigaciones obligatorias de la opción A en RSP-09C:
 
 ## 12. Contrato API nativo propuesto
 
-Rutas externas; Nginx seguirá retirando `/api/` al proxy:
+Rutas externas compartidas por Android e iOS; Nginx seguirá retirando `/api/` al proxy. No existirán `/api/auth/android/*` y `/api/auth/ios/*`: plataforma, OS y versión pueden ser metadatos de soporte, nunca una razón para duplicar credenciales, tablas, rate limits, autorización o handlers.
 
 ### `POST /api/auth/native/login`
 
@@ -349,7 +397,7 @@ Reglas:
 - usar el mismo pool de rate limit de login web, 10/min/IP como mínimo, y considerar segunda clave normalizada por email sin registrarlo en claro;
 - no emitir `Set-Cookie`, CSRF ni JWT web;
 - no aceptar token aportado por cliente ni permitir session fixation;
-- `installation_id` es UUID aleatorio local, no secreto, no auth y no IMEI/serial/Advertising ID;
+- `installation_id` es UUID aleatorio local, no secreto, no auth y no IMEI/Android ID/serial/IDFA/Advertising ID;
 - transacción: validar, revocar sesión anterior de esa instalación según política, insertar hash y devolver raw;
 - no incluir password o token en errores, tracing o métricas.
 
@@ -358,11 +406,14 @@ Reglas:
 - `GET /api/auth/native/session`: autentica Bearer, devuelve usuario/roles actuales, expiración y quizá server time; se usa al recuperar conectividad/resume.
 - `POST /api/auth/native/logout`: revoca sólo `id_sesion_nativa` actual, responde 204 de forma idempotente; el cliente borra secure storage después de respuesta o conserva una marca local de logout pendiente si no hay red.
 - `POST /api/auth/native/logout-all`: acción explícita y confirmada; incrementa `version_sesion` y revoca web y todas las sesiones native. Debe documentar que también expulsa el navegador.
+- `POST /api/auth/native/ws-ticket`: autentica el mismo Bearer y emite un ticket efímero single-use para el WebSocket común.
 - no existe endpoint refresh en el MVP; al expirar se reautentica con password.
+
+El contrato completo es multiplataforma: sesión opaca, Bearer, HMAC/token hash, `version_sesion`, `expires_at`, `revoked_at`, `installation_id`, logout de dispositivo, logout global, rate limit, autorización, branching de CORS/Origin/CSRF, tickets WS y logging/redaction son una única implementación backend. Los endpoints de negocio y sus guards también son únicos.
 
 ## 13. Resolver de autenticación y scope de endpoints
 
-Se reutilizarán todos los endpoints de negocio. Sólo `/auth/native/*` es namespace separado. El futuro resolver ejecutará antes de CSRF:
+Se reutilizarán todos los endpoints de negocio para Android e iOS. Sólo `/auth/native/*` es namespace mobile separado del web histórico. El futuro resolver ejecutará antes de CSRF:
 
 1. si existe cualquier header `Authorization`, sólo acepta exactamente un esquema `Bearer` bien formado;
 2. si también existe `rsp_session`, rechaza la combinación como credenciales ambiguas; el cliente native debe usar `credentials: 'omit'`;
@@ -389,13 +440,13 @@ No cambia:
 
 ### 14.2 WebView native con Bearer
 
-Configuración futura separada, por ejemplo `NATIVE_CORS_ORIGINS`, sin mezclarla en `CORS_ORIGINS`. Para la configuración actual el único origin empaquetado esperado es `https://localhost`.
+Configuración futura separada, por ejemplo `NATIVE_CORS_ORIGINS`, sin mezclarla en `CORS_ORIGINS`. Para la configuración actual los origins empaquetados esperados son exactamente `https://localhost` en Android y `capacitor://localhost` en iOS.
 
 Política exacta propuesta:
 
 | Campo | Native |
 |---|---|
-| allowed origins | lista exacta; producción inicialmente `https://localhost` |
+| allowed origins | lista exacta por target distribuido: `https://localhost`, `capacitor://localhost` |
 | methods | `GET, POST, PUT, PATCH, DELETE, OPTIONS` |
 | allowed headers | `Authorization, Content-Type` y sólo headers funcionales auditados |
 | exposed headers | `Content-Disposition, X-Request-Id` si el frontend los necesita |
@@ -411,7 +462,7 @@ Origin es defensa adicional, no autenticación:
 - un Origin presente pero distinto se rechaza incluso con Bearer;
 - Capacitor/native HTTP puede omitir Origin; se permite su ausencia sólo en el canal native correctamente autenticado o en login native sujeto a rate limit, porque clientes no-browser no pueden demostrar identidad con Origin;
 - una app maliciosa puede falsificar/omitir Origin en HTTP nativo, por lo cual el Bearer sigue siendo el único factor de sesión;
-- jamás se agregará `https://localhost` indiscriminadamente a la allowlist web o WS web.
+- jamás se agregarán los origins locales mobile indiscriminadamente a la allowlist web o WS web.
 
 El login native desde WebView requiere preflight/origin native aunque todavía no tenga Bearer. Un cliente HTTP nativo sin Origin puede llamar al login, pero sólo con password válido, TLS y rate limit; no hay credencial ambiental que habilite CSRF.
 
@@ -443,7 +494,7 @@ Reglas:
 
 - ticket de 256 bits, raw sólo en respuesta y query, HMAC en DB;
 - TTL recomendado 30 s, un único uso y consumo atómico antes de enviar eventos;
-- query, errores, proxy, Fastify y Android logs deben redactarlo; Nginx actual usa `$uri`, pero la defensa no dependerá sólo de eso;
+- query, errores, proxy, Fastify, Logcat, Xcode console y crash reports deben redactarlo; Nginx actual usa `$uri`, pero la defensa no dependerá sólo de eso;
 - Origin native exacto si el WebView lo envía; nunca autentica por sí solo;
 - `/ws` cookie conserva `Origin === PUBLIC_ORIGIN` y auth web actual;
 - handshake con ticket inválido/usado/expirado falla sin fallback a cookie;
@@ -468,7 +519,7 @@ Semántica UX:
 
 - **Cerrar sesión en este dispositivo:** revoca sólo la fila native actual. No incrementa versión.
 - **Cerrar todas las sesiones:** incrementa `version_sesion`; revoca web y todos los dispositivos. Debe advertirse explícitamente.
-- **Logout web actual:** sigue incrementando `version_sesion`, por tanto también revocará Android. Se conserva por contrato.
+- **Logout web actual:** sigue incrementando `version_sesion`, por tanto también revocará Android e iOS. Se conserva por contrato.
 - **Administración:** desactivar/eliminar/cambiar roles relevantes invalida en el siguiente request y cierra WS al detectarse.
 
 Una sesión puede conservar metadatos de instalación para que el usuario/admin vea y revoque dispositivos, pero `installation_id` nunca concede acceso.
@@ -490,7 +541,7 @@ Redacción futura mínima:
 - `session_token`, `refresh_token` aunque no se use, `native_token`, `ws_ticket` y `ticket`;
 - query de WS en serializers, reverse proxy, exceptions y métricas;
 - body completo de ambos logins o como mínimo email/password;
-- Android Logcat, WebView console, crash reports y herramientas de red.
+- Android Logcat, iOS unified/Xcode logs, WebView console, crash reports y herramientas de red.
 
 Los logs sólo necesitan request id, ruta parametrizada, mecanismo (`web-cookie`/`native-bearer`), id interno de sesión si es útil, status y duración. Nunca raw/hash parcial utilizable.
 
@@ -503,12 +554,12 @@ Bearer se agrega a todos los transports de negocio, no sólo JSON:
 - fotos protegidas se descargan como Blob con el mismo header;
 - PDF se descarga como binario y se preservan `Content-Type`, `Content-Disposition`, timeouts y rate limit;
 - los JSON con foto base64 existentes siguen bajo sus límites actuales;
-- Maps continúa exclusivamente server-side; no se incorpora API key al APK;
+- Maps continúa exclusivamente server-side; no se incorpora API key al bundle mobile;
 - si se adopta `CapacitorHttp`/File Transfer para archivos grandes, debe aceptar el mismo Bearer desde el servicio de auth y demostrar cancelación, errores, TLS y redacción. No se crea cookie bridge.
 
 La prueba end-to-end de RSP-09C debe cubrir CRUD de pozo, propietarios, sitios, upload/replace/delete/download de foto y PDF en dispositivo, no sólo `/session`.
 
-## 19. Conectividad, lifecycle y APK
+## 19. Conectividad, lifecycle y operación mobile
 
 ### 19.1 Offline y reconexión
 
@@ -531,29 +582,43 @@ Un request a mitad puede haber sido aplicado aunque el cliente no reciba respues
 
 El cliente conoce `expires_at`, pero no borra la credencial por reloj local o falta de red. Al recuperar conexión, el servidor decide. Si el token expiró offline, la UI pide login antes de enviar la cola y nunca elimina borradores.
 
-### 19.2 Background, resume y reboot
+### 19.2 Background, resume y reinicio
 
-- al cold start/reboot/process kill, leer una vez desde secure storage, cargar en memoria y validar cuando haya red;
+- Android debe cubrir background, process kill y reboot; iOS debe cubrir background/suspensión, process termination y device restart;
+- al cold start/relanzamiento, no asumir memoria conservada: secure storage es la fuente persistente y se valida con `/auth/native/session` cuando haya red;
+- cargar el token en memoria sólo cuando una operación autenticada lo requiera y liberar referencias no necesarias; no serializarlo para sobrevivir procesos;
 - en resume tras horas/días, comprobar red y estado si pasó un umbral configurable o se acerca expiry;
-- en background no hacer refresh inexistente; minimizar trabajo y limpiar referencias no necesarias sin borrar storage;
+- en background/suspensión no hacer refresh inexistente ni iniciar servicios; minimizar trabajo y limpiar referencias no necesarias sin borrar storage;
 - en logout confirmado, limpiar memoria y storage; si se pulsa logout offline, bloquear uso local, registrar una revocación pendiente no secreta y enviar al volver la red antes de borrar definitivamente el raw necesario para revocar;
 - no colocar token en singleton de estado serializable, Redux/devtools, signals públicas ni service worker.
 
-### 19.3 Robo, root y biometría
+RSP-09A-R1 no implementa background services. iOS puede suspender o terminar el proceso sin aviso útil, y Android también puede matarlo; la corrección depende de persistencia segura + reconstrucción idempotente, no de mantener código activo en segundo plano.
 
-Keystore reduce extracción en reposo, no hace imposible usar una sesión en un teléfono desbloqueado o comprometido. Mitigaciones: TTL 30 días, logout por dispositivo, logout global, revocación administrativa inmediata, TLS, no backup, CSP y no logs. No se implementará root detection invasivo.
+### 19.3 Robo, root/jailbreak y biometría
 
-Screen lock/biometría puede añadirse para desbloquear localmente la lectura después del piloto, con fallback a device credential y recuperación bien diseñada. No bloquea MVP porque el plugin elegido no necesita prometer user-auth-bound keys en esta fase.
+Keystore/Keychain reducen extracción en reposo, no hacen imposible usar una sesión en un teléfono desbloqueado o comprometido. Mitigaciones: TTL 30 días, logout por dispositivo, logout global, revocación administrativa inmediata, TLS, no migración, CSP y no logs. No se implementará root/jailbreak detection invasivo.
+
+Biometría queda fuera del MVP y no cambia la autenticación del servidor. Después puede proteger localmente la lectura con Android BiometricPrompt/device credential o iOS Face ID/Touch ID/passcode, con recuperación bien diseñada. No sustituye el Bearer ni autoriza endpoints por sí sola.
 
 ### 19.4 TLS y pinning
 
-Producción sólo acepta `https://` y `wss://`, validado por Android con su trust store. Para el piloto no se recomienda certificate pinning: añade riesgo de inutilizar APKs al renovar/cambiar certificado y exige pin backup/rotación coordinada. Queda como hardening futuro si el threat model operacional demuestra MITM con CA comprometida como riesgo superior al de disponibilidad.
+Producción sólo acepta `https://` y `wss://`, validado por el trust store de Android/iOS. Para el piloto no se recomienda certificate pinning: añade riesgo de inutilizar builds al renovar/cambiar certificado y exige pin backup/rotación coordinada. Queda como hardening futuro si el threat model operacional demuestra MITM con CA comprometida como riesgo superior al de disponibilidad.
 
 ### 19.5 Actualización y versión mínima
 
-Una actualización firmada con la misma clave/appId debe conservar secure storage y sesión. Un cambio de formato debe migrar atómicamente o pedir login. El servidor puede responder un error tipado (por ejemplo 426) si `app_version` está por debajo de `MIN_NATIVE_APP_VERSION`; la versión no autentica ni autoriza.
+Una actualización firmada con la identidad estable de cada plataforma (misma clave/appId Android; mismo bundle ID/equipo/firma iOS según la vía autorizada) debe conservar secure storage y sesión. Un cambio de formato debe migrar atómicamente o pedir login. El servidor puede responder un error tipado (por ejemplo 426) si `app_version` está por debajo de `MIN_NATIVE_APP_VERSION`; la versión no autentica ni autoriza.
 
-No se propone live update remoto en esta etapa. Una vulnerabilidad crítica se atiende revocando sesiones/version y exigiendo APK mínimo, sin depender de que el token sobreviva indefinidamente.
+No se propone live update remoto en esta etapa. Una vulnerabilidad crítica se atiende revocando sesiones/version y exigiendo versión mobile mínima, sin depender de que el token sobreviva indefinidamente.
+
+### 19.6 Distribución piloto
+
+**Android piloto:** APK release privado, firmado con una clave controlada, instalado manualmente en los dispositivos autorizados. Las actualizaciones se entregan como APK posterior con el mismo application ID y la misma clave para permitir upgrade in-place. Play Store no es obligatoria inicialmente; firma, custodia, checksum, canal de entrega, rollback y versión mínima deben quedar operados explícitamente.
+
+**iOS piloto:** requiere una estrategia permitida por Apple, identidad de firma y provisioning. RSP-09E deberá comparar Ad Hoc para dispositivos registrados y TestFlight para testers internos/externos según el grupo real; ninguna exige publicación pública en App Store, pero sí cumplir el flujo Apple aplicable. RSP-09A-R1 no decide definitivamente la distribución iOS ni genera un IPA. Costos, membresías, límites, revisiones y reglas concretas son temporales y deberán verificarse en fuentes Apple vigentes justo antes de distribuir.
+
+### 19.7 GPS futuro en hardware real
+
+RSP-09A-R1 no implementa GPS. RSP-09E debe comparar Android e iPhone en la **misma ubicación física**, en hardware real, registrando latitud, longitud, `accuracy` en metros y varias muestras; debe probar permisos de ubicación precisa y comportamiento con conectividad mala/intermitente. No se concluirá que una plataforma es más precisa sin esa prueba de campo controlada.
 
 ## 20. Entornos y reintroducción futura del build native
 
@@ -561,14 +626,14 @@ RSP-09C podrá reintroducir un target explícito sólo después del backend RSP-
 
 - `development`: backend local/LAN controlado; preferir HTTPS con CA de desarrollo instalada. Cualquier cleartext debe existir sólo en flavor debug y nunca ser fallback;
 - `staging`: origin HTTPS específico y app/flavor inequívocamente staging;
-- `production`: origin HTTPS exacto, appId final y firma release controlada.
+- `production`: backend HTTPS exacto, application ID/bundle ID finales y firmas release controladas.
 
 Variable pública conceptual: `NATIVE_BACKEND_ORIGIN`. El build deriva `/api/` y `/ws`; no acepta paths/credentials/query. Fail-fast productivo si:
 
 - falta la variable;
 - protocolo no es HTTPS;
 - host es localhost, `.localhost`, IP/LAN o coincide con staging;
-- `appId` sigue siendo `com.example.app`;
+- `appId`/bundle ID sigue siendo `com.example.app`;
 - existe cleartext/mixed content, `server.url` o debugging/logging productivo;
 - backend no anuncia versión de contrato native compatible;
 - el bundle contiene un origin distinto del único esperado.
@@ -580,15 +645,18 @@ Tests de artifact deben probar que web sigue `/api/` y `/ws` same-origin y que s
 | Amenaza | Mitigación diseñada | Riesgo residual |
 |---|---|---|
 | brute force de password | error genérico, bcrypt actual, cuenta activa, mismo límite 10/min y límite por cuenta/IP | ataque distribuido; monitoreo y posible backoff futuro |
-| robo de Bearer | Keystore/AES-GCM, memoria breve, TLS, no logs, TTL y revocación | dispositivo/root/XSS activo puede usarlo |
+| robo de Bearer | Keystore/Keychain, memoria breve, TLS, no logs, TTL y revocación | dispositivo con root/jailbreak o XSS activo puede usarlo |
 | robo de refresh | no existe refresh separado | el token de sesión sigue siendo credencial de 30 días |
 | XSS en WebView | CSP local estricta, sin scripts remotos/eval, encapsular plugin, no storage web | JS autorizado comprometido puede pedir token o actuar como usuario |
-| app maliciosa | sandbox/Keystore, no deep-link con token, Bearer aleatorio | puede imitar Origin en HTTP nativo; no posee token/password salvo compromiso externo |
-| MITM | HTTPS/WSS y validación Android; nunca cleartext producción | CA/dispositivo comprometido; pinning diferido |
+| app maliciosa | sandbox + Keystore/Keychain, no deep-link con token, Bearer aleatorio | puede imitar Origin en HTTP nativo; no posee token/password salvo compromiso externo |
+| jailbreak/root | almacenamiento seguro, mínima vida en memoria, revocación y versión mínima | no se promete protección absoluta si el atacante controla OS/proceso |
+| exposición Keychain/Keystore | accessibility no migrable, sync apagado, backup excluido y fail-closed | dispositivo desbloqueado/comprometido puede autorizar uso aunque no exporte la clave |
+| MITM | HTTPS/WSS y trust store de cada OS; nunca cleartext producción | CA/dispositivo comprometido; pinning diferido |
 | replay de token | TLS, HMAC lookup, TTL, revocación, rotación en login | un token robado es replayable hasta revocación/expiry |
 | dispositivo robado | secure storage, listado/revocación de sesión, 30 días, logout global | teléfono desbloqueado puede operar hasta revocación |
-| secretos en logs | redacción proxy/Fastify/app/Android, no query principal | crash SDK o log nuevo mal configurado requiere regresión continua |
-| backup/migración | excluir storage cifrado e installation id de backup/D2D | OEM puede variar; probar dispositivos/API 23/31+ |
+| secretos en logs | redacción proxy/Fastify/app/Logcat/iOS/crash, no query principal | SDK o log nuevo mal configurado requiere regresión continua |
+| backup/migración | Android backup/D2D excluido; iOS `ThisDeviceOnly` + no sync; binding con installation ID | OEM/Apple y restores pueden variar; probar dispositivos y reinstalación |
+| screenshots/clipboard | token nunca se muestra ni copia; pantallas sensibles minimizan PII y se revisan por OS | el MVP no promete bloquear toda captura; cámara externa/OS comprometido permanece |
 | replay ticket WS | 256 bits, HMAC, 30 s, single-use atómico | atacante que lo roba antes del consumo puede ganar la carrera |
 | confusión CORS | allowlists web/native separadas, exactas, sin wildcard | CORS no limita clientes native fuera de browser |
 | confusión CSRF | branching por mecanismo autenticado; cookie conserva double-submit | bug de orden de hooks; cubrir matriz exhaustiva |
@@ -598,10 +666,10 @@ Tests de artifact deben probar que web sigue `/api/` y `/ws` same-origin y que s
 | usuario desactivado offline | no hay acceso server-side offline; al volver se valida antes de sync | datos ya cacheados siguen visibles según política local futura |
 | rol removido | roles actuales y `version_sesion` en cada request | datos cacheados requieren política offline futura |
 | request duplicado al reconectar | futuro idempotency key/cola; no reintentar mutaciones ciegamente | RSP-09A no implementa sync offline |
-| APK obsoleto/vulnerable | versión mínima server-side, revocación y build fail-fast | distribución/actualización manual puede demorar |
+| build mobile obsoleto/vulnerable | versión mínima server-side, revocación y build fail-fast | distribución/actualización puede demorar según canal |
 | Bearer en query WS | bearer principal nunca va en query; sólo ticket redactado y efímero | infraestructura externa debe auditarse también |
 
-Riesgo aceptado para piloto: un Android rooteado, un proceso comprometido o XSS con acceso al bridge puede actuar como el usuario. La respuesta proporcionada es limitar exposición, detectar/revocar y actualizar, no prometer invulnerabilidad.
+Riesgo aceptado para piloto: Android con root, iPhone con jailbreak, un dispositivo robado/desbloqueado, un proceso comprometido o XSS con acceso al bridge puede actuar como el usuario. La respuesta proporcionada es limitar exposición, detectar/revocar y actualizar; no se promete invulnerabilidad en un dispositivo comprometido.
 
 ## 22. Pruebas y roadmap ejecutable
 
@@ -612,7 +680,7 @@ No se agregó un spike duplicado al runtime. La evidencia aislada existente ya d
 1. `cookie-auth.integration.test.ts`: `onlyCookie` acepta cookie y rechaza Bearer; cookies y CSRF mantienen contrato;
 2. `proxy-origin.test.ts`: mutaciones de origin no permitido y WS con origin distinto al canónico se rechazan; preflight sólo funciona con allowlist actual;
 3. `production-contract.test.mjs` y `test-production-build.mjs`: web conserva `/api/` y `/ws`, no existe target/config native productivo;
-4. fuente instalada de Capacitor 8: origin por defecto `https://localhost` y HTTP patch apagado;
+4. fuente instalada y documentación de Capacitor 8: Android usa `https://localhost`, iOS proyectado usa `capacitor://localhost` y el HTTP patch está apagado;
 5. API browser `WebSocket(url, protocols?)`: el frontend/librerías actuales no ofrecen header Authorization; el ticket funciona con query y el servidor `@fastify/websocket` actual puede inspeccionar request antes de registrar conexión.
 
 Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido una implementación parcial. Se optó por especificar contratos verificables para RSP-09B.
@@ -622,11 +690,11 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 - migración fresh/upgrade/rerun y constraints/índices;
 - token CSPRNG/formato, HMAC y ausencia raw en DB/log;
 - login activo/inactivo/inexistente/password/rol con error no enumerable y rate limit compartido;
-- no `Set-Cookie` ni CSRF en login native;
+- no `Set-Cookie` ni CSRF en login native común;
 - matriz cookie, Bearer, ambos, Bearer inválido y Authorization no Bearer sin fallback;
 - expiry, revoked_at, usuario eliminado/inactivo, cambio `version_sesion` y roles actuales;
 - logout dispositivo frente a logout-all y logout web;
-- CORS preflight native exacto, evil origin, ausencia Origin native HTTP y web congelada;
+- CORS preflight exacto para `https://localhost` y `capacitor://localhost`, evil origin, ausencia Origin native HTTP y web congelada;
 - CSRF web intacto y Bearer explícitamente exento;
 - redacción de todas las superficies;
 - inventario automático: todo endpoint protegido usa el resolver común;
@@ -634,10 +702,10 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 
 ### Roadmap
 
-1. **RSP-09B — backend native auth:** migración, HMAC/pepper, login/session/logout/logout-all, resolver dual, branching CSRF/CORS/Origin, rate limits, redaction y tests; sin cliente productivo.
-2. **RSP-09C — cliente Capacitor:** auditar/instalar secure storage, transport Bearer, CSP local, backup rules, lifecycle, configuración por entorno y pruebas de JSON/multipart/blob/PDF. Recién entonces reintroducir build native controlado.
-3. **RSP-09D — WebSocket native:** tabla/endpoint de tickets, consumo single-use, origin branch, cierre por revocación, heartbeat/reconnect y tests de replay/carreras.
-4. **RSP-09E — APK piloto:** appId/firma, dispositivo real API 23 y moderno, cámara/GPS/red, instalación/upgrade/uninstall, staging y production fail-fast; sin Google real en CI.
+1. **RSP-09B — backend auth native común + DB + tests:** una migración y una implementación HMAC/pepper, login/session/logout/logout-all, resolver dual, branching CSRF/CORS/Origin por mecanismo, rate limits, redaction y tests; sirve a Android+iOS y no incluye cliente productivo.
+2. **RSP-09C — cliente Capacitor compartido + secure storage Android/iOS + transport:** auditar/instalar el plugin, integrar Keystore/Keychain, transport Bearer, CSP local, políticas backup/migración, lifecycle, configuración por entorno y pruebas de JSON/multipart/blob/PDF. Recién entonces se reintroduce build native controlado.
+3. **RSP-09D — WebSocket native + lifecycle + revocación:** tabla/endpoint común de tickets, consumo single-use, origins Android/iOS, cierre por revocación, heartbeat/reconnect y tests de replay/carreras; también cierra/revalida la ventana WS web ya abierta tras logout.
+4. **RSP-09E — build piloto Android + preparación iOS + pruebas reales GPS:** appId/firma y APK privado Android; preparación macOS/Xcode/bundle ID/distribución Apple; hardware real Android+iPhone en misma ubicación, cámara/GPS/red, permisos, instalación/upgrade/uninstall y fail-fast. No genera el proyecto iOS desde Windows.
 5. **RSP-09F — resiliencia offline:** drafts cifrados si contienen datos sensibles, cola/idempotencia, conflictos, reintentos y UX rural.
 
 ### Decisiones descartadas explícitamente
@@ -651,15 +719,16 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 - no wildcard CORS ni Origin como autenticación;
 - no CSRF deshabilitado para cookie web;
 - no localStorage/Preferences plano;
-- no IMEI, serial o advertising ID;
+- no IMEI, Android ID como auth, serial, IDFA ni identificadores de tracking;
 - no pinning, biometría o root detection como bloqueo inicial;
 - no API de negocio duplicada en `/api/native`;
-- no build/APK productivo en RSP-09A.
+- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1.
 
 ### Riesgos/decisiones pendientes antes del piloto
 
-- revisión de código y prueba física del plugin secure storage 8.0.0;
-- appId, firma y mecanismo de distribución finales;
+- revisión de código y prueba física Android+iOS del plugin secure storage 8.0.0;
+- accessibility/synchronizable de Keychain y exclusiones Android backup/D2D;
+- appId/bundle ID, firmas y mecanismos de distribución finales;
 - dominio real de staging/producción y CA de desarrollo;
 - defaults operativos finales de TTL, cupos y versión mínima;
 - contenido offline permitido y protección de drafts;
@@ -671,10 +740,13 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 ## Fuentes externas consultadas
 
 - Capacitor v8 configuration: https://capacitorjs.com/docs/config
+- Capacitor v8 environment/iOS: https://capacitorjs.com/docs/getting-started/environment-setup y https://capacitorjs.com/docs/ios
 - Capacitor v8 HTTP API: https://capacitorjs.com/docs/apis/http
 - Capacitor security guidance: https://capacitorjs.com/docs/guides/security
 - Android backup security: https://developer.android.com/privacy-and-security/risks/backup-best-practices
 - candidato secure storage: https://github.com/aparajita/capacitor-secure-storage
+- Apple Keychain accessibility: https://developer.apple.com/documentation/security/restricting-keychain-item-accessibility
+- Apple beta distribution: https://developer.apple.com/documentation/xcode/distributing-your-app-for-beta-testing-and-releases
 - alternativa Capawesome: https://capawesome.io/docs/plugins/secure-preferences/
 
-Las fuentes externas sólo apoyan comportamiento de plataforma/plugins. La decisión se basa además en el código, locks, proyecto Android y tests de este repositorio auditados en el HEAD indicado.
+Las fuentes externas sólo apoyan comportamiento de plataforma/plugins y deberán revisarse de nuevo al distribuir. La decisión se basa además en el código, locks, proyecto Android, ausencia comprobada de proyecto iOS y tests de este repositorio auditados en los HEAD indicados.
