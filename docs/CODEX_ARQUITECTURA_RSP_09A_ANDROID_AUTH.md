@@ -6,6 +6,7 @@ Corrección RSP-09A-R2: 2026-08-26
 Corrección RSP-09A-R3: 2026-08-26
 Corrección RSP-09A-R4: 2026-08-26
 Corrección RSP-09A-R5: 2026-08-26
+Corrección RSP-09A-R6: 2026-08-26
 Rama auditada: `feature/rsp-09-android-auth`
 Base y HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial de RSP-09A-R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
@@ -13,6 +14,7 @@ HEAD inicial de RSP-09A-R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
 HEAD inicial de RSP-09A-R3: `7193a4cb14661617389899a069f82c0ea578e6ce`
 HEAD inicial de RSP-09A-R4: `66287efb5177556453bc16ab423d1f7ac48c2f0a`
 HEAD inicial de RSP-09A-R5: `a77400af99796ca8f20d3f50ded84daa42a3ca75`
+HEAD inicial de RSP-09A-R6: `2294ff94bcc2b14f2fe839a95fc693b1b11d243d`
 
 ## 1. Resumen y decisión
 
@@ -42,7 +44,7 @@ Esta decisión cumple el objetivo de revocación inmediata usando PostgreSQL y `
 
 ## 2. Alcance y restricciones congeladas
 
-En RSP-09A/R1/R2/R3/R4/R5 no se crean rutas, tokens, tablas ni builds mobile productivos. Tampoco se instala un plugin ni se genera el proyecto iOS. Quedan congelados:
+En RSP-09A/R1/R2/R3/R4/R5/R6 no se crean rutas, tokens, tablas ni builds mobile productivos. Tampoco se instala un plugin ni se genera el proyecto iOS. Quedan congelados:
 
 - login web y su respuesta;
 - `rsp_session` HttpOnly;
@@ -265,17 +267,40 @@ Valores iniciales recomendados, todos configurables y a confirmar con operación
 | TTL absoluto | 30 días | default configurable futuro |
 | actualización de `last_used_at` | como máximo una vez cada 15 min | optimización configurable |
 | tickets WS | 30 s | default configurable, máximo corto |
-| sesiones activas por usuario | 5 | límite operativo configurable |
+| sesiones activas por usuario | 5 | `NATIVE_MAX_ACTIVE_SESSIONS_PER_USER`, entero >= 1 |
 
 No habrá refresh separado en el piloto: dos secretos persistentes aumentan superficie, código y estados de error, y el refresh largo sería en la práctica la verdadera sesión. La expiración absoluta exige reingresar password aproximadamente una vez al mes. No se extiende por estar offline ni por mero uso.
 
+`NATIVE_MAX_ACTIVE_SESSIONS_PER_USER=5` es el default inicial, centralizado y configurable; ausencia, valor no entero o menor que 1 hace fallar el startup cuando auth native está habilitada. `installation_id` sirve para reemplazo de una instalación, pero no define ni sustituye el cupo por usuario.
+
+Para el límite, una fila cuenta como **activa** únicamente si `revoked_at IS NULL`, `expires_at > now()` y `version_sesion_emitida = usuario.version_sesion`; el usuario bloqueado también debe seguir existente/activo/con acceso al crear la nueva sesión. Una fila revocada, expirada o de versión anterior no consume cupo. El minimum-build no cambia esta definición: una sesión server-side puede seguir vigente mientras el cliente oficial se actualiza.
+
+Logout-all incrementa `usuario.version_sesion`, por lo que todas las filas de la versión anterior dejan de contar inmediatamente sin actualizar miles de sesiones. Esa invalidación lógica sigue siendo autoritativa aunque las filas permanezcan hasta su expiración/retención física.
+
 Rotación:
 
-- un login nuevo emite un token nuevo y puede revocar la sesión activa anterior de la misma instalación dentro de la misma transacción;
+- un login nuevo emite un token nuevo y revoca primero cualquier sesión activa anterior de la misma instalación dentro de la misma transacción;
 - cambio de password, desactivación, cambio de rol con incremento de versión o logout global invalidan todas mediante `version_sesion`;
 - logout de este dispositivo sólo marca su fila `revoked_at`;
 - no se hará rotación automática por respuesta en cada request, porque una respuesta perdida en conectividad rural podría dejar cliente y servidor con tokens diferentes;
 - si más adelante se requiere renovación silenciosa, deberá diseñarse como rotación transaccional idempotente con ventana acotada, no añadirse informalmente.
+
+### 8.3.1 Límite transaccional y eviction
+
+RSP-09B no hará un `SELECT count(*)` seguido de `INSERT` sin protección. bcrypt/validación costosa de password ocurre antes de tomar el lock; después abre una única transacción corta y:
+
+1. ejecuta `SELECT ... FROM usuario WHERE id_usuario = $ID FOR UPDATE` —o locking PostgreSQL equivalente— para serializar logins del mismo usuario;
+2. bajo el lock vuelve a confirmar usuario activo/con acceso, que el hash/estado de credencial validado no cambió durante bcrypt, y lee la `version_sesion` actual; si cambió, rechaza/reinicia sin ejecutar bcrypt bajo el lock;
+3. revoca con `revoked_at=now()`/causa acotada todas las sesiones todavía activas de ese mismo `id_usuario + installation_id`;
+4. cuenta las sesiones activas restantes **sólo de ese `id_usuario`** según la definición anterior;
+5. si insertar excedería el máximo, revoca las más antiguas necesarias con orden determinista `created_at ASC, id_sesion_nativa ASC`;
+6. inserta la nueva fila con la versión actual y el HMAC, confirma la transacción y sólo entonces devuelve el raw al cliente. Un fallo de commit descarta ese raw.
+
+Con cinco activas, el sexto login revoca la más antigua e inserta la nueva: quedan cinco y el login no falla por cupo. Si una reducción de configuración o datos previos dejan más del máximo, se revocan tantas antiguas como sean necesarias antes de insertar. El reemplazo de la misma instalación ocurre **antes** de eviction global, por lo que renovar B no ocupa dos cupos ni desplaza A/C sin necesidad.
+
+El lock de la fila `usuario` hace que dos logins desde cuatro sesiones observen secuencialmente 4→5 y luego 5→eviction→5. Seis logins concurrentes desde cero pueden responder éxito, pero después de cada commit nunca hay más de cinco activas y al final quedan exactamente cinco; la más antigua según el orden transaccional/determinista queda revocada. Las operaciones que incrementan `version_sesion` deben mantener locking compatible sobre la misma fila. No se usan Redis, locks externos, triggers complejos ni un `CHECK` imposible entre múltiples filas.
+
+Eviction es invalidación de seguridad inmediata, no cleanup: el Bearer desplazado recibe el 401 native normal, no emite tickets y cualquier ticket pendiente falla por parent session; RSP-09D cerrará su socket local best-effort y el heartbeat lo cerrará autoritativamente. La causa puede conservarse server-side como `session_limit_eviction`, sin body especial ni información sensible para el MVP. Ninguna query de reemplazo/count/eviction puede omitir `id_usuario` ni tocar sesiones de otro usuario.
 
 ### 8.4 Por qué no access + refresh
 
@@ -305,11 +330,14 @@ sesion_nativa
 Índices/constraints futuros:
 
 - `UNIQUE(token_hash)` para lookup;
-- índice parcial por `id_usuario` donde `revoked_at IS NULL` para listar/revocar;
-- índice por `expires_at` para limpieza;
-- índice `(id_usuario, installation_id)` para historial de instalación;
+- índice por `id_usuario`/estado/versión y orden `created_at, id_sesion_nativa` que soporte count + eviction de activas;
+- índice `(id_usuario, installation_id)` —preferentemente acotado a no revocadas si el plan lo aprovecha— para replacement;
+- índices de cleanup sobre `revoked_at` para revocadas y `expires_at` para no revocadas/expiradas;
 - checks de longitud hash, `platform IN ('android','ios')`, builds/versiones positivos y orden temporal;
-- no hacer único global `installation_id`: no es secreto ni identidad fuerte y se conserva historial.
+- no hacer único global `installation_id`: no es secreto ni identidad fuerte y el historial sólo se conserva hasta la retención post-terminal;
+- no intentar “máximo cinco activas” con `CHECK`: es una regla entre filas/tiempo/versión que se garantiza mediante transacción, lock por usuario, eviction y tests concurrentes.
+
+RSP-09B elegirá la composición mínima final con las queries reales y `EXPLAIN`, evitando índices redundantes. Deben quedar cubiertos lookup de token, replacement por usuario+installation, actividad/orden de eviction por usuario y ambas ramas del cleanup.
 
 `last_used_at` es auditoría/soporte, no sliding expiry en el modelo inicial. Se actualiza con throttling para no escribir en cada request.
 
@@ -356,31 +384,56 @@ Es pseudocódigo arquitectónico: los nombres finales seguirán el schema real y
 
 Cero filas significa ticket inexistente, usado, expirado o sesión padre inválida/revocada indirectamente y siempre rechaza el handshake; nunca se busca o consume otro ticket. Borrar una fila expirada/usada no habilita replay: un raw antiguo queda sin hash redimible y se rechaza.
 
-### 9.1 Retención obligatoria de tickets
+### 9.1 Retención obligatoria y janitor común
 
-La persistencia de tickets es acotada desde RSP-09B, no un cleanup opcional. Defaults recomendados/configurables:
+La persistencia de tickets **y sesiones** queda acotada desde RSP-09B, no como cleanup opcional. Defaults recomendados/configurables:
 
 ```text
 NATIVE_WS_TICKET_TTL_SECONDS=30
 NATIVE_WS_TICKET_RETENTION_MINUTES=60
-NATIVE_WS_TICKET_CLEANUP_INTERVAL_SECONDS=300
-NATIVE_WS_TICKET_CLEANUP_BATCH_SIZE=500
+NATIVE_AUTH_JANITOR_INTERVAL_SECONDS=300
+NATIVE_AUTH_JANITOR_BATCH_SIZE=500
+NATIVE_SESSION_RETENTION_DAYS=30
 ```
 
-La retención se cuenta después de `expires_at`, debe ser mayor que el TTL y permite una ventana breve de diagnóstico sin conservar credenciales indefinidamente. La política inicial elimina por igual tickets usados o no usados cuando `expires_at < now() - retention`; así una fila vive como máximo TTL + retention + el retraso acotado del janitor. Los valores finales son configurables y deben validarse fail-fast como positivos y coherentes.
+Todos los valores son configuración central: enteros positivos, batch >= 1 y relaciones TTL/retention coherentes, con validación fail-fast cuando auth native está habilitada.
 
-RSP-09B implementará un **janitor backend obligatorio**: ejecuta una pasada al startup y luego periódicamente, recomendado cada 5 minutos. Cada transacción selecciona por el índice de `expires_at` un lote ordenado y limitado —500 filas por defecto— y elimina sólo esos IDs; si queda backlog elegible programa otra tanda con yield, sin hacer un `DELETE` monolítico ni esperar el intervalo completo. Mientras el backend esté operativo y emitiendo, las pasadas continúan hasta drenar lo que superó retention. Si no hay actividad/backend detenido no nacen nuevas filas; el siguiente startup recupera el backlog.
+Para tickets, la retención se cuenta después de `expires_at`, debe ser mayor que el TTL y permite una ventana breve de diagnóstico sin conservar credenciales indefinidamente. La política inicial elimina por igual tickets usados o no usados cuando `expires_at < now() - ticket_retention`; así una fila vive como máximo TTL + retention + el retraso acotado del janitor.
 
-El janitor no puede fallar silenciosamente: la readiness/emisión de tickets sólo se habilita después de una pasada inicial correcta; errores transitorios se registran sin secretos y reintentan, y si la antigüedad del backlog supera un umbral operativo configurable, `ws-ticket` deja de emitir temporalmente hasta recuperar cleanup. Así una instancia no continúa creando filas indefinidamente con el mecanismo roto.
+Para `sesion_nativa`, `NATIVE_SESSION_RETENTION_DAYS=30` es un entero configurable >= 1 y validado fail-fast. Una sesión terminal usa:
 
-La migración 008 incluirá como mínimo `UNIQUE(ticket_hash)`, índice por `id_sesion_nativa` e índice por `expires_at` apto para el janitor. No se requiere `pg_cron`, Redis ni infraestructura distribuida. En una futura topología multi-instancia, borrar por IDs elegibles es idempotente: dos janitors pueden competir y uno simplemente afectará cero filas; la seguridad no depende de cuál gane. Se observarán contador y antigüedad del backlog sin registrar raw ni HMAC.
+- `terminal_at = revoked_at` cuando `revoked_at IS NOT NULL`;
+- `terminal_at = expires_at` cuando no fue revocada y expiró naturalmente;
+- una fila con `version_sesion_emitida != usuario.version_sesion` deja de autenticar inmediatamente, pero no se inventa un timestamp del cambio: si no tiene `revoked_at`, permanece hasta `expires_at + session_retention`.
+
+Elegibilidad conceptual, con `cutoff = now() - NATIVE_SESSION_RETENTION_DAYS`:
+
+```sql
+(revoked_at IS NOT NULL AND revoked_at < $CUTOFF)
+OR
+(revoked_at IS NULL AND expires_at < $CUTOFF)
+```
+
+Esta condición nunca borra una sesión activa. Con TTL absoluto ~30 días y retention ~30 días, una fila nunca revocada puede permanecer aproximadamente 60 días desde creación; una revocada pronto, ~30 días desde `revoked_at`. Es una cota aproximada porque ambos valores son configurables. Invalidación de seguridad ocurre al revocar/expirar/cambiar versión; el janitor sólo recupera almacenamiento.
+
+RSP-09B implementará **un único janitor backend obligatorio** para ambas tablas: pasada al startup y luego periódica, recomendada cada 5 minutos. En cada ciclo limpia primero `ticket_ws_nativo` fuera de su retención y luego `sesion_nativa` terminal fuera de la suya; el cascade es red de seguridad, no sustituto del cleanup normal de tickets.
+
+Cada transacción selecciona IDs elegibles por índice, ordena por tiempo terminal y limita a 500 por defecto; elimina sólo ese lote y, si queda backlog, programa otra tanda con yield. Para sesiones se usa `revoked_at` o `expires_at` según la rama de elegibilidad. No se ejecuta un `DELETE` monolítico sobre millones de filas ni se mantiene un lock durante todo el sweep. Mientras el backend esté operativo, las pasadas continúan hasta drenar retention; el siguiente startup recupera cualquier backlog.
+
+La FK `ticket_ws_nativo.id_sesion_nativa → sesion_nativa.id_sesion_nativa ON DELETE CASCADE` es segura porque una sesión sólo se borra siendo terminal y fuera de ~30 días de retención, muchísimo después del TTL/retención breve del ticket. Si por fallo quedó un ticket residual, cascade impide que bloquee session cleanup; no se necesita conservarlo para auditoría ni replay.
+
+El janitor no puede fallar silenciosamente: un error temporal no reactiva sesiones ni tickets, se registra sin raw/HMAC y reintenta. Un solo fallo no bloquea inmediatamente un login válido. Si la antigüedad del backlog de cualquiera de las tablas supera un umbral operativo configurable, health/readiness pasa a degradado/no-ready y genera señal observable antes de crecer indefinidamente; como definió R5, `ws-ticket` puede suspender emisión hasta recuperar cleanup. RSP-09B concretará el umbral sin crear otro scheduler.
+
+No se requiere `pg_cron`, Redis ni infraestructura distribuida. En una futura topología multi-instancia, borrar por IDs elegibles es idempotente: dos janitors pueden competir y uno simplemente afecta cero filas. Se observan conteo y antigüedad de ambos backlogs sin registrar secretos.
+
+La retención aplica minimización de datos: 30 días post-terminal bastan inicialmente para soporte/incidentes recientes; después se elimina metadata sin valor autenticante. No se agregan IP ni device fingerprints a `sesion_nativa` sin una decisión futura explícita.
 
 Responsabilidad por etapa:
 
-- **RSP-09B:** crea migración 008 con `sesion_nativa` + `ticket_ws_nativo`, FK, hashes únicos, expiry e índices de lookup/cleanup; implementa `POST /api/auth/native/ws-ticket`, exige Bearer/sesión padre/build activos, genera raw de 256 bits, devuelve raw una sola vez, persiste sólo HMAC y metadata platform/build, aplica TTL/rate limit/redaction, e implementa/prueba el janitor obligatorio y la retención acotada. No implementa handshake native;
+- **RSP-09B:** crea migración 008 con `sesion_nativa` + `ticket_ws_nativo`, FK cascade, hashes, expiry e índices de token/usuario/installation/eviction/cleanup; implementa login con lock/cupo/eviction, `POST /api/auth/native/ws-ticket`, TTL/rate limit/redaction, y el janitor común obligatorio con retención acotada de tickets y sesiones. No implementa handshake native;
 - **RSP-09D:** recibe el raw en el handshake, calcula HMAC, consume atómicamente por hash exacto, valida parent al redimir y construye registry/fan-out/lifecycle/revalidación. Sólo agregará una migración posterior si aparece una necesidad real de datos no cubierta por 008; no se separa artificialmente el schema para reflejar etapas.
 
-La migración 008 es futura: RSP-09A-R5 no la crea ni modifica `000`–`007`.
+La migración 008 es futura: RSP-09A-R6 no la crea ni modifica `000`–`007`.
 
 ### 9.2 `installation_id` multiplataforma
 
@@ -388,7 +441,7 @@ Android e iOS usarán exactamente el mismo concepto: un UUID v4 aleatorio genera
 
 Quedan prohibidos IMEI, Android ID como autenticación, serial, MAC, IDFA y cualquier identificador Apple de tracking. El UUID se guarda separado del token en almacenamiento privado local, excluido de backup y transferencia entre dispositivos. En una actualización in-place con el mismo appId/bundle ID permanece; tras borrar datos o uninstall/reinstall se genera uno nuevo. En iOS el Keychain puede sobrevivir al uninstall: si reaparece un token sin el `installation_id` correspondiente, el cliente debe borrar ese token residual y exigir login, nunca adoptar la sesión de la instalación anterior. Una restauración o migración que produzca token/UUID inconsistentes también falla cerrada y crea una instalación nueva.
 
-El servidor no hace `installation_id` único global, no confía en su estabilidad y conserva historial. Un atacante que conozca o copie el UUID no puede autenticar sin el token/password.
+El servidor no hace `installation_id` único global, no confía en su estabilidad y conserva historial sólo durante la retención acotada. Un atacante que conozca o copie el UUID no puede autenticar sin el token/password.
 
 ## 10. Secure storage Mobile/Native
 
@@ -484,7 +537,7 @@ Reglas:
 - no emitir `Set-Cookie`, CSRF ni JWT web;
 - no aceptar token aportado por cliente ni permitir session fixation;
 - `installation_id` es UUID aleatorio local, no secreto, no auth y no IMEI/Android ID/serial/IDFA/Advertising ID;
-- transacción: validar, revocar sesión anterior de esa instalación según política, insertar hash y devolver raw;
+- después de bcrypt, ejecutar la transacción corta de §8.3.1: lock del usuario, recheck, reemplazo de installation, count/eviction determinista, insert/commit y recién entonces devolver raw;
 - no incluir password o token en errores, tracing o métricas.
 
 ### Metadata de versión actual en requests native
@@ -923,6 +976,8 @@ Tests de artifact deben probar que web sigue `/api/` y `/ws` same-origin y que s
 | screenshots/clipboard | token nunca se muestra ni copia; pantallas sensibles minimizan PII y se revisan por OS | el MVP no promete bloquear toda captura; cámara externa/OS comprometido permanece |
 | replay ticket WS | 256 bits, HMAC, lookup por hash exacto, 30 s, single-use atómico y parent session válida | atacante que lo roba antes del consumo puede ganar la única redención |
 | acumulación de tickets expirados | retención ~60 min, janitor startup/periódico por lotes e índice `expires_at` desde RSP-09B | backlog transitorio si DB/backend no está disponible; se drena al recuperar |
+| proliferación de sesiones activas | máximo 5 configurable, lock de fila usuario y eviction determinista | un dispositivo puede ser desplazado y deberá reautenticar |
+| acumulación de sesiones históricas | retention post-terminal ~30 d, cleanup común por lotes e índices `revoked_at`/`expires_at` | backlog transitorio durante degradación observable del janitor |
 | WS web con JWT/version stale | conservar `version_sesion_emitida` del JWT validado, heartbeat y pre-delivery fail-closed | ventana residual acotada al ciclo, recomendado máximo 30 s |
 | WS native con sesión/build inválido | parent/build validados al redimir, revalidación DB/config obligatoria cada ciclo y cierre fail-closed | ventana residual acotada al intervalo configurable, recomendado máximo 30 s |
 | confusión CORS | allowlists web/native separadas, exactas, sin wildcard | CORS no limita clientes native fuera de browser |
@@ -975,6 +1030,22 @@ RSP-09B prueba backend HTTP y **emisión/persistencia** de tickets, no handshake
 16. migración 008 fresh/upgrade/rerun e índices/constraints de `sesion_nativa` + `ticket_ws_nativo`, incluido `expires_at` para cleanup;
 17. logs, errores y métricas no contienen token/ticket raw.
 
+Límite transaccional obligatorio en RSP-09B:
+
+1. usuario con cero sesiones: login crea una activa;
+2. cinco instalaciones distintas producen exactamente cinco activas;
+3. sexta instalación revoca la activa más antigua y deja cinco;
+4. misma `installation_id` reemplaza la anterior antes del count y no aumenta cantidad;
+5. sesión expirada no consume cupo;
+6. sesión revocada no consume cupo;
+7. sesión con `version_sesion_emitida` vieja no consume cupo;
+8. dos logins concurrentes con cuatro existentes usan barreras/transacciones reales y finalizan con <= 5;
+9. seis logins concurrentes desde cero pueden completar y terminan con exactamente cinco activas, nunca seis tras commits;
+10. eviction es determinista por `created_at, id_sesion_nativa` y revoca las filas necesarias si el estado previo excede el máximo;
+11. login de usuario A no cuenta ni revoca sesiones de B;
+12. Bearer evicted deja de autenticar y requiere login normal;
+13. Bearer evicted no emite `ws-ticket`; un ticket pendiente queda ligado a parent inválida, y RSP-09D prueba su rechazo al redimir/cierre del socket.
+
 Versionado HTTP native obligatorio en RSP-09B:
 
 1. login sin platform/build o con metadata inválida: rechazo tipado, sin buscar/emitir sesión;
@@ -992,7 +1063,7 @@ Versionado HTTP native obligatorio en RSP-09B:
 13. logout-all exige sesión activa + metadata válida, pero permite build bajo el mínimo como reducción de privilegio;
 14. `ws-ticket` no se emite para build obsoleto y persiste platform/build actuales cuando sí se emite.
 
-Retención obligatoria en RSP-09B:
+Retención obligatoria de tickets en RSP-09B:
 
 1. ticket válido reciente no se elimina;
 2. ticket expirado pero aún dentro de retention se conserva;
@@ -1005,6 +1076,23 @@ Retención obligatoria en RSP-09B:
 9. startup/timer disparan el janitor; readiness/emisión quedan bloqueadas ante sweep inicial o backlog persistentemente fallidos;
 10. logs/métricas del janitor no contienen raw ni HMAC;
 11. emisión continua + cleanup mantiene acotado el conjunto en un test controlado.
+
+Retención obligatoria de sesiones en RSP-09B:
+
+1. sesión activa no se borra;
+2. sesión revocada dentro de retention se conserva;
+3. revocada fuera de retention se elimina;
+4. expirada dentro de retention se conserva;
+5. expirada fuera de retention se elimina;
+6. versión vieja pero aún no expirada no se borra prematuramente ni se inventa `terminal_at`;
+7. cleanup de sesiones respeta el batch limit y orden terminal;
+8. cleanup repetido/concurrente es idempotente;
+9. cleanup de usuario A no toca una sesión válida de B;
+10. FK `ON DELETE CASCADE` elimina tickets residuales según el diseño sin comprometer auth/auditoría necesaria;
+11. un ciclo ejecuta ticket cleanup antes de session cleanup usando el mismo janitor;
+12. startup cleanup y recuperación de backlog quedan cubiertos;
+13. migración 008 contiene los índices de ambas ramas de cleanup;
+14. logins/replacements/evictions acumulados convergen a un conjunto acotado en un test controlado.
 
 Además preserva CORS/Origin exactos Android+iOS, CSRF web, redacción, inventario de endpoints protegidos y Bearer para JSON/multipart/foto/PDF. **No se exige a RSP-09B** handshake real, consumo single-use, concurrencia de redemption, registry, heartbeat, revalidación ni fan-out; esas responsabilidades pertenecen a RSP-09D.
 
@@ -1045,7 +1133,7 @@ Ticket/redemption:
 8. ticket cuya `version_sesion_emitida` quedó vieja: rechazo;
 9. ticket cuyo usuario está inactivo/sin acceso: rechazo.
 
-Además, un ticket emitido con build entonces admitido se rechaza si el mínimo de su plataforma aumenta antes de la redención.
+Además, un ticket emitido con build entonces admitido se rechaza si el mínimo de su plataforma aumenta antes de la redención; un ticket pendiente cuya parent fue evicted por cupo también se rechaza.
 
 Socket establecido:
 
@@ -1056,6 +1144,7 @@ Socket establecido:
 14. cambio de `version_sesion`: socket cierra;
 15. error transitorio de DB/revalidación: fail-closed, no entrega eventos y el cliente reconecta por flujo normal;
 16. revocar/fallar una sesión o usuario no consume tickets ni cierra sockets de otra sesión/usuario.
+17. eviction por límite cierra best-effort el socket de esa `id_sesion_nativa` y la revalidación lo cierra aunque se pierda el evento local.
 
 Los tests de concurrencia deben usar barreras reales o transacciones coordinadas, no una secuencia que simule carreras. También deben demostrar que el cierre directo del registry es sólo una optimización y que la revalidación autoritativa funciona aunque el evento local no se entregue.
 
@@ -1099,7 +1188,7 @@ Los tests de fan-out deben modelar un solo evento lógico con selectores solapad
 
 ### Roadmap
 
-1. **RSP-09B — backend auth native + migración 008 + ticket emission/retention:** `sesion_nativa` + `ticket_ws_nativo`, HMAC/pepper, login/session/logout/logout-all, resolver dual, headers platform/build, mínimos Android/iOS para HTTP, `POST /api/auth/native/ws-ticket`, metadata de build, TTL/FK/rate limits/redaction, janitor obligatorio por lotes e índices/tests de retención; no implementa handshake WS.
+1. **RSP-09B — backend auth native + migración 008 + límite/retención:** `sesion_nativa` + `ticket_ws_nativo`, login serializado por usuario, máximo/eviction determinista, HMAC/pepper, session/logout, minimum-build HTTP, emisión `ws-ticket`, FK cascade, y janitor común por lotes para tickets/sesiones con índices/tests; no implementa handshake WS.
 2. **RSP-09C — cliente Capacitor compartido + secure storage Android/iOS + transport:** auditar/instalar el plugin, integrar Keystore/Keychain, Bearer y headers platform/build actuales en cada request, UX de metadata inválida/upgrade required, CSP, backup/lifecycle/configuración y pruebas JSON/multipart/blob/PDF. Recién entonces se reintroduce build native controlado.
 3. **RSP-09D — WebSocket redemption + registry/fan-out + lifecycle:** consumo atómico por hash exacto, parent/build validation, una conexión por sesión native, replacement/deduplicación, revalidación native con forced upgrade, revalidación web con `version_sesion_emitida` del JWT, fail-closed y cierre por logout/version/expiry/inactive/build; conserva cookie/`PUBLIC_ORIGIN` web y prueba concurrencia/delivery.
 4. **RSP-09E — build piloto Android + preparación iOS + pruebas reales GPS:** appId/firma y APK privado Android; preparación macOS/Xcode/bundle ID/distribución Apple; hardware real Android+iPhone en misma ubicación, cámara/GPS/red, permisos, instalación/upgrade/uninstall y fail-fast. No genera el proyecto iOS desde Windows.
@@ -1119,7 +1208,7 @@ Los tests de fan-out deben modelar un solo evento lógico con selectores solapad
 - no IMEI, Android ID como auth, serial, IDFA ni identificadores de tracking;
 - no pinning, biometría o root detection como bloqueo inicial;
 - no API de negocio duplicada en `/api/native`;
-- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1/R2/R3/R4/R5.
+- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1/R2/R3/R4/R5/R6.
 
 ### Riesgos/decisiones pendientes antes del piloto
 
@@ -1127,7 +1216,7 @@ Los tests de fan-out deben modelar un solo evento lógico con selectores solapad
 - accessibility/synchronizable de Keychain y exclusiones Android backup/D2D;
 - appId/bundle ID, firmas y mecanismos de distribución finales;
 - dominio real de staging/producción y CA de desarrollo;
-- valores productivos finales de TTL/retention/batch/cupos y mínimos enteros Android/iOS, conservando los defaults arquitectónicos R5;
+- valores productivos finales de TTL/retention/batch/cupos y mínimos enteros Android/iOS, conservando los defaults arquitectónicos R5/R6;
 - contenido offline permitido y protección de drafts;
 - comportamiento de logout offline y UX de reautenticación;
 - inventario de cualquier infraestructura externa que pueda registrar query WS;
