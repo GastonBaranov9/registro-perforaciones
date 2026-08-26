@@ -5,16 +5,18 @@ Generalización RSP-09A-R1: 2026-08-26
 Corrección RSP-09A-R2: 2026-08-26
 Corrección RSP-09A-R3: 2026-08-26
 Corrección RSP-09A-R4: 2026-08-26
+Corrección RSP-09A-R5: 2026-08-26
 Rama: `feature/rsp-09-android-auth`
 HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
 HEAD inicial R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
 HEAD inicial R3: `7193a4cb14661617389899a069f82c0ea578e6ce`
 HEAD inicial R4: `66287efb5177556453bc16ab423d1f7ac48c2f0a`
+HEAD inicial R5: `a77400af99796ca8f20d3f50ded84daa42a3ca75`
 
 ## 1. Resultado
 
-RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. R2 endureció tickets/revalidación; R3 separó el lookup idempotente de logout-device; R4 eliminó repeat-writes, definió registry/fan-out concurrente y asignó emisión/persistencia de tickets a 09B y redemption/runtime a 09D. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
+RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. R2 endureció tickets/revalidación; R3 separó el lookup idempotente de logout-device; R4 cerró repeat-writes/registry/roadmap WS; R5 conserva la versión emitida del JWT web, define build actual por request y hace obligatoria la retención acotada de tickets. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
 
 No se crearon rutas, migraciones, tokens, secrets, plugins, target iOS ni APK/IPA. El documento principal conserva su nombre histórico `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md` para evitar ruido de rename; su título y contrato ya son Mobile/Native.
 
@@ -98,11 +100,12 @@ La viabilidad de ticket WS se verificó arquitectónicamente contra `@fastify/we
 ## 7. Archivos modificados
 
 - `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md`: auditoría, matriz, decisión, contratos, threat model y roadmap; generalizados en R1 y endurecidos para WS native en R2.
-- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2/R3/R4.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2/R3/R4/R5.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R1.md`: evidencia específica de la generalización Mobile/Native.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R2.md`: evidencia de corrección de consumo/revalidación WS native.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R3.md`: evidencia del contrato idempotente de logout-device.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R4.md`: evidencia de repeat-write, fan-out/registry y roadmap definitivo de tickets.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R5.md`: evidencia de revalidación WS web, minimum-build actual y cleanup obligatorio.
 
 No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose, migraciones, package manifests ni locks.
 
@@ -121,9 +124,9 @@ No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose
 
 ## 9. Roadmap Mobile
 
-- RSP-09B: backend auth native, migración 008 (`sesion_nativa` + `ticket_ws_nativo`), resolver/logout y emisión/persistencia de `ws-ticket`; sin handshake WS.
-- RSP-09C: cliente Capacitor compartido, Keystore/Keychain, transport Bearer, CSP/backup/lifecycle/config.
-- RSP-09D: WebSocket native redemption, registry canónico, una conexión por sesión, fan-out/deduplicación, revalidación/revocación/reconnect y ventana WS web tras logout.
+- RSP-09B: backend auth native, migración 008, minimum-build HTTP por plataforma, emisión/persistencia de `ws-ticket` y janitor obligatorio de retención; sin handshake WS.
+- RSP-09C: cliente Capacitor compartido, Keystore/Keychain, Bearer + headers platform/build, UX upgrade required, CSP/backup/lifecycle/config.
+- RSP-09D: redemption WS, registry/fan-out, revalidación native incluida minimum build, y revalidación web contra `version_sesion_emitida` del JWT.
 - RSP-09E: APK piloto Android, preparación macOS/Xcode/distribución iOS y pruebas GPS reales Android+iPhone en la misma ubicación.
 - RSP-09F: drafts, idempotencia y resiliencia offline.
 
@@ -177,3 +180,19 @@ R4 cierra tres P2 documentales:
 - los tests quedan divididos por esa frontera: HTTP/DB/emisión en 09B; consumo/concurrencia/delivery en 09D.
 
 R4 no modifica runtime ni crea la migración 008; `000`–`007` permanecen intactas.
+
+## 14. Corrección RSP-09A-R5
+
+R5 cierra tres P2 documentales sin rediseñar los contratos anteriores:
+
+- la auditoría confirmó que `/ws` valida cookie JWT con `sub`/`version_sesion`, pero el registry sólo conserva `id_usuario`/`isAdmin` y el heartbeat actual sólo comprueba ping/pong;
+- RSP-09D guardará en cada conexión web la `version_sesion_emitida` procedente del JWT validado y la comparará periódicamente con DB; direct close sigue siendo best-effort y un socket stale revalida antes de delivery o cierra fail-closed;
+- native separa `app_version` humana de `app_build` entero monotónico y exige en cada request normal `X-Native-Platform` + `X-Native-App-Build` actuales;
+- `MIN_NATIVE_ANDROID_BUILD` y `MIN_NATIVE_IOS_BUILD` permiten upgrade-in-place con el mismo token y forced retirement en la siguiente request/heartbeat; la metadata `*_at_login` es sólo auditoría y no se reescribe por request;
+- logout-device omite metadata/mínimo para no impedir el cierre; logout-all exige sesión activa y metadata válida, pero omite el umbral mínimo como acción reductora; `ws-ticket` sí exige mínimo y captura platform/build;
+- RSP-09D conserva platform/build del socket native y cierra en heartbeat si aumenta el mínimo; la señal declarada no es anti-tamper;
+- ticket mantiene TTL recomendado 30 s y retención post-expiry recomendada 60 min, configurables;
+- RSP-09B implementará janitor obligatorio al startup y cada ~5 min, con lotes configurables de 500 sobre índice `expires_at`, continuación del backlog, concurrencia idempotente y pruebas de acotación;
+- la migración futura 008 incorpora metadata platform/build e índices para lookup/FK/expiry; R5 no crea ni modifica migraciones.
+
+Los tests quedan asignados sin solapamiento: RSP-09B cubre headers/minimum-build HTTP, excepciones logout, emisión y cleanup; RSP-09D cubre version/build capturados por conexiones, revalidación web/native, forced upgrade y pre-delivery fail-closed.
