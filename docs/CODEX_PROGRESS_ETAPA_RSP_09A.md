@@ -3,14 +3,16 @@
 Fecha: 2026-08-24
 Generalización RSP-09A-R1: 2026-08-26
 Corrección RSP-09A-R2: 2026-08-26
+Corrección RSP-09A-R3: 2026-08-26
 Rama: `feature/rsp-09-android-auth`
 HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
 HEAD inicial R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
+HEAD inicial R3: `7193a4cb14661617389899a069f82c0ea578e6ce`
 
 ## 1. Resultado
 
-RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. RSP-09A-R2 corrigió dos P2 del contrato WebSocket native: consumo atómico acotado al hash presentado y revalidación obligatoria de la sesión padre. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
+RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. RSP-09A-R2 corrigió dos P2 del contrato WebSocket native. RSP-09A-R3 separó el resolver Bearer estricto del lookup especial de logout-device para que retries posteriores a la revocación sigan devolviendo 204 sin autenticar la sesión. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
 
 No se crearon rutas, migraciones, tokens, secrets, plugins, target iOS ni APK/IPA. El documento principal conserva su nombre histórico `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md` para evitar ruido de rename; su título y contrato ya son Mobile/Native.
 
@@ -94,9 +96,10 @@ La viabilidad de ticket WS se verificó arquitectónicamente contra `@fastify/we
 ## 7. Archivos modificados
 
 - `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md`: auditoría, matriz, decisión, contratos, threat model y roadmap; generalizados en R1 y endurecidos para WS native en R2.
-- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2/R3.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R1.md`: evidencia específica de la generalización Mobile/Native.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R2.md`: evidencia de corrección de consumo/revalidación WS native.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R3.md`: evidencia del contrato idempotente de logout-device.
 
 No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose, migraciones, package manifests ni locks.
 
@@ -115,7 +118,7 @@ No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose
 
 ## 9. Roadmap Mobile
 
-- RSP-09B: backend auth native común, DB, resolver dual, CORS/Origin/CSRF branch, logout y tests Android+iOS.
+- RSP-09B: backend auth native común, DB, resolver dual estricto + lookup exclusivo de logout-device, CORS/Origin/CSRF branch, logout y tests Android+iOS.
 - RSP-09C: cliente Capacitor compartido, Keystore/Keychain, transport Bearer, CSP/backup/lifecycle/config.
 - RSP-09D: WebSocket native común, consumo por hash exacto, revalidación obligatoria cada heartbeat, replay/revocación/reconnect y ventana WS web tras logout.
 - RSP-09E: APK piloto Android, preparación macOS/Xcode/distribución iOS y pruebas GPS reales Android+iPhone en la misma ubicación.
@@ -141,3 +144,18 @@ El review detectó que el pseudo-`UPDATE` de tickets no incluía `ticket_hash`, 
 - matriz futura de concurrencia, revocación, expiración, aislamiento y fallos para RSP-09B/09D.
 
 El WebSocket web conserva cookie/`PUBLIC_ORIGIN` y su hallazgo histórico: una conexión ya abierta aún no se revalida proactivamente. Su hardening permanece asignado a RSP-09D; R2 no modifica runtime.
+
+## 12. Corrección RSP-09A-R3
+
+El review detectó que el resolver normal rechazaba `revoked_at` antes de entrar al handler, contradiciendo el 204 idempotente prometido cuando la primera respuesta se pierde. R3 define:
+
+- resolver Bearer normal intacto y estricto para negocio, `/session`, `ws-ticket` y `logout-all`;
+- lookup exclusivo de `POST /api/auth/native/logout` por HMAC/token hash exacto, incluso para fila revocada, expirada, de versión antigua o usuario inactivo;
+- header ausente/malformado: error auth; Bearer bien formado conocido, inutilizable o desconocido: 204 vacío uniforme;
+- `UPDATE revoked_at = COALESCE(revoked_at, now())`, commit durable antes del 204 y cierre WS sólo como efecto complementario;
+- ninguna autenticación, roles, fallback a cookie o modificación de otra sesión desde este lookup;
+- logout-all continúa exigiendo sesión activa porque afecta otros dispositivos y web;
+- estado cliente `logout pending`: bloquea negocio, conserva el token seguro sólo para retry y lo borra tras 204;
+- matriz de respuestas y 16 tests futuros de idempotencia, concurrencia, anti-oracle, aislamiento y respuesta perdida para RSP-09B.
+
+R3 no cambia runtime, WS tickets/revalidación, web auth, CSRF, Origin, storage ni decisiones criptográficas.

@@ -3,10 +3,12 @@
 Fecha de cierre arquitectónico: 2026-08-24
 Generalización RSP-09A-R1: 2026-08-26
 Corrección RSP-09A-R2: 2026-08-26
+Corrección RSP-09A-R3: 2026-08-26
 Rama auditada: `feature/rsp-09-android-auth`
 Base y HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial de RSP-09A-R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
 HEAD inicial de RSP-09A-R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
+HEAD inicial de RSP-09A-R3: `7193a4cb14661617389899a069f82c0ea578e6ce`
 
 ## 1. Resumen y decisión
 
@@ -36,7 +38,7 @@ Esta decisión cumple el objetivo de revocación inmediata usando PostgreSQL y `
 
 ## 2. Alcance y restricciones congeladas
 
-En RSP-09A/R1 no se crean rutas, tokens, tablas ni builds mobile productivos. Tampoco se instala un plugin ni se genera el proyecto iOS. Quedan congelados:
+En RSP-09A/R1/R2/R3 no se crean rutas, tokens, tablas ni builds mobile productivos. Tampoco se instala un plugin ni se genera el proyecto iOS. Quedan congelados:
 
 - login web y su respuesta;
 - `rsp_session` HttpOnly;
@@ -441,16 +443,60 @@ Reglas:
 ### Estado y logout
 
 - `GET /api/auth/native/session`: autentica Bearer, devuelve usuario/roles actuales, expiración y quizá server time; se usa al recuperar conectividad/resume.
-- `POST /api/auth/native/logout`: revoca sólo `id_sesion_nativa` actual, responde 204 de forma idempotente; el cliente borra secure storage después de respuesta o conserva una marca local de logout pendiente si no hay red.
-- `POST /api/auth/native/logout-all`: acción explícita y confirmada; incrementa `version_sesion` y revoca web y todas las sesiones native. Debe documentar que también expulsa el navegador.
+- `POST /api/auth/native/logout`: asegura que la sesión identificada exactamente por el Bearer ya no pueda utilizarse y responde 204 de forma idempotente mediante el lookup especial definido abajo.
+- `POST /api/auth/native/logout-all`: acción explícita y confirmada que **requiere sesión native activa mediante el resolver normal**; incrementa `version_sesion` y revoca web y todas las sesiones native. Debe documentar que también expulsa el navegador.
 - `POST /api/auth/native/ws-ticket`: autentica el mismo Bearer y emite un ticket efímero single-use para el WebSocket común.
 - no existe endpoint refresh en el MVP; al expirar se reautentica con password.
 
 El contrato completo es multiplataforma: sesión opaca, Bearer, HMAC/token hash, `version_sesion`, `expires_at`, `revoked_at`, `installation_id`, logout de dispositivo, logout global, rate limit, autorización, branching de CORS/Origin/CSRF, tickets WS y logging/redaction son una única implementación backend. Los endpoints de negocio y sus guards también son únicos.
 
+### `POST /api/auth/native/logout`: cierre idempotente de una sesión
+
+La operación significa **“asegurar que esta credencial de sesión native ya es inutilizable”**, no “autenticar una sesión activa y luego revocarla”. Por eso es la única ruta que no pasa primero por el resolver Bearer normal que exige sesión activa. Su resolver especial tiene capacidad exclusiva de cierre y nunca crea una identidad autenticada reutilizable por handlers de negocio.
+
+Flujo obligatorio, después de aplicar rate limit y la política native de CORS/Origin vigente:
+
+1. exigir un único header `Authorization` con esquema `Bearer` y token no vacío que cumpla exactamente el formato/version/longitud permitidos (`rspn1_` y payload de 256 bits según el contrato final);
+2. si falta el header, el esquema no es Bearer, el token está vacío/malformado/fuera de formato o además se recibió `rsp_session`, responder 401/error auth estándar por ausencia/formato/credenciales ambiguas; jamás probar cookie web;
+3. calcular HMAC del raw según el dominio de tokens native y buscar **sólo** `sesion_nativa.token_hash = $HASH_PRESENTADO`, aun si la fila está revocada, expirada, emitida con versión antigua o pertenece a un usuario ahora inactivo;
+4. asegurar la revocación mediante una mutación idempotente equivalente a:
+
+```sql
+UPDATE sesion_nativa
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE token_hash = $HASH_PRESENTADO
+RETURNING id_sesion_nativa, id_usuario;
+```
+
+5. confirmar la transacción DB antes de enviar la respuesta; la revocación durable es la fuente autoritativa;
+6. si hubo fila, cerrar best-effort los sockets del `id_sesion_nativa` en el registry local. Los tickets pendientes ya fallan por sesión padre inválida y no necesitan borrado físico; fallar al encontrar/cerrar un socket nunca revierte `revoked_at` ni cambia el 204 porque el heartbeat autoritativo completará el cierre;
+7. responder siempre 204 sin body para cualquier Bearer **bien formado**, tanto si el `UPDATE` devolvió una fila como si el hash era desconocido.
+
+El lookup nunca usa `id_usuario`, email o `installation_id` aportados por el cliente y no puede afectar otra sesión. Un hash desconocido no crea filas ni modifica una sesión aproximada. Responder 204 uniforme evita que logout revele si el token existe, estaba activo/revocado/expirado, si la versión coincide o si el usuario está activo. Raw, hash y estado interno no aparecen en body o logs.
+
+La operación sigue bajo el rate limiter global y límites razonables de API; la respuesta indulgente no permite spam ilimitado. Mantiene Bearer explícito, native Origin policy y exención CSRF propia del mecanismo no ambiental. Web logout permanece separado con cookie, CSRF, Origin y semántica actual.
+
+Con requests concurrentes para el mismo token, `COALESCE`/locking normal de PostgreSQL produce una sola transición lógica `active → revoked`, pero todos pueden finalizar 204. No hay 409, reactivación ni estado intermedio. Si la primera transacción confirma y su 204 se pierde, cualquier retry con el mismo Bearer bien formado vuelve a obtener 204 sin volver a autenticar la sesión.
+
+### Matriz de resolución native
+
+La tabla asume que CORS/Origin y rate limit ya fueron aceptados. “401” representa el error auth uniforme futuro, sin detalle de estado:
+
+| Estado del Bearer | `native/logout` | `native/logout-all` | negocio/`session`/`ws-ticket` |
+|---|---:|---:|---:|
+| sesión activa | 204, queda revocada | permitido | permitido |
+| sesión ya revocada | 204 | 401 | 401 |
+| sesión expirada conocida | 204 | 401 | 401 |
+| `version_sesion` obsoleta | 204 | 401 | 401 |
+| usuario inactivo/sin acceso | 204 | 401 | 401 |
+| token bien formado desconocido | 204 | 401 | 401 |
+| header ausente/esquema o token malformado | 401 | 401 | 401 |
+
+`logout-all` no hereda esta semántica porque incrementa `version_sesion` y afecta web/otros dispositivos: requiere autenticación native activa y el resolver normal. `logout` tampoco hace fallback a cookie ante ninguna clase de Bearer.
+
 ## 13. Resolver de autenticación y scope de endpoints
 
-Se reutilizarán todos los endpoints de negocio para Android e iOS. Sólo `/auth/native/*` es namespace mobile separado del web histórico. El futuro resolver ejecutará antes de CSRF:
+Se reutilizarán todos los endpoints de negocio para Android e iOS. Sólo `/auth/native/*` es namespace mobile separado del web histórico. Salvo el lookup de cierre exclusivo de `POST /api/auth/native/logout`, el resolver normal permanece estricto y ejecutará antes de CSRF:
 
 1. si existe cualquier header `Authorization`, sólo acepta exactamente un esquema `Bearer` bien formado;
 2. si también existe `rsp_session`, rechaza la combinación como credenciales ambiguas; el cliente native debe usar `credentials: 'omit'`;
@@ -460,6 +506,8 @@ Se reutilizarán todos los endpoints de negocio para Android e iOS. Sólo `/auth
 6. normaliza identidad y mecanismo (`web-cookie` o `native-bearer`) en request para guards, CSRF, logging y métricas.
 
 Esto evita downgrade y token substitution. Los guards de rol/ownership no deben ramificarse por plataforma. Una ruta marcada sólo-web o sólo-native deberá declararlo explícitamente; health y preflight permanecen públicos según contrato.
+
+La excepción de logout-device no modifica estas reglas para ninguna otra ruta: una sesión inexistente, revocada, expirada, de usuario inactivo, con `version_sesion` obsoleta o binding inválido sigue sin autenticar negocio, `/auth/native/session`, `/auth/native/ws-ticket` y `/auth/native/logout-all`. El resolver especial sólo puede asegurar revocación y devolver 204; no produce `request.user`, roles ni fallback a cookie.
 
 CSRF debe consultar el mecanismo autenticado, no inferir únicamente presencia de cookie. El orden actual de hooks tendrá que refactorizarse con tests en RSP-09B, preservando bit a bit el comportamiento cookie observable.
 
@@ -578,7 +626,7 @@ El registry directo sólo conoce sockets de la instancia API local. La seguridad
 
 ## 16. Revocación, `version_sesion` y autorización
 
-Cada fila native guarda `version_sesion_emitida`. En cada autenticación se consulta sesión y usuario en una query indexada y se exige:
+Cada fila native guarda `version_sesion_emitida`. En cada autenticación activa —todas salvo el lookup no autenticante de logout-device— se consulta sesión y usuario en una query indexada y se exige:
 
 - `revoked_at IS NULL`;
 - `expires_at > now()`;
@@ -590,8 +638,8 @@ Esto da revocación inmediata para HTTP y sirve como condición autoritativa de 
 
 Semántica UX:
 
-- **Cerrar sesión en este dispositivo:** revoca sólo la fila native actual. HTTP posterior falla, tickets pendientes de esa sesión no redimen y sus WS se cierran por evento local best-effort o, como máximo, en la siguiente revalidación obligatoria. No incrementa versión.
-- **Cerrar todas las sesiones:** incrementa `version_sesion`; revoca web y todos los dispositivos. Tickets de versiones anteriores no redimen y WS native se cierran. Debe advertirse explícitamente.
+- **Cerrar sesión en este dispositivo:** el hash del Bearer identifica sólo esa fila native; `revoked_at = COALESCE(revoked_at, now())` hace que primer intento, retries y requests concurrentes bien formados respondan 204. HTTP de negocio posterior falla, tickets pendientes de esa sesión no redimen y sus WS se cierran por evento local best-effort o, como máximo, en la siguiente revalidación obligatoria. No incrementa versión.
+- **Cerrar todas las sesiones:** requiere sesión native activa mediante resolver normal, incrementa `version_sesion` y revoca web y todos los dispositivos. Tickets de versiones anteriores no redimen y WS native se cierran. Debe advertirse explícitamente.
 - **Logout web actual:** sigue incrementando `version_sesion`, por tanto también revocará Android e iOS, incluidos tickets/WS native de la versión anterior. Se conserva por contrato.
 - **Administración:** desactivar/eliminar/cambiar roles relevantes invalida HTTP/tickets y cierra WS native por evento conocido o heartbeat autoritativo.
 
@@ -604,6 +652,7 @@ RSP-09B debe mantener el limitador global y evitar un bypass mediante rutas nati
 - login web y native comparten como mínimo 10 intentos/min/IP;
 - agregar límite por identificador de cuenta normalizado/hasheado cuando sea posible, sin enumeración;
 - requests normales consumen límite por IP y, una vez autenticadas, límite por sesión/usuario;
+- logout-device especial conserva el límite global/IP razonable aunque un token bien formado desconocido responda 204; no necesita heredar el límite agresivo de login;
 - WS ticket consume API general más límite específico;
 - upgrades/conexiones WS tienen cupo propio;
 - si se escala a múltiples instancias, el limiter en memoria deberá sustituirse por estado compartido; no es necesario para el piloto de una instancia.
@@ -616,7 +665,7 @@ Redacción futura mínima:
 - body completo de ambos logins o como mínimo email/password;
 - Android Logcat, iOS unified/Xcode logs, WebView console, crash reports y herramientas de red.
 
-Los logs sólo necesitan request id, ruta parametrizada, mecanismo (`web-cookie`/`native-bearer`), id interno de sesión si es útil, status y duración. Nunca raw/hash parcial utilizable.
+Los logs sólo necesitan request id, ruta parametrizada, mecanismo (`web-cookie`/`native-bearer`), id interno de sesión si es útil, status y duración. Logout-device especial se marca como cierre no autenticante (por ejemplo `native-logout-closure`), nunca como identidad activa, y no expone si el hash tuvo match. Nunca raw/hash parcial utilizable.
 
 ## 18. Fotos, uploads, PDF y Maps
 
@@ -655,6 +704,29 @@ Un request a mitad puede haber sido aplicado aunque el cliente no reciba respues
 
 El cliente conoce `expires_at`, pero no borra la credencial por reloj local o falta de red. Al recuperar conexión, el servidor decide. Si el token expiró offline, la UI pide login antes de enviar la cola y nunca elimina borradores.
 
+#### Logout mobile y estado `logout pending`
+
+```text
+token en secure storage
+  -> usuario pulsa cerrar sesión
+  -> bloquear inmediatamente uso local para negocio y cerrar WS cliente
+  -> POST /api/auth/native/logout
+
+204
+  -> borrar token/pending state de secure storage
+  -> limpiar usuario/cache de sesión
+  -> volver a login
+
+timeout/error de red/sin conexión
+  -> no asumir revocación server-side
+  -> mantener en secure storage sólo lo necesario para reintentar
+  -> estado local logout pending, sin usar Bearer para negocio
+  -> al volver Internet, repetir logout
+  -> 204 y limpieza definitiva
+```
+
+El token pendiente no habilita continuar trabajando autenticado. Puede usarse únicamente por el flujo encapsulado de retry de logout hasta recibir 204; diseño detallado de UX/colas queda para RSP-09C/RSP-09F. Si el primer `COMMIT` ocurrió pero la respuesta se perdió, el retry recibe 204 aunque la sesión ya esté revocada. Si la fila expiró, quedó con versión vieja, el usuario fue desactivado o un cleanup la eliminó, el mismo contrato 204 permite terminar la limpieza local.
+
 ### 19.2 Background, resume y reinicio
 
 - Android debe cubrir background, process kill y reboot; iOS debe cubrir background/suspensión, process termination y device restart;
@@ -662,7 +734,7 @@ El cliente conoce `expires_at`, pero no borra la credencial por reloj local o fa
 - cargar el token en memoria sólo cuando una operación autenticada lo requiera y liberar referencias no necesarias; no serializarlo para sobrevivir procesos;
 - en resume tras horas/días, comprobar red y estado si pasó un umbral configurable o se acerca expiry;
 - en background/suspensión no hacer refresh inexistente ni iniciar servicios; minimizar trabajo y limpiar referencias no necesarias sin borrar storage;
-- en logout confirmado, limpiar memoria y storage; si se pulsa logout offline, bloquear uso local, registrar una revocación pendiente no secreta y enviar al volver la red antes de borrar definitivamente el raw necesario para revocar;
+- en logout confirmado por 204, limpiar memoria y storage; si se pulsa logout offline, bloquear uso local y conservar de forma segura token + estado `logout pending` sólo hasta poder reintentar, sin copiar el raw a una marca/log/cola insegura;
 - no colocar token en singleton de estado serializable, Redux/devtools, signals públicas ni service worker.
 
 RSP-09A-R1 no implementa background services. iOS puede suspender o terminar el proceso sin aviso útil, y Android también puede matarlo; la corrección depende de persistencia segura + reconstrucción idempotente, no de mantener código activo en segundo plano.
@@ -737,6 +809,7 @@ Tests de artifact deben probar que web sigue `/api/` y `/ws` same-origin y que s
 | session fixation | servidor genera token, no acepta valor cliente, rotación transaccional | malware con control de proceso puede sustituir estado local |
 | token substitution | formato estricto, HMAC, relación a sesión/usuario/version, ambas credenciales rechazadas | compromiso backend/pepper |
 | downgrade cookie/Bearer | Authorization presente nunca cae a cookie; mezcla rechazada | rutas que omitan resolver; inventario/test obligatorio |
+| oracle/retry de logout | formato estricto, lookup exacto por HMAC y 204 vacío uniforme para Bearer bien formado conocido/desconocido/inutilizable | timing interno debe mantenerse bajo observación sin registrar raw/hash |
 | usuario desactivado offline | no hay acceso server-side offline; al volver se valida antes de sync | datos ya cacheados siguen visibles según política local futura |
 | rol removido | roles actuales y `version_sesion` en cada request | datos cacheados requieren política offline futura |
 | request duplicado al reconectar | futuro idempotency key/cola; no reintentar mutaciones ciegamente | RSP-09A no implementa sync offline |
@@ -774,6 +847,27 @@ Crear rutas/test doubles de tokens sin el resolver definitivo habría parecido u
 - inventario automático: todo endpoint protegido usa el resolver común;
 - multipart, foto, PDF y respuestas binarias autenticadas con Bearer.
 
+Logout-device idempotente:
+
+1. sesión activa: 204, `revoked_at` confirmado antes de responder y sin body;
+2. retry con el mismo token: 204 y timestamp no reactivado/revertido;
+3. dos logout concurrentes del mismo token: ambos 204 y una sola transición lógica;
+4. token ya revocado: logout 204;
+5. token conocido pero expirado: logout 204;
+6. token de sesión con `version_sesion` antigua: logout 204 sin cambiar la versión actual;
+7. token de usuario inactivo/sin acceso: logout 204;
+8. token sintácticamente válido pero desconocido/eliminado: 204, ninguna fila fabricada/modificada y mismo body observable;
+9. `Authorization` ausente: 401/error auth estándar;
+10. esquema no Bearer, Bearer vacío o formato/longitud inválidos: 401/error auth estándar;
+11. token revocado no accede a endpoints de negocio ni `/auth/native/session`;
+12. token revocado no obtiene `/auth/native/ws-ticket`;
+13. token revocado/expirado/desconocido no ejecuta `/auth/native/logout-all`;
+14. logout-all con sesión activa conserva su requisito de autenticación y efectos globales;
+15. simular `COMMIT` de logout seguido de pérdida del 204: retry con el mismo raw devuelve 204;
+16. logout-device de una sesión no revoca, consume ticket ni cierra WS de otra sesión.
+
+Las pruebas 2, 3, 8 y 15 deben comprobar uniformidad de status/body y concurrencia coordinada; ningún caso permite fallback a cookie. También deben verificar rate limit, Origin native y redacción sin debilitar web logout/CSRF.
+
 ### Tests obligatorios RSP-09D
 
 Ticket/redemption:
@@ -791,7 +885,7 @@ Ticket/redemption:
 Socket establecido:
 
 10. expiración natural de la sesión: siguiente revalidación cierra y desregistra el socket;
-11. logout de dispositivo: HTTP posterior falla, ticket pendiente no redime y WS de esa sesión cierra;
+11. logout de dispositivo: negocio/`session`/`ws-ticket` posteriores fallan, retry de logout devuelve 204, ticket pendiente no redime y WS de esa sesión cierra;
 12. logout global: sockets/tickets native de versiones anteriores quedan inválidos, además del contrato web vigente;
 13. usuario desactivado: socket cierra;
 14. cambio de `version_sesion`: socket cierra;
@@ -802,7 +896,7 @@ Los tests de concurrencia deben usar barreras reales o transacciones coordinadas
 
 ### Roadmap
 
-1. **RSP-09B — backend auth native común + DB + tests:** una migración y una implementación HMAC/pepper, login/session/logout/logout-all, resolver dual, branching CSRF/CORS/Origin por mecanismo, rate limits, redaction y tests; sirve a Android+iOS y no incluye cliente productivo.
+1. **RSP-09B — backend auth native común + DB + tests:** una migración y una implementación HMAC/pepper, login/session/logout/logout-all, resolver dual estricto más lookup exclusivo de logout-device, branching CSRF/CORS/Origin por mecanismo, rate limits, redaction y tests; sirve a Android+iOS y no incluye cliente productivo.
 2. **RSP-09C — cliente Capacitor compartido + secure storage Android/iOS + transport:** auditar/instalar el plugin, integrar Keystore/Keychain, transport Bearer, CSP local, políticas backup/migración, lifecycle, configuración por entorno y pruebas de JSON/multipart/blob/PDF. Recién entonces se reintroduce build native controlado.
 3. **RSP-09D — WebSocket native + lifecycle + revocación:** tabla/endpoint común de tickets, consumo atómico por hash exacto, validación/revalidación obligatoria de sesión padre, origins Android/iOS, cierre fail-closed, heartbeat/reconnect y tests de replay/carreras; también cierra/revalida la ventana WS web ya abierta tras logout.
 4. **RSP-09E — build piloto Android + preparación iOS + pruebas reales GPS:** appId/firma y APK privado Android; preparación macOS/Xcode/bundle ID/distribución Apple; hardware real Android+iPhone en misma ubicación, cámara/GPS/red, permisos, instalación/upgrade/uninstall y fail-fast. No genera el proyecto iOS desde Windows.
@@ -822,7 +916,7 @@ Los tests de concurrencia deben usar barreras reales o transacciones coordinadas
 - no IMEI, Android ID como auth, serial, IDFA ni identificadores de tracking;
 - no pinning, biometría o root detection como bloqueo inicial;
 - no API de negocio duplicada en `/api/native`;
-- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1/R2.
+- no build/APK/IPA productivo ni generación de `ios/` en RSP-09A/R1/R2/R3.
 
 ### Riesgos/decisiones pendientes antes del piloto
 
