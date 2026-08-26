@@ -4,15 +4,17 @@ Fecha: 2026-08-24
 Generalización RSP-09A-R1: 2026-08-26
 Corrección RSP-09A-R2: 2026-08-26
 Corrección RSP-09A-R3: 2026-08-26
+Corrección RSP-09A-R4: 2026-08-26
 Rama: `feature/rsp-09-android-auth`
 HEAD inicial: `14df7c0a7fa300a76df9646405eddfa4d247c0b3`
 HEAD inicial R1: `ad4b86acfc90d075733f13ee766be128fad1bc93`
 HEAD inicial R2: `976e802d384e05338e0871e8ef7f7261f529c26c`
 HEAD inicial R3: `7193a4cb14661617389899a069f82c0ea578e6ce`
+HEAD inicial R4: `66287efb5177556453bc16ab423d1f7ac48c2f0a`
 
 ## 1. Resultado
 
-RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. RSP-09A-R2 corrigió dos P2 del contrato WebSocket native. RSP-09A-R3 separó el resolver Bearer estricto del lookup especial de logout-device para que retries posteriores a la revocación sigan devolviendo 204 sin autenticar la sesión. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
+RSP-09A nació como arquitectura Android/Capacitor y RSP-09A-R1 generalizó su resultado a **Mobile/Native Android+iOS** sin cambiar runtime productivo ni las decisiones base. R2 endureció tickets/revalidación; R3 separó el lookup idempotente de logout-device; R4 eliminó repeat-writes, definió registry/fan-out concurrente y asignó emisión/persistencia de tickets a 09B y redemption/runtime a 09D. Web conserva cookie HttpOnly + CSRF; un único cliente mobile y un único backend native comparten sesión Bearer opaca, aleatoria, revocable y persistida server-side sólo por HMAC.
 
 No se crearon rutas, migraciones, tokens, secrets, plugins, target iOS ni APK/IPA. El documento principal conserva su nombre histórico `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md` para evitar ruido de rename; su título y contrato ya son Mobile/Native.
 
@@ -96,10 +98,11 @@ La viabilidad de ticket WS se verificó arquitectónicamente contra `@fastify/we
 ## 7. Archivos modificados
 
 - `docs/CODEX_ARQUITECTURA_RSP_09A_ANDROID_AUTH.md`: auditoría, matriz, decisión, contratos, threat model y roadmap; generalizados en R1 y endurecidos para WS native en R2.
-- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2/R3.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A.md`: registro acumulado de etapa y addenda R1/R2/R3/R4.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R1.md`: evidencia específica de la generalización Mobile/Native.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R2.md`: evidencia de corrección de consumo/revalidación WS native.
 - `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R3.md`: evidencia del contrato idempotente de logout-device.
+- `docs/CODEX_PROGRESS_ETAPA_RSP_09A_R4.md`: evidencia de repeat-write, fan-out/registry y roadmap definitivo de tickets.
 
 No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose, migraciones, package manifests ni locks.
 
@@ -118,9 +121,9 @@ No se modificaron archivos de API, frontend runtime, Android/iOS, proxy, Compose
 
 ## 9. Roadmap Mobile
 
-- RSP-09B: backend auth native común, DB, resolver dual estricto + lookup exclusivo de logout-device, CORS/Origin/CSRF branch, logout y tests Android+iOS.
+- RSP-09B: backend auth native, migración 008 (`sesion_nativa` + `ticket_ws_nativo`), resolver/logout y emisión/persistencia de `ws-ticket`; sin handshake WS.
 - RSP-09C: cliente Capacitor compartido, Keystore/Keychain, transport Bearer, CSP/backup/lifecycle/config.
-- RSP-09D: WebSocket native común, consumo por hash exacto, revalidación obligatoria cada heartbeat, replay/revocación/reconnect y ventana WS web tras logout.
+- RSP-09D: WebSocket native redemption, registry canónico, una conexión por sesión, fan-out/deduplicación, revalidación/revocación/reconnect y ventana WS web tras logout.
 - RSP-09E: APK piloto Android, preparación macOS/Xcode/distribución iOS y pruebas GPS reales Android+iPhone en la misma ubicación.
 - RSP-09F: drafts, idempotencia y resiliencia offline.
 
@@ -152,10 +155,25 @@ El review detectó que el resolver normal rechazaba `revoked_at` antes de entrar
 - resolver Bearer normal intacto y estricto para negocio, `/session`, `ws-ticket` y `logout-all`;
 - lookup exclusivo de `POST /api/auth/native/logout` por HMAC/token hash exacto, incluso para fila revocada, expirada, de versión antigua o usuario inactivo;
 - header ausente/malformado: error auth; Bearer bien formado conocido, inutilizable o desconocido: 204 vacío uniforme;
-- `UPDATE revoked_at = COALESCE(revoked_at, now())`, commit durable antes del 204 y cierre WS sólo como efecto complementario;
+- mutación idempotente durable antes del 204 y cierre WS sólo como efecto complementario; R4 reemplaza la formulación inicial con `SET revoked_at = now() WHERE revoked_at IS NULL` para evitar repeat-write;
 - ninguna autenticación, roles, fallback a cookie o modificación de otra sesión desde este lookup;
 - logout-all continúa exigiendo sesión activa porque afecta otros dispositivos y web;
 - estado cliente `logout pending`: bloquea negocio, conserva el token seguro sólo para retry y lo borra tras 204;
 - matriz de respuestas y 16 tests futuros de idempotencia, concurrencia, anti-oracle, aislamiento y respuesta perdida para RSP-09B.
 
 R3 no cambia runtime, WS tickets/revalidación, web auth, CSRF, Origin, storage ni decisiones criptográficas.
+
+## 13. Corrección RSP-09A-R4
+
+R4 cierra tres P2 documentales:
+
+- logout-device usa `WHERE token_hash = $HASH_PRESENTADO AND revoked_at IS NULL`; retry/unknown/carrera afectan cero filas y aun así devuelven 204, sin lookup/UPDATE adicional;
+- dos logout concurrentes producen una sola escritura y respuestas 204/204;
+- el runtime auditado usa `clientConnections.find(id_usuario)` y `notifyAdmin`/`notifyAll` reingresan por ese helper, por lo que pueden hambrear conexiones posteriores o duplicar la primera;
+- RSP-09D sustituirá ese patrón por `connectionsById` canónico, índices por usuario/sesión, una conexión activa por `id_sesion_nativa`, replacement seguro y fan-out deduplicado por `connectionId`;
+- `notifyClient` entrega a cada conexión web elegible y a una conexión por cada sesión native válida; `notifyAdmin`/`notifyAll` usan unión/snapshot única, sin duplicación deliberada;
+- no se promete exactly-once/durabilidad, sólo no starvation, no duplicado dentro de un dispatch y fan-out a conexiones elegibles;
+- RSP-09B crea futura migración 008, ambas tablas e implementa emisión/persistencia de `/api/auth/native/ws-ticket`; RSP-09D implementa handshake/redemption, registry, fan-out y lifecycle;
+- los tests quedan divididos por esa frontera: HTTP/DB/emisión en 09B; consumo/concurrencia/delivery en 09D.
+
+R4 no modifica runtime ni crea la migración 008; `000`–`007` permanecen intactas.
