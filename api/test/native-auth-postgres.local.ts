@@ -321,17 +321,22 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
       "x-native-app-build": "10",
       "x-native-app-version": "1.0.0",
     };
-    assert.equal((await app.inject({
+    const missingMetadataLogin = await app.inject({
       method: "POST",
       url: "/auth/native/login",
       payload: { email: emails[4], password: PASSWORD, installation_id: randomUUID() },
-    })).statusCode, 400);
-    assert.equal((await app.inject({
+    });
+    assert.equal(missingMetadataLogin.statusCode, 400);
+    assert.equal(missingMetadataLogin.json().code, "ERR_NATIVE_METADATA_T05");
+    assert.notEqual(missingMetadataLogin.json().code, "FST_ERR_VALIDATION");
+    const obsoleteAndroidLogin = await app.inject({
       method: "POST",
       url: "/auth/native/login",
       headers: { ...nativeHeaders, "x-native-app-build": "9" },
       payload: { email: emails[4], password: PASSWORD, installation_id: randomUUID() },
-    })).statusCode, 426);
+    });
+    assert.equal(obsoleteAndroidLogin.statusCode, 426);
+    assert.equal(obsoleteAndroidLogin.json().code, "NATIVE_APP_UPGRADE_REQUIRED");
     assert.equal((await app.inject({
       method: "POST",
       url: "/auth/native/login",
@@ -356,6 +361,32 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     const httpToken = login.json().session_token as string;
     assert.deepEqual(Object.keys(login.json().user).sort(), ["id_usuario", "nombre", "roles"]);
     const authHeaders = { ...nativeHeaders, authorization: `Bearer ${httpToken}` };
+    const loginWithoutAppVersion = await app.inject({
+      method: "POST",
+      url: "/auth/native/login",
+      headers: {
+        "x-native-platform": "android",
+        "x-native-app-build": "10",
+      },
+      payload: {
+        email: emails[4], password: PASSWORD, installation_id: randomUUID(),
+      },
+    });
+    assert.equal(loginWithoutAppVersion.statusCode, 200, loginWithoutAppVersion.body);
+    for (const endpoint of [
+      { method: "GET" as const, url: "/auth/native/session" },
+      { method: "POST" as const, url: "/auth/native/logout-all" },
+      { method: "POST" as const, url: "/auth/native/ws-ticket" },
+      { method: "GET" as const, url: "/business" },
+    ]) {
+      const malformedMetadata = await app.inject({
+        ...endpoint,
+        headers: { ...authHeaders, "x-native-app-build": "abc" },
+      });
+      assert.equal(malformedMetadata.statusCode, 400, endpoint.url);
+      assert.equal(malformedMetadata.json().code, "ERR_NATIVE_METADATA_T05", endpoint.url);
+      assert.notEqual(malformedMetadata.json().code, "FST_ERR_VALIDATION", endpoint.url);
+    }
     const sessionResponse = await app.inject({
       method: "GET", url: "/auth/native/session", headers: authHeaders,
     });
