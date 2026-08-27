@@ -120,6 +120,8 @@ try{
   With-DatabaseEnvironment fresh {
     & node --test --experimental-strip-types (Join-Path $api "test/native-auth-postgres.local.ts")
     if($LASTEXITCODE-ne 0){throw "Integración/concurrencia native RSP-09B falló."}
+    & node --test --experimental-strip-types (Join-Path $api "test/native-auth-logout-race-postgres.local.ts")
+    if($LASTEXITCODE-ne 0){throw "Carrera login/logout native RSP-09B-R1 falló."}
   }
 
   [pscustomobject]@{
@@ -130,6 +132,7 @@ try{
     prior_checksums_unchanged=$true
     postgres_native_auth=$true
     concurrency=$true
+    login_logout_serialized=$true
   }|ConvertTo-Json -Compress
 }finally{
   if($started){& docker rm -f $ContainerName|Out-Null}
