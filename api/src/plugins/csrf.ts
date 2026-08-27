@@ -21,6 +21,9 @@ export default fastifyPlugin(async function (fastify) {
   fastify.addHook("onRequest", async function (req) {
     if (SAFE_METHODS.has(req.method)) return;
     if (req.method === "POST" && req.url.split("?")[0] === "/login") return;
+    if (req.headers.authorization !== undefined && req.cookies[SESSION_COOKIE]) {
+      throw new err.T05NoAutorizado();
+    }
     if (!req.cookies[SESSION_COOKIE]) return;
 
     if (!csrfValido(req.cookies[CSRF_COOKIE], req.headers["x-csrf-token"])) {

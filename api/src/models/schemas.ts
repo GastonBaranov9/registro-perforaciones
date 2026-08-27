@@ -67,6 +67,27 @@ export type UsuarioActualizarBody = Static<typeof UsuarioActualizarBody>;
 export const UsuarioLogin = Type.Pick(Usuario, ["email", "password"]);
 export type UsuarioLogin = Static<typeof UsuarioLogin>;
 
+export const NativeLoginBody = Type.Intersect([
+  UsuarioLogin,
+  Type.Object({
+    installation_id: Type.String({ format: "uuid" }),
+  }),
+]);
+export type NativeLoginBody = Static<typeof NativeLoginBody>;
+
+export const NativeUsuarioPublico = Type.Object({
+  id_usuario: Type.Integer(),
+  nombre: Type.String(),
+  roles: Type.Array(Rol),
+});
+export type NativeUsuarioPublico = Static<typeof NativeUsuarioPublico>;
+
+export const NativeSessionResponse = Type.Object({
+  user: NativeUsuarioPublico,
+  expires_at: Type.String({ format: "date-time" }),
+});
+export type NativeSessionResponse = Static<typeof NativeSessionResponse>;
+
 export const RolBody = Type.Omit(Rol, ["id_rol"]);
 
 export type RolBody = Static<typeof RolBody>;

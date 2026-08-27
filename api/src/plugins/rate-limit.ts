@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 import { MemoryRateLimiter } from "../services/rate-limit-service.ts";
 
-type Limite = "api" | "login" | "maps" | "pdf" | "upload";
+type Limite = "api" | "login" | "maps" | "pdf" | "upload" | "nativeWsTicket";
 
 export default fp(async function rateLimits(fastify) {
   const config = cargarConfiguracionRuntime();
@@ -13,6 +13,10 @@ export default fp(async function rateLimits(fastify) {
     maps: new MemoryRateLimiter(config.rateLimits.maps, 60_000),
     pdf: new MemoryRateLimiter(config.rateLimits.pdf, 300_000),
     upload: new MemoryRateLimiter(config.rateLimits.upload, 300_000),
+    nativeWsTicket: new MemoryRateLimiter(
+      config.rateLimits.nativeWsTicket,
+      60_000,
+    ),
   };
 
   fastify.addHook("onRequest", async (req, rep) => {
@@ -41,6 +45,26 @@ export default fp(async function rateLimits(fastify) {
   fastify.decorate("rateLimitMaps", hook("maps", true));
   fastify.decorate("rateLimitPdf", hook("pdf", true));
   fastify.decorate("rateLimitUpload", hook("upload", true));
+  fastify.decorate("rateLimitNativeWsTicket", async (req: FastifyRequest, rep: FastifyReply) => {
+    const idSesion = req.nativeAuth?.session.idSesionNativa;
+    if (!idSesion) throw new Error("El rate limit de WS ticket requiere sesión native");
+    const result = limiters.nativeWsTicket.consume(
+      `native-ws-ticket:s:${idSesion}`,
+    );
+    if (result.allowed) return;
+    req.log.warn(
+      { event: "rate_limit_rejected", area: "native-ws-ticket" },
+      "Solicitud limitada",
+    );
+    return rep
+      .header("Retry-After", String(result.retryAfterSeconds))
+      .code(429)
+      .send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "Demasiadas solicitudes. Intente nuevamente más tarde.",
+      });
+  });
 });
 
 declare module "fastify" {
@@ -49,5 +73,9 @@ declare module "fastify" {
     rateLimitMaps: (req: FastifyRequest, rep: FastifyReply) => Promise<unknown>;
     rateLimitPdf: (req: FastifyRequest, rep: FastifyReply) => Promise<unknown>;
     rateLimitUpload: (req: FastifyRequest, rep: FastifyReply) => Promise<unknown>;
+    rateLimitNativeWsTicket: (
+      req: FastifyRequest,
+      rep: FastifyReply,
+    ) => Promise<unknown>;
   }
 }
