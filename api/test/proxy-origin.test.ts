@@ -25,7 +25,7 @@ test("CORS y Origin comparten allowlist HTTP sin debilitar CSRF ni WebSocket",as
   const app=Fastify();
   await app.register(cookies);
   await app.register(fastifyCors,{origin:allowed,methods:["GET","POST","OPTIONS"],allowedHeaders:["Content-Type","X-CSRF-Token"],credentials:true});
-  await registrarValidacionOrigin(app,{production:true,publicOrigin:canonical,corsOrigins:allowed});
+  await registrarValidacionOrigin(app,{production:true,publicOrigin:canonical,corsOrigins:allowed,nativeCorsOrigins:["https://localhost","capacitor://localhost"]});
   await app.register(csrf);
   app.get("/recurso",async()=>({ok:true}));
   app.post("/recurso",async()=>({ok:true}));
@@ -44,7 +44,7 @@ test("el plugin Origin usa la configuracion runtime al registrarse", async () =>
   const canonical = "https://app.example.test";
   const app = Fastify();
   await app.register(originPlugin, {
-    runtime: { production: true, publicOrigin: canonical, corsOrigins: [canonical] },
+    runtime: { production: true, publicOrigin: canonical, corsOrigins: [canonical], nativeCorsOrigins: ["https://localhost","capacitor://localhost"] },
   });
   app.post("/recurso", async () => ({ ok: true }));
 
@@ -53,6 +53,38 @@ test("el plugin Origin usa la configuracion runtime al registrarse", async () =>
     method: "POST",
     url: "/recurso",
     headers: { origin: "https://evil.example.test" },
+  })).statusCode, 403);
+  await app.close();
+});
+
+test("Origin native queda separado del web y nunca relaja WebSocket web", async () => {
+  const canonical = "https://app.example.test";
+  const nativeOrigins = ["https://localhost", "capacitor://localhost"];
+  const app = Fastify();
+  await registrarValidacionOrigin(app, {
+    production: true,
+    publicOrigin: canonical,
+    corsOrigins: [canonical],
+    nativeCorsOrigins: nativeOrigins,
+  });
+  app.post("/auth/native/login", async () => ({ ok: true }));
+  app.post("/business", async () => ({ ok: true }));
+  app.get("/ws-control", async () => ({ ok: true }));
+
+  assert.equal((await app.inject({
+    method: "POST", url: "/auth/native/login", headers: { origin: "https://localhost" },
+  })).statusCode, 200);
+  assert.equal((await app.inject({
+    method: "POST", url: "/auth/native/login", headers: { origin: canonical },
+  })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/auth/native/login" })).statusCode, 200);
+  assert.equal((await app.inject({
+    method: "POST", url: "/business",
+    headers: { origin: "capacitor://localhost", authorization: "Bearer fixture" },
+  })).statusCode, 200);
+  assert.equal((await app.inject({
+    method: "GET", url: "/ws-control",
+    headers: { origin: "https://localhost", upgrade: "websocket" },
   })).statusCode, 403);
   await app.close();
 });

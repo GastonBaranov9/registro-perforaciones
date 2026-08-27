@@ -16,7 +16,7 @@ test("GET /ready devuelve 200 con SELECT 1 y 503 sin filtrar el error", async ()
   let consulta: { text: string; query_timeout: number } | undefined;
   const disponible: ReadinessDb = { query: async (config) => { consulta = config; } };
   const appOk = Fastify();
-  await appOk.register(crearRutasHealth(disponible));
+  await appOk.register(crearRutasHealth(disponible, { isReady: () => true }));
   const ok = await appOk.inject({ method: "GET", url: "/ready" });
   assert.equal(ok.statusCode, 200);
   assert.deepEqual(ok.json(), { status: "ok" });
@@ -24,12 +24,26 @@ test("GET /ready devuelve 200 con SELECT 1 y 503 sin filtrar el error", async ()
   await appOk.close();
 
   const appFail = Fastify();
-  await appFail.register(crearRutasHealth({ query: async () => { throw new Error("cadena sensible"); } }));
+  await appFail.register(crearRutasHealth(
+    { query: async () => { throw new Error("cadena sensible"); } },
+    { isReady: () => true },
+  ));
   const fail = await appFail.inject({ method: "GET", url: "/ready" });
   assert.equal(fail.statusCode, 503);
   assert.deepEqual(fail.json(), { status: "unavailable" });
   assert.doesNotMatch(fail.body, /cadena sensible/);
   await appFail.close();
+});
+
+test("GET /ready degrada sin afectar health cuando el janitor no está listo", async () => {
+  const app = Fastify();
+  await app.register(crearRutasHealth(
+    { query: async () => undefined },
+    { isReady: () => false },
+  ));
+  assert.equal((await app.inject("/health")).statusCode, 200);
+  assert.equal((await app.inject("/ready")).statusCode, 503);
+  await app.close();
 });
 
 test("comprobarReadiness encapsula fallos", async () => {

@@ -51,6 +51,9 @@ PGUSER=fixture
 PGPASSWORD=fixture-only-not-real
 PGDATABASE=fixture
 FASTIFY_SECRET=fixture-only-not-real-32-bytes
+NATIVE_TOKEN_HMAC_SECRET=fixture-only-native-secret-not-real-32-bytes
+MIN_NATIVE_ANDROID_BUILD=1
+MIN_NATIVE_IOS_BUILD=1
 PUBLIC_HOST=r14.example.test
 PUBLIC_ORIGIN=https://r14.example.test
 MAP_STATIC_URL_TEMPLATE=https://maps.example.test/static?lat={latitud}&lon={longitud}&key={apiKey}

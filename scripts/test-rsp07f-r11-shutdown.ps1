@@ -116,6 +116,9 @@ PGUSER=rsp_test
 PGPASSWORD=fixture-only-not-a-secret
 PGDATABASE=rsp_test
 FASTIFY_SECRET=fixture-only-not-a-secret-32-bytes
+NATIVE_TOKEN_HMAC_SECRET=fixture-only-native-secret-not-real-32-bytes
+MIN_NATIVE_ANDROID_BUILD=1
+MIN_NATIVE_IOS_BUILD=1
 PUBLIC_HOST=r11.example.test
 PUBLIC_ORIGIN=https://r11.example.test
 MAP_STATIC_URL_TEMPLATE=https://maps.example.test/static?lat={latitud}&lon={longitud}&key={apiKey}

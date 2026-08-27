@@ -30,10 +30,10 @@ try{
   if((Psql "SELECT count(*) FROM pg_tables WHERE schemaname='public'")-ne '0'){throw "El volumen fresh no comenzó vacío."}
   Compose @("up","-d");Wait-Migrate
   $ledger=Psql "SELECT count(*) FROM schema_migrations";$principales=Psql "SELECT to_regclass('public.usuario') IS NOT NULL AND to_regclass('public.pozo') IS NOT NULL AND to_regclass('public.sitio') IS NOT NULL"
-  if($ledger-ne '8'-or $principales-ne 't'){throw "El migrador no preparó el esquema fresh."}
+  if($ledger-ne '9'-or $principales-ne 't'){throw "El migrador no preparó el esquema fresh."}
   Psql "INSERT INTO sitio(departamento,localidad) VALUES('Salto','PERSISTE_RSP07F_R1')"|Out-Null
   Compose @("up","-d");Wait-Migrate
-  if((Psql "SELECT count(*) FROM schema_migrations")-ne '8'-or (Psql "SELECT count(*) FROM sitio WHERE localidad='PERSISTE_RSP07F_R1'")-ne '1'){throw "El rerun no-op modificó el estado existente."}
+  if((Psql "SELECT count(*) FROM schema_migrations")-ne '9'-or (Psql "SELECT count(*) FROM sitio WHERE localidad='PERSISTE_RSP07F_R1'")-ne '1'){throw "El rerun no-op modificó el estado existente."}
   Compose @("--profile","test","up","-d","--wait","--wait-timeout","180","api-check")
   $apiResult=(& docker compose @compose exec -T api-check node -e "Promise.all([fetch('http://127.0.0.1:3000/health'),fetch('http://127.0.0.1:3000/ready'),fetch('http://127.0.0.1:3000/login',{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:4200'},body:JSON.stringify({email:'inexistente@example.test',password:'control-no-secreto'})})]).then(async r=>{console.log(r.map(x=>x.status).join(','));process.exit(r[0].status===200&&r[1].status===200&&r[2].status!==500?0:1)}).catch(()=>process.exit(1))"|Out-String).Trim()
   if($LASTEXITCODE-ne 0){throw "API equivalente no superó health/ready/ruta DB: $apiResult"}

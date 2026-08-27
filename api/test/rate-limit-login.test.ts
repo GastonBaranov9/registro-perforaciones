@@ -21,6 +21,8 @@ async function appLoginReal(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   app.decorate("authenticate", async (_req: unknown, rep: { code(codigo: number): { send(valor: unknown): unknown } }) =>
     rep.code(401).send({ statusCode: 401, error: "Unauthorized", message: "Sesión inválida o no autorizada" }));
+  app.decorate("authenticateWeb", async (_req: unknown, rep: { code(codigo: number): { send(valor: unknown): unknown } }) =>
+    rep.code(401).send({ statusCode: 401, error: "Unauthorized", message: "Sesión inválida o no autorizada" }));
   app.decorate("jwt", { sign: () => "fixture" });
   await app.register(rateLimitPlugin);
   await app.register(loginRoutes);
