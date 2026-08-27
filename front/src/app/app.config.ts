@@ -27,7 +27,7 @@ export const appConfig: ApplicationConfig = {
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
     provideIonicAngular({}),
     provideServiceWorker('ngsw-worker.js', {
-      enabled: environment.nativeBuildMode === 'web' && !isDevMode(),
+      enabled: String(environment.nativeBuildMode) === 'web' && !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

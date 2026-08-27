@@ -65,5 +65,5 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   assert.doesNotMatch(source, /server\.url|allowNavigation/);
 
   const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
-  assert.match(appConfig, /enabled:\s*environment\.nativeBuildMode === 'web' && !isDevMode\(\)/);
+  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
