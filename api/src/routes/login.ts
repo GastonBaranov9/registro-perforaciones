@@ -72,7 +72,7 @@ const authRoutes = async function (fastify: FastifyInstance) {
         tags: ["login"],
         response: { 204: Type.Null() },
       },
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticateWeb],
     },
     async function (req, rep) {
       if (!(await revocarSesionesUsuario(req.user.sub))) throw new err.T05NoAutorizado();
@@ -92,7 +92,7 @@ const authRoutes = async function (fastify: FastifyInstance) {
         },
         security: [{ BearerAuth: [] }],
       },
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticateWeb],
     },
     async function (req) {
       const user = await getUsuarioById(req.user.sub);

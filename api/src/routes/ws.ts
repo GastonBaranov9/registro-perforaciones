@@ -13,7 +13,7 @@ const websocketRoute = async function (fastify: FastifyInstance) {
         description:
           "Ruta autenticada para iniciar la conexion con WS",
       },
-      onRequest: [fastify.authenticate],
+      onRequest: [fastify.authenticateWeb],
     },
     async (socket, req) => {
       const { sub: id_usuario } = req.user;

@@ -26,7 +26,7 @@ try{
   if($LASTEXITCODE-ne 0){throw "PostgreSQL aislado no quedó listo."}
 
   Migrate "fresh" (Join-Path $api "db/migrations")|Out-Null
-  if((Psql fresh "SELECT count(*)=8 AND max(version)='007' FROM schema_migrations")-ne 't'){throw "Fresh DB no aplicó exactamente 000..007."}
+  if((Psql fresh "SELECT count(*)=9 AND max(version)='008' FROM schema_migrations")-ne 't'){throw "Fresh DB no aplicó exactamente 000..008."}
   if((Psql fresh "SELECT documento_rut IS NULL AND propietario_email IS NULL FROM usuario LIMIT 1")-notin @('','t')){throw "Fresh DB inventó datos de propietario."}
   $noop=Migrate "fresh" (Join-Path $api "db/migrations")
   if($noop-notmatch 'no hay cambios pendientes'){throw "Rerun del migrador no fue no-op."}
@@ -37,12 +37,12 @@ try{
   $prefix=Psql upgrade "SELECT string_agg(version||':'||nombre||':'||btrim(checksum_sha256),',' ORDER BY version) FROM schema_migrations"
   if((Psql upgrade "SELECT count(*)=7 AND max(version)='006' FROM schema_migrations")-ne 't'){throw "Fixture no quedó en 000..006."}
   Migrate "upgrade" (Join-Path $api "db/migrations")|Out-Null
-  if((Psql upgrade "SELECT count(*)=8 AND max(version)='007' FROM schema_migrations")-ne 't'){throw "Upgrade no aplicó sólo 007."}
+  if((Psql upgrade "SELECT count(*)=9 AND max(version)='008' FROM schema_migrations")-ne 't'){throw "Upgrade aplicó 007 y 008."}
   if((Psql upgrade "SELECT nombre='Histórico' AND documento_rut IS NULL AND propietario_email IS NULL FROM usuario WHERE nombre='Histórico'")-ne 't'){throw "Upgrade alteró propietario histórico."}
   if((Psql upgrade "SELECT padron IS NULL FROM sitio WHERE localidad='Histórica'")-ne 't'){throw "Upgrade inventó padrón histórico."}
   $prefixAfter=Psql upgrade "SELECT string_agg(version||':'||nombre||':'||btrim(checksum_sha256),',' ORDER BY version) FROM schema_migrations WHERE version<='006'"
   if($prefixAfter-ne $prefix){throw "007 alteró el ledger exacto 000..006."}
-  [pscustomobject]@{fresh_migrations=8;upgrade_from='006';applied='007';rerun_noop=$true;historical_nulls=$true;prefix_unchanged=$true}|ConvertTo-Json -Compress
+  [pscustomobject]@{fresh_migrations=9;upgrade_from='006';applied='007,008';rerun_noop=$true;historical_nulls=$true;prefix_unchanged=$true}|ConvertTo-Json -Compress
 }finally{
   if($started){& docker rm -f $ContainerName|Out-Null}
   $full=[IO.Path]::GetFullPath($fixture);$temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());if($full.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase)-and [IO.Path]::GetFileName($full)-like 'rsp08a-migrations-*-fixture'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}

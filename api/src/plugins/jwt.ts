@@ -1,11 +1,17 @@
 import fastifyJwt from "@fastify/jwt";
 import fastifyPlugin from "fastify-plugin";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import * as err from "../models/errors.ts";
 import { getEstadoSesionUsuario, rolUser } from "../services/auth-services.ts";
-import { myPool } from "../db/pool.ts";
 import { SESSION_COOKIE } from "./cookies.ts";
 import { pozoPerteneceAPerforador, pozoPerteneceAUsuario } from "../services/autorizacion-recursos.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+import type { NativePlatform } from "../services/native-auth-service.ts";
+import {
+  resolverSesionNative,
+  type NativeClientMetadata,
+} from "../services/native-auth-service.ts";
+import { extraerBearerNativo } from "../services/native-token-service.ts";
 
 export function normalizarEnteroPositivoSeguro(value: unknown): number | null {
   if (typeof value === "number") {
@@ -29,8 +35,42 @@ export function sesionVigente(
   );
 }
 
+export function leerMetadataNative(
+  headers: { [key: string]: unknown },
+): NativeClientMetadata | null {
+  const platform = headers["x-native-platform"];
+  const buildRaw = headers["x-native-app-build"];
+  const appVersion = headers["x-native-app-version"];
+  if (
+    (platform !== "android" && platform !== "ios") ||
+    typeof buildRaw !== "string" ||
+    !/^[1-9]\d*$/.test(buildRaw)
+  ) return null;
+  const appBuild = Number(buildRaw);
+  if (!Number.isSafeInteger(appBuild) || appBuild > 2_147_483_647) return null;
+  if (
+    appVersion !== undefined &&
+    (typeof appVersion !== "string" || appVersion.length === 0 || appVersion.length > 80)
+  ) return null;
+  return {
+    platform,
+    appBuild,
+    ...(typeof appVersion === "string" ? { appVersion } : {}),
+  };
+}
+
+export function buildMinimoNative(
+  platform: NativePlatform,
+  config: ReturnType<typeof cargarConfiguracionRuntime>,
+): number {
+  return platform === "android"
+    ? config.nativeAuth.minAndroidBuild
+    : config.nativeAuth.minIosBuild;
+}
+
 export default fastifyPlugin(async function (fastify) {
-  const secret = cargarConfiguracionRuntime().fastifySecret;
+  const config = cargarConfiguracionRuntime();
+  const secret = config.fastifySecret;
   if (!secret) throw new err.T05ErrorDesconocido("Falta setear FASTIFY_SECRET");
 
   await fastify.register(fastifyJwt, {
@@ -39,8 +79,12 @@ export default fastifyPlugin(async function (fastify) {
   });
   const authenticatedRequests = new WeakMap<object, { idUsuario: number }>();
 
-  fastify.decorate("authenticate", async function (req, rep) {
-    if (authenticatedRequests.has(req)) return;
+  fastify.decorateRequest("authMechanism", null);
+  fastify.decorateRequest("nativeAuth", null);
+
+  const authenticateWeb = async function (req: FastifyRequest): Promise<void> {
+    if (authenticatedRequests.has(req) && req.authMechanism === "web-cookie") return;
+    if (req.headers.authorization !== undefined) throw new err.T05NoAutorizado();
 
     try {
       await req.jwtVerify({ onlyCookie: true });
@@ -64,7 +108,60 @@ export default fastifyPlugin(async function (fastify) {
       throw new err.T05NoAutorizado();
     }
 
+    req.authMechanism = "web-cookie";
     authenticatedRequests.set(req, { idUsuario });
+  };
+
+  const authenticateNative = async function (
+    req: FastifyRequest,
+    enforceMinimum: boolean,
+  ): Promise<void> {
+    if (authenticatedRequests.has(req) && req.authMechanism === "native-bearer") {
+      if (
+        enforceMinimum &&
+        req.nativeAuth &&
+        req.nativeAuth.metadata.appBuild < buildMinimoNative(req.nativeAuth.metadata.platform, config)
+      ) throw new err.T05ActualizacionNativeRequerida();
+      return;
+    }
+    if (req.cookies[SESSION_COOKIE]) throw new err.T05NoAutorizado();
+    const rawToken = extraerBearerNativo(req.headers.authorization);
+    if (!rawToken) throw new err.T05NoAutorizado();
+    const session = await resolverSesionNative(rawToken, config);
+    if (!session) throw new err.T05NoAutorizado();
+    const metadata = leerMetadataNative(req.headers);
+    if (!metadata || metadata.platform !== session.platform) {
+      throw new err.T05MetadataNativeInvalida();
+    }
+    if (
+      enforceMinimum &&
+      metadata.appBuild < buildMinimoNative(metadata.platform, config)
+    ) throw new err.T05ActualizacionNativeRequerida();
+
+    req.user = {
+      sub: session.idUsuario,
+      version_sesion: session.versionSesionEmitida,
+    };
+    req.authMechanism = "native-bearer";
+    req.nativeAuth = { session, metadata };
+    authenticatedRequests.set(req, { idUsuario: session.idUsuario });
+  };
+
+  fastify.decorate("authenticateWeb", async function (req) {
+    await authenticateWeb(req);
+  });
+  fastify.decorate("authenticateNative", async function (req) {
+    await authenticateNative(req, true);
+  });
+  fastify.decorate("authenticateNativeAllowObsolete", async function (req) {
+    await authenticateNative(req, false);
+  });
+  fastify.decorate("authenticate", async function (req) {
+    if (req.headers.authorization !== undefined) {
+      await authenticateNative(req, true);
+      return;
+    }
+    await authenticateWeb(req);
   });
   fastify.decorate("userIsAdmin", async function (req, rep) {
     await fastify.authenticate(req, rep);
@@ -144,8 +241,21 @@ export default fastifyPlugin(async function (fastify) {
 });
 
 declare module "fastify" {
+  interface FastifyRequest {
+    authMechanism: "web-cookie" | "native-bearer" | null;
+    nativeAuth: {
+      session: import("../services/native-auth-service.ts").NativeSessionIdentity;
+      metadata: import("../services/native-auth-service.ts").NativeClientMetadata;
+    } | null;
+  }
   interface FastifyInstance {
     authenticate: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    authenticateWeb: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    authenticateNative: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    authenticateNativeAllowObsolete: (
+      req: FastifyRequest,
+      rep: FastifyReply,
+    ) => Promise<void>;
     userIsAdmin: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
     userIsPerforador: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
     userIsPropietario: (

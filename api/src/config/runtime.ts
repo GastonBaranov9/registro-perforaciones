@@ -16,6 +16,7 @@ export interface RuntimeConfig {
   publicOrigin?: string;
   trustProxy: false | 1;
   corsOrigins: string[];
+  nativeCorsOrigins: string[];
   enableApiDocs: boolean;
   hstsEnabled: boolean;
   logLevel: string;
@@ -25,6 +26,20 @@ export interface RuntimeConfig {
     maps: number;
     pdf: number;
     upload: number;
+    nativeWsTicket: number;
+  };
+  nativeAuth: {
+    hmacSecret: string;
+    sessionTtlDays: number;
+    sessionRetentionDays: number;
+    maxActiveSessionsPerUser: number;
+    minAndroidBuild: number;
+    minIosBuild: number;
+    wsTicketTtlSeconds: number;
+    wsTicketRetentionMinutes: number;
+    janitorIntervalSeconds: number;
+    janitorBatchSize: number;
+    janitorFailureThreshold: number;
   };
   pdf: {
     maxConcurrent: number;
@@ -57,6 +72,10 @@ const DEV_CORS_ORIGINS = [
   "https://localhost:4200",
   "https://localhost",
 ];
+
+const NATIVE_CORS_ORIGINS = ["https://localhost", "capacitor://localhost"];
+const DEVELOPMENT_NATIVE_HMAC_SECRET =
+  "development-only-native-hmac-secret-change-before-production";
 
 const SECRETOS_TRIVIALES = new Set([
   "secret",
@@ -111,6 +130,19 @@ function entero(
   return resultado;
 }
 
+function enteroRequerido(
+  env: NodeJS.ProcessEnv,
+  nombre: string,
+  production: boolean,
+  porDefectoDesarrollo: number,
+  minimo: number,
+  maximo: number,
+): number {
+  const entrada = valor(env, nombre);
+  if (production && entrada === undefined) throw new Error(`Falta configurar ${nombre}`);
+  return entero(nombre, entrada, porDefectoDesarrollo, minimo, maximo);
+}
+
 function booleano(nombre: string, entrada: string | undefined, porDefecto: boolean): boolean {
   if (!entrada) return porDefecto;
   if (entrada === "true") return true;
@@ -152,6 +184,18 @@ export function normalizarOriginsPermitidos(entrada: string | undefined, product
     return url.origin;
   });
   return [...new Set(production ? [publicOrigin!, ...origins] : origins)];
+}
+
+export function normalizarOriginsNative(entrada: string | undefined): string[] {
+  if (!entrada) return [...NATIVE_CORS_ORIGINS];
+  const permitidos = new Set(NATIVE_CORS_ORIGINS);
+  const origins = entrada.split(",").map((item) => item.trim());
+  if (origins.some((origin) => !permitidos.has(origin))) {
+    throw new Error(
+      "NATIVE_CORS_ORIGINS sólo admite https://localhost y capacitor://localhost",
+    );
+  }
+  return [...new Set(origins)];
 }
 
 function validarMapasProduccion(env: NodeJS.ProcessEnv): void {
@@ -197,6 +241,19 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
   if (production && fastifySecret && (fastifySecret.length < 32 || SECRETOS_TRIVIALES.has(fastifySecret.toLowerCase())))
     throw new Error("FASTIFY_SECRET debe ser aleatorio y tener al menos 32 caracteres");
 
+  const nativeHmacSecret = production
+    ? secretoRequerido(env, "NATIVE_TOKEN_HMAC_SECRET")
+    : secreto(env, "NATIVE_TOKEN_HMAC_SECRET") ?? DEVELOPMENT_NATIVE_HMAC_SECRET;
+  if (
+    nativeHmacSecret.length < 32 ||
+    SECRETOS_TRIVIALES.has(nativeHmacSecret.toLowerCase()) ||
+    nativeHmacSecret === fastifySecret
+  ) {
+    throw new Error(
+      "NATIVE_TOKEN_HMAC_SECRET debe ser independiente, aleatorio y tener al menos 32 caracteres",
+    );
+  }
+
   if (production) validarMapasProduccion(env);
 
   const enableApiDocs = booleano("ENABLE_API_DOCS", valor(env, "ENABLE_API_DOCS"), !production);
@@ -212,6 +269,26 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
   if (queryTimeoutMs < statementTimeoutMs)
     throw new Error("PG_QUERY_TIMEOUT_MS no puede ser menor que PG_STATEMENT_TIMEOUT_MS");
 
+  const wsTicketTtlSeconds = entero(
+    "NATIVE_WS_TICKET_TTL_SECONDS",
+    valor(env, "NATIVE_WS_TICKET_TTL_SECONDS"),
+    30,
+    5,
+    300,
+  );
+  const wsTicketRetentionMinutes = entero(
+    "NATIVE_WS_TICKET_RETENTION_MINUTES",
+    valor(env, "NATIVE_WS_TICKET_RETENTION_MINUTES"),
+    60,
+    1,
+    10_080,
+  );
+  if (wsTicketRetentionMinutes * 60 <= wsTicketTtlSeconds) {
+    throw new Error(
+      "NATIVE_WS_TICKET_RETENTION_MINUTES debe superar NATIVE_WS_TICKET_TTL_SECONDS",
+    );
+  }
+
   return {
     nodeEnv,
     production,
@@ -224,6 +301,7 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     publicOrigin: publico.origin,
     trustProxy: production ? 1 : false,
     corsOrigins: normalizarOriginsPermitidos(valor(env, "CORS_ORIGINS"), production, publico.origin),
+    nativeCorsOrigins: normalizarOriginsNative(valor(env, "NATIVE_CORS_ORIGINS")),
     enableApiDocs,
     hstsEnabled,
     logLevel: valor(env, "LOG_LEVEL") ?? (production ? "info" : "debug"),
@@ -233,6 +311,76 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
       maps: entero("RATE_LIMIT_MAP_MAX", valor(env, "RATE_LIMIT_MAP_MAX"), 30, 1, 10_000),
       pdf: entero("RATE_LIMIT_PDF_MAX", valor(env, "RATE_LIMIT_PDF_MAX"), 10, 1, 10_000),
       upload: entero("RATE_LIMIT_UPLOAD_MAX", valor(env, "RATE_LIMIT_UPLOAD_MAX"), 30, 1, 10_000),
+      nativeWsTicket: entero(
+        "RATE_LIMIT_NATIVE_WS_TICKET_MAX",
+        valor(env, "RATE_LIMIT_NATIVE_WS_TICKET_MAX"),
+        30,
+        1,
+        10_000,
+      ),
+    },
+    nativeAuth: {
+      hmacSecret: nativeHmacSecret,
+      sessionTtlDays: entero(
+        "NATIVE_SESSION_TTL_DAYS",
+        valor(env, "NATIVE_SESSION_TTL_DAYS"),
+        30,
+        1,
+        365,
+      ),
+      sessionRetentionDays: entero(
+        "NATIVE_SESSION_RETENTION_DAYS",
+        valor(env, "NATIVE_SESSION_RETENTION_DAYS"),
+        30,
+        1,
+        365,
+      ),
+      maxActiveSessionsPerUser: entero(
+        "NATIVE_MAX_ACTIVE_SESSIONS_PER_USER",
+        valor(env, "NATIVE_MAX_ACTIVE_SESSIONS_PER_USER"),
+        5,
+        1,
+        100,
+      ),
+      minAndroidBuild: enteroRequerido(
+        env,
+        "MIN_NATIVE_ANDROID_BUILD",
+        production,
+        1,
+        1,
+        2_147_483_647,
+      ),
+      minIosBuild: enteroRequerido(
+        env,
+        "MIN_NATIVE_IOS_BUILD",
+        production,
+        1,
+        1,
+        2_147_483_647,
+      ),
+      wsTicketTtlSeconds,
+      wsTicketRetentionMinutes,
+      janitorIntervalSeconds: entero(
+        "NATIVE_AUTH_JANITOR_INTERVAL_SECONDS",
+        valor(env, "NATIVE_AUTH_JANITOR_INTERVAL_SECONDS"),
+        300,
+        5,
+        86_400,
+      ),
+      janitorBatchSize: entero(
+        "NATIVE_AUTH_JANITOR_BATCH_SIZE",
+        valor(env, "NATIVE_AUTH_JANITOR_BATCH_SIZE"),
+        500,
+        1,
+        10_000,
+      ),
+      janitorFailureThreshold: entero(
+        "NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD",
+        valor(env, "NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD"),
+        3,
+        1,
+        100,
+      ),
     },
     pdf: {
       maxConcurrent: entero("PDF_MAX_CONCURRENT", valor(env, "PDF_MAX_CONCURRENT"), 2, 1, 16),

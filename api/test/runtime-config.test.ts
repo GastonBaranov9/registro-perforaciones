@@ -11,6 +11,9 @@ function entornoProduccion(): NodeJS.ProcessEnv {
     API_PORT: "3000",
     FOTOS_DIR: path.resolve(os.tmpdir(), "rsp07b-fotos-config"),
     FASTIFY_SECRET: randomBytes(32).toString("hex"),
+    NATIVE_TOKEN_HMAC_SECRET: randomBytes(32).toString("hex"),
+    MIN_NATIVE_ANDROID_BUILD: "1",
+    MIN_NATIVE_IOS_BUILD: "1",
     PGUSER: "usuario_prueba",
     PGPASSWORD: randomBytes(24).toString("hex"),
     PGHOST: "postgres",
@@ -41,6 +44,9 @@ test("acepta un contrato de producción completo y normaliza origins", () => {
   assert.equal(config.postgres.statementTimeoutMs, 30_000);
   assert.equal(config.postgres.queryTimeoutMs, 35_000);
   assert.equal(config.pdf.maxConcurrent, 2);
+  assert.equal(config.nativeAuth.maxActiveSessionsPerUser, 5);
+  assert.equal(config.nativeAuth.wsTicketTtlSeconds, 30);
+  assert.deepEqual(config.nativeCorsOrigins, ["https://localhost", "capacitor://localhost"]);
 });
 
 test("falla temprano ante variables críticas ausentes sin imprimir secretos", () => {
@@ -99,6 +105,28 @@ test("development conserva defaults locales sin exigir variables production", ()
   assert.equal(config.corsOrigins[0], "http://localhost:4200");
   assert.ok(path.isAbsolute(config.fotosDir));
   assert.equal(config.enableApiDocs, true);
+});
+
+test("auth native falla temprano en producción y valida todos sus límites", () => {
+  const sinSecret = entornoProduccion();
+  delete sinSecret.NATIVE_TOKEN_HMAC_SECRET;
+  assert.throws(() => cargarConfiguracionRuntime(sinSecret), /NATIVE_TOKEN_HMAC_SECRET/);
+
+  const sinAndroid = entornoProduccion();
+  delete sinAndroid.MIN_NATIVE_ANDROID_BUILD;
+  assert.throws(() => cargarConfiguracionRuntime(sinAndroid), /MIN_NATIVE_ANDROID_BUILD/);
+
+  assert.throws(() => cargarConfiguracionRuntime({
+    ...entornoProduccion(), NATIVE_MAX_ACTIVE_SESSIONS_PER_USER: "0",
+  }), /NATIVE_MAX_ACTIVE_SESSIONS_PER_USER/);
+  assert.throws(() => cargarConfiguracionRuntime({
+    ...entornoProduccion(),
+    NATIVE_WS_TICKET_TTL_SECONDS: "60",
+    NATIVE_WS_TICKET_RETENTION_MINUTES: "1",
+  }), /NATIVE_WS_TICKET_RETENTION_MINUTES/);
+  assert.throws(() => cargarConfiguracionRuntime({
+    ...entornoProduccion(), NATIVE_CORS_ORIGINS: "https://evil.example.test",
+  }), /NATIVE_CORS_ORIGINS/);
 });
 
 test("hardening falla temprano ante booleanos, timeouts y capacidad imposibles", () => {

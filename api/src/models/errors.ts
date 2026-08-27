@@ -61,6 +61,27 @@ export const T05DatosIncorrectos = createError(
   Error
 );
 
+export const T05MetadataNativeInvalida = createError(
+  "ERR_NATIVE_METADATA_T05",
+  "La metadata de la aplicación native no es válida",
+  400,
+  Error,
+);
+
+export const T05ActualizacionNativeRequerida = createError(
+  "NATIVE_APP_UPGRADE_REQUIRED",
+  "Debes actualizar la aplicación.",
+  426,
+  Error,
+);
+
+export const T05JanitorNativeNoDisponible = createError(
+  "ERR_NATIVE_JANITOR_T05",
+  "La emisión de tickets WebSocket native está temporalmente suspendida",
+  503,
+  Error,
+);
+
 export const T05RegistroNoEncontrado = createError(
   "ERR8_T05",
   "No se encontró el registro DINAGUA solicitado",

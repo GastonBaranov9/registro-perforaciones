@@ -1,9 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { Type } from "@fastify/type-provider-typebox";
 import { myPool } from "../db/pool.ts";
+import { nativeAuthJanitorHealth } from "../services/native-auth-janitor.ts";
 
 export interface ReadinessDb {
   query(config: { text: string; query_timeout: number }): Promise<unknown>;
+}
+
+export interface ReadinessJanitor {
+  isReady(): boolean;
 }
 
 export async function comprobarReadiness(db: ReadinessDb, timeoutMs = 2_000): Promise<boolean> {
@@ -15,7 +20,10 @@ export async function comprobarReadiness(db: ReadinessDb, timeoutMs = 2_000): Pr
   }
 }
 
-export function crearRutasHealth(db: ReadinessDb = myPool) {
+export function crearRutasHealth(
+  db: ReadinessDb = myPool,
+  janitor: ReadinessJanitor = nativeAuthJanitorHealth,
+) {
   return async function healthRoutes(fastify: FastifyInstance) {
     fastify.get(
       "/health",
@@ -40,7 +48,9 @@ export function crearRutasHealth(db: ReadinessDb = myPool) {
         },
       },
       async (_req, reply) => {
-        if (await comprobarReadiness(db)) return { status: "ok" as const };
+        if ((await comprobarReadiness(db)) && janitor.isReady()) {
+          return { status: "ok" as const };
+        }
         return reply.code(503).send({ status: "unavailable" as const });
       },
     );
