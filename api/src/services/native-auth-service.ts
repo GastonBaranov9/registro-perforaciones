@@ -104,7 +104,8 @@ export async function crearSesionNative(
       password: string;
       version_sesion: number;
     }>(
-      `SELECT id_usuario, password, version_sesion
+      `/* native-login-user-lock */
+       SELECT id_usuario, password, version_sesion
          FROM usuario
         WHERE id_usuario = $1
           AND activo = TRUE
@@ -270,14 +271,49 @@ export async function revocarSesionNativePorToken(
     config.nativeAuth.hmacSecret,
     "session",
   );
-  const { rowCount } = await myPool.query(
-    `UPDATE sesion_nativa
-        SET revoked_at = now(), revocation_reason = 'user_logout'
+  const { rows } = await myPool.query<{ id_usuario: string | number }>(
+    `SELECT id_usuario
+       FROM sesion_nativa
       WHERE token_hash = $1
-        AND revoked_at IS NULL`,
+      LIMIT 1`,
     [tokenHash],
   );
-  return rowCount === 1;
+  const idUsuario = numeroEntero(rows[0]?.id_usuario);
+  if (idUsuario === null) return false;
+
+  const client = await myPool.connect();
+  let discardClient = false;
+  try {
+    await client.query("BEGIN");
+    const usuario = await client.query(
+      `/* native-logout-user-lock */
+       SELECT id_usuario
+         FROM usuario
+        WHERE id_usuario = $1
+        FOR UPDATE`,
+      [idUsuario],
+    );
+    if (!usuario.rows[0]) {
+      await client.query("COMMIT");
+      return false;
+    }
+
+    const { rowCount } = await client.query(
+      `UPDATE sesion_nativa
+          SET revoked_at = now(), revocation_reason = 'user_logout'
+        WHERE token_hash = $1
+          AND id_usuario = $2
+          AND revoked_at IS NULL`,
+      [tokenHash, idUsuario],
+    );
+    await client.query("COMMIT");
+    return rowCount === 1;
+  } catch (error) {
+    discardClient = !(await rollbackSeguro(client));
+    throw error;
+  } finally {
+    client.release(discardClient);
+  }
 }
 
 export async function emitirTicketWsNative(
