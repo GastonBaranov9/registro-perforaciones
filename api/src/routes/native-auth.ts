@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Type } from "@fastify/type-provider-typebox";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 import * as err from "../models/errors.ts";
@@ -14,20 +14,27 @@ import {
   crearSesionNative,
   emitirTicketWsNative,
   revocarSesionNativePorToken,
+  type NativeClientMetadata,
 } from "../services/native-auth-service.ts";
 import { revocarSesionesUsuario } from "../services/auth-services.ts";
 import { nativeAuthJanitorHealth } from "../services/native-auth-janitor.ts";
 import { extraerBearerNativo } from "../services/native-token-service.ts";
 import { getUsuarioById } from "../services/usuarios-service.ts";
 
-const NativeHeaders = Type.Object({
-  "x-native-platform": Type.Union([
-    Type.Literal("android"),
-    Type.Literal("ios"),
-  ]),
-  "x-native-app-build": Type.String({ pattern: "^[1-9]\\d*$" }),
-  "x-native-app-version": Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-});
+const NativeHeaders = Type.Object(
+  {
+    "x-native-platform": Type.Optional(Type.Unknown({
+      description: "Requerido: android o ios. Validado por la capa de auth native.",
+    })),
+    "x-native-app-build": Type.Optional(Type.Unknown({
+      description: "Requerido: entero monotónico positivo. Validado por la capa de auth native.",
+    })),
+    "x-native-app-version": Type.Optional(Type.Unknown({
+      description: "Versión humana opcional, máximo 80 caracteres.",
+    })),
+  },
+  { additionalProperties: true },
+);
 
 const NativeLoginResponse = Type.Object({
   token_type: Type.Literal("Bearer"),
@@ -53,6 +60,13 @@ async function usuarioNative(idUsuario: number) {
 
 export default async function nativeAuthRoutes(fastify: FastifyInstance) {
   const config = cargarConfiguracionRuntime();
+  const loginMetadata = new WeakMap<FastifyRequest, NativeClientMetadata>();
+
+  const validarMetadataLogin = async (req: FastifyRequest): Promise<void> => {
+    const metadata = leerMetadataNative(req.headers);
+    if (!metadata) throw new err.T05MetadataNativeInvalida();
+    loginMetadata.set(req, metadata);
+  };
 
   fastify.post(
     "/auth/native/login",
@@ -68,10 +82,10 @@ export default async function nativeAuthRoutes(fastify: FastifyInstance) {
           426: err.ErrorSchema,
         },
       },
-      onRequest: [fastify.rateLimitLogin],
+      onRequest: [fastify.rateLimitLogin, validarMetadataLogin],
     },
     async (req) => {
-      const metadata = leerMetadataNative(req.headers);
+      const metadata = loginMetadata.get(req);
       if (!metadata) throw new err.T05MetadataNativeInvalida();
       if (metadata.appBuild < buildMinimoNative(metadata.platform, config)) {
         throw new err.T05ActualizacionNativeRequerida();
