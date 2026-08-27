@@ -48,6 +48,8 @@ Development/test usa una clave fija marcada exclusivamente para desarrollo; no s
 
 El build se valida antes de consultar credenciales. Android e iOS se comparan como enteros monotónicos contra mínimos independientes; `app_version` nunca participa del enforcement. Un build obsoleto devuelve `426 NATIVE_APP_UPGRADE_REQUIRED` y no crea sesión.
 
+La metadata se normaliza con una única autoridad, `leerMetadataNative`, antes de validar el body o consultar credenciales. Ausencias, formatos inválidos y plataformas no soportadas devuelven establemente `ERR_NATIVE_METADATA_T05`; sólo metadata válida con build inferior al mínimo devuelve `426`.
+
 El login reutiliza búsqueda de cuenta, bcrypt actual, cuenta activa, `cuenta_acceso`, roles y el mismo rate limiter de login. Email o password incorrectos, usuario inactivo y propietario operativo sin cuenta devuelven el mismo error genérico. `propietario_email` no se consulta como credencial.
 
 ## 6. Transacción, replacement y límite
