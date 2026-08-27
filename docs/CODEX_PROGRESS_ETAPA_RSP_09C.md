@@ -1,0 +1,182 @@
+# CODEX PROGRESS — ETAPA RSP-09C
+
+Fecha de cierre: 2026-08-27
+Rama: `feature/rsp-09c-mobile-client`
+Base auditada: `3b48231fc0583493bd1e81799625b34063236b5d`
+
+## 1. Alcance completado
+
+Se implementó el cliente compartido Angular/Ionic/Capacitor para autenticación native Android/iOS contra el contrato real de RSP-09B. La autenticación web continúa con cookie HttpOnly, CSRF double-submit, `withCredentials`, API `/api/` same-origin y WebSocket web. No se implementó WebSocket native, GPS, distribución ni release.
+
+No se modificaron `api/`, las migraciones ni la seguridad web/backend.
+
+## 2. Runtime y metadata
+
+- `RuntimePlatformService` usa exclusivamente `Capacitor.getPlatform()` e `isNativePlatform()` y clasifica `web`, `android`, `ios` o `unknown`. No usa User-Agent, viewport ni heurísticas de pantalla.
+- `NativeMetadataService` obtiene `version` y `build` del binario actual mediante `App.getInfo()`.
+- Normaliza platform a `android|ios`, exige build decimal canónico, entero positivo y dentro del rango de Android (`<= 2147483647`), y exige versión humana no vacía.
+- Metadata inválida falla cerrado: no se inventa build y no se habilitan requests autenticados de negocio.
+- Los headers enviados coinciden con RSP-09B: `X-Native-Platform`, `X-Native-App-Build` y `X-Native-App-Version`.
+- El build actual se vuelve a obtener del binario instalado al iniciar el proceso. No se usa `app_build_at_login`; un token emitido en build 100 puede restaurarse tras actualizar a build 120.
+
+## 3. Plugins y versiones
+
+Versiones directas instaladas y fijadas:
+
+- `@capacitor/core@8.5.0`
+- `@capacitor/android@8.5.0`
+- `@capacitor/cli@8.5.0`
+- `@capacitor/app@8.0.0`
+- `@capacitor/preferences@8.0.0`
+- `@aparajita/capacitor-secure-storage@8.0.0`
+
+Todos declaran licencia MIT. El plugin seguro 8.0.0 declara soporte Capacitor 8, Android e iOS. Su implementación Android usa claves no exportables de Android Keystore y AES/GCM para el valor persistido; la implementación iOS usa Keychain. Aunque el plugin incluye una implementación web basada en localStorage, el wrapper propio la rechaza antes de invocarla.
+
+`npm install` informó 50 vulnerabilidades en el árbol completo (1 low, 15 moderate, 33 high y 1 critical). No se ejecutó `npm audit fix` ni se alteraron dependencias fuera del alcance de manera automática.
+
+## 4. Backend origin y builds
+
+La web conserva exactamente:
+
+- development y production: `serverURL=/api`, `apiURL=/api/`, WebSocket same-origin;
+- no requiere `NATIVE_BACKEND_ORIGIN`;
+- no contiene un origin native productivo.
+
+Native usa un target separado (`build:native:development` o `build:native:production`) que requiere `NATIVE_BACKEND_ORIGIN`. La validación exige un origin HTTPS exacto, sin path, query, fragment, credenciales ni slash final. Production rechaza localhost, IP literals y hostnames marcados dev/stage/staging/test. Además, el target production falla mientras `appId` siga siendo `com.example.app`; el identificador definitivo se resolverá en RSP-09E.
+
+El script genera temporalmente environment e index native, incorpora CSP limitada al origin configurado, compila assets locales y elimina los temporales en `finally`. Esos archivos también están ignorados. `capacitor.config.ts` conserva exclusivamente `webDir`; no hay `server.url`, `allowNavigation` ni carga remota de la aplicación.
+
+No se habilitó HTTP cleartext ni network security general en development; las pruebas LAN/HTTP quedan diferidas a RSP-09E si fueran necesarias.
+
+## 5. Transporte e interceptor
+
+Se conservó Angular `HttpClient` desde el WebView. No hay bridge HTTP de cookies, sincronización de cookies ni `withCredentials=true` en native.
+
+El interceptor central:
+
+- en web mantiene CSRF y cookies sólo para la API same-origin existente;
+- en native convierte los servicios existentes a la URL absoluta generada;
+- usa `URL` y compara origin exacto y path `/api`/`/api/...`;
+- agrega Bearer sólo a la API propia y nunca al login;
+- agrega metadata a requests native que la requieren;
+- envía logout-device con Bearer pero sin metadata, conforme al contrato real;
+- deja intactos body, `responseType`, query params y headers de contenido.
+
+Por lo tanto no filtra credenciales a Google Maps, imágenes externas, telemetry, origins con otro puerto, subdominios, `backend.example.evil.com`, `blob:` ni `data:`. Multipart conserva el boundary generado por el browser y PDF/blob no se transforma. Maps continúa consumiéndose a través del endpoint backend protegido.
+
+## 6. Secure storage e installation_id
+
+`NativeSecureSessionStorage` es la única capa que conoce el plugin. Persiste un solo registro atómico `{token, installationId}` bajo `native_session_v1`, con prefix `rsp_native_`, `synchronizable=false` y `KeychainAccess.whenUnlockedThisDeviceOnly`. No existe fallback a localStorage, sessionStorage, IndexedDB, Preferences ni archivo plano.
+
+El token se carga una vez al bootstrap, queda en un campo privado en memoria y el interceptor consulta esa referencia. No se copia al usuario, signals serializables, templates o logs. Login, clear y logout actualizan memoria y storage; no se lee el plugin en cada request.
+
+`NativeInstallationStorage` genera `crypto.randomUUID()` v4 y lo persiste en Capacitor Preferences, grupo `RspNativeClient`. No usa IMEI, Android ID, IDFA, serial ni hardware ID. Preferences debe guardar el UUID antes del login; si falla, no se crea una sesión remota.
+
+El binding del registro seguro con el installation ID detecta token Keychain residual tras reinstall. Si falta el UUID actual o no coincide, se elimina el token, se crea/reutiliza la instalación actual y se exige login. Una escritura segura parcial o una respuesta de login inconsistente no produce sesión usable.
+
+## 7. Login dual
+
+La misma pantalla despacha según runtime:
+
+- web: `POST /api/login` y `GET /api/login`, sin cambios de DTO o cookie;
+- native: `POST /api/auth/native/login` con `{email,password,installation_id}` y metadata actual.
+
+La respuesta real se valida como `{token_type:'Bearer',session_token,expires_at,user}`. El service extrae el token; el resto de la UI recibe sólo usuario, roles y expiración. Un token anterior nunca contamina login. No se persiste password y el formulario lo limpia después del intento. Se evita double-submit.
+
+Si el servidor crea la sesión pero secure storage falla, el cliente no navega ni autentica: usa el token sólo en memoria para un logout-device compensatorio best-effort, lo descarta y muestra un error seguro. Lo mismo aplica si una respuesta porta un token válido pero el resto del shape es inválido.
+
+## 8. Bootstrap, restore y estados
+
+El bootstrap registrado con `provideAppInitializer` es idempotente y single-flight. Esto bloquea la carrera de requests de negocio antes de reconstruir la sesión.
+
+Estados explícitos:
+
+- `initializing`
+- `unauthenticated`
+- `authenticated`
+- `offline-unverified`
+- `logout-pending`
+- `upgrade-required`
+- `client-error`
+
+Restore native carga installation ID, token/binding y pending. Sin token queda unauthenticated. Con token llama `GET /api/auth/native/session` usando metadata actual. Un 200 restaura usuario; 401 limpia; 426 conserva token y bloquea en upgrade; red, DNS, timeout o 5xx conservan token pero dejan `offline-unverified`, nunca authenticated.
+
+Los guards esperan el bootstrap en native y traducen cada estado a login, upgrade o sesión no disponible sin loops. La web mantiene la lógica previa basada en MainStore/cookie.
+
+## 9. 401 y 426
+
+Un 401 de una request native normal dispara una invalidación local single-flight: borra referencia, registro seguro, usuario y pending, y navega una sola vez a login. Login y logout-device quedan fuera del tratamiento indiscriminado.
+
+Un 426 con code real `NATIVE_APP_UPGRADE_REQUIRED` conserva el token, limpia el usuario visible, marca `upgrade-required`, bloquea negocio y muestra: “Debes actualizar la aplicación para continuar.” No se inventó URL de descarga. Al instalar un build aceptado, restore usa el mismo token y metadata del nuevo binario.
+
+## 10. Logout y pending
+
+Logout-device bloquea negocio inmediatamente, persiste primero el flag no secreto `logout_pending_v1` y llama `POST /api/auth/native/logout` con Bearer sin metadata. Tras 204 elimina token/binding, pending, memoria y usuario.
+
+Ante red/timeout conserva el token exclusivamente en secure storage/memoria para revocación, mantiene `logout-pending` y no permite requests de negocio. El flag sobrevive process kill. En el siguiente bootstrap se reintenta logout antes de session; cualquier 204 permite limpiar sin distinguir revocado, expirado o desconocido.
+
+El service expone `logoutAll()` contra `/api/auth/native/logout-all`, con Bearer y metadata actual. No se agregó un botón prominente porque la UX existente sólo ofrece logout normal.
+
+## 11. Lifecycle
+
+Se registra `App.addListener('appStateChange')`. Tras al menos cinco minutos en background, resume serializa una revalidación; sesiones expiradas reciben 401, builds obsoletos 426 y fallos transitorios quedan offline-unverified. Si hay logout pending, resume prioriza su retry. Eventos breves y concurrentes no crean loops ni restores duplicados.
+
+WebSocket web continúa igual. En native el componente raíz no conecta el WebSocket existente; ticket, redemption, handshake y heartbeat native quedan para RSP-09D.
+
+## 12. Backup y plataformas
+
+Android conserva backups generales de la aplicación, pero excluye de cloud backup y device transfer únicamente:
+
+- `WSSecureStorageSharedPreferences.xml` (ciphertext del plugin seguro);
+- `RspNativeClient.xml` (installation ID y pending).
+
+Se agregaron tanto `fullBackupContent` como `dataExtractionRules`; no se excluyeron fotos, drafts ni otros datos.
+
+Capacitor sync Android finalizó y registró secure-storage, App, Camera, Geolocation y Preferences. No hay Java, `JAVA_HOME`, Android Studio/JBR ni variables SDK en esta máquina, por lo que `gradlew projects --no-daemon` se detuvo antes de Gradle con “JAVA_HOME is not set and no 'java' command could be found”. No se generó APK/AAB.
+
+`front/ios/` sigue sin existir y no se creó desde Windows. El código compartido cubre `Capacitor.getPlatform()==='ios'` y configura Keychain `synchronizable=false` / `whenUnlockedThisDeviceOnly`. Xcode, entitlements, backup real, reinstall y hardware Apple requieren validación en RSP-09E; no se afirma un build iOS.
+
+## 13. Pruebas y validación
+
+Resultados de cierre:
+
+- tests focalizados runtime/metadata/config/storage/interceptor/auth/guards: 48 casos (incluidos en la suite completa);
+- suite Angular completa: `237 SUCCESS`;
+- tests Node de configuración: `8 PASS`;
+- build Angular web normal: PASS;
+- build/test production web: PASS, backend `/api/` y WS `/ws` same-origin;
+- build native-development con `https://native-backend.example.invalid`: PASS;
+- build native-production: bloqueo esperado por `com.example.app`;
+- Capacitor sync Android: PASS, cinco plugins detectados;
+- tests API focalizados metadata/CORS/CSRF/origin/redaction: `11 PASS`;
+- UTF-8 interfaz: PASS;
+- `git diff --check`: PASS.
+
+Las pruebas cubren web/android/iOS/unknown, build inválido, origin exacto, external origins, multipart/blob, secure storage, UUID, fallo parcial, reinstall/binding, login dual, restore 200/401/426/red/5xx, single-flight, 401 concurrente, upgrade in-place, logout 204/pending/restart, lifecycle y WebSocket web preservado.
+
+## 14. Seguridad y riesgo residual
+
+- No hay secretos reales, token hardcodeado, fallback inseguro, cookie mobile, fake CSRF, cleartext general ni server remoto de assets.
+- Token/password no se imprimen ni se incluyen en mensajes UI. El interceptor no serializa requests con Authorization.
+- CSP native restringe conexiones al origin configurado; el parser exacto sigue siendo la barrera primaria contra exfiltración accidental.
+- El raw token sigue expuesto al JavaScript autorizado que invoca el wrapper secure-storage, porque la arquitectura aprobada usa HttpClient Bearer desde el WebView. Secure storage protege persistencia, no una ejecución JS/XSS ya comprometida. CSP y la reducción de XSS continúan siendo defensas esenciales.
+
+## 15. Pendientes posteriores
+
+RSP-09D:
+
+- ticket HTTP y conexión WebSocket native, redemption, registry, fan-out y heartbeat.
+
+RSP-09E/macOS y piloto:
+
+- definir appId definitivo y backend production definitivo;
+- Xcode/proyecto iOS, entitlements, build y pruebas físicas Keychain/reinstall;
+- instalar JDK/Android SDK y ejecutar validación Gradle/debug sin release;
+- validar Android Keystore y reglas de backup en hardware/emulador;
+- decidir distribución/URL de update;
+- decidir si las pruebas LAN necesitan opt-in HTTP development limitado;
+- pruebas reales GPS, permisos y conectividad.
+
+RSP-09F:
+
+- resiliencia y operación offline real; `offline-unverified` de RSP-09C sólo informa y bloquea negocio online.
