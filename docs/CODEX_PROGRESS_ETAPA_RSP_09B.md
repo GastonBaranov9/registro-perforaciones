@@ -61,7 +61,7 @@ Bcrypt se ejecuta antes de adquirir locks. Tras validarlo se abre una transacci�
 5. revoca las más antiguas necesarias en orden determinista;
 6. inserta la nueva sesión con TTL absoluto y confirma.
 
-El lock por usuario serializa login, desactivación, cambio de versión y logout-all sin mantener bcrypt dentro de la transacción. Usuarios distintos no se bloquean entre sí. PostgreSQL real confirmó `4+2→5`, `0+6→5`, replacement concurrente de una instalación, eviction determinista, estados terminales que no consumen cupo y aislamiento entre usuarios.
+El lock por usuario serializa login, logout-device, desactivación, cambio de versión y logout-all sin mantener bcrypt dentro de la transacción. Usuarios distintos no se bloquean entre sí. PostgreSQL real confirmó `4+2→5`, `0+6→5`, replacement concurrente de una instalación, eviction determinista, estados terminales que no consumen cupo, la carrera login/logout y aislamiento entre usuarios.
 
 ## 7. Resolver Bearer y autorización compartida
 
