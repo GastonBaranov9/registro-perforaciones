@@ -1,22 +1,85 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, from, Observable, of, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import {
+  isWebApiRequest,
+  NativeBackendConfigService,
+} from '../native/native-backend-config.service';
+import { NativeMetadataService } from '../native/native-metadata.service';
+import type { NativeAppMetadata } from '../native/native-metadata.service';
+import { RuntimePlatformService } from '../native/runtime-platform.service';
+import { AuthService } from '../../shared/services/auth-service/auth.service';
+
+const NATIVE_LOGIN_PATH = '/api/auth/native/login';
+const NATIVE_LOGOUT_PATH = '/api/auth/native/logout';
+
+function requestPath(rawUrl: string): string {
+  return new URL(rawUrl, globalThis.location?.href ?? 'https://localhost/').pathname;
+}
 
 export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
-  if (!req.url.startsWith(environment.apiURL)) return next(req);
+  const runtime = inject(RuntimePlatformService);
+  if (!runtime.isNative()) {
+    if (!isWebApiRequest(req.url, environment.apiURL)) return next(req);
 
-  let headers = req.headers;
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) {
-    const csrfToken = document.cookie
-      .split('; ')
-      .find((cookie) => cookie.startsWith('rsp_csrf='))
-      ?.slice('rsp_csrf='.length);
+    let headers = req.headers;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) {
+      const csrfToken = document.cookie
+        .split('; ')
+        .find((cookie) => cookie.startsWith('rsp_csrf='))
+        ?.slice('rsp_csrf='.length);
+      if (csrfToken) headers = headers.set('X-CSRF-Token', decodeURIComponent(csrfToken));
+    }
 
-    if (csrfToken) headers = headers.set('X-CSRF-Token', decodeURIComponent(csrfToken));
+    return next(req.clone({ headers, withCredentials: true }));
   }
 
-  const modifiedReq = req.clone({
-    headers,
-    withCredentials: true,
-  });
-  return next(modifiedReq);
+  const backend = inject(NativeBackendConfigService);
+  if (!backend.isAuthorizedApiRequest(req.url)) return next(req);
+
+  const auth = inject(AuthService);
+  const metadata = inject(NativeMetadataService);
+  const pathname = requestPath(req.url);
+  const metadataFlight: Observable<NativeAppMetadata | null> =
+    pathname === NATIVE_LOGOUT_PATH ? of(null) : from(metadata.current());
+
+  return metadataFlight.pipe(
+    switchMap((currentMetadata) => {
+      let headers = req.headers;
+      if (currentMetadata) {
+        headers = headers
+          .set('X-Native-Platform', currentMetadata.platform)
+          .set('X-Native-App-Build', String(currentMetadata.appBuild))
+          .set('X-Native-App-Version', currentMetadata.appVersion);
+      }
+
+      const token = auth.nativeAuthorizationFor(pathname);
+      if (token && pathname !== NATIVE_LOGIN_PATH) {
+        headers = headers.set('Authorization', `Bearer ${token}`);
+      }
+
+      return next(req.clone({ headers, withCredentials: false })).pipe(
+        catchError((error: unknown) => {
+          if (!(error instanceof HttpErrorResponse)) return throwError(() => error);
+          const code = (error.error as { code?: unknown } | null)?.code;
+          if (error.status === 426 && code === 'NATIVE_APP_UPGRADE_REQUIRED') {
+            return from(auth.handleNative426()).pipe(
+              switchMap(() => throwError(() => error)),
+            );
+          }
+          if (
+            error.status === 401 &&
+            pathname !== NATIVE_LOGIN_PATH &&
+            pathname !== NATIVE_LOGOUT_PATH
+          ) {
+            return from(auth.handleNative401()).pipe(
+              switchMap(() => throwError(() => error)),
+            );
+          }
+          return throwError(() => error);
+        }),
+      );
+    }),
+  );
 };

@@ -11,6 +11,9 @@ export type Usuario = {
 
 export type UsuarioPublico = Omit<Usuario, 'password'>;
 
+export type UsuarioSesion = Omit<Usuario, 'password' | 'email' | 'activo' | 'fecha_registro'> &
+  Partial<Pick<Usuario, 'email' | 'activo' | 'fecha_registro'>>;
+
 export type UsuarioCrearBody = {
   email: string;
   nombre: string;

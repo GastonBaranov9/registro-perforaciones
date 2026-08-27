@@ -1,11 +1,11 @@
 import { Injectable, signal } from '@angular/core';
-import { UsuarioPublico } from '../../types/schemas';
+import { UsuarioSesion } from '../../types/schemas';
 
 @Injectable({
   providedIn: 'root',
 })
 export class MainStore {
-  public user = signal<UsuarioPublico | null>(null);
+  public user = signal<UsuarioSesion | null>(null);
   public initialized = signal<boolean>(false);
 
   constructor() {
@@ -13,11 +13,9 @@ export class MainStore {
   }
 
   public init() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
     this.initialized.set(true);
   }
-  public setUser(user: UsuarioPublico) {
+  public setUser(user: UsuarioSesion) {
     this.user.set(user);
   }
 
@@ -27,8 +25,6 @@ export class MainStore {
 
   public clearSession() {
     this.user.set(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
   }
 
   public isLogged() {

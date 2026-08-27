@@ -1,0 +1,18 @@
+.status-page {
+  --background: var(--ion-background-color, #f4f5f8);
+}
+
+.status-card {
+  box-sizing: border-box;
+  max-width: 34rem;
+  margin: 12vh auto 0;
+  padding: 2rem;
+  border-radius: 1rem;
+  background: var(--ion-card-background, #fff);
+  text-align: center;
+  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 10%);
+}
+
+.status-card h1 {
+  margin-top: 0.75rem;
+}

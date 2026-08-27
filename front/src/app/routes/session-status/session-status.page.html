@@ -1,0 +1,27 @@
+<ion-content class="ion-padding status-page">
+  <section class="status-card" aria-live="polite">
+    @switch (reason()) {
+      @case ('upgrade-required') {
+        <h1>Actualización requerida</h1>
+        <p>Debes actualizar la aplicación para continuar.</p>
+        <ion-button fill="outline" (click)="logout()">Cerrar sesión</ion-button>
+      }
+      @case ('logout-pending') {
+        <ion-spinner></ion-spinner>
+        <h1>Cierre de sesión pendiente</h1>
+        <p>La aplicación reintentará revocar esta sesión cuando vuelva la conexión.</p>
+        <ion-button (click)="retry()">Reintentar ahora</ion-button>
+      }
+      @case ('client-error') {
+        <h1>Aplicación no disponible</h1>
+        <p>No fue posible validar la configuración o el almacenamiento seguro.</p>
+        <p>Contactá al soporte técnico.</p>
+      }
+      @default {
+        <h1>Sin conexión</h1>
+        <p>Sin conexión. No fue posible validar la sesión.</p>
+        <ion-button (click)="retry()">Reintentar</ion-button>
+      }
+    }
+  </section>
+</ion-content>
