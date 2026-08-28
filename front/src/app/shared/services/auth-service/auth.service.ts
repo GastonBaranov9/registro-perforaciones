@@ -110,6 +110,7 @@ export class AuthService {
   private restoreFlight?: Promise<void>;
   private invalidationFlight?: Promise<void>;
   private nativeLoginFlight?: Promise<void>;
+  private nativeMutationLock: Promise<void> = Promise.resolve();
   private upgradeFlight?: Promise<void>;
   private resumeFlight?: Promise<void>;
   private lifecycleListener?: PluginListenerHandle;
@@ -156,7 +157,7 @@ export class AuthService {
         return;
       case 'android':
       case 'ios':
-        return this.nativeLogout();
+        return this.withNativeAuthMutationLock(() => this.nativeLogoutLocked());
       case 'unknown':
         throw this.failUnknownRuntime();
     }
@@ -165,16 +166,18 @@ export class AuthService {
   public async logoutAll(): Promise<void> {
     if (this.runtime.isWeb()) return this.logout();
     if (!this.runtime.isNative()) throw this.failUnknownRuntime();
-    if (!this.nativeToken) return this.finishLocalLogout();
-    try {
-      await firstValueFrom(
-        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT_ALL, null),
-      );
-      await this.finishLocalLogout();
-    } catch (error) {
-      if (error instanceof HttpErrorResponse && error.status === 426) return;
-      throw new Error('No fue posible cerrar todas las sesiones.');
-    }
+    return this.withNativeAuthMutationLock(async () => {
+      if (!this.nativeToken) return this.finishLocalLogout();
+      try {
+        await firstValueFrom(
+          this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT_ALL, null),
+        );
+        await this.finishLocalLogout();
+      } catch (error) {
+        if (error instanceof HttpErrorResponse && error.status === 426) return;
+        throw new Error('No fue posible cerrar todas las sesiones.');
+      }
+    });
   }
 
   public async getUser(): Promise<void> {
@@ -221,7 +224,8 @@ export class AuthService {
       return;
     }
     if (expectedGeneration !== undefined && expectedGeneration !== this.nativeAuthGeneration) return;
-    this.invalidationFlight ??= (async () => {
+    this.invalidationFlight ??= this.withNativeAuthMutationLock(async () => {
+      if (expectedGeneration !== undefined && expectedGeneration !== this.nativeAuthGeneration) return;
       this.setNativeToken(null);
       this.expiresAt.set(null);
       this.mainStore.clearSession();
@@ -233,7 +237,7 @@ export class AuthService {
       }
       this.state.set('unauthenticated');
       await this.navigateOnce('/login');
-    })().finally(() => {
+    }).finally(() => {
       this.invalidationFlight = undefined;
     });
     return this.invalidationFlight;
@@ -271,7 +275,7 @@ export class AuthService {
     if (this.state() !== 'logout-pending' && elapsed < RESUME_REVALIDATION_MS) return;
 
     this.resumeFlight ??= (this.state() === 'logout-pending'
-      ? this.retryPendingLogout()
+      ? this.withNativeAuthMutationLock(() => this.retryPendingLogoutLocked())
       : this.restoreNativeSession()
     ).finally(() => {
       this.resumeFlight = undefined;
@@ -347,7 +351,7 @@ export class AuthService {
       if (logoutPending) {
         this.pendingLogoutUserId = logoutPending.userId;
         this.state.set('logout-pending');
-        await this.retryPendingLogout();
+        await this.withNativeAuthMutationLock(() => this.retryPendingLogoutLocked());
         return;
       }
       await this.restoreNativeSession();
@@ -380,7 +384,9 @@ export class AuthService {
   }
 
   private nativeLogin(email: string, password: string): Promise<void> {
-    this.nativeLoginFlight ??= this.nativeLoginInternal(email, password).finally(() => {
+    this.nativeLoginFlight ??= this.withNativeAuthMutationLock(() =>
+      this.nativeLoginInternal(email, password),
+    ).finally(() => {
       this.nativeLoginFlight = undefined;
     });
     return this.nativeLoginFlight;
@@ -533,10 +539,10 @@ export class AuthService {
     }
   }
 
-  private async nativeLogout(): Promise<void> {
+  private async nativeLogoutLocked(): Promise<void> {
     if (!this.nativeToken) {
       if (this.state() === 'logout-pending') {
-        return this.retryPendingLogout();
+        return this.retryPendingLogoutLocked();
       }
       return this.finishLocalLogout();
     }
@@ -556,7 +562,7 @@ export class AuthService {
       await this.finishLocalLogoutBestEffort();
       return;
     }
-    await this.retryPendingLogout();
+    await this.retryPendingLogoutLocked();
   }
 
   private async revokeActiveTokenBeforeLogin(): Promise<void> {
@@ -597,7 +603,7 @@ export class AuthService {
     this.state.set('unauthenticated');
   }
 
-  private async retryPendingLogout(): Promise<void> {
+  private async retryPendingLogoutLocked(): Promise<void> {
     if (!this.nativeToken) {
       this.mainStore.clearSession();
       await this.clearPendingBestEffort();
@@ -699,6 +705,12 @@ export class AuthService {
 
   private advanceNativeAuthGeneration(): void {
     this.nativeAuthGeneration++;
+  }
+
+  private withNativeAuthMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.nativeMutationLock.then(operation, operation);
+    this.nativeMutationLock = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   private async navigateOnce(path: string): Promise<void> {

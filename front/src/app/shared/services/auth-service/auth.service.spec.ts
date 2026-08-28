@@ -651,4 +651,76 @@ describe('AuthService native', () => {
     expect(secureRecord).toEqual({ token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
     expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
   });
+
+  it('serializa logout pending A antes de iniciar login B', async () => {
+    const replacementToken = `rspn1_${'E'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+
+    const logout = service.logout();
+    await settle();
+    const logoutRequest = controller.expectOne('/api/auth/native/logout');
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectNone('/api/auth/native/login');
+
+    logoutRequest.flush(null, { status: 204, statusText: 'No Content' });
+    await logout;
+    await settle();
+    const loginRequest = controller.expectOne('/api/auth/native/login');
+    loginRequest.flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+  });
+
+  it('serializa invalidación 401 con login y conserva B', async () => {
+    const replacementToken = `rspn1_${'F'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    let releaseStorage!: () => void;
+    const storageCleanup = new Promise<void>((resolve) => { releaseStorage = resolve; });
+    secure.remove.and.callFake(async () => storageCleanup.then(() => { secureRecord = null; return true; }));
+
+    const invalidation = service.handleNative401(1);
+    await settle();
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectNone('/api/auth/native/login');
+
+    releaseStorage();
+    await invalidation;
+    await settle();
+    const loginRequest = controller.expectOne('/api/auth/native/login');
+    loginRequest.flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+  });
+
+  it('una invalidación stale posterior al login no toca la sesión nueva', async () => {
+    const replacementToken = `rspn1_${'G'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    const oldGeneration = service.nativeRequestAuthSnapshot('/api/pozos')?.generation;
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    const logoutRequest = controller.expectOne('/api/auth/native/logout');
+    const invalidation = service.handleNative401(oldGeneration);
+    logoutRequest.flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    const loginRequest = controller.expectOne('/api/auth/native/login');
+    loginRequest.flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+    await invalidation;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+  });
 });
