@@ -28,4 +28,4 @@ Se agregaron contratos/tests para minSdk, snapshot stale-401, 204 con fallo de c
 
 ## ValidaciÃ³n y pendientes
 
-Se ejecutaron builds web y native-development, contratos de configuraciÃ³n y sync Android. La suite Angular focalizada de AuthService pasÃ³ 22/22; la suite completa se ejecutÃ³ y queda registrada con el resultado del entorno en el cierre. La prueba Gradle fÃ­sica, Xcode/iOS y hardware Keystore/Keychain permanecen pendientes de RSP-09E.
+Se ejecutaron builds web y native-development, contratos de configuraciÃ³n y sync Android. La suite Angular focalizada de AuthService pasÃ³ 23/23 y la suite completa pasÃ³ 259/259. La prueba Gradle fÃ­sica, Xcode/iOS y hardware Keystore/Keychain permanecen pendientes de RSP-09E.
