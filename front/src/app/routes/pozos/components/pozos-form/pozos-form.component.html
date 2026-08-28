@@ -189,7 +189,7 @@
       @if (!getFoto() || eliminarFotoPendiente()) {
       <ion-label>{{ eliminarFotoPendiente() ? 'La foto actual se eliminará al guardar.' : 'No hay foto' }}</ion-label>
       }@else {
-      <ion-img [src]="getFoto()" alt="Imagen del pozo"></ion-img>
+      <ion-img [protectedSrc]="getFoto()" alt="Imagen del pozo"></ion-img>
       <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">
         Eliminar fotografía
       </ion-button>

@@ -9,12 +9,16 @@ import { NativeMetadataService } from '../../../core/native/native-metadata.serv
 import { CAPACITOR_APP } from '../../../core/native/native-plugin.tokens';
 import {
   isValidNativeToken,
+  type NativeLogoutPendingRecord,
   NativeInstallationStorage,
   NativeLogoutPendingStorage,
   NativeSecureSessionStorage,
   NativeStorageError,
 } from '../../../core/native/native-storage.service';
-import { RuntimePlatformService } from '../../../core/native/runtime-platform.service';
+import {
+  RuntimePlatformService,
+  RuntimePlatformUnknownError,
+} from '../../../core/native/runtime-platform.service';
 import { MainStore } from '../mainstore-service/main.store';
 import { Rol, UsuarioPublico } from '../../types/schemas';
 
@@ -99,6 +103,7 @@ export class AuthService {
 
   private nativeToken: string | null = null;
   private installationId: string | null = null;
+  private pendingLogoutUserId: number | null = null;
   private bootstrapFlight?: Promise<void>;
   private restoreFlight?: Promise<void>;
   private invalidationFlight?: Promise<void>;
@@ -113,6 +118,10 @@ export class AuthService {
     return this.runtime.isNative();
   }
 
+  isWeb(): boolean {
+    return this.runtime.isWeb();
+  }
+
   bootstrap(): Promise<void> {
     this.bootstrapFlight ??= this.bootstrapInternal().finally(() => {
       this.installLifecycleListener();
@@ -121,25 +130,38 @@ export class AuthService {
   }
 
   public async logged(email: string, password: string): Promise<void> {
-    if (!this.runtime.isNative()) return this.webLogin(email, password);
-    await this.nativeLogin(email, password);
+    switch (this.runtime.platform()) {
+      case 'web':
+        return this.webLogin(email, password);
+      case 'android':
+      case 'ios':
+        return this.nativeLogin(email, password);
+      case 'unknown':
+        throw this.failUnknownRuntime();
+    }
   }
 
   public async logout(): Promise<void> {
-    if (!this.runtime.isNative()) {
-      try {
-        await firstValueFrom(this.httpClient.post<void>(environment.apiURL + 'logout', null));
-      } finally {
-        this.mainStore.clearSession();
-        this.state.set('unauthenticated');
-      }
-      return;
+    switch (this.runtime.platform()) {
+      case 'web':
+        try {
+          await firstValueFrom(this.httpClient.post<void>(environment.apiURL + 'logout', null));
+        } finally {
+          this.mainStore.clearSession();
+          this.state.set('unauthenticated');
+        }
+        return;
+      case 'android':
+      case 'ios':
+        return this.nativeLogout();
+      case 'unknown':
+        throw this.failUnknownRuntime();
     }
-    await this.nativeLogout();
   }
 
   public async logoutAll(): Promise<void> {
-    if (!this.runtime.isNative()) return this.logout();
+    if (this.runtime.isWeb()) return this.logout();
+    if (!this.runtime.isNative()) throw this.failUnknownRuntime();
     if (!this.nativeToken) return this.finishLocalLogout();
     try {
       await firstValueFrom(
@@ -154,6 +176,7 @@ export class AuthService {
 
   public async getUser(): Promise<void> {
     if (this.runtime.isNative()) return this.restoreNativeSession();
+    if (!this.runtime.isWeb()) throw this.failUnknownRuntime();
     try {
       const user = await firstValueFrom(this.httpClient.get<UsuarioPublico>(this.baseURL));
       this.mainStore.setUser(user);
@@ -183,14 +206,18 @@ export class AuthService {
   }
 
   async handleNative401(): Promise<void> {
-    if (!this.runtime.isNative()) return;
+    if (this.runtime.isWeb()) return;
+    if (!this.runtime.isNative()) {
+      this.failUnknownRuntime();
+      return;
+    }
     this.invalidationFlight ??= (async () => {
       this.nativeToken = null;
       this.expiresAt.set(null);
       this.mainStore.clearSession();
       try {
         await this.secureStorage.clear();
-        await this.pendingStorage.set(false);
+        await this.pendingStorage.clear();
       } catch {
         // El estado en memoria permanece cerrado aunque el SO no permita limpiar ahora.
       }
@@ -203,7 +230,11 @@ export class AuthService {
   }
 
   async handleNative426(): Promise<void> {
-    if (!this.runtime.isNative()) return;
+    if (this.runtime.isWeb()) return;
+    if (!this.runtime.isNative()) {
+      this.failUnknownRuntime();
+      return;
+    }
     this.upgradeFlight ??= (async () => {
       this.mainStore.clearSession();
       this.state.set('upgrade-required');
@@ -215,7 +246,11 @@ export class AuthService {
   }
 
   async handleAppStateChange(isActive: boolean, now = Date.now()): Promise<void> {
-    if (!this.runtime.isNative()) return;
+    if (this.runtime.isWeb()) return;
+    if (!this.runtime.isNative()) {
+      this.failUnknownRuntime();
+      return;
+    }
     if (!isActive) {
       this.backgroundAt = now;
       return;
@@ -248,13 +283,20 @@ export class AuthService {
 
   private async bootstrapInternal(): Promise<void> {
     this.state.set('initializing');
-    if (!this.runtime.isNative()) {
-      try {
-        await this.getUser();
-      } catch {
-        // La web conserva su sesión cookie y muestra login si no puede restaurarla.
-      }
-      return;
+    switch (this.runtime.platform()) {
+      case 'web':
+        try {
+          await this.getUser();
+        } catch {
+          // La web conserva su sesión cookie y muestra login si no puede restaurarla.
+        }
+        return;
+      case 'unknown':
+        this.failUnknownRuntime();
+        return;
+      case 'android':
+      case 'ios':
+        break;
     }
 
     try {
@@ -269,7 +311,11 @@ export class AuthService {
         (!existingInstallation || storedSession.installationId !== existingInstallation)
       ) {
         await this.secureStorage.clear();
-        await this.pendingStorage.set(false);
+        if (logoutPending) {
+          this.pendingLogoutUserId = logoutPending.userId;
+          this.state.set('client-error');
+          return;
+        }
         this.installationId = existingInstallation ?? (await this.installationStorage.create());
         this.state.set('unauthenticated');
         return;
@@ -277,13 +323,18 @@ export class AuthService {
 
       this.installationId = existingInstallation ?? (await this.installationStorage.create());
       if (!storedSession) {
-        if (logoutPending) await this.pendingStorage.set(false);
+        if (logoutPending) {
+          this.pendingLogoutUserId = logoutPending.userId;
+          this.state.set('client-error');
+          return;
+        }
         this.state.set('unauthenticated');
         return;
       }
 
       this.nativeToken = storedSession.token;
       if (logoutPending) {
+        this.pendingLogoutUserId = logoutPending.userId;
         this.state.set('logout-pending');
         await this.retryPendingLogout();
         return;
@@ -318,6 +369,8 @@ export class AuthService {
   }
 
   private async nativeLogin(email: string, password: string): Promise<void> {
+    let pendingAtStart: NativeLogoutPendingRecord | null =
+      this.state() === 'logout-pending' ? { userId: this.pendingLogoutUserId } : null;
     this.state.set('initializing');
     try {
       this.backendConfig.origin();
@@ -326,10 +379,13 @@ export class AuthService {
         (await this.installationStorage.loadExisting()) ??
         (await this.installationStorage.create());
 
-      // Preferences debe estar operativa antes de crear una sesión remota: si no
-      // podemos persistir un logout pendiente, el cliente no puede revocarla con
-      // seguridad después de un corte de red.
-      await this.pendingStorage.set(false);
+      const storedPending = await this.pendingStorage.load();
+      if (pendingAtStart && !storedPending) throw new NativeStorageError();
+      pendingAtStart = storedPending ?? pendingAtStart;
+      if (!pendingAtStart) {
+        // Verifica escritura de Preferences sin cancelar un pending existente.
+        await this.pendingStorage.clear();
+      }
 
       const response = await firstValueFrom(
         this.httpClient.post<NativeLoginResponse>(environment.apiURL + NATIVE_LOGIN, {
@@ -343,8 +399,26 @@ export class AuthService {
         throw new NativeStorageError();
       }
       if (!isExpiration(response.expires_at) || !isNativeUser(response.user)) {
-        await this.compensateFailedLogin(response.session_token);
+        await this.discardUncommittedLogin(response.session_token);
         throw new NativeStorageError();
+      }
+
+      if (
+        pendingAtStart &&
+        (pendingAtStart.userId === null || pendingAtStart.userId !== response.user.id_usuario)
+      ) {
+        // El backend sólo reemplaza automáticamente igual usuario+installation_id.
+        // Para otro usuario (o un pending legacy) se exige revocar A con 204.
+        if (!this.nativeToken) throw new NativeStorageError();
+        try {
+          await firstValueFrom(
+            this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null),
+          );
+        } catch {
+          await this.revokeUncommittedToken(response.session_token);
+          this.state.set('logout-pending');
+          throw new Error('No fue posible completar el reemplazo de la sesión.');
+        }
       }
 
       try {
@@ -353,13 +427,20 @@ export class AuthService {
           installationId: this.installationId,
         });
       } catch {
-        await this.compensateFailedLogin(response.session_token);
+        await this.discardUncommittedLogin(response.session_token);
         throw new NativeStorageError();
       }
 
       this.nativeToken = response.session_token;
       this.expiresAt.set(response.expires_at);
       this.mainStore.setUser(response.user);
+      try {
+        await this.pendingStorage.clear();
+      } catch {
+        await this.discardUncommittedLogin(response.session_token);
+        throw new NativeStorageError();
+      }
+      this.pendingLogoutUserId = null;
       this.state.set('authenticated');
     } catch (error) {
       if (this.state() === 'upgrade-required') {
@@ -372,7 +453,7 @@ export class AuthService {
         throw error;
       }
       this.mainStore.clearSession();
-      this.state.set('unauthenticated');
+      this.state.set(pendingAtStart ? 'logout-pending' : 'unauthenticated');
       if (error instanceof HttpErrorResponse) {
         if (error.status === 401) throw new Error('Email o contraseña incorrectas');
         if (error.status === 0) throw new Error('Sin conexión. No fue posible iniciar sesión.');
@@ -423,11 +504,19 @@ export class AuthService {
   }
 
   private async nativeLogout(): Promise<void> {
-    if (!this.nativeToken) return this.finishLocalLogout();
+    if (!this.nativeToken) {
+      if (this.state() === 'logout-pending') {
+        this.state.set('client-error');
+        return;
+      }
+      return this.finishLocalLogout();
+    }
+    const pendingUserId = this.userId();
     this.mainStore.clearSession();
     this.state.set('logout-pending');
     try {
-      await this.pendingStorage.set(true);
+      await this.pendingStorage.setPending(pendingUserId);
+      this.pendingLogoutUserId = pendingUserId;
     } catch {
       try {
         await firstValueFrom(this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null));
@@ -441,7 +530,11 @@ export class AuthService {
   }
 
   private async retryPendingLogout(): Promise<void> {
-    if (!this.nativeToken) return this.finishLocalLogout();
+    if (!this.nativeToken) {
+      this.mainStore.clearSession();
+      this.state.set('client-error');
+      return;
+    }
     this.mainStore.clearSession();
     this.state.set('logout-pending');
     try {
@@ -457,7 +550,8 @@ export class AuthService {
     this.nativeToken = null;
     this.expiresAt.set(null);
     this.mainStore.clearSession();
-    await this.pendingStorage.set(false);
+    await this.pendingStorage.clear();
+    this.pendingLogoutUserId = null;
     this.state.set('unauthenticated');
   }
 
@@ -468,23 +562,31 @@ export class AuthService {
       // No se habilita la sesión en memoria aunque el storage quede inaccesible.
     }
     try {
-      await this.pendingStorage.set(false);
+      await this.pendingStorage.clear();
     } catch {
       // Un flag residual sin token se limpia en el próximo bootstrap.
     }
     this.nativeToken = null;
+    this.pendingLogoutUserId = null;
     this.expiresAt.set(null);
     this.mainStore.clearSession();
     this.state.set('unauthenticated');
   }
 
-  private async compensateFailedLogin(token: string): Promise<void> {
+  private async revokeUncommittedToken(token: string): Promise<void> {
+    const previousToken = this.nativeToken;
     this.nativeToken = token;
     try {
       await firstValueFrom(this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null));
     } catch {
       // Best-effort: el token no se guarda en un fallback y expira server-side.
+    } finally {
+      this.nativeToken = previousToken;
     }
+  }
+
+  private async discardUncommittedLogin(token: string): Promise<void> {
+    await this.revokeUncommittedToken(token);
     try {
       await this.secureStorage.clear();
     } catch {
@@ -505,6 +607,14 @@ export class AuthService {
       .catch(() => {
         this.state.set('client-error');
       });
+  }
+
+  private failUnknownRuntime(): RuntimePlatformUnknownError {
+    this.nativeToken = null;
+    this.expiresAt.set(null);
+    this.mainStore.clearSession();
+    this.state.set('client-error');
+    return new RuntimePlatformUnknownError();
   }
 
   private async navigateOnce(path: string): Promise<void> {

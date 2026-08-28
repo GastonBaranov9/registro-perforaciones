@@ -93,7 +93,7 @@
           @if (!getFoto()) {
           <ion-label>No hay foto</ion-label>
           }@else {
-          <ion-img [src]="getFoto()" alt="Imagen del pozo"></ion-img>
+          <ion-img [protectedSrc]="getFoto()" alt="Imagen del pozo"></ion-img>
           }
         </ion-item>
       </ion-list>

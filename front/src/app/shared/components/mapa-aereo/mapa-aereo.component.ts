@@ -3,9 +3,11 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { coordenadasRegistradasValidas } from '../../utils/coordenadas';
+import { ProtectedResourceDirective } from '../../../core/resources/protected-resource.directive';
 
 @Component({
   selector: 'app-mapa-aereo', standalone: true,
+  imports: [ProtectedResourceDirective],
   template: `
     <section class="mapa-aereo" aria-label="Mapa aéreo del sitio">
       @if (cargando()) { <p role="status">Consultando mapa aéreo…</p> }
@@ -13,7 +15,7 @@ import { coordenadasRegistradasValidas } from '../../utils/coordenadas';
       @else if (!configurado()) { <p>Mapa aéreo no configurado</p> }
       @else if (falloImagen()) { <p>Mapa aéreo no disponible</p> }
       @else {
-        <img [src]="urlImagen()" (error)="falloImagen.set(true)" alt="Fotografía aérea de la ubicación del pozo" />
+        <img [protectedSrc]="urlImagen()" (protectedResourceError)="falloImagen.set(true)" alt="Fotografía aérea de la ubicación del pozo" />
         @if (atribucion()) { <small>{{ atribucion() }}</small> }
       }
     </section>`,

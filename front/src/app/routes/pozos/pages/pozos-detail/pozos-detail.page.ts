@@ -28,6 +28,7 @@ import { AporteListService } from '../../../../shared/services/aportes-service/a
 import { formatearFechaCalendario } from '../../../../shared/utils/fechas';
 import { representarSitio } from '../../../../shared/utils/sitio-humano';
 import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
+import { ProtectedResourceDirective } from '../../../../core/resources/protected-resource.directive';
 
 @Component({
   selector: 'app-pozos-detail',
@@ -46,6 +47,7 @@ import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/map
     IonButtons,
     PerfilLitologicoComponent,
     MapaAereoComponent,
+    ProtectedResourceDirective,
   ],
   templateUrl: './pozos-detail.page.html',
   styleUrl: './pozos-detail.page.css',

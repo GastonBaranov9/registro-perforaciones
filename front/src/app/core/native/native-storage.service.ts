@@ -26,6 +26,10 @@ export interface StoredNativeSession {
   installationId: string;
 }
 
+export interface NativeLogoutPendingRecord {
+  userId: number | null;
+}
+
 export function isValidInstallationId(value: unknown): value is string {
   return typeof value === 'string' && UUID_V4.test(value);
 }
@@ -154,23 +158,48 @@ export class NativeLogoutPendingStorage {
   private readonly runtime = inject(RuntimePlatformService);
   private configuration?: Promise<void>;
 
-  async load(): Promise<boolean> {
+  async load(): Promise<NativeLogoutPendingRecord | null> {
     await this.configure();
     try {
-      return (await this.preferences.get({ key: LOGOUT_PENDING_KEY })).value === 'true';
+      const value = (await this.preferences.get({ key: LOGOUT_PENDING_KEY })).value;
+      if (value === null) return null;
+      // Compatibilidad con el flag booleano escrito por RSP-09C antes de R1.
+      if (value === 'true') return { userId: null };
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (
+        parsed['pending'] !== true ||
+        !(
+          parsed['userId'] === null ||
+          (Number.isInteger(parsed['userId']) && Number(parsed['userId']) > 0)
+        )
+      ) {
+        throw new NativeStorageError();
+      }
+      return { userId: parsed['userId'] as number | null };
     } catch {
       throw new NativeStorageError();
     }
   }
 
-  async set(pending: boolean): Promise<void> {
+  async setPending(userId: number | null): Promise<void> {
     await this.configure();
     try {
-      if (pending) {
-        await this.preferences.set({ key: LOGOUT_PENDING_KEY, value: 'true' });
-      } else {
-        await this.preferences.remove({ key: LOGOUT_PENDING_KEY });
+      if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
+        throw new NativeStorageError();
       }
+      await this.preferences.set({
+        key: LOGOUT_PENDING_KEY,
+        value: JSON.stringify({ pending: true, userId }),
+      });
+    } catch {
+      throw new NativeStorageError();
+    }
+  }
+
+  async clear(): Promise<void> {
+    await this.configure();
+    try {
+      await this.preferences.remove({ key: LOGOUT_PENDING_KEY });
     } catch {
       throw new NativeStorageError();
     }

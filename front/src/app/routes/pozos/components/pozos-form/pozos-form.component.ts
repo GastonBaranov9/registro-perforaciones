@@ -10,6 +10,7 @@ import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacio
 import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
 import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
+import { ProtectedResourceDirective } from '../../../../core/resources/protected-resource.directive';
 
 type PropietarioEdicionEstado = {
   id_usuario: number;
@@ -35,6 +36,7 @@ type PropietarioEdicionEstado = {
     FotoComponent,
     IonImg,
     SelectorPersonaPozoComponent,
+    ProtectedResourceDirective,
 ],
 })
 export class PozosFormComponent {
