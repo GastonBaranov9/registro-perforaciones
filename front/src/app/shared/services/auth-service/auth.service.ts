@@ -483,23 +483,27 @@ export class AuthService {
       this.state.set('unauthenticated');
       return;
     }
+    const authSnapshot = this.nativeRequestAuthSnapshot(`/api/${NATIVE_SESSION}`);
+    if (!authSnapshot) return;
     this.state.set('initializing');
     this.mainStore.clearSession();
     try {
       const response = await firstValueFrom(
         this.httpClient.get<NativeSessionResponse>(environment.apiURL + NATIVE_SESSION),
       );
+      if (authSnapshot.generation !== this.nativeAuthGeneration) return;
       if (!isNativeUser(response?.user) || !isExpiration(response.expires_at)) {
-        await this.handleNative401();
+        await this.handleNative401(authSnapshot.generation);
         return;
       }
       this.expiresAt.set(response.expires_at);
       this.mainStore.setUser(response.user);
       this.state.set('authenticated');
     } catch (error) {
+      if (authSnapshot.generation !== this.nativeAuthGeneration) return;
       if (this.state() === 'unauthenticated' || this.state() === 'upgrade-required') return;
       if (error instanceof HttpErrorResponse && error.status === 401) {
-        await this.handleNative401();
+        await this.handleNative401(authSnapshot.generation);
         return;
       }
       if (error instanceof HttpErrorResponse && error.status === 426) {
@@ -521,6 +525,7 @@ export class AuthService {
     const pendingUserId = this.userId();
     this.mainStore.clearSession();
     this.state.set('logout-pending');
+    this.advanceNativeAuthGeneration();
     try {
       await this.pendingStorage.setPending(pendingUserId);
       this.pendingLogoutUserId = pendingUserId;
@@ -633,6 +638,10 @@ export class AuthService {
   private setNativeToken(token: string | null): void {
     if (this.nativeToken === token) return;
     this.nativeToken = token;
+    this.nativeAuthGeneration++;
+  }
+
+  private advanceNativeAuthGeneration(): void {
     this.nativeAuthGeneration++;
   }
 
