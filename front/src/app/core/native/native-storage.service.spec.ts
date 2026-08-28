@@ -101,6 +101,32 @@ describe('storage native', () => {
     await expectAsync(storage.load()).toBeRejected();
   });
 
+  it('verifica escritura, lectura y borrado de Preferences sin tocar datos de sesión', async () => {
+    const storage = TestBed.inject(NativeLogoutPendingStorage);
+    await storage.verifyWritable();
+    expect(preferenceValue).toBeNull();
+    expect(preferences.set).toHaveBeenCalledWith(
+      jasmine.objectContaining({ key: 'native_storage_probe_v1' }),
+    );
+    expect(preferences.remove).toHaveBeenCalledWith({ key: 'native_storage_probe_v1' });
+  });
+
+  it('rechaza probe si la lectura devuelve un valor distinto', async () => {
+    preferences.get.and.callFake(async ({ key }) => ({
+      value: key === 'native_storage_probe_v1' ? 'otro-valor' : preferenceValue,
+    }));
+    await expectAsync(TestBed.inject(NativeLogoutPendingStorage).verifyWritable()).toBeRejected();
+    expect(preferences.remove).toHaveBeenCalledWith({ key: 'native_storage_probe_v1' });
+  });
+
+  it('rechaza probe si el borrado final falla', async () => {
+    preferences.remove.and.callFake(async ({ key }) => {
+      if (key === 'native_storage_probe_v1') throw new Error('remove unavailable');
+      preferenceValue = null;
+    });
+    await expectAsync(TestBed.inject(NativeLogoutPendingStorage).verifyWritable()).toBeRejected();
+  });
+
   it('rechaza cualquier uso accidental desde web', async () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({

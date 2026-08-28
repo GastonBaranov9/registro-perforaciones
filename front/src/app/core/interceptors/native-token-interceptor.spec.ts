@@ -19,10 +19,13 @@ describe('tokenInterceptor native', () => {
 
   beforeEach(() => {
     auth = jasmine.createSpyObj<AuthService>('auth', [
-      'nativeAuthorizationFor', 'handleNative401', 'handleNative426',
+      'nativeAuthorizationFor', 'nativeRequestAuthSnapshot', 'handleNative401', 'handleNative426',
     ]);
     auth.nativeAuthorizationFor.and.callFake((pathname) =>
       pathname === '/api/auth/native/login' ? null : token,
+    );
+    auth.nativeRequestAuthSnapshot.and.callFake((pathname) =>
+      pathname === '/api/auth/native/login' ? null : { token, generation: 1 },
     );
     auth.handleNative401.and.resolveTo();
     auth.handleNative426.and.resolveTo();
@@ -143,5 +146,21 @@ describe('tokenInterceptor native', () => {
     );
     await Promise.resolve();
     expect(auth.handleNative426).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignora un 401 cuya generación quedó obsoleta tras cambiar de token', async () => {
+    let generation = 1;
+    auth.nativeRequestAuthSnapshot.and.callFake((pathname) =>
+      pathname === '/api/auth/native/login' ? null : { token, generation },
+    );
+    const requestPromise = new Promise<void>((resolve) => {
+      http.get(`${backendOrigin}/api/pozos`).subscribe({ error: () => resolve() });
+    });
+    await Promise.resolve();
+    const request = controller.expectOne(`${backendOrigin}/api/pozos`);
+    generation = 2;
+    request.flush({ code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' });
+    await requestPromise;
+    expect(auth.handleNative401).not.toHaveBeenCalled();
   });
 });

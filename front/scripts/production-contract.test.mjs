@@ -67,3 +67,18 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
   assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
+
+test('Android mantiene el minSdk requerido por Capacitor 8', async () => {
+  const variables = await readFile(join(frontRoot, 'android/variables.gradle'), 'utf8');
+  const appBuild = await readFile(join(frontRoot, 'android/app/build.gradle'), 'utf8');
+  const capacitorBuild = await readFile(join(frontRoot, 'android/app/capacitor.build.gradle'), 'utf8');
+  const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));
+  assert.match(variables, /minSdkVersion\s*=\s*24/);
+  assert.match(appBuild, /minSdkVersion rootProject\.ext\.minSdkVersion/);
+  assert.match(capacitorBuild, /project\(':capacitor-app'\)/);
+  assert.equal(packageJson.dependencies['@capacitor/core'], '8.5.0');
+  assert.equal(packageJson.dependencies['@capacitor/android'], '8.5.0');
+  assert.equal(packageJson.dependencies['@capacitor/app'], '8.0.0');
+  assert.equal(packageJson.dependencies['@capacitor/preferences'], '8.0.0');
+  assert.equal(packageJson.dependencies['@aparajita/capacitor-secure-storage'], '8.0.0');
+});

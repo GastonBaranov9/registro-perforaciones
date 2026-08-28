@@ -281,6 +281,15 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('unauthenticated');
   });
 
+  it('marker pending huérfano sin token no bloquea bootstrap ni llama session', async () => {
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
+    const service = TestBed.inject(AuthService);
+    await service.bootstrap();
+    expect(service.state()).toBe('unauthenticated');
+    controller.expectNone('/api/auth/native/session');
+    expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
+  });
+
   it('resume después del umbral revalida una vez y respeta logout-pending', async () => {
     storedSession();
     const service = TestBed.inject(AuthService);
@@ -410,5 +419,34 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('authenticated');
     expect(secureRecord).toEqual({ token: replacementToken, installationId });
     expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
+  });
+
+  it('probe de Preferences fallido bloquea login antes de crear sesión remota', async () => {
+    preferences.set.and.callFake(async ({ key, value }) => {
+      if (key === 'native_storage_probe_v1') throw new Error('write unavailable');
+      preferenceValues.set(key, value);
+    });
+    const service = TestBed.inject(AuthService);
+    await expectAsync(service.logged('user@example.test', 'password-secreto')).toBeRejected();
+    controller.expectNone('/api/auth/native/login');
+    expect(service.state()).toBe('client-error');
+  });
+  it('204 remoto deja unauthenticated aunque falle el clear del pending marker', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
+    preferences.remove.and.callFake(async ({ key }) => {
+      if (key === 'logout_pending_v1') throw new Error('marker no disponible');
+      preferenceValues.delete(key);
+    });
+
+    const logout = service.logout();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await logout;
+
+    expect(service.state()).toBe('unauthenticated');
+    expect(secureRecord).toBeNull();
+    expect(service.nativeRequestAuthSnapshot('/api/pozos')).toBeNull();
   });
 });
