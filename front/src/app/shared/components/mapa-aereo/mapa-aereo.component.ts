@@ -15,7 +15,7 @@ import { ProtectedResourceDirective } from '../../../core/resources/protected-re
       @else if (!configurado()) { <p>Mapa aéreo no configurado</p> }
       @else if (falloImagen()) { <p>Mapa aéreo no disponible</p> }
       @else {
-        <img [protectedSrc]="urlImagen()" (protectedResourceError)="falloImagen.set(true)" alt="Fotografía aérea de la ubicación del pozo" />
+        <img [protectedSrc]="urlImagen()" (error)="falloImagen.set(true)" (protectedResourceError)="falloImagen.set(true)" alt="Fotografía aérea de la ubicación del pozo" />
         @if (atribucion()) { <small>{{ atribucion() }}</small> }
       }
     </section>`,

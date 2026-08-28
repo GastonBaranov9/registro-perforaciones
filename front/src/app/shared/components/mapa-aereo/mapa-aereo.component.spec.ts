@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { environment } from '../../../../environments/environment';
 import { MapaAereoComponent } from './mapa-aereo.component';
 
@@ -48,5 +49,37 @@ describe('MapaAereoComponent', () => {
       `${environment.apiURL}usuarios/7/sitios/12/mapa-aereo/preview?latitud=-31.443917&longitud=-57.986556`,
     );
     expect(fixture.componentInstance.urlImagen()).not.toContain('maps.googleapis.com');
+  });
+
+  it('muestra el fallback cuando la imagen directa web emite error de carga', async () => {
+    fixture.componentRef.setInput('latitud', '-31.443917');
+    fixture.componentRef.setInput('longitud', '-57.986556');
+    fixture.detectChanges();
+    http.expectOne(`${environment.apiURL}mapas/estado`).flush({ configurado: true });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const imagen = fixture.nativeElement.querySelector('img') as HTMLImageElement;
+    imagen.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.falloImagen()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('Mapa aéreo no disponible');
+    expect(fixture.nativeElement.querySelector('img')).toBeNull();
+  });
+
+  it('muestra el fallback ante error del recurso protegido native', async () => {
+    fixture.componentRef.setInput('latitud', '-31.443917');
+    fixture.componentRef.setInput('longitud', '-57.986556');
+    fixture.detectChanges();
+    http.expectOne(`${environment.apiURL}mapas/estado`).flush({ configurado: true });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.debugElement.query(By.css('img')).triggerEventHandler('protectedResourceError');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.falloImagen()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('Mapa aéreo no disponible');
   });
 });
