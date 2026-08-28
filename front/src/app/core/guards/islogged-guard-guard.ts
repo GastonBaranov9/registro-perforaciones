@@ -35,18 +35,28 @@ async function requireNativeSession(
 }
 
 export const nativeSessionGuard: CanActivateFn = (_route, state) => {
-  if (!inject(RuntimePlatformService).isNative()) return true;
-  const auth = inject(AuthService);
-  return requireNativeSession(auth, inject(Router), state);
+  const platform = inject(RuntimePlatformService).platform();
+  switch (platform) {
+    case 'web':
+      return true;
+    case 'android':
+    case 'ios':
+    case 'unknown':
+      return requireNativeSession(inject(AuthService), inject(Router), state);
+  }
 };
 
 export const isloggedGuard: CanActivateFn = (_route, state) => {
   const mainStore = inject(MainStore);
   const router = inject(Router);
-  if (inject(RuntimePlatformService).isNative()) {
-    return requireNativeSession(inject(AuthService), router, state);
+  switch (inject(RuntimePlatformService).platform()) {
+    case 'android':
+    case 'ios':
+    case 'unknown':
+      return requireNativeSession(inject(AuthService), router, state);
+    case 'web':
+      return mainStore.user() ? true : loginRedirect(router, state);
   }
-  return mainStore.user() ? true : loginRedirect(router, state);
 };
 
 function roleResult(
@@ -67,14 +77,19 @@ function requireRole(
 ): boolean | UrlTree | Promise<boolean | UrlTree> {
   const mainStore = inject(MainStore);
   const router = inject(Router);
-  if (inject(RuntimePlatformService).isNative()) {
-    const auth = inject(AuthService);
-    return requireNativeSession(auth, router, state).then((access) =>
-      access === true ? roleResult(roleNames, mainStore, router, state) : access,
-    );
+  switch (inject(RuntimePlatformService).platform()) {
+    case 'android':
+    case 'ios':
+    case 'unknown': {
+      const auth = inject(AuthService);
+      return requireNativeSession(auth, router, state).then((access) =>
+        access === true ? roleResult(roleNames, mainStore, router, state) : access,
+      );
+    }
+    case 'web':
+      if (!mainStore.user()) return loginRedirect(router, state);
+      return roleResult(roleNames, mainStore, router, state);
   }
-  if (!mainStore.user()) return loginRedirect(router, state);
-  return roleResult(roleNames, mainStore, router, state);
 }
 
 export const isAdminGuard: CanActivateFn = (_route, state) =>

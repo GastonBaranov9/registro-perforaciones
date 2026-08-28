@@ -4,6 +4,13 @@ import { CAPACITOR_RUNTIME } from './native-plugin.tokens';
 export type RuntimePlatform = 'web' | 'android' | 'ios' | 'unknown';
 export type NativePlatform = Extract<RuntimePlatform, 'android' | 'ios'>;
 
+export class RuntimePlatformUnknownError extends Error {
+  constructor() {
+    super('No se pudo determinar correctamente el entorno de la aplicación.');
+    this.name = 'RuntimePlatformUnknownError';
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class RuntimePlatformService {
   private readonly capacitor = inject(CAPACITOR_RUNTIME);
@@ -15,6 +22,10 @@ export class RuntimePlatformService {
 
   isNative(): boolean {
     return this.detected === 'android' || this.detected === 'ios';
+  }
+
+  isWeb(): boolean {
+    return this.detected === 'web';
   }
 
   nativePlatform(): NativePlatform {

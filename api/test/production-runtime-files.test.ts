@@ -211,7 +211,7 @@ test("build local de frontend usa Angular production web compatible y el deploy 
   const deployPosix = await fs.readFile(path.join(repo, "ops", "deploy.sh"), "utf8");
 
   assert.equal(packageJson.scripts["build:production"], "ng build --configuration production");
-  assert.equal(packageJson.scripts["build:native"], undefined);
+  assert.equal(packageJson.scripts["build:native"], "node scripts/build-native.mjs production");
   assert.equal(packageJson.scripts["capacitor:sync"], undefined);
   assert.equal(packageJson.scripts["test:build-targets"], undefined);
   assert.equal(angularJson.projects.front.architect.build.configurations.native, undefined);

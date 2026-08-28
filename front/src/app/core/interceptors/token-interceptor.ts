@@ -8,7 +8,10 @@ import {
 } from '../native/native-backend-config.service';
 import { NativeMetadataService } from '../native/native-metadata.service';
 import type { NativeAppMetadata } from '../native/native-metadata.service';
-import { RuntimePlatformService } from '../native/runtime-platform.service';
+import {
+  RuntimePlatformService,
+  RuntimePlatformUnknownError,
+} from '../native/runtime-platform.service';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
 
 const NATIVE_LOGIN_PATH = '/api/auth/native/login';
@@ -20,7 +23,8 @@ function requestPath(rawUrl: string): string {
 
 export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
   const runtime = inject(RuntimePlatformService);
-  if (!runtime.isNative()) {
+  const platform = runtime.platform();
+  if (platform === 'web') {
     if (!isWebApiRequest(req.url, environment.apiURL)) return next(req);
 
     let headers = req.headers;
@@ -36,6 +40,13 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
   }
 
   const backend = inject(NativeBackendConfigService);
+  if (platform === 'unknown') {
+    const isOwnApi =
+      isWebApiRequest(req.url, environment.apiURL) || backend.isAuthorizedApiRequest(req.url);
+    return isOwnApi
+      ? throwError(() => new RuntimePlatformUnknownError())
+      : next(req);
+  }
   if (!backend.isAuthorizedApiRequest(req.url)) return next(req);
 
   const auth = inject(AuthService);
