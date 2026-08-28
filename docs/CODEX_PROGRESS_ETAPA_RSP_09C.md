@@ -189,6 +189,10 @@ R6 preserva el estado previo bloqueado cuando falla la preparación de un login 
 
 R7 centraliza las mutaciones de autenticacion native en una cola/mutex compartida. Login, logout-device, retry de `logout-pending`, logout-all e invalidacion 401 quedan mutuamente excluyentes; la generacion de sesion se verifica tambien dentro del lock. Asi, una finalizacion tardia de A nunca puede borrar, sobrescribir o degradar B, y un rejection no rompe la cola ni produce deadlocks. La suite Angular queda en 279/279, sin cambios en `api/` ni en Android.
 
+### Addendum RSP-09C-R8
+
+R8 refuerza el cierre durable: un logout nuevo debe persistir `logout_pending_v1` antes de ocultar la sesión; si Preferences falla, se conserva intacta y no se llama al backend. Con marker durable, red fallida mantiene el token sólo para retry y un 204 autoritativo permite cleanup local best-effort. Las mutaciones auth locked marcan sus requests con un `HttpContextToken` para impedir reentrancia del handler global; `logout-all` resuelve su propio 401/426 sin deadlock. El retry pending queda cancelado a los 10 segundos, liberando bootstrap sin restaurar negocio. Un fallo de `App.addListener()` conserva el token, retira `MainStore`, establece `client-error` y desmonta la ruta protegida mediante navegación a session-unavailable. La suite Angular queda en 286/286, sin cambios en `api/` ni Android.
+
 ### Addendum RSP-09C-R4
 
 R4 corrige dos regresiones sin cambios en `api/`: el mapa aéreo conserva el fallback para errores DOM de `<img>` en web además de `protectedResourceError` native, y `MainStore.init()` elimina las claves legacy `localStorage.token`/`localStorage.user` sin leerlas ni migrarlas. La suite Angular queda en 267/267; los builds web y native-development siguen pasando.
