@@ -1,5 +1,6 @@
 ext {
-    minSdkVersion = 23
+    // Capacitor 8 modules (including Preferences/App) require API 24+.
+    minSdkVersion = 24
     compileSdkVersion = 35
     targetSdkVersion = 35
     androidxActivityVersion = '1.9.2'
