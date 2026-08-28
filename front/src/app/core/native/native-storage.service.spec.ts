@@ -9,6 +9,7 @@ import {
 } from './native-plugin.tokens';
 import {
   NativeInstallationStorage,
+  NativeLogoutPendingStorage,
   NativeSecureSessionStorage,
 } from './native-storage.service';
 
@@ -87,6 +88,17 @@ describe('storage native', () => {
   it('bloquea la creación si Preferences falla', async () => {
     preferences.set.and.rejectWith(new Error('fallo'));
     await expectAsync(TestBed.inject(NativeInstallationStorage).create()).toBeRejected();
+  });
+
+  it('persiste pending con usuario, acepta legacy y rechaza registros corruptos', async () => {
+    const storage = TestBed.inject(NativeLogoutPendingStorage);
+    await storage.setPending(7);
+    expect(preferenceValue).toBe(JSON.stringify({ pending: true, userId: 7 }));
+    expect(await storage.load()).toEqual({ userId: 7 });
+    preferenceValue = 'true';
+    expect(await storage.load()).toEqual({ userId: null });
+    preferenceValue = '{"pending":false,"userId":7}';
+    await expectAsync(storage.load()).toBeRejected();
   });
 
   it('rechaza cualquier uso accidental desde web', async () => {

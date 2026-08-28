@@ -257,7 +257,7 @@ describe('AuthService native', () => {
     );
     await logout;
     expect(service.state()).toBe('logout-pending');
-    expect(preferenceValues.get('logout_pending_v1')).toBe('true');
+    expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
     expect(secureRecord).not.toBeNull();
 
     logout = service.logout();
@@ -271,7 +271,7 @@ describe('AuthService native', () => {
 
   it('startup pending reintenta logout antes que session', async () => {
     storedSession();
-    preferenceValues.set('logout_pending_v1', 'true');
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
@@ -366,5 +366,49 @@ describe('AuthService native', () => {
     await Promise.all([service.handleNative401(), service.handleNative401(), service.handleNative401()]);
     expect(secure.remove).toHaveBeenCalledTimes(1);
     expect(navigation).toHaveBeenCalledTimes(1);
+  });
+
+  it('login fallido no cancela logout-pending ni vuelve utilizable el token viejo', async () => {
+    storedSession();
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
+    const service = TestBed.inject(AuthService);
+    const bootstrap = service.bootstrap();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(
+      { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
+    );
+    await bootstrap;
+    expect(service.state()).toBe('logout-pending');
+    const login = service.logged('new@example.test', 'bad-password');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush(
+      { code: 'INVALID_CREDENTIALS' }, { status: 401, statusText: 'Unauthorized' },
+    );
+    await expectAsync(login).toBeRejected();
+    expect(service.state()).toBe('logout-pending');
+    expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
+    expect(secureRecord).toEqual({ token, installationId });
+  });
+
+  it('login exitoso de reemplazo persiste el token nuevo antes de limpiar pending', async () => {
+    const replacementToken = `rspn1_${'B'.repeat(43)}`;
+    storedSession();
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
+    const service = TestBed.inject(AuthService);
+    const bootstrap = service.bootstrap();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(
+      { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
+    );
+    await bootstrap;
+    const login = service.logged('new@example.test', 'good-password');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user,
+    });
+    await login;
+    expect(service.state()).toBe('authenticated');
+    expect(secureRecord).toEqual({ token: replacementToken, installationId });
+    expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
   });
 });

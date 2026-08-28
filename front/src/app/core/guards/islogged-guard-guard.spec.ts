@@ -99,14 +99,16 @@ describe('nativeSessionGuard', () => {
   let authState: AuthState;
   let bootstrap: jasmine.Spy;
   let router: Router;
+  let runtimePlatform: 'android' | 'unknown';
 
   beforeEach(() => {
     authState = 'unauthenticated';
+    runtimePlatform = 'android';
     bootstrap = jasmine.createSpy('bootstrap').and.resolveTo();
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: RuntimePlatformService, useValue: { isNative: () => true } },
+        { provide: RuntimePlatformService, useValue: { platform: () => runtimePlatform, isNative: () => runtimePlatform === 'android' } },
         {
           provide: AuthService,
           useValue: { bootstrap: () => bootstrap(), state: () => authState },
@@ -147,5 +149,12 @@ describe('nativeSessionGuard', () => {
       const result = await ejecutarNative();
       expect(router.serializeUrl(result as UrlTree)).toBe(expectedUrl);
     }
+  });
+
+  it('bloquea runtime desconocido con client-error', async () => {
+    runtimePlatform = 'unknown';
+    authState = 'client-error';
+    const result = await ejecutarNative();
+    expect(router.serializeUrl(result as UrlTree)).toBe('/session-unavailable?reason=client-error');
   });
 });
