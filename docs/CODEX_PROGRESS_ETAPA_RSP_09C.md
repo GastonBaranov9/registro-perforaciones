@@ -177,6 +177,10 @@ DespuÃ©s de un logout-device 204, la revocaciÃ³n remota es autoritativa: la 
 
 RSP-09E debe repetir la validaciÃ³n Gradle fÃ­sica cuando exista JDK/SDK; el cambio estÃ¡tico elimina la incompatibilidad conocida de minSdk.
 
+### Addendum RSP-09C-R4
+
+R4 corrige dos regresiones sin cambios en `api/`: el mapa aéreo conserva el fallback para errores DOM de `<img>` en web además de `protectedResourceError` native, y `MainStore.init()` elimina las claves legacy `localStorage.token`/`localStorage.user` sin leerlas ni migrarlas. La suite Angular queda en 267/267; los builds web y native-development siguen pasando.
+
 ### Addendum RSP-09C-R3
 
 R3 alineÃ³ el proyecto Android al template requerido por Capacitor 8.5: Gradle 8.13, AGP 8.13.0, compile/target SDK 36 y minSdk 24. Las revalidaciones native/session capturan `{token,generation}` y descartan cualquier respuesta posterior a un cambio de generaciÃ³n, incluyendo 200, 401, 426 y errores transitorios; el inicio de logout tambiÃ©n invalida inmediatamente la generaciÃ³n anterior. `cap sync android` conserva la configuraciÃ³n. Gradle fÃ­sico sigue pendiente por falta de JDK/SDK.
