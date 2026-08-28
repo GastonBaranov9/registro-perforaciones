@@ -342,6 +342,7 @@ describe('AuthService native', () => {
 
   it('resume con error de red conserva token como offline-unverified', async () => {
     const service = TestBed.inject(AuthService);
+    const navigation = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
     await login(service);
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
@@ -352,6 +353,7 @@ describe('AuthService native', () => {
     await resume;
     expect(service.state()).toBe('offline-unverified');
     expect(secureRecord).not.toBeNull();
+    expect(navigation).toHaveBeenCalledWith('/session-unavailable?reason=offline');
   });
 
   it('resume prioriza retry de logout-pending y no llama session', async () => {
@@ -440,6 +442,52 @@ describe('AuthService native', () => {
     controller.expectNone('/api/auth/native/login');
     expect(service.state()).toBe('client-error');
   });
+  it('probe fallido no promueve offline-unverified a authenticated', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    controller.expectOne('/api/auth/native/session').flush(
+      { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
+    );
+    await resume;
+    expect(service.state()).toBe('offline-unverified');
+
+    preferences.set.and.callFake(async ({ key, value }) => {
+      if (key === 'native_storage_probe_v1') throw new Error('probe unavailable');
+      preferenceValues.set(key, value);
+    });
+    await expectAsync(service.logged('other@example.test', 'password')).toBeRejected();
+    controller.expectNone('/api/auth/native/logout');
+    controller.expectNone('/api/auth/native/login');
+    expect(service.state()).toBe('offline-unverified');
+    expect(secureRecord).not.toBeNull();
+  });
+
+  it('probe fallido no promueve upgrade-required a authenticated', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    controller.expectOne('/api/auth/native/session').flush(
+      { code: 'NATIVE_APP_UPGRADE_REQUIRED' }, { status: 426, statusText: 'Upgrade Required' },
+    );
+    await resume;
+    expect(service.state()).toBe('upgrade-required');
+
+    preferences.set.and.callFake(async ({ key, value }) => {
+      if (key === 'native_storage_probe_v1') throw new Error('probe unavailable');
+      preferenceValues.set(key, value);
+    });
+    await expectAsync(service.logged('other@example.test', 'password')).toBeRejected();
+    controller.expectNone('/api/auth/native/logout');
+    controller.expectNone('/api/auth/native/login');
+    expect(service.state()).toBe('upgrade-required');
+    expect(secureRecord).not.toBeNull();
+  });
+
   it('204 remoto deja unauthenticated aunque falle el clear del pending marker', async () => {
     const service = TestBed.inject(AuthService);
     await login(service);

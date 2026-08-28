@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { PluginListenerHandle } from '@capacitor/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { NativeBackendConfigService } from '../../../core/native/native-backend-config.service';
 import { NativeMetadataService } from '../../../core/native/native-metadata.service';
@@ -27,6 +27,7 @@ const NATIVE_SESSION = 'auth/native/session';
 const NATIVE_LOGOUT = 'auth/native/logout';
 const NATIVE_LOGOUT_ALL = 'auth/native/logout-all';
 const RESUME_REVALIDATION_MS = 5 * 60 * 1_000;
+const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
 export type AuthState =
   | 'initializing'
@@ -180,7 +181,9 @@ export class AuthService {
     if (this.runtime.isNative()) return this.restoreNativeSession();
     if (!this.runtime.isWeb()) throw this.failUnknownRuntime();
     try {
-      const user = await firstValueFrom(this.httpClient.get<UsuarioPublico>(this.baseURL));
+      const user = await firstValueFrom(
+        this.httpClient.get<UsuarioPublico>(this.baseURL).pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
+      );
       this.mainStore.setUser(user);
       this.state.set('authenticated');
     } catch (error) {
@@ -384,6 +387,7 @@ export class AuthService {
   }
 
   private async nativeLoginInternal(email: string, password: string): Promise<void> {
+    const previousState = this.state();
     const hadExistingToken = this.nativeToken !== null;
     const existingUser = this.mainStore.user();
     let pendingAtStart: NativeLogoutPendingRecord | null =
@@ -457,9 +461,12 @@ export class AuthService {
           if (pendingAtStart) {
             this.mainStore.clearSession();
             this.state.set('logout-pending');
-          } else {
+          } else if (previousState === 'authenticated' && existingUser) {
             if (existingUser) this.mainStore.setUser(existingUser);
             this.state.set('authenticated');
+          } else {
+            this.mainStore.clearSession();
+            this.state.set(previousState);
           }
           throw error;
         }
@@ -497,7 +504,9 @@ export class AuthService {
     this.mainStore.clearSession();
     try {
       const response = await firstValueFrom(
-        this.httpClient.get<NativeSessionResponse>(environment.apiURL + NATIVE_SESSION),
+        this.httpClient
+          .get<NativeSessionResponse>(environment.apiURL + NATIVE_SESSION)
+          .pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
       );
       if (authSnapshot.generation !== this.nativeAuthGeneration) return;
       if (!isNativeUser(response?.user) || !isExpiration(response.expires_at)) {
@@ -520,6 +529,7 @@ export class AuthService {
       }
       this.mainStore.clearSession();
       this.state.set('offline-unverified');
+      await this.navigateOnce('/session-unavailable?reason=offline');
     }
   }
 
