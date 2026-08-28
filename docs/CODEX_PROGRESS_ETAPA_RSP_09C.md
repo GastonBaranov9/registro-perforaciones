@@ -181,6 +181,10 @@ RSP-09E debe repetir la validaciÃ³n Gradle fÃ­sica cuando exista JDK/SDK; el
 
 R5 corrige los tres hallazgos del review sin cambios en `api/`. Un login native ahora se serializa y revoca explícitamente cualquier token anterior con logout-device 204 antes de crear otra sesión, incluso al cambiar de usuario o desde `logout-pending`; fallos de red/storage no sobrescriben el token anterior. El interceptor reconoce 426 en respuestas Blob de imágenes/PDF del origin API autorizado y conserva el token mientras marca `upgrade-required`. El perfil web mantiene su DTO completo y el perfil native reducido oculta email, activo y fecha de registro cuando no forman parte del contrato.
 
+### Addendum RSP-09C-R6
+
+R6 preserva el estado previo bloqueado cuando falla la preparación de un login native: `offline-unverified` y `upgrade-required` nunca se convierten en `authenticated` por un error de Preferences/storage. Las lecturas web y native de sesión tienen timeout RxJS de 10 segundos con cancelación de la suscripción; native conserva el token y queda `offline-unverified`, mientras web puede renderizar su flujo no autenticado. En resume, una revalidación actual que queda no disponible navega inmediatamente a `/session-unavailable?reason=offline`, desmontando la vista protegida; respuestas stale siguen descartándose antes de cambiar estado o navegar.
+
 ### Addendum RSP-09C-R4
 
 R4 corrige dos regresiones sin cambios en `api/`: el mapa aéreo conserva el fallback para errores DOM de `<img>` en web además de `protectedResourceError` native, y `MainStore.init()` elimina las claves legacy `localStorage.token`/`localStorage.user` sin leerlas ni migrarlas. La suite Angular queda en 267/267; los builds web y native-development siguen pasando.
