@@ -18,4 +18,4 @@ Así, A→login B descarta respuestas tardías de A y conserva token/usuario B; 
 
 ## Pruebas y validación
 
-Se agregaron pruebas de 200/401/network stale tras replacement login y de respuesta stale tras logout, ademÃ¡s del contrato Android Gradle/AGP/SDK. AuthService R3 pasó 27/27; la suite Angular completa pasó 259/259; contratos de configuración 9/9 y native-config 4/4; API 281/281. Web normal, production y native-development compilan. `cap sync android` pasó. Gradle real queda pendiente de RSP-09E por el bloqueo de tooling.
+Se agregaron pruebas de 200/401/network stale tras replacement login y de respuesta stale tras logout, ademÃ¡s del contrato Android Gradle/AGP/SDK. AuthService R3 pasó 27/27; la suite Angular completa pasó 263/263; contratos de configuración 9/9 y native-config 4/4; API 281/281. Web normal, production y native-development compilan. `cap sync android` pasó. Gradle real queda pendiente de RSP-09E por el bloqueo de tooling.
