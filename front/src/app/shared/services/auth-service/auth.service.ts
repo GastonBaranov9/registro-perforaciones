@@ -466,7 +466,7 @@ export class AuthService {
             this.state.set('authenticated');
           } else {
             this.mainStore.clearSession();
-            this.state.set(previousState);
+            this.state.set(previousState === 'authenticated' ? 'client-error' : previousState);
           }
           throw error;
         }
