@@ -108,6 +108,7 @@ export class AuthService {
   private bootstrapFlight?: Promise<void>;
   private restoreFlight?: Promise<void>;
   private invalidationFlight?: Promise<void>;
+  private nativeLoginFlight?: Promise<void>;
   private upgradeFlight?: Promise<void>;
   private resumeFlight?: Promise<void>;
   private lifecycleListener?: PluginListenerHandle;
@@ -375,7 +376,16 @@ export class AuthService {
     }
   }
 
-  private async nativeLogin(email: string, password: string): Promise<void> {
+  private nativeLogin(email: string, password: string): Promise<void> {
+    this.nativeLoginFlight ??= this.nativeLoginInternal(email, password).finally(() => {
+      this.nativeLoginFlight = undefined;
+    });
+    return this.nativeLoginFlight;
+  }
+
+  private async nativeLoginInternal(email: string, password: string): Promise<void> {
+    const hadExistingToken = this.nativeToken !== null;
+    const existingUser = this.mainStore.user();
     let pendingAtStart: NativeLogoutPendingRecord | null =
       this.state() === 'logout-pending' ? { userId: this.pendingLogoutUserId } : null;
     this.state.set('initializing');
@@ -390,10 +400,15 @@ export class AuthService {
       const storedPending = await this.pendingStorage.load();
       if (pendingAtStart && !storedPending) throw new NativeStorageError();
       pendingAtStart = storedPending ?? pendingAtStart;
-      if (!pendingAtStart) {
-        // Verifica escritura de Preferences sin cancelar un pending existente.
-        await this.pendingStorage.clear();
+      if (this.nativeToken) {
+        // A must be revoked before the login request can create B. The backend
+        // only replaces sessions for the same user and installation.
+        pendingAtStart = { userId: this.pendingLogoutUserId ?? this.userId() };
+        await this.revokeActiveTokenBeforeLogin();
+        pendingAtStart = null;
       }
+      // Verifica escritura de Preferences sin cancelar un pending existente.
+      await this.pendingStorage.clear();
 
       const response = await firstValueFrom(
         this.httpClient.post<NativeLoginResponse>(environment.apiURL + NATIVE_LOGIN, {
@@ -409,24 +424,6 @@ export class AuthService {
       if (!isExpiration(response.expires_at) || !isNativeUser(response.user)) {
         await this.discardUncommittedLogin(response.session_token);
         throw new NativeStorageError();
-      }
-
-      if (
-        pendingAtStart &&
-        (pendingAtStart.userId === null || pendingAtStart.userId !== response.user.id_usuario)
-      ) {
-        // El backend sólo reemplaza automáticamente igual usuario+installation_id.
-        // Para otro usuario (o un pending legacy) se exige revocar A con 204.
-        if (!this.nativeToken) throw new NativeStorageError();
-        try {
-          await firstValueFrom(
-            this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null),
-          );
-        } catch {
-          await this.revokeUncommittedToken(response.session_token);
-          this.state.set('logout-pending');
-          throw new Error('No fue posible completar el reemplazo de la sesión.');
-        }
       }
 
       try {
@@ -455,6 +452,17 @@ export class AuthService {
         throw new Error('Debes actualizar la aplicación para continuar.');
       }
       if (error instanceof NativeStorageError) {
+        if (hadExistingToken && this.nativeToken) {
+          // If preparing A for revocation failed, retain A and do not strand it.
+          if (pendingAtStart) {
+            this.mainStore.clearSession();
+            this.state.set('logout-pending');
+          } else {
+            if (existingUser) this.mainStore.setUser(existingUser);
+            this.state.set('authenticated');
+          }
+          throw error;
+        }
         this.setNativeToken(null);
         this.mainStore.clearSession();
         this.state.set('client-error');
@@ -539,6 +547,44 @@ export class AuthService {
       return;
     }
     await this.retryPendingLogout();
+  }
+
+  private async revokeActiveTokenBeforeLogin(): Promise<void> {
+    const userId = this.pendingLogoutUserId ?? this.userId();
+    try {
+      await this.pendingStorage.setPending(userId);
+    } catch {
+      throw new NativeStorageError();
+    }
+    this.pendingLogoutUserId = userId;
+    this.mainStore.clearSession();
+    this.state.set('logout-pending');
+    this.advanceNativeAuthGeneration();
+
+    try {
+      await firstValueFrom(
+        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null),
+      );
+    } catch {
+      throw new Error('No fue posible revocar la sesion anterior.');
+    }
+
+    try {
+      await this.secureStorage.clear();
+    } catch {
+      // Keep the pending marker so a restart retries the already-idempotent
+      // revocation before any session restore.
+      this.setNativeToken(null);
+      this.expiresAt.set(null);
+      this.mainStore.clearSession();
+      throw new NativeStorageError();
+    }
+    this.setNativeToken(null);
+    this.expiresAt.set(null);
+    this.mainStore.clearSession();
+    try { await this.pendingStorage.clear(); } catch { /* best effort after 204 */ }
+    this.pendingLogoutUserId = null;
+    this.state.set('unauthenticated');
   }
 
   private async retryPendingLogout(): Promise<void> {

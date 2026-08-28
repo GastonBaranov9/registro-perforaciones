@@ -395,13 +395,15 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('logout-pending');
     const login = service.logged('new@example.test', 'bad-password');
     await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
     controller.expectOne('/api/auth/native/login').flush(
       { code: 'INVALID_CREDENTIALS' }, { status: 401, statusText: 'Unauthorized' },
     );
     await expectAsync(login).toBeRejected();
-    expect(service.state()).toBe('logout-pending');
-    expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
-    expect(secureRecord).toEqual({ token, installationId });
+    expect(service.state()).toBe('unauthenticated');
+    expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
+    expect(secureRecord).toBeNull();
   });
 
   it('login exitoso de reemplazo persiste el token nuevo antes de limpiar pending', async () => {
@@ -416,6 +418,8 @@ describe('AuthService native', () => {
     );
     await bootstrap;
     const login = service.logged('new@example.test', 'good-password');
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
     controller.expectOne('/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user,
@@ -467,6 +471,8 @@ describe('AuthService native', () => {
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
     controller.expectOne('/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
@@ -490,6 +496,8 @@ describe('AuthService native', () => {
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
     controller.expectOne('/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
@@ -512,6 +520,8 @@ describe('AuthService native', () => {
     const sessionRequest = controller.expectOne('/api/auth/native/session');
 
     const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
     controller.expectOne('/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
@@ -542,5 +552,42 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('unauthenticated');
     expect(service.userId()).toBeNull();
     expect(secureRecord).toBeNull();
+  });
+
+  it('revoca A antes de enviar login B y no deja dos sesiones controladas', async () => {
+    const replacementToken = `rspn1_${'D'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectNone('/api/auth/native/login');
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+  });
+
+  it('si falla la revocaciÃ³n de A, no envÃ­a login B y conserva A pendiente', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(
+      { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
+    );
+    await expectAsync(replacement).toBeRejected();
+
+    controller.expectNone('/api/auth/native/login');
+    expect(service.state()).toBe('logout-pending');
+    expect(secureRecord).toEqual({ token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
   });
 });
