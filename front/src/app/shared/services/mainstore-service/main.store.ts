@@ -13,6 +13,11 @@ export class MainStore {
   }
 
   public init() {
+    // Remove credentials left by releases predating secure native sessions. These
+    // values are never read or migrated; modern authentication uses cookies (web)
+    // or secure storage (native).
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     this.initialized.set(true);
   }
   public setUser(user: UsuarioSesion) {
