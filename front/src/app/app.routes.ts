@@ -1,24 +1,39 @@
 import { Routes } from '@angular/router';
 import { HomePage } from './routes/home/home.page';
-import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard } from './core/guards/islogged-guard-guard';
+import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'home', pathMatch: 'full' },
-  { path: 'home', component: HomePage, title: 'Home' },
+  { path: 'home', canActivate: [nativeSessionGuard], component: HomePage, title: 'Home' },
 
   {
     path: 'login',
     loadComponent: async () => (await import('../app/routes/login/login.page')).LoginPage,
     title: 'Login',
   },
+  {
+    path: 'upgrade-required',
+    loadComponent: async () =>
+      (await import('./routes/session-status/session-status.page')).SessionStatusPage,
+    title: 'Actualización requerida',
+    data: { reason: 'upgrade-required' },
+  },
+  {
+    path: 'session-unavailable',
+    loadComponent: async () =>
+      (await import('./routes/session-status/session-status.page')).SessionStatusPage,
+    title: 'Sesión no disponible',
+  },
 
   {
     path: 'pozo',
+    canActivate: [nativeSessionGuard],
     loadComponent: async () => (await import('../app/routes/pozos/pozo/pozo.page')).PozoPage,
     title: 'pozo-menu',
   },
   {
     path: 'sitio',
+    canActivate: [nativeSessionGuard],
     loadComponent: async () => (await import('../app/routes/sitios/sitio/sitio.page')).SitioPage,
     title: 'sitio',
   },

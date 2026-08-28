@@ -1,79 +1,102 @@
-import { CanActivateFn, RedirectCommand, Route, Router } from '@angular/router';
-import { MainStore } from '../../shared/services/mainstore-service/main.store';
 import { inject } from '@angular/core';
+import { CanActivateFn, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
+import { AuthService } from '../../shared/services/auth-service/auth.service';
+import { MainStore } from '../../shared/services/mainstore-service/main.store';
+import { RuntimePlatformService } from '../native/runtime-platform.service';
 
+function loginRedirect(router: Router, state: RouterStateSnapshot): UrlTree {
+  return router.createUrlTree(['/login'], { queryParams: { redirectTo: state.url } });
+}
 
-export const isloggedGuard: CanActivateFn = (route, state) => {
-  const mainStore = inject(MainStore);
-  const router = inject(Router);
-  if (!mainStore.user()) {
-    return router.createUrlTree(['/login'],{
-      queryParams: {redirectTo: state.url}
-    });
+function nativeStateRedirect(auth: AuthService, router: Router, state: RouterStateSnapshot): true | UrlTree {
+  switch (auth.state()) {
+    case 'authenticated':
+      return true;
+    case 'upgrade-required':
+      return router.createUrlTree(['/upgrade-required']);
+    case 'offline-unverified':
+      return router.createUrlTree(['/session-unavailable'], { queryParams: { reason: 'offline' } });
+    case 'logout-pending':
+      return router.createUrlTree(['/session-unavailable'], { queryParams: { reason: 'logout-pending' } });
+    case 'client-error':
+      return router.createUrlTree(['/session-unavailable'], { queryParams: { reason: 'client-error' } });
+    default:
+      return loginRedirect(router, state);
   }
-  return true;
+}
+
+async function requireNativeSession(
+  auth: AuthService,
+  router: Router,
+  state: RouterStateSnapshot,
+): Promise<true | UrlTree> {
+  await auth.bootstrap();
+  return nativeStateRedirect(auth, router, state);
+}
+
+export const nativeSessionGuard: CanActivateFn = (_route, state) => {
+  const platform = inject(RuntimePlatformService).platform();
+  switch (platform) {
+    case 'web':
+      return true;
+    case 'android':
+    case 'ios':
+    case 'unknown':
+      return requireNativeSession(inject(AuthService), inject(Router), state);
+  }
 };
 
-export const isAdminGuard: CanActivateFn = (route, state) => {
+export const isloggedGuard: CanActivateFn = (_route, state) => {
   const mainStore = inject(MainStore);
   const router = inject(Router);
-  const user = mainStore.user();
-  
-  const roles = user?.roles || [];
-  
-  if (!user) {
-    return router.createUrlTree(['/login'],{
-      queryParams: {redirectTo: state.url}
-    });
+  switch (inject(RuntimePlatformService).platform()) {
+    case 'android':
+    case 'ios':
+    case 'unknown':
+      return requireNativeSession(inject(AuthService), router, state);
+    case 'web':
+      return mainStore.user() ? true : loginRedirect(router, state);
   }
-
-  for(const rol of roles){
-    if(rol.nombre==="administracion") return true;
-  }
-  return router.createUrlTree(['/home'], {
-    queryParams: { redirectTo: state.url }
-  });
 };
 
-export const isPerfOrAdminGuard: CanActivateFn = (route, state) => {
+function roleResult(
+  roleNames: readonly string[],
+  mainStore: MainStore,
+  router: Router,
+  state: RouterStateSnapshot,
+): boolean | UrlTree {
+  const permitted = mainStore.user()?.roles?.some((role) => roleNames.includes(role.nombre));
+  return permitted
+    ? true
+    : router.createUrlTree(['/home'], { queryParams: { redirectTo: state.url } });
+}
+
+function requireRole(
+  roleNames: readonly string[],
+  state: RouterStateSnapshot,
+): boolean | UrlTree | Promise<boolean | UrlTree> {
   const mainStore = inject(MainStore);
   const router = inject(Router);
-  const user = mainStore.user();
-  
-  const roles = user?.roles || [];
-  
-  if (!user) {
-    return router.createUrlTree(['/login'],{
-      queryParams: {redirectTo: state.url}
-    });
+  switch (inject(RuntimePlatformService).platform()) {
+    case 'android':
+    case 'ios':
+    case 'unknown': {
+      const auth = inject(AuthService);
+      return requireNativeSession(auth, router, state).then((access) =>
+        access === true ? roleResult(roleNames, mainStore, router, state) : access,
+      );
+    }
+    case 'web':
+      if (!mainStore.user()) return loginRedirect(router, state);
+      return roleResult(roleNames, mainStore, router, state);
   }
+}
 
-  for(const rol of roles){
-    if(rol.nombre==="perforador" || rol.nombre==="administracion") return true;
-  }
-  return router.createUrlTree(['/home'], {
-    queryParams: { redirectTo: state.url }
-  });
-};
+export const isAdminGuard: CanActivateFn = (_route, state) =>
+  requireRole(['administracion'], state);
 
-export const isPropGuard: CanActivateFn = (route, state) => {
-  const mainStore = inject(MainStore);
-  const router = inject(Router);
-  const user = mainStore.user();
-  
-  const roles = user?.roles || [];
-  
-  if (!user) {
-    return router.createUrlTree(['/login'],{
-      queryParams: {redirectTo: state.url}
-    });
-  }
+export const isPerfOrAdminGuard: CanActivateFn = (_route, state) =>
+  requireRole(['perforador', 'administracion'], state);
 
-  for(const rol of roles){
-    if(rol.nombre==="propietario") return true;
-  }
-  return router.createUrlTree(['/home'], {
-    queryParams: { redirectTo: state.url }
-  });
-};
-
+export const isPropGuard: CanActivateFn = (_route, state) =>
+  requireRole(['propietario'], state);

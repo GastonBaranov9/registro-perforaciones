@@ -13,20 +13,26 @@
           <ion-label>Nombre</ion-label>
           <ion-label>{{ this.usuario.nombre }}</ion-label>
         </ion-item>
-        <ion-item>
-          <ion-label>Email</ion-label>
-          <ion-label>{{ this.usuario.email }}</ion-label>
-        </ion-item>
+        @if (this.usuario.email !== undefined && this.usuario.email !== null) {
+          <ion-item>
+            <ion-label>Email</ion-label>
+            <ion-label>{{ this.usuario.email }}</ion-label>
+          </ion-item>
+        }
 
-        <ion-item>
-          <ion-label>Activo</ion-label>
-          <ion-label>{{ this.usuario.activo }}</ion-label>
-        </ion-item>
+        @if (this.usuario.activo !== undefined && this.usuario.activo !== null) {
+          <ion-item>
+            <ion-label>Activo</ion-label>
+            <ion-label>{{ this.usuario.activo }}</ion-label>
+          </ion-item>
+        }
 
-        <ion-item>
-          <ion-label>Fecha de registro</ion-label>
-          <ion-label>{{ this.usuario.fecha_registro | date : 'dd/MM/yyyy' }}</ion-label>
-        </ion-item>
+        @if (this.usuario.fecha_registro !== undefined && this.usuario.fecha_registro !== null) {
+          <ion-item>
+            <ion-label>Fecha de registro</ion-label>
+            <ion-label>{{ this.usuario.fecha_registro | date : 'dd/MM/yyyy' }}</ion-label>
+          </ion-item>
+        }
 
         <ion-item>
           <ion-label>Roles</ion-label>

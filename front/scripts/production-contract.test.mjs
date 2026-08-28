@@ -6,41 +6,85 @@ import test from 'node:test';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 
-test('solo publica comandos de build web autenticables', async () => {
+test('mantiene builds web independientes y publica targets native explícitos', async () => {
   const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));
   assert.equal(packageJson.scripts['build:production'], 'ng build --configuration production');
   assert.equal(packageJson.scripts['test:production-build'], 'node scripts/test-production-build.mjs');
-  assert.equal(packageJson.scripts['build:native'], undefined);
+  assert.equal(packageJson.scripts['build:native'], 'node scripts/build-native.mjs production');
+  assert.equal(packageJson.scripts['build:native:development'], 'node scripts/build-native.mjs development');
+  assert.equal(packageJson.scripts['build:native:production'], 'node scripts/build-native.mjs production');
   assert.equal(packageJson.scripts['capacitor:sync'], undefined);
-  assert.equal(packageJson.scripts['test:build-targets'], undefined);
 
-  for (const removed of [
-    'scripts/build-native.mjs',
-    'scripts/native-backend-config.mjs',
-    'src/environments/environment.native.generated.ts',
-  ]) {
-    await assert.rejects(access(join(frontRoot, removed)), undefined, `${removed} no debe existir`);
-  }
+  await access(join(frontRoot, 'scripts/build-native.mjs'));
+  await access(join(frontRoot, 'scripts/native-backend-config.mjs'));
 });
 
-test('Angular conserva solo production web y development', async () => {
+test('Angular separa configuraciones web y native sin service worker remoto', async () => {
   const angular = JSON.parse(await readFile(join(frontRoot, 'angular.json'), 'utf8'));
   const build = angular.projects.front.architect.build;
   assert.equal(build.defaultConfiguration, 'production');
-  assert.deepEqual(Object.keys(build.configurations).sort(), ['development', 'production']);
-  assert.equal(build.configurations.native, undefined);
-  assert.equal(JSON.stringify(angular).includes('environment.native.generated.ts'), false);
+  assert.deepEqual(Object.keys(build.configurations).sort(), [
+    'development',
+    'native-development',
+    'native-production',
+    'production',
+  ]);
+  for (const mode of ['native-development', 'native-production']) {
+    const configuration = build.configurations[mode];
+    assert.equal(configuration.serviceWorker, false);
+    assert.equal(configuration.index.input, 'src/index.native.generated.html');
+    assert.deepEqual(configuration.fileReplacements, [{
+      replace: 'src/environments/environment.ts',
+      with: 'src/environments/environment.native.generated.ts',
+    }]);
+  }
 });
 
-test('web conserva API y WebSocket same-origin y Capacitor solo como base', async () => {
+test('web conserva API/WebSocket same-origin y Capacitor carga assets locales', async () => {
   const environment = await readFile(join(frontRoot, 'src/environments/environment.ts'), 'utf8');
   assert.match(environment, /serverURL:\s*["']\/api["']/);
   assert.match(environment, /apiURL:\s*["']\/api\/["']/);
   assert.match(environment, /globalThis\.location\.protocol/);
   assert.match(environment, /globalThis\.location\.host/);
+  assert.match(environment, /nativeBackendOrigin:\s*null/);
   assert.doesNotMatch(environment, /NATIVE_BACKEND_ORIGIN|https?:\/\//);
 
   const capacitor = await readFile(join(frontRoot, 'capacitor.config.ts'), 'utf8');
   assert.match(capacitor, /webDir:\s*'dist\/front\/browser'/);
   assert.doesNotMatch(capacitor, /server\s*:|url\s*:/);
+});
+
+test('build native exige origin, genera CSP local y siempre retira temporales', async () => {
+  const source = await readFile(join(frontRoot, 'scripts/build-native.mjs'), 'utf8');
+  assert.match(source, /process\.env\.NATIVE_BACKEND_ORIGIN/);
+  assert.match(source, /validateNativeBackendOrigin/);
+  assert.match(source, /assertProductionAppId/);
+  assert.match(source, /Content-Security-Policy/);
+  assert.match(source, /finally/);
+  assert.match(source, /rm\(environmentPath, \{ force: true \}\)/);
+  assert.doesNotMatch(source, /server\.url|allowNavigation/);
+
+  const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
+  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
+});
+
+test('Android mantiene el minSdk requerido por Capacitor 8', async () => {
+  const variables = await readFile(join(frontRoot, 'android/variables.gradle'), 'utf8');
+  const rootBuild = await readFile(join(frontRoot, 'android/build.gradle'), 'utf8');
+  const wrapper = await readFile(join(frontRoot, 'android/gradle/wrapper/gradle-wrapper.properties'), 'utf8');
+  const appBuild = await readFile(join(frontRoot, 'android/app/build.gradle'), 'utf8');
+  const capacitorBuild = await readFile(join(frontRoot, 'android/app/capacitor.build.gradle'), 'utf8');
+  const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));
+  assert.match(variables, /minSdkVersion\s*=\s*24/);
+  assert.match(variables, /compileSdkVersion\s*=\s*36/);
+  assert.match(variables, /targetSdkVersion\s*=\s*36/);
+  assert.match(rootBuild, /com\.android\.tools\.build:gradle:8\.13\.0/);
+  assert.match(wrapper, /gradle-8\.13(?:\.0)?-all\.zip/);
+  assert.match(appBuild, /minSdkVersion rootProject\.ext\.minSdkVersion/);
+  assert.match(capacitorBuild, /project\(':capacitor-app'\)/);
+  assert.equal(packageJson.dependencies['@capacitor/core'], '8.5.0');
+  assert.equal(packageJson.dependencies['@capacitor/android'], '8.5.0');
+  assert.equal(packageJson.dependencies['@capacitor/app'], '8.0.0');
+  assert.equal(packageJson.dependencies['@capacitor/preferences'], '8.0.0');
+  assert.equal(packageJson.dependencies['@aparajita/capacitor-secure-storage'], '8.0.0');
 });

@@ -93,6 +93,38 @@
                   "with": "src/environments/environment.development.ts"
                 }
               ]
+            },
+            "native-development": {
+              "optimization": true,
+              "outputHashing": "all",
+              "sourceMap": false,
+              "serviceWorker": false,
+              "index": {
+                "input": "src/index.native.generated.html",
+                "output": "index.html"
+              },
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.native.generated.ts"
+                }
+              ]
+            },
+            "native-production": {
+              "optimization": true,
+              "outputHashing": "all",
+              "sourceMap": false,
+              "serviceWorker": false,
+              "index": {
+                "input": "src/index.native.generated.html",
+                "output": "index.html"
+              },
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.native.generated.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

@@ -23,14 +23,17 @@ export class LoginPage {
   };
 
   public async logIn(email: string, password: string) {
+    if (this.disabled()) return;
+    this.disabled.set(true);
     try {
       await this.authService.logged(email, password);
+      this.credenciales.password = '';
       const redirectTo = this.ruta.snapshot.queryParamMap.get('redirectTo');
 
       if (redirectTo) {
-        this.router.navigate([redirectTo]);
+        await this.router.navigateByUrl(redirectTo);
       } else {
-        this.router.navigate(['/home']);
+        await this.router.navigate(['/home']);
       }
     } catch (err: any) {
         const toast = await this.toastController.create({
@@ -44,7 +47,9 @@ export class LoginPage {
         });
 
         await toast.present();
-
+    } finally {
+      this.credenciales.password = '';
+      this.disabled.set(false);
     }
   }
 }

@@ -52,6 +52,8 @@ front/android/local.properties
 front/android/app/src/main/assets/public/
 front/android/app/src/main/assets/capacitor.config.json
 front/android/app/src/main/assets/capacitor.plugins.json
+front/src/environments/environment.native.generated.ts
+front/src/index.native.generated.html
 *.jks
 *.keystore
 
