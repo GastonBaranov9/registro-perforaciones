@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { CAPACITOR_RUNTIME } from '../../../core/native/native-plugin.tokens';
 import { AuthService } from './auth.service';
@@ -61,4 +61,14 @@ describe('AuthService web', () => {
     await logout;
     expect(service.state()).toBe('unauthenticated');
   });
+
+  it('limita el bootstrap web si la sesión no responde', fakeAsync(() => {
+    const service = TestBed.inject(AuthService);
+    service.bootstrap();
+    flushMicrotasks();
+    controller.expectOne('/api/login');
+    tick(10_001);
+    flushMicrotasks();
+    expect(service.state()).toBe('unauthenticated');
+  }));
 });

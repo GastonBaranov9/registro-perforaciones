@@ -16,4 +16,4 @@ Una revalidación native de la generación actual que termina por red/timeout/5x
 
 ## Validación
 
-Se agregaron regresiones para probe fallido desde `offline-unverified` y `upgrade-required`, y para el fallback de navegación en resume. Suite Angular completa: `274 SUCCESS`. Se conservaron contratos web cookie/CSRF, native Bearer, secure storage, logout-pending, generación de sesión, recursos protegidos y runtime unknown. No se modificó `api/` ni Android en R6.
+Se agregaron regresiones para probe fallido desde `offline-unverified` y `upgrade-required`, timeout de bootstrap web/native y fallback de navegación en resume. Suite Angular completa: `276 SUCCESS`. Se conservaron contratos web cookie/CSRF, native Bearer, secure storage, logout-pending, generación de sesión, recursos protegidos y runtime unknown. No se modificó `api/` ni Android en R6.

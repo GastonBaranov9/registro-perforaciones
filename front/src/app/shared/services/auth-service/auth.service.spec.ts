@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { KeychainAccess } from '@aparajita/capacitor-secure-storage';
 import { NativeBackendConfigService } from '../../../core/native/native-backend-config.service';
@@ -174,6 +174,19 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('unauthenticated');
     expect(preferenceValues.get('installation_id_v1')).toMatch(/^[0-9a-f-]{36}$/i);
   });
+
+  it('session timeout libera bootstrap sin borrar token', fakeAsync(() => {
+    storedSession();
+    spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+    const service = TestBed.inject(AuthService);
+    service.bootstrap();
+    flushMicrotasks();
+    controller.expectOne('/api/auth/native/session');
+    tick(10_001);
+    flushMicrotasks();
+    expect(service.state()).toBe('offline-unverified');
+    expect(secureRecord).not.toBeNull();
+  }));
 
   it('restaura la misma sesión con build actual tras upgrade in-place', async () => {
     storedSession();
