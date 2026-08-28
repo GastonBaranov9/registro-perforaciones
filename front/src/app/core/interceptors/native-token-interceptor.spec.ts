@@ -161,6 +161,6 @@ describe('tokenInterceptor native', () => {
     generation = 2;
     request.flush({ code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' });
     await requestPromise;
-    expect(auth.handleNative401).not.toHaveBeenCalled();
+    expect(auth.handleNative401).toHaveBeenCalledOnceWith(1);
   });
 });
