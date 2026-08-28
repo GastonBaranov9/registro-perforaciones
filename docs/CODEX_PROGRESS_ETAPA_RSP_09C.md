@@ -163,6 +163,10 @@ Las pruebas cubren web/android/iOS/unknown, build inválido, origin exacto, exte
 
 ## 15. Pendientes posteriores
 
+### Addendum RSP-09C-R1
+
+El review R1 quedó corregido: `logout_pending_v1` sólo se limpia tras 204 de logout-device o después de persistir y activar un token de reemplazo válido; un login fallido no puede reactivar la sesión anterior y bootstrap reintenta logout antes de session. Mapa aéreo y fotos protegidas se cargan native mediante `HttpClient`/Blob/object URL con cancelación y revoke; web, PDF, multipart y Maps backend se preservan. Un runtime `unknown` ahora termina en `client-error` y no usa autenticación web ni envía credenciales.
+
 RSP-09D:
 
 - ticket HTTP y conexión WebSocket native, redemption, registry, fan-out y heartbeat.
