@@ -177,6 +177,10 @@ DespuÃ©s de un logout-device 204, la revocaciÃ³n remota es autoritativa: la 
 
 RSP-09E debe repetir la validaciÃ³n Gradle fÃ­sica cuando exista JDK/SDK; el cambio estÃ¡tico elimina la incompatibilidad conocida de minSdk.
 
+### Addendum RSP-09C-R3
+
+R3 alineÃ³ el proyecto Android al template requerido por Capacitor 8.5: Gradle 8.13, AGP 8.13.0, compile/target SDK 36 y minSdk 24. Las revalidaciones native/session capturan `{token,generation}` y descartan cualquier respuesta posterior a un cambio de generaciÃ³n, incluyendo 200, 401, 426 y errores transitorios; el inicio de logout tambiÃ©n invalida inmediatamente la generaciÃ³n anterior. `cap sync android` conserva la configuraciÃ³n. Gradle fÃ­sico sigue pendiente por falta de JDK/SDK.
+
 RSP-09D:
 
 - ticket HTTP y conexión WebSocket native, redemption, registry, fan-out y heartbeat.
