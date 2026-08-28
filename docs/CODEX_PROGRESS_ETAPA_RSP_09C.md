@@ -185,6 +185,10 @@ R5 corrige los tres hallazgos del review sin cambios en `api/`. Un login native 
 
 R6 preserva el estado previo bloqueado cuando falla la preparación de un login native: `offline-unverified` y `upgrade-required` nunca se convierten en `authenticated` por un error de Preferences/storage. Las lecturas web y native de sesión tienen timeout RxJS de 10 segundos con cancelación de la suscripción; native conserva el token y queda `offline-unverified`, mientras web puede renderizar su flujo no autenticado. En resume, una revalidación actual que queda no disponible navega inmediatamente a `/session-unavailable?reason=offline`, desmontando la vista protegida; respuestas stale siguen descartándose antes de cambiar estado o navegar.
 
+### Addendum RSP-09C-R7
+
+R7 centraliza las mutaciones de autenticacion native en una cola/mutex compartida. Login, logout-device, retry de `logout-pending`, logout-all e invalidacion 401 quedan mutuamente excluyentes; la generacion de sesion se verifica tambien dentro del lock. Asi, una finalizacion tardia de A nunca puede borrar, sobrescribir o degradar B, y un rejection no rompe la cola ni produce deadlocks. La suite Angular queda en 279/279, sin cambios en `api/` ni en Android.
+
 ### Addendum RSP-09C-R4
 
 R4 corrige dos regresiones sin cambios en `api/`: el mapa aéreo conserva el fallback para errores DOM de `<img>` en web además de `protectedResourceError` native, y `MainStore.init()` elimina las claves legacy `localStorage.token`/`localStorage.user` sin leerlas ni migrarlas. La suite Angular queda en 267/267; los builds web y native-development siguen pasando.
