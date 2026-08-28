@@ -23,6 +23,11 @@ const user = {
   nombre: 'Perforador',
   roles: [{ id_rol: 2, nombre: 'perforador', descr: 'Perforador' }],
 };
+const userB = {
+  id_usuario: 8,
+  nombre: 'Otra persona',
+  roles: [{ id_rol: 2, nombre: 'perforador', descr: 'Perforador' }],
+};
 const expiration = '2026-09-20T12:00:00.000Z';
 
 describe('AuthService native', () => {
@@ -417,7 +422,7 @@ describe('AuthService native', () => {
     });
     await login;
     expect(service.state()).toBe('authenticated');
-    expect(secureRecord).toEqual({ token: replacementToken, installationId });
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
     expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
   });
 
@@ -448,5 +453,94 @@ describe('AuthService native', () => {
     expect(service.state()).toBe('unauthenticated');
     expect(secureRecord).toBeNull();
     expect(service.nativeRequestAuthSnapshot('/api/pozos')).toBeNull();
+  });
+
+  it('ignora respuestas stale de session tras reemplazar A por B', async () => {
+    const replacementToken = `rspn1_${'B'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    const sessionRequest = controller.expectOne('/api/auth/native/session');
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+
+    sessionRequest.flush({ user, expires_at: expiration });
+    await resume;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+  });
+
+  it('ignora 401 y errores stale de session sin destruir B', async () => {
+    const replacementToken = `rspn1_${'B'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    const sessionRequest = controller.expectOne('/api/auth/native/session');
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+
+    sessionRequest.flush({ code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' });
+    await resume;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+  });
+
+  it('ignora network error stale después de login B y mantiene authenticated', async () => {
+    const replacementToken = `rspn1_${'C'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    const sessionRequest = controller.expectOne('/api/auth/native/session');
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
+    });
+    await replacement;
+
+    sessionRequest.flush({ code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' });
+    await resume;
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(userB.id_usuario);
+    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+  });
+
+  it('ignora respuesta stale de session después de logout', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    await service.handleAppStateChange(false, 1_000);
+    const resume = service.handleAppStateChange(true, 301_001);
+    await settle();
+    const sessionRequest = controller.expectOne('/api/auth/native/session');
+
+    const logout = service.logout();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await logout;
+    sessionRequest.flush({ user, expires_at: expiration });
+    await resume;
+    expect(service.state()).toBe('unauthenticated');
+    expect(service.userId()).toBeNull();
+    expect(secureRecord).toBeNull();
   });
 });

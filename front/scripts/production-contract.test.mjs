@@ -70,10 +70,16 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
 
 test('Android mantiene el minSdk requerido por Capacitor 8', async () => {
   const variables = await readFile(join(frontRoot, 'android/variables.gradle'), 'utf8');
+  const rootBuild = await readFile(join(frontRoot, 'android/build.gradle'), 'utf8');
+  const wrapper = await readFile(join(frontRoot, 'android/gradle/wrapper/gradle-wrapper.properties'), 'utf8');
   const appBuild = await readFile(join(frontRoot, 'android/app/build.gradle'), 'utf8');
   const capacitorBuild = await readFile(join(frontRoot, 'android/app/capacitor.build.gradle'), 'utf8');
   const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));
   assert.match(variables, /minSdkVersion\s*=\s*24/);
+  assert.match(variables, /compileSdkVersion\s*=\s*36/);
+  assert.match(variables, /targetSdkVersion\s*=\s*36/);
+  assert.match(rootBuild, /com\.android\.tools\.build:gradle:8\.13\.0/);
+  assert.match(wrapper, /gradle-8\.13(?:\.0)?-all\.zip/);
   assert.match(appBuild, /minSdkVersion rootProject\.ext\.minSdkVersion/);
   assert.match(capacitorBuild, /project\(':capacitor-app'\)/);
   assert.equal(packageJson.dependencies['@capacitor/core'], '8.5.0');
