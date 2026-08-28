@@ -9,6 +9,7 @@ import { RuntimePlatformService } from './runtime-platform.service';
 const SESSION_KEY = 'native_session_v1';
 const INSTALLATION_KEY = 'installation_id_v1';
 const LOGOUT_PENDING_KEY = 'logout_pending_v1';
+const STORAGE_PROBE_KEY = 'native_storage_probe_v1';
 const SECURE_PREFIX = 'rsp_native_';
 const PREFERENCES_GROUP = 'RspNativeClient';
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -201,6 +202,20 @@ export class NativeLogoutPendingStorage {
     try {
       await this.preferences.remove({ key: LOGOUT_PENDING_KEY });
     } catch {
+      throw new NativeStorageError();
+    }
+  }
+
+  async verifyWritable(): Promise<void> {
+    await this.configure();
+    const probeValue = `probe-${globalThis.crypto.randomUUID()}`;
+    try {
+      await this.preferences.set({ key: STORAGE_PROBE_KEY, value: probeValue });
+      const stored = (await this.preferences.get({ key: STORAGE_PROBE_KEY })).value;
+      if (stored !== probeValue) throw new NativeStorageError();
+      await this.preferences.remove({ key: STORAGE_PROBE_KEY });
+    } catch {
+      try { await this.preferences.remove({ key: STORAGE_PROBE_KEY }); } catch { /* best effort */ }
       throw new NativeStorageError();
     }
   }

@@ -102,6 +102,7 @@ export class AuthService {
   readonly expiresAt = signal<string | null>(null);
 
   private nativeToken: string | null = null;
+  private nativeAuthGeneration = 0;
   private installationId: string | null = null;
   private pendingLogoutUserId: number | null = null;
   private bootstrapFlight?: Promise<void>;
@@ -192,27 +193,32 @@ export class AuthService {
   }
 
   nativeAuthorizationFor(pathname: string): string | null {
-    if (!this.nativeToken) return null;
-    if (pathname === `/api/${NATIVE_LOGIN}`) return null;
-    if (pathname === `/api/${NATIVE_LOGOUT}`) return this.nativeToken;
-    if (pathname === `/api/${NATIVE_SESSION}`) {
-      return this.state() === 'logout-pending' ? null : this.nativeToken;
-    }
-    if (pathname === `/api/${NATIVE_LOGOUT_ALL}`) {
-      return this.state() === 'logout-pending' ? null : this.nativeToken;
-    }
-    if (this.state() !== 'authenticated') throw new NativeBusinessRequestBlockedError();
-    return this.nativeToken;
+    return this.nativeRequestAuthSnapshot(pathname)?.token ?? null;
   }
 
-  async handleNative401(): Promise<void> {
+  nativeRequestAuthSnapshot(pathname: string): { token: string; generation: number } | null {
+    if (!this.nativeToken) return null;
+    if (pathname === `/api/${NATIVE_LOGIN}`) return null;
+    if (pathname === `/api/${NATIVE_LOGOUT}`) return { token: this.nativeToken, generation: this.nativeAuthGeneration };
+    if (pathname === `/api/${NATIVE_SESSION}`) {
+      return this.state() === 'logout-pending' ? null : { token: this.nativeToken, generation: this.nativeAuthGeneration };
+    }
+    if (pathname === `/api/${NATIVE_LOGOUT_ALL}`) {
+      return this.state() === 'logout-pending' ? null : { token: this.nativeToken, generation: this.nativeAuthGeneration };
+    }
+    if (this.state() !== 'authenticated') throw new NativeBusinessRequestBlockedError();
+    return { token: this.nativeToken, generation: this.nativeAuthGeneration };
+  }
+
+  async handleNative401(expectedGeneration?: number): Promise<void> {
     if (this.runtime.isWeb()) return;
     if (!this.runtime.isNative()) {
       this.failUnknownRuntime();
       return;
     }
+    if (expectedGeneration !== undefined && expectedGeneration !== this.nativeAuthGeneration) return;
     this.invalidationFlight ??= (async () => {
-      this.nativeToken = null;
+      this.setNativeToken(null);
       this.expiresAt.set(null);
       this.mainStore.clearSession();
       try {
@@ -325,14 +331,15 @@ export class AuthService {
       if (!storedSession) {
         if (logoutPending) {
           this.pendingLogoutUserId = logoutPending.userId;
-          this.state.set('client-error');
+          await this.clearPendingBestEffort();
+          this.state.set('unauthenticated');
           return;
         }
         this.state.set('unauthenticated');
         return;
       }
 
-      this.nativeToken = storedSession.token;
+      this.setNativeToken(storedSession.token);
       if (logoutPending) {
         this.pendingLogoutUserId = logoutPending.userId;
         this.state.set('logout-pending');
@@ -342,7 +349,7 @@ export class AuthService {
       await this.restoreNativeSession();
     } catch (error) {
       this.mainStore.clearSession();
-      if (error instanceof NativeStorageError) this.nativeToken = null;
+      if (error instanceof NativeStorageError) this.setNativeToken(null);
       this.state.set('client-error');
     }
   }
@@ -375,6 +382,7 @@ export class AuthService {
     try {
       this.backendConfig.origin();
       await this.metadata.current();
+      await this.pendingStorage.verifyWritable();
       this.installationId ??=
         (await this.installationStorage.loadExisting()) ??
         (await this.installationStorage.create());
@@ -431,7 +439,7 @@ export class AuthService {
         throw new NativeStorageError();
       }
 
-      this.nativeToken = response.session_token;
+      this.setNativeToken(response.session_token);
       this.expiresAt.set(response.expires_at);
       this.mainStore.setUser(response.user);
       try {
@@ -447,7 +455,7 @@ export class AuthService {
         throw new Error('Debes actualizar la aplicación para continuar.');
       }
       if (error instanceof NativeStorageError) {
-        this.nativeToken = null;
+        this.setNativeToken(null);
         this.mainStore.clearSession();
         this.state.set('client-error');
         throw error;
@@ -506,8 +514,7 @@ export class AuthService {
   private async nativeLogout(): Promise<void> {
     if (!this.nativeToken) {
       if (this.state() === 'logout-pending') {
-        this.state.set('client-error');
-        return;
+        return this.retryPendingLogout();
       }
       return this.finishLocalLogout();
     }
@@ -532,7 +539,9 @@ export class AuthService {
   private async retryPendingLogout(): Promise<void> {
     if (!this.nativeToken) {
       this.mainStore.clearSession();
-      this.state.set('client-error');
+      await this.clearPendingBestEffort();
+      this.pendingLogoutUserId = null;
+      this.state.set('unauthenticated');
       return;
     }
     this.mainStore.clearSession();
@@ -546,11 +555,11 @@ export class AuthService {
   }
 
   private async finishLocalLogout(): Promise<void> {
-    await this.secureStorage.clear();
-    this.nativeToken = null;
+    try { await this.secureStorage.clear(); } catch { /* remote revocation is authoritative */ }
+    this.setNativeToken(null);
     this.expiresAt.set(null);
     this.mainStore.clearSession();
-    await this.pendingStorage.clear();
+    try { await this.pendingStorage.clear(); } catch { /* marker orphan is non-authenticating */ }
     this.pendingLogoutUserId = null;
     this.state.set('unauthenticated');
   }
@@ -566,11 +575,15 @@ export class AuthService {
     } catch {
       // Un flag residual sin token se limpia en el próximo bootstrap.
     }
-    this.nativeToken = null;
+    this.setNativeToken(null);
     this.pendingLogoutUserId = null;
     this.expiresAt.set(null);
     this.mainStore.clearSession();
     this.state.set('unauthenticated');
+  }
+
+  private async clearPendingBestEffort(): Promise<void> {
+    try { await this.pendingStorage.clear(); } catch { /* marker huérfano no autentica */ }
   }
 
   private async revokeUncommittedToken(token: string): Promise<void> {
@@ -592,7 +605,7 @@ export class AuthService {
     } catch {
       // La operación original ya informó que el storage no es confiable.
     }
-    this.nativeToken = null;
+    this.setNativeToken(null);
   }
 
   private installLifecycleListener(): void {
@@ -610,11 +623,17 @@ export class AuthService {
   }
 
   private failUnknownRuntime(): RuntimePlatformUnknownError {
-    this.nativeToken = null;
+    this.setNativeToken(null);
     this.expiresAt.set(null);
     this.mainStore.clearSession();
     this.state.set('client-error');
     return new RuntimePlatformUnknownError();
+  }
+
+  private setNativeToken(token: string | null): void {
+    if (this.nativeToken === token) return;
+    this.nativeToken = token;
+    this.nativeAuthGeneration++;
   }
 
   private async navigateOnce(path: string): Promise<void> {

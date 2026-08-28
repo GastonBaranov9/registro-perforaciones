@@ -65,7 +65,8 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
           .set('X-Native-App-Version', currentMetadata.appVersion);
       }
 
-      const token = auth.nativeAuthorizationFor(pathname);
+      const authSnapshot = auth.nativeRequestAuthSnapshot(pathname);
+      const token = authSnapshot?.token ?? null;
       if (token && pathname !== NATIVE_LOGIN_PATH) {
         headers = headers.set('Authorization', `Bearer ${token}`);
       }
@@ -84,7 +85,7 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
             pathname !== NATIVE_LOGIN_PATH &&
             pathname !== NATIVE_LOGOUT_PATH
           ) {
-            return from(auth.handleNative401()).pipe(
+            return from(auth.handleNative401(authSnapshot?.generation)).pipe(
               switchMap(() => throwError(() => error)),
             );
           }
