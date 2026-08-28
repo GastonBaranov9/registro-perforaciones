@@ -7,6 +7,7 @@ import { environment } from '../../../../environments/environment';
 import { NativeBackendConfigService } from '../../../core/native/native-backend-config.service';
 import { NativeMetadataService } from '../../../core/native/native-metadata.service';
 import { CAPACITOR_APP } from '../../../core/native/native-plugin.tokens';
+import { nativeAuthMutationContext } from '../../../core/native/native-auth-http-context';
 import {
   isValidNativeToken,
   type NativeLogoutPendingRecord,
@@ -170,11 +171,21 @@ export class AuthService {
       if (!this.nativeToken) return this.finishLocalLogout();
       try {
         await firstValueFrom(
-          this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT_ALL, null),
+          this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT_ALL, null, {
+            context: nativeAuthMutationContext(),
+          }),
         );
         await this.finishLocalLogout();
       } catch (error) {
-        if (error instanceof HttpErrorResponse && error.status === 426) return;
+        if (error instanceof HttpErrorResponse && error.status === 401) {
+          await this.finishLocalLogout();
+          await this.navigateOnce('/login');
+          return;
+        }
+        if (error instanceof HttpErrorResponse && error.status === 426) {
+          await this.handleNative426();
+          return;
+        }
         throw new Error('No fue posible cerrar todas las sesiones.');
       }
     });
@@ -533,9 +544,7 @@ export class AuthService {
         await this.handleNative426();
         return;
       }
-      this.mainStore.clearSession();
-      this.state.set('offline-unverified');
-      await this.navigateOnce('/session-unavailable?reason=offline');
+      await this.blockVisibleNativeSession('offline-unverified', 'offline');
     }
   }
 
@@ -546,22 +555,19 @@ export class AuthService {
       }
       return this.finishLocalLogout();
     }
+    if (this.state() === 'logout-pending') return this.retryPendingLogoutLocked();
+
     const pendingUserId = this.userId();
-    this.mainStore.clearSession();
-    this.state.set('logout-pending');
-    this.advanceNativeAuthGeneration();
     try {
       await this.pendingStorage.setPending(pendingUserId);
       this.pendingLogoutUserId = pendingUserId;
     } catch {
-      try {
-        await firstValueFrom(this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null));
-      } catch {
-        // Sin persistencia del pending, se descarta localmente para fallar cerrado.
-      }
-      await this.finishLocalLogoutBestEffort();
-      return;
+      // Sin marker durable no se abandona una sesión que todavía puede ser válida.
+      throw new NativeStorageError();
     }
+    this.mainStore.clearSession();
+    this.state.set('logout-pending');
+    this.advanceNativeAuthGeneration();
     await this.retryPendingLogoutLocked();
   }
 
@@ -579,7 +585,9 @@ export class AuthService {
 
     try {
       await firstValueFrom(
-        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null),
+        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+          context: nativeAuthMutationContext(),
+        }),
       );
     } catch {
       throw new Error('No fue posible revocar la sesion anterior.');
@@ -614,7 +622,13 @@ export class AuthService {
     this.mainStore.clearSession();
     this.state.set('logout-pending');
     try {
-      await firstValueFrom(this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null));
+      await firstValueFrom(
+        this.httpClient
+          .post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+            context: nativeAuthMutationContext(),
+          })
+          .pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
+      );
       await this.finishLocalLogout();
     } catch {
       this.state.set('logout-pending');
@@ -631,24 +645,6 @@ export class AuthService {
     this.state.set('unauthenticated');
   }
 
-  private async finishLocalLogoutBestEffort(): Promise<void> {
-    try {
-      await this.secureStorage.clear();
-    } catch {
-      // No se habilita la sesión en memoria aunque el storage quede inaccesible.
-    }
-    try {
-      await this.pendingStorage.clear();
-    } catch {
-      // Un flag residual sin token se limpia en el próximo bootstrap.
-    }
-    this.setNativeToken(null);
-    this.pendingLogoutUserId = null;
-    this.expiresAt.set(null);
-    this.mainStore.clearSession();
-    this.state.set('unauthenticated');
-  }
-
   private async clearPendingBestEffort(): Promise<void> {
     try { await this.pendingStorage.clear(); } catch { /* marker huérfano no autentica */ }
   }
@@ -657,7 +653,11 @@ export class AuthService {
     const previousToken = this.nativeToken;
     this.nativeToken = token;
     try {
-      await firstValueFrom(this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null));
+      await firstValueFrom(
+        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+          context: nativeAuthMutationContext(),
+        }),
+      );
     } catch {
       // Best-effort: el token no se guarda en un fallback y expira server-side.
     } finally {
@@ -685,7 +685,7 @@ export class AuthService {
         this.lifecycleListener = listener;
       })
       .catch(() => {
-        this.state.set('client-error');
+        void this.blockVisibleNativeSession('client-error', 'client-error');
       });
   }
 
@@ -711,6 +711,15 @@ export class AuthService {
     const run = this.nativeMutationLock.then(operation, operation);
     this.nativeMutationLock = run.then(() => undefined, () => undefined);
     return run;
+  }
+
+  private async blockVisibleNativeSession(
+    state: 'offline-unverified' | 'client-error',
+    reason: 'offline' | 'client-error',
+  ): Promise<void> {
+    this.mainStore.clearSession();
+    this.state.set(state);
+    await this.navigateOnce(`/session-unavailable?reason=${reason}`);
   }
 
   private async navigateOnce(path: string): Promise<void> {

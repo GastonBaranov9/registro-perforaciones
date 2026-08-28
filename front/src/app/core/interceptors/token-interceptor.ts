@@ -8,6 +8,7 @@ import {
 } from '../native/native-backend-config.service';
 import { NativeMetadataService } from '../native/native-metadata.service';
 import type { NativeAppMetadata } from '../native/native-metadata.service';
+import { SKIP_GLOBAL_NATIVE_AUTH_HANDLER } from '../native/native-auth-http-context';
 import {
   RuntimePlatformService,
   RuntimePlatformUnknownError,
@@ -79,6 +80,7 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const metadata = inject(NativeMetadataService);
   const pathname = requestPath(req.url);
+  const skipGlobalNativeAuthHandler = req.context.get(SKIP_GLOBAL_NATIVE_AUTH_HANDLER);
   const metadataFlight: Observable<NativeAppMetadata | null> =
     pathname === NATIVE_LOGOUT_PATH ? of(null) : from(metadata.current());
 
@@ -101,7 +103,7 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
       return next(req.clone({ headers, withCredentials: false })).pipe(
         catchError((error: unknown) => {
           if (!(error instanceof HttpErrorResponse)) return throwError(() => error);
-          if (error.status === 426) {
+          if (error.status === 426 && !skipGlobalNativeAuthHandler) {
             if (isBlobLike(error.error)) {
               return from(auth.handleNative426()).pipe(switchMap(() => throwError(() => error)));
             }
@@ -113,6 +115,7 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
           }
           if (
             error.status === 401 &&
+            !skipGlobalNativeAuthHandler &&
             pathname !== NATIVE_LOGIN_PATH &&
             pathname !== NATIVE_LOGOUT_PATH
           ) {
