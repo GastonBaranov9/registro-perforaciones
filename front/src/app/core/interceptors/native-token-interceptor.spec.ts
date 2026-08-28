@@ -1,4 +1,4 @@
-import { HttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
@@ -7,6 +7,7 @@ import { CAPACITOR_RUNTIME } from '../native/native-plugin.tokens';
 import { NativeBackendConfigService } from '../native/native-backend-config.service';
 import { NativeMetadataService } from '../native/native-metadata.service';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
+import { SKIP_GLOBAL_NATIVE_AUTH_HANDLER } from '../native/native-auth-http-context';
 
 const backendOrigin = 'https://backend.example';
 const token = `rspn1_${'A'.repeat(43)}`;
@@ -162,6 +163,22 @@ describe('tokenInterceptor native', () => {
     request.flush({ code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' });
     await requestPromise;
     expect(auth.handleNative401).toHaveBeenCalledOnceWith(1);
+  });
+
+  it('omite el handler global en mutaciones auth ya coordinadas por el lock', async () => {
+    const logoutAll = `${backendOrigin}/api/auth/native/logout-all`;
+    http.post(logoutAll, null, {
+      context: new HttpContext().set(SKIP_GLOBAL_NATIVE_AUTH_HANDLER, true),
+    }).subscribe({ error: () => undefined });
+    await Promise.resolve();
+    controller.expectOne(logoutAll).flush(
+      { code: 'ERR4_T05' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await Promise.resolve();
+
+    expect(auth.handleNative401).not.toHaveBeenCalled();
+    expect(auth.handleNative426).not.toHaveBeenCalled();
   });
 
   it('interpreta 426 JSON dentro de Blob para recursos binarios', async () => {

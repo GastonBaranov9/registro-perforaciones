@@ -287,6 +287,55 @@ describe('AuthService native', () => {
     expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
   });
 
+  it('si no puede persistir pending conserva intacta la sesión y no llama logout remoto', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    preferences.set.and.callFake(async ({ key, value }) => {
+      if (key === 'logout_pending_v1') throw new Error('Preferences no disponible');
+      preferenceValues.set(key, value);
+    });
+    const secureClearCalls = secure.remove.calls.count();
+
+    await expectAsync(service.logout()).toBeRejected();
+
+    controller.expectNone('/api/auth/native/logout');
+    expect(service.state()).toBe('authenticated');
+    expect(service.userId()).toBe(user.id_usuario);
+    expect(secureRecord).toEqual({
+      token,
+      installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i),
+    });
+    expect(secure.remove.calls.count()).toBe(secureClearCalls);
+  });
+
+  it('204 remoto permite cierre seguro aunque falle borrar el token durable', async () => {
+    const service = TestBed.inject(AuthService);
+    await login(service);
+    secure.remove.and.rejectWith(new Error('Keychain no disponible'));
+
+    const logout = service.logout();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(
+      null,
+      { status: 204, statusText: 'No Content' },
+    );
+    await logout;
+
+    expect(service.state()).toBe('unauthenticated');
+    expect(service.userId()).toBeNull();
+    expect(secureRecord).not.toBeNull();
+
+    const restart = service.bootstrap();
+    await settle();
+    controller.expectOne('/api/auth/native/session').flush(
+      { code: 'ERR4_T05' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await restart;
+    expect(service.state()).toBe('unauthenticated');
+    expect(service.userId()).toBeNull();
+  });
+
   it('startup pending reintenta logout antes que session', async () => {
     storedSession();
     preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
@@ -297,6 +346,114 @@ describe('AuthService native', () => {
     controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await bootstrap;
     expect(service.state()).toBe('unauthenticated');
+  });
+
+  it('timeout de pending logout libera bootstrap y conserva token+marker para retry', fakeAsync(() => {
+    storedSession();
+    preferenceValues.set('logout_pending_v1', JSON.stringify({ pending: true, userId: 7 }));
+    const service = TestBed.inject(AuthService);
+    let completed = false;
+    void service.bootstrap().then(() => { completed = true; });
+    flushMicrotasks();
+    const blackholed = controller.expectOne('/api/auth/native/logout');
+    controller.expectNone('/api/auth/native/session');
+
+    tick(10_001);
+    flushMicrotasks();
+
+    expect(completed).toBeTrue();
+    expect(blackholed.cancelled).toBeTrue();
+    expect(service.state()).toBe('logout-pending');
+    expect(secureRecord).toEqual({ token, installationId });
+    expect(preferenceValues.get('logout_pending_v1')).toBe(
+      JSON.stringify({ pending: true, userId: 7 }),
+    );
+
+    const retry = service.logout();
+    flushMicrotasks();
+    controller.expectOne('/api/auth/native/logout').flush(
+      null,
+      { status: 204, statusText: 'No Content' },
+    );
+    flushMicrotasks();
+    void retry;
+    expect(service.state()).toBe('unauthenticated');
+  }));
+
+  it('logout-all 401 libera el lock y permite login y logout posteriores', async () => {
+    const replacementToken = `rspn1_${'H'.repeat(43)}`;
+    const service = TestBed.inject(AuthService);
+    await login(service);
+
+    const logoutAll = service.logoutAll();
+    await settle();
+    controller.expectOne('/api/auth/native/logout-all').flush(
+      { code: 'ERR4_T05' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await logoutAll;
+    expect(service.state()).toBe('unauthenticated');
+
+    const replacement = service.logged('other@example.test', 'password-nueva');
+    await settle();
+    controller.expectOne('/api/auth/native/login').flush({
+      token_type: 'Bearer',
+      session_token: replacementToken,
+      expires_at: expiration,
+      user: userB,
+    });
+    await replacement;
+    expect(service.state()).toBe('authenticated');
+
+    const logout = service.logout();
+    await settle();
+    controller.expectOne('/api/auth/native/logout').flush(
+      null,
+      { status: 204, statusText: 'No Content' },
+    );
+    await logout;
+    expect(service.state()).toBe('unauthenticated');
+  });
+
+  it('fallo de lifecycle retira usuario y ruta protegida sin borrar token', async () => {
+    storedSession();
+    app.addListener.and.rejectWith(new Error('listener no disponible'));
+    const router = TestBed.inject(Router);
+    const navigation = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    const service = TestBed.inject(AuthService);
+
+    const bootstrap = service.bootstrap();
+    await settle();
+    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    await bootstrap;
+    await settle();
+
+    expect(service.state()).toBe('client-error');
+    expect(service.userId()).toBeNull();
+    expect(secureRecord).toEqual({ token, installationId });
+    expect(navigation).toHaveBeenCalledOnceWith('/session-unavailable?reason=client-error');
+  });
+
+  it('fallo de lifecycle no navega en loop si ya está en session-unavailable', async () => {
+    storedSession();
+    app.addListener.and.rejectWith(new Error('listener no disponible'));
+    const router = TestBed.inject(Router);
+    spyOnProperty(router, 'url', 'get').and.returnValue(
+      '/session-unavailable?reason=client-error',
+    );
+    const navigation = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    const service = TestBed.inject(AuthService);
+
+    const bootstrap = service.bootstrap();
+    await settle();
+    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    await bootstrap;
+    await settle();
+
+    expect(service.state()).toBe('client-error');
+    expect(service.userId()).toBeNull();
+    expect(secureRecord).toEqual({ token, installationId });
+    expect(navigation).not.toHaveBeenCalled();
   });
 
   it('marker pending huérfano sin token no bloquea bootstrap ni llama session', async () => {
