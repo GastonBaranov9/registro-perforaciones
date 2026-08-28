@@ -167,6 +167,16 @@ Las pruebas cubren web/android/iOS/unknown, build inválido, origin exacto, exte
 
 El review R1 quedó corregido: `logout_pending_v1` sólo se limpia tras 204 de logout-device o después de persistir y activar un token de reemplazo válido; un login fallido no puede reactivar la sesión anterior y bootstrap reintenta logout antes de session. Mapa aéreo y fotos protegidas se cargan native mediante `HttpClient`/Blob/object URL con cancelación y revoke; web, PDF, multipart y Maps backend se preservan. Un runtime `unknown` ahora termina en `client-error` y no usa autenticación web ni envía credenciales.
 
+### Addendum RSP-09C-R2
+
+R2 corrige los cuatro hallazgos del review sin cambios en `api/`. El floor Android canÃ³nico quedÃ³ en `minSdkVersion = 24`, requerido por los mÃ³dulos Capacitor 8 instalados (core/android 8.5.0, App/Preferences 8.0.0 y secure-storage 8.0.0); se agregÃ³ un contrato para detectar regresiones.
+
+El transporte native captura un snapshot `{token,generation}` antes de cada request. Un 401 sÃ³lo invalida si la generaciÃ³n sigue vigente, por lo que una respuesta tardÃ­a de A no puede destruir la sesiÃ³n B. Se conserva la invalidaciÃ³n single-flight para la generaciÃ³n actual.
+
+DespuÃ©s de un logout-device 204, la revocaciÃ³n remota es autoritativa: la limpieza local queda `unauthenticated` aun si falla `pendingStorage.clear()`. Un marker huÃ©rfano sin token se limpia best-effort sin `native/session` ni `client-error`; `pending + token` continÃºa reintentando logout. Antes de cada login native se ejecuta el probe tÃ©cnico Preferences SET/GET/REMOVE `native_storage_probe_v1`; cualquier fallo bloquea el POST de login y no deja residuos.
+
+RSP-09E debe repetir la validaciÃ³n Gradle fÃ­sica cuando exista JDK/SDK; el cambio estÃ¡tico elimina la incompatibilidad conocida de minSdk.
+
 RSP-09D:
 
 - ticket HTTP y conexión WebSocket native, redemption, registry, fan-out y heartbeat.
