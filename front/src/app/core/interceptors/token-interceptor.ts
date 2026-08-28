@@ -21,6 +21,33 @@ function requestPath(rawUrl: string): string {
   return new URL(rawUrl, globalThis.location?.href ?? 'https://localhost/').pathname;
 }
 
+function errorCode(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const code = (body as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+function isBlobLike(body: unknown): body is Blob {
+  return !!body && typeof body === 'object' && typeof (body as { text?: unknown }).text === 'function';
+}
+
+function trustedNativeErrorCode(body: unknown): Observable<string | null> {
+  const direct = errorCode(body);
+  if (direct) return of(direct);
+  if (isBlobLike(body)) {
+    return from(body.text()).pipe(
+      switchMap((text) => {
+        try { return of(errorCode(JSON.parse(text))); } catch { return of(null); }
+      }),
+      catchError(() => of(null)),
+    );
+  }
+  if (typeof body === 'string') {
+    try { return of(errorCode(JSON.parse(body))); } catch { return of(null); }
+  }
+  return of(null);
+}
+
 export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
   const runtime = inject(RuntimePlatformService);
   const platform = runtime.platform();
@@ -74,10 +101,14 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
       return next(req.clone({ headers, withCredentials: false })).pipe(
         catchError((error: unknown) => {
           if (!(error instanceof HttpErrorResponse)) return throwError(() => error);
-          const code = (error.error as { code?: unknown } | null)?.code;
-          if (error.status === 426 && code === 'NATIVE_APP_UPGRADE_REQUIRED') {
-            return from(auth.handleNative426()).pipe(
-              switchMap(() => throwError(() => error)),
+          if (error.status === 426) {
+            if (isBlobLike(error.error)) {
+              return from(auth.handleNative426()).pipe(switchMap(() => throwError(() => error)));
+            }
+            return trustedNativeErrorCode(error.error).pipe(
+              switchMap((code) => code === 'NATIVE_APP_UPGRADE_REQUIRED'
+                ? from(auth.handleNative426()).pipe(switchMap(() => throwError(() => error)))
+                : throwError(() => error)),
             );
           }
           if (

@@ -163,4 +163,18 @@ describe('tokenInterceptor native', () => {
     await requestPromise;
     expect(auth.handleNative401).toHaveBeenCalledOnceWith(1);
   });
+
+  it('interpreta 426 JSON dentro de Blob para recursos binarios', async () => {
+    const pdf = `${backendOrigin}/api/informe.pdf`;
+    http.get(pdf, { responseType: 'blob' }).subscribe({ error: () => undefined });
+    await Promise.resolve();
+    const request = controller.expectOne(pdf);
+    request.flush(new Blob([JSON.stringify({ code: 'NATIVE_APP_UPGRADE_REQUIRED' })], { type: 'application/json' }), {
+      status: 426,
+      statusText: 'Upgrade Required',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(auth.handleNative426).toHaveBeenCalledTimes(1);
+  });
 });
