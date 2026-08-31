@@ -18,6 +18,7 @@ export type WebsocketConnectionKind = "web" | "native";
 export interface WebsocketAuthContext {
   kind: WebsocketConnectionKind;
   versionSesion: number;
+  webExpiresAtSeconds?: number;
   nativeSessionId?: number;
   nativePlatform?: "android" | "ios";
   nativeAppBuild?: number;
@@ -36,6 +37,12 @@ export interface ClientConnection {
 
 export const clientConnections: ClientConnection[] = [];
 
+export function jwtWebsocketVigente(expiresAtSeconds: number, nowMs = Date.now()): boolean {
+  return Number.isSafeInteger(expiresAtSeconds) &&
+    expiresAtSeconds > 0 &&
+    Math.floor(nowMs / 1_000) < expiresAtSeconds;
+}
+
 function retirarConexion(connection: ClientConnection, conexiones: ClientConnection[]): void {
   const index = conexiones.indexOf(connection);
   if (index >= 0) conexiones.splice(index, 1);
@@ -45,14 +52,17 @@ export function registrarConexionWebsocket(
   datos: Omit<ClientConnection, "isAlive">,
   conexiones: ClientConnection[] = clientConnections,
 ): ClientConnection {
-  if (datos.auth?.kind === "native" && datos.auth.nativeSessionId !== undefined) {
+  const nativeCandidate = datos.auth?.kind === "native" &&
+    datos.auth.nativeSessionId !== undefined &&
+    datos.operational === false;
+  if (nativeCandidate) {
     for (const previous of [...conexiones]) {
       if (
         previous.auth?.kind === "native" &&
-        previous.auth.nativeSessionId === datos.auth.nativeSessionId
+        previous.auth.nativeSessionId === datos.auth?.nativeSessionId &&
+        previous.operational === false
       ) {
-        retirarConexion(previous, conexiones);
-        try { previous.socket.close(4001, "Socket reemplazado"); } catch { /* best effort */ }
+        cerrarConexionWebsocket(previous, conexiones, 4001, "Socket reemplazado");
       }
     }
   }
@@ -60,7 +70,57 @@ export function registrarConexionWebsocket(
   conexiones.push(connection);
   connection.socket.on("pong", () => { connection.isAlive = true; });
   connection.socket.on("close", () => retirarConexion(connection, conexiones));
+  if (
+    connection.auth?.kind === "native" &&
+    connection.auth.nativeSessionId !== undefined &&
+    connection.operational !== false
+  ) {
+    connection.operational = false;
+    promoverConexionWebsocketNative(connection, conexiones);
+  }
   return connection;
+}
+
+export function promoverConexionWebsocketNative(
+  candidate: ClientConnection,
+  conexiones: ClientConnection[] = clientConnections,
+): boolean {
+  const nativeSessionId = candidate.auth?.kind === "native"
+    ? candidate.auth.nativeSessionId
+    : undefined;
+  if (
+    nativeSessionId === undefined ||
+    !conexiones.includes(candidate) ||
+    candidate.operational !== false
+  ) return false;
+  if (candidate.socket.readyState !== WEBSOCKET_OPEN) {
+    cerrarConexionWebsocket(candidate, conexiones, 4003, "Sesion no autorizada");
+    return false;
+  }
+  let currentCandidate: ClientConnection | undefined;
+  for (const connection of conexiones) {
+    if (
+      connection.auth?.kind === "native" &&
+      connection.auth.nativeSessionId === nativeSessionId &&
+      connection.operational === false
+    ) currentCandidate = connection;
+  }
+  if (currentCandidate !== candidate) {
+    cerrarConexionWebsocket(candidate, conexiones, 4001, "Socket reemplazado");
+    return false;
+  }
+
+  const previousActive = conexiones.filter((connection) =>
+    connection !== candidate &&
+    connection.auth?.kind === "native" &&
+    connection.auth.nativeSessionId === nativeSessionId &&
+    connection.operational !== false
+  );
+  candidate.operational = true;
+  for (const previous of previousActive) {
+    cerrarConexionWebsocket(previous, conexiones, 4001, "Socket reemplazado");
+  }
+  return true;
 }
 
 export function activarConexionWebsocket(
@@ -68,11 +128,15 @@ export function activarConexionWebsocket(
   conexiones: ClientConnection[] = clientConnections,
 ): boolean {
   if (!conexiones.includes(connection)) return false;
+  if (connection.auth?.kind === "native") {
+    if (connection.operational === true) return true;
+    return promoverConexionWebsocketNative(connection, conexiones);
+  }
   connection.operational = true;
   return true;
 }
 
-export async function validarYActivarConexionWebsocket(
+export async function validarConexionWebsocket(
   connection: ClientConnection,
   conexiones: ClientConnection[] = clientConnections,
 ): Promise<boolean> {
@@ -82,12 +146,19 @@ export async function validarYActivarConexionWebsocket(
       cerrarConexionWebsocket(connection, conexiones, 4003, "Sesion no autorizada");
       return false;
     }
-    if (!conexiones.includes(connection)) return false;
-    return activarConexionWebsocket(connection, conexiones);
+    return conexiones.includes(connection);
   } catch {
     cerrarConexionWebsocket(connection, conexiones, 1011, "Error interno");
     return false;
   }
+}
+
+export async function validarYActivarConexionWebsocket(
+  connection: ClientConnection,
+  conexiones: ClientConnection[] = clientConnections,
+): Promise<boolean> {
+  if (!(await validarConexionWebsocket(connection, conexiones))) return false;
+  return activarConexionWebsocket(connection, conexiones);
 }
 
 export function cerrarConexionesNativeSession(
@@ -128,6 +199,23 @@ function cerrarConexiones(
   }
 }
 
+function conexionPuedeRecibir(
+  connection: ClientConnection,
+  conexiones: ClientConnection[],
+): boolean {
+  if (
+    connection.auth?.kind === "web" &&
+    (
+      connection.auth.webExpiresAtSeconds === undefined ||
+      !jwtWebsocketVigente(connection.auth.webExpiresAtSeconds)
+    )
+  ) {
+    cerrarConexionWebsocket(connection, conexiones, 4003, "Sesion no autorizada");
+    return false;
+  }
+  return connection.operational !== false && connection.socket.readyState === WEBSOCKET_OPEN;
+}
+
 export function cerrarConexionWebsocket(
   connection: ClientConnection,
   conexiones: ClientConnection[] = clientConnections,
@@ -162,8 +250,8 @@ export function notificarConexionesUsuario(
   conexiones: ClientConnection[] = clientConnections,
 ): void {
   const payload = JSON.stringify({ data });
-  for (const connection of conexiones) {
-    if (connection.id_usuario !== idUsuario || connection.operational === false || connection.socket.readyState !== WEBSOCKET_OPEN) continue;
+  for (const connection of [...conexiones]) {
+    if (connection.id_usuario !== idUsuario || !conexionPuedeRecibir(connection, conexiones)) continue;
     try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
   }
 }
@@ -232,8 +320,8 @@ export default fastifyPlugin(async function websocketPlugin(fastify) {
 
   fastify.decorate("notifyAdmin", function (data: unknown) {
     const payload = JSON.stringify({ data });
-    for (const connection of clientConnections) {
-      if (connection.isAdmin && connection.operational !== false && connection.socket.readyState === WEBSOCKET_OPEN) {
+    for (const connection of [...clientConnections]) {
+      if (connection.isAdmin && conexionPuedeRecibir(connection, clientConnections)) {
         try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
       }
     }
@@ -241,8 +329,8 @@ export default fastifyPlugin(async function websocketPlugin(fastify) {
 
   fastify.decorate("notifyAll", function (data: unknown) {
     const payload = JSON.stringify({ data });
-    for (const connection of clientConnections) {
-      if (connection.id_usuario !== undefined && connection.operational !== false && connection.socket.readyState === WEBSOCKET_OPEN) {
+    for (const connection of [...clientConnections]) {
+      if (connection.id_usuario !== undefined && conexionPuedeRecibir(connection, clientConnections)) {
         try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
       }
     }

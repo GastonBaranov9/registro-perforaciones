@@ -2,8 +2,9 @@ import {
   activarConexionWebsocket,
   cerrarConexionWebsocket,
   clientConnections,
+  jwtWebsocketVigente,
   registrarConexionWebsocket,
-  validarYActivarConexionWebsocket,
+  validarConexionWebsocket,
   type WebsocketSocket,
 } from "../plugins/websocket.ts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -15,7 +16,7 @@ import {
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 import { origenWebsocketValido } from "../plugins/origin.ts";
 import { getEstadoSesionUsuario } from "../services/auth-services.ts";
-import { sesionVigente } from "../plugins/jwt.ts";
+import { normalizarExpJwt, sesionVigente } from "../plugins/jwt.ts";
 import { tokenNativoBienFormado } from "../services/native-token-service.ts";
 import * as err from "../models/errors.ts";
 
@@ -107,8 +108,7 @@ const websocketRoute = async function (fastify: FastifyInstance) {
           },
           revalidate: () => validarSesionNativeParaWebsocket(identity, config),
         });
-        if (!(await validarYActivarConexionWebsocket(connection, clientConnections))) return;
-        connection.operational = false;
+        if (!(await validarConexionWebsocket(connection, clientConnections))) return;
         try {
           connection.isAdmin = await isAdmin(identity.idUsuario);
         } catch {
@@ -124,14 +124,18 @@ const websocketRoute = async function (fastify: FastifyInstance) {
 
       const idUsuario = req.user.sub;
       const versionSesion = req.user.version_sesion;
+      const expiresAtSeconds = normalizarExpJwt(req.user.exp);
+      if (expiresAtSeconds === null) {
+        cerrarAuth(socket as WebsocketSocket);
+        return;
+      }
       registrarConexionWebsocket({
         id_usuario: idUsuario,
         socket: socket as WebsocketSocket,
         isAdmin: await isAdmin(idUsuario),
-        auth: { kind: "web", versionSesion },
-        revalidate: async () => sesionVigente(
-          await getEstadoSesionUsuario(idUsuario),
-          versionSesion,
+        auth: { kind: "web", versionSesion, webExpiresAtSeconds: expiresAtSeconds },
+        revalidate: async () => jwtWebsocketVigente(expiresAtSeconds) && sesionVigente(
+          await getEstadoSesionUsuario(idUsuario), versionSesion,
         ),
       });
       socket.send(JSON.stringify({ mensaje: "Conectado al servidor", id_usuario: idUsuario }));
