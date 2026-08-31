@@ -37,8 +37,10 @@ test("el socket native se activa despues de revalidar y no entra en fan-out ante
     "utf8",
   );
   assert.match(file, /operational: false/);
-  assert.match(file, /validarYActivarConexionWebsocket\(connection, clientConnections\)/);
+  assert.match(file, /validarConexionWebsocket\(connection, clientConnections\)/);
   assert.match(file, /activarConexionWebsocket\(connection, clientConnections\)/);
+  assert.ok(file.indexOf("validarConexionWebsocket(connection") < file.indexOf("isAdmin(identity.idUsuario)"));
+  assert.ok(file.indexOf("isAdmin(identity.idUsuario)") < file.indexOf("activarConexionWebsocket(connection"));
 });
 
 test("el handshake native valida formato y limita antes de redimir", async () => {
@@ -50,4 +52,15 @@ test("el handshake native valida formato y limita antes de redimir", async () =>
   assert.ok(hook.indexOf("tokenNativoBienFormado") < hook.indexOf("rateLimitNativeWsHandshake"));
   assert.ok(hook.indexOf("rateLimitNativeWsHandshake") < file.indexOf("consumirTicketWsNative(nativeTicket"));
   assert.doesNotMatch(hook, /req\.headers\.x-forwarded-for|req\.headers\.x-real-ip/);
+});
+
+test("websocket web conserva exp verificado y lo evalua antes del estado DB", async () => {
+  const file = await fs.readFile(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "routes", "ws.ts"),
+    "utf8",
+  );
+  assert.match(file, /normalizarExpJwt\(req\.user\.exp\)/);
+  assert.match(file, /webExpiresAtSeconds: expiresAtSeconds/);
+  const revalidation = file.slice(file.indexOf("revalidate: async () => jwtWebsocketVigente"));
+  assert.ok(revalidation.indexOf("jwtWebsocketVigente") < revalidation.indexOf("getEstadoSesionUsuario"));
 });

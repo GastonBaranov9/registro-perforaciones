@@ -473,7 +473,7 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     })).statusCode, 200, "Bearer válido no exige CSRF");
 
     const httpUser = users.get(emails[4])!;
-    const webToken = app.jwt.sign({ sub: httpUser, version_sesion: 1 });
+    const webToken = app.jwt.sign({ sub: httpUser, version_sesion: 1 }, { expiresIn: "10h" });
     assert.equal((await app.inject({
       method: "POST", url: "/business",
       cookies: { [SESSION_COOKIE]: webToken },

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   ejecutarHeartbeatWebsocket,
   activarConexionWebsocket,
+  jwtWebsocketVigente,
   registrarConexionWebsocket,
   cerrarConexionesNativeSession,
   notificarConexionesUsuario,
@@ -22,12 +23,13 @@ class SocketControlado implements WebsocketSocket {
   pings = 0;
   terminaciones = 0;
   cierres = 0;
+  closeCodes: Array<number | undefined> = [];
   sent: string[] = [];
   private listeners = new Map<string, Array<() => void>>();
 
   send(data: string): void { this.sent.push(data); }
   ping(): void { this.pings += 1; }
-  close(): void { this.cierres += 1;this.emit("close"); }
+  close(code?: number): void { this.cierres += 1;this.closeCodes.push(code);this.emit("close"); }
   terminate(): void { this.terminaciones += 1;this.emit("close"); }
   on(event: "close" | "pong", listener: () => void): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
@@ -153,6 +155,157 @@ test("cierre concurrente con post-validacion es idempotente y no deja fantasma",
   cerrarConexionesNativeSession(13, conexiones);
   assert.equal(conexiones.length, 0);
   assert.equal(socket.cierres, 1);
+});
+
+test("candidate conserva el active hasta promoverse y fan-out no tiene hueco", async () => {
+  const conexiones: ClientConnection[] = [];
+  const active = new SocketControlado();
+  const candidate = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: active,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 20 },
+  }, conexiones);
+  let liberar: ((valid: boolean) => void) | undefined;
+  const validation = new Promise<boolean>((resolve) => { liberar = resolve; });
+  const pending = registrarConexionWebsocket({
+    id_usuario: 7, socket: candidate, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 20 },
+    revalidate: () => validation,
+  }, conexiones);
+  const promotion = validarYActivarConexionWebsocket(pending, conexiones);
+  notificarConexionesUsuario(7, { type: "durante-validacion" }, conexiones);
+  assert.equal(active.sent.length, 1);
+  assert.equal(candidate.sent.length, 0);
+  assert.equal(active.cierres, 0);
+
+  liberar!(true);
+  assert.equal(await promotion, true);
+  assert.equal(active.closeCodes.at(-1), 4001);
+  notificarConexionesUsuario(7, { type: "despues-promocion" }, conexiones);
+  assert.equal(active.sent.length, 1);
+  assert.equal(candidate.sent.length, 1);
+  active.emit("close");
+  assert.equal(conexiones.length, 1);
+  assert.equal(conexiones[0], pending);
+});
+
+test("candidate fallido o desconectado no elimina el active", async () => {
+  for (const disconnected of [false, true]) {
+    const conexiones: ClientConnection[] = [];
+    const active = new SocketControlado();
+    const candidate = new SocketControlado();
+    registrarConexionWebsocket({
+      id_usuario: 7, socket: active,
+      auth: { kind: "native", versionSesion: 1, nativeSessionId: 21 },
+    }, conexiones);
+    const pending = registrarConexionWebsocket({
+      id_usuario: 7, socket: candidate, operational: false,
+      auth: { kind: "native", versionSesion: 1, nativeSessionId: 21 },
+      revalidate: async () => false,
+    }, conexiones);
+    if (disconnected) candidate.emit("close");
+    assert.equal(await validarYActivarConexionWebsocket(pending, conexiones), false);
+    assert.equal(active.cierres, 0);
+    notificarConexionesUsuario(7, { type: "activo" }, conexiones);
+    assert.equal(active.sent.length, 1);
+  }
+});
+
+test("logout durante candidate cierra ambos e impide promocion tardia", async () => {
+  const conexiones: ClientConnection[] = [];
+  const active = new SocketControlado();
+  const candidate = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: active,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 22 },
+  }, conexiones);
+  let liberar: (() => void) | undefined;
+  const validation = new Promise<boolean>((resolve) => { liberar = () => resolve(true); });
+  const pending = registrarConexionWebsocket({
+    id_usuario: 7, socket: candidate, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 22 },
+    revalidate: () => validation,
+  }, conexiones);
+  const promotion = validarYActivarConexionWebsocket(pending, conexiones);
+  cerrarConexionesNativeSession(22, conexiones);
+  liberar!();
+  assert.equal(await promotion, false);
+  assert.equal(active.cierres, 1);
+  assert.equal(candidate.cierres, 1);
+  assert.equal(conexiones.length, 0);
+});
+
+test("un candidate nuevo reemplaza deterministamente al pendiente, no al active", async () => {
+  const conexiones: ClientConnection[] = [];
+  const active = new SocketControlado();
+  const firstCandidate = new SocketControlado();
+  const secondCandidate = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: active,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 23 },
+  }, conexiones);
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: firstCandidate, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 23 },
+  }, conexiones);
+  const newest = registrarConexionWebsocket({
+    id_usuario: 7, socket: secondCandidate, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 23 },
+    revalidate: async () => true,
+  }, conexiones);
+  assert.equal(firstCandidate.closeCodes.at(-1), 4001);
+  assert.equal(active.cierres, 0);
+  assert.equal(await validarYActivarConexionWebsocket(newest, conexiones), true);
+  assert.equal(active.closeCodes.at(-1), 4001);
+  assert.equal(conexiones.length, 1);
+  assert.equal(conexiones[0], newest);
+});
+
+test("exp web usa segundos Unix y cierra aun con estado DB valido", async () => {
+  assert.equal(jwtWebsocketVigente(100, 99_999), true);
+  assert.equal(jwtWebsocketVigente(100, 100_000), false);
+  assert.equal(jwtWebsocketVigente(101, 100_999), true);
+  assert.equal(jwtWebsocketVigente(Number.NaN, 0), false);
+  assert.equal(jwtWebsocketVigente(0, 0), false);
+
+  const conexiones: ClientConnection[] = [];
+  const expiredBeforeFanout = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: expiredBeforeFanout,
+    auth: { kind: "web", versionSesion: 1, webExpiresAtSeconds: 100 },
+    revalidate: async () => true,
+  }, conexiones);
+  notificarConexionesUsuario(7, { type: "despues-exp" }, conexiones);
+  assert.equal(expiredBeforeFanout.sent.length, 0);
+  assert.equal(expiredBeforeFanout.cierres, 1);
+  assert.equal(conexiones.length, 0);
+
+  const expired = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: expired,
+    auth: { kind: "web", versionSesion: 1, webExpiresAtSeconds: 100 },
+    revalidate: async () => jwtWebsocketVigente(100, 100_000) && true,
+  }, conexiones);
+  await revalidarConexionesWebsocket(conexiones);
+  assert.equal(expired.cierres, 1);
+  assert.equal(conexiones.length, 0);
+
+  const future = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: future,
+    auth: { kind: "web", versionSesion: 1, webExpiresAtSeconds: 101 },
+    revalidate: async () => jwtWebsocketVigente(101, 100_999) && true,
+  }, conexiones);
+  const native = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: native,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 24 },
+    revalidate: async () => true,
+  }, conexiones);
+  await revalidarConexionesWebsocket(conexiones);
+  assert.equal(future.cierres, 0);
+  assert.equal(native.cierres, 0);
+  assert.equal(conexiones.length, 2);
 });
 
 test("el controlador de heartbeat no duplica timers y los limpia", async () => {

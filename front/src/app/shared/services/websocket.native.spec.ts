@@ -109,6 +109,36 @@ describe('WebsocketService native', () => {
     expect(NativeWebSocketControlado.instances[0].url).toContain(ticket('F'));
   }));
 
+  it('timeout cancela el ticket pendiente, libera el flight y reconecta con ticket nuevo', fakeAsync(() => {
+    service.connect();
+    const requestA = controller.expectOne('/api/auth/native/ws-ticket');
+    tick(9_999);
+    expect(requestA.cancelled).toBeFalse();
+    tick(1);
+    flushMicrotasks();
+    expect(requestA.cancelled).toBeTrue();
+    tick(999);
+    controller.expectNone('/api/auth/native/ws-ticket');
+    tick(1);
+    const requestB = controller.expectOne('/api/auth/native/ws-ticket');
+    requestB.flush({ ticket: ticket('L') });
+    flushMicrotasks();
+    expect(NativeWebSocketControlado.instances.length).toBe(1);
+    expect(NativeWebSocketControlado.instances[0].url).toContain(ticket('L'));
+  }));
+
+  it('timeout stale tras logout no programa reconnect', fakeAsync(() => {
+    service.connect();
+    const request = controller.expectOne('/api/auth/native/ws-ticket');
+    authState = 'logout-pending';
+    tick(10_000);
+    flushMicrotasks();
+    expect(request.cancelled).toBeTrue();
+    tick(60_000);
+    controller.expectNone('/api/auth/native/ws-ticket');
+    expect(NativeWebSocketControlado.instances.length).toBe(0);
+  }));
+
   it('un cierre 4001 es terminal para la generation reemplazada y no solicita otro ticket', fakeAsync(() => {
     service.connect();
     controller.expectOne('/api/auth/native/ws-ticket').flush({ ticket: ticket('G') });

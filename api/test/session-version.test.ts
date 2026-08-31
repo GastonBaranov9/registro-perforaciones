@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizarEnteroPositivoSeguro,
+  normalizarClaimsWeb,
   sesionVigente,
 } from "../src/plugins/jwt.ts";
 import {
@@ -32,6 +33,18 @@ test("rechaza versiones de sesion invalidas", () => {
   ]) {
     assert.equal(normalizarEnteroPositivoSeguro(value), null);
   }
+});
+
+test("claims web exigen exp Unix positivo validado", () => {
+  assert.deepEqual(
+    normalizarClaimsWeb({ sub: 7, version_sesion: 3, exp: 1_900_000_000 }),
+    { idUsuario: 7, versionToken: 3, expiresAtSeconds: 1_900_000_000 },
+  );
+  assert.equal(normalizarClaimsWeb({ sub: 7, version_sesion: 3 }), null);
+  assert.equal(normalizarClaimsWeb({ sub: 7, version_sesion: 3, exp: 0 }), null);
+  assert.equal(normalizarClaimsWeb({ sub: 7, version_sesion: 3, exp: 1.5 }), null);
+  assert.equal(normalizarClaimsWeb({ sub: 7, version_sesion: 3, exp: "1900000000" }), null);
+  assert.equal(normalizarClaimsWeb({ sub: 7, version_sesion: 3, exp: "invalido" }), null);
 });
 
 test("solo acepta usuarios activos con la version vigente", () => {
