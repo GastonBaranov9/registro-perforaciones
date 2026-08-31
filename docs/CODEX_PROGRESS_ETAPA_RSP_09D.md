@@ -32,6 +32,10 @@ aleatorio, vinculado a la sesión native y nunca se persiste ni se loguea.
   conserva `PUBLIC_ORIGIN` exacto; no hay wildcard, `startsWith` ni fallback.
 - La CSP native permite explícitamente el origin HTTPS del backend y su origen
   WSS derivado con parser URL; no agrega hosts, wildcard ni `wss:` abierto.
+- El handshake clasifica por presencia de `ticket`: sin ticket exige
+  `PUBLIC_ORIGIN` y cookie web; con ticket exige Origin native exacto, formato
+  válido y un rate limit por IP antes de tocar PostgreSQL. Nunca hay fallback
+  entre autenticación web y native.
 - El registry distingue `web` y `native`, permite varias sesiones native del
   mismo usuario y mantiene como máximo un socket por `id_sesion_nativa`. Una
   reconexión reemplaza/cierra el socket anterior con código interno 4001.
