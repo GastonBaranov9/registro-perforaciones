@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, OnDestroy, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
 import { NativeBackendConfigService } from '../../core/native/native-backend-config.service';
@@ -23,6 +23,13 @@ export class WebsocketService implements OnDestroy {
   private reconnectAttempt = 0;
   private reconnectEnabled = false;
   private reconnectGeneration?: number;
+  private reconnectEpoch?: number;
+  private connectionEpoch = 0;
+  private nativeConnectFlight?: Promise<void>;
+  private nativeConnectGeneration?: number;
+  private nativeTicketRequest?: { cancel: () => void };
+  private replacedNativeGeneration?: number;
+  private wsEpoch?: number;
   private destroyed = false;
   public ws?: WebSocket;
   msgRecargarEditUser = signal(false);
@@ -36,7 +43,30 @@ export class WebsocketService implements OnDestroy {
     this.reconnectEnabled = true;
     this.clearReconnectTimer();
     if (this.ws && (this.ws.readyState === WEBSOCKET_CONNECTING || this.ws.readyState === WEBSOCKET_OPEN)) return;
-    void this.openSocket();
+    let nativeGeneration: number | undefined;
+    if (this.authService.isNative()) {
+      const authSnapshot = this.authService.nativeRequestAuthSnapshot(`/api/${NATIVE_WS_TICKET}`);
+      if (!authSnapshot) return;
+      nativeGeneration = authSnapshot.generation;
+      if (this.replacedNativeGeneration !== undefined) {
+        if (this.replacedNativeGeneration === nativeGeneration) return;
+        this.replacedNativeGeneration = undefined;
+      }
+      if (this.nativeConnectFlight) {
+        if (this.nativeConnectGeneration === nativeGeneration) return;
+        this.invalidateNativeAttempt();
+      }
+    }
+    const epoch = this.authService.isNative() ? ++this.connectionEpoch : undefined;
+    const flight = this.openSocket(epoch);
+    if (this.authService.isNative()) {
+      this.nativeConnectFlight = flight;
+      this.nativeConnectGeneration = nativeGeneration;
+      void flight.then(
+        () => this.clearNativeConnectFlight(flight),
+        () => this.clearNativeConnectFlight(flight),
+      );
+    } else void flight;
   }
 
   private canConnect(): boolean {
@@ -44,8 +74,8 @@ export class WebsocketService implements OnDestroy {
     return this.authService.isNative() && this.authService.state() === 'authenticated';
   }
 
-  private async openSocket(): Promise<void> {
-    if (!this.reconnectEnabled || this.destroyed || !this.canConnect()) return;
+  private async openSocket(attemptEpoch?: number): Promise<void> {
+    if (!this.attemptIsCurrent(attemptEpoch) || !this.reconnectEnabled || this.destroyed || !this.canConnect()) return;
     let url: string;
     let generation: number | undefined;
     try {
@@ -55,11 +85,9 @@ export class WebsocketService implements OnDestroy {
         // The native Bearer remains inside the HttpClient interceptor. This
         // service only retains the generation needed to reject stale replies.
         generation = authSnapshot.generation;
-        const response = await firstValueFrom(
-          this.httpClient.post<{ ticket: string }>(environment.apiURL + NATIVE_WS_TICKET, null),
-        );
+        const response = await this.requestNativeTicket();
         if (
-          !this.reconnectEnabled || this.destroyed || !this.canConnect() ||
+          !this.attemptIsCurrent(attemptEpoch) || !this.reconnectEnabled || this.destroyed || !this.canConnect() ||
           !this.generationIsCurrent(generation) ||
           typeof response?.ticket !== 'string' || !NATIVE_TICKET_PATTERN.test(response.ticket)
         ) return;
@@ -71,6 +99,7 @@ export class WebsocketService implements OnDestroy {
         url = environment.wsUrl;
       }
     } catch (error) {
+      if (!this.attemptIsCurrent(attemptEpoch)) return;
       if (generation !== undefined && !this.generationIsCurrent(generation)) return;
       if (error instanceof HttpErrorResponse && error.status === 401) {
         await this.authService.handleNative401(generation);
@@ -80,19 +109,21 @@ export class WebsocketService implements OnDestroy {
         await this.authService.handleNative426();
         return;
       }
-      this.scheduleReconnect(generation);
+      this.scheduleReconnect(generation, attemptEpoch);
       return;
     }
 
-    if (!this.reconnectEnabled || this.destroyed || !this.canConnect()) return;
+    if (!this.attemptIsCurrent(attemptEpoch) || !this.reconnectEnabled || this.destroyed || !this.canConnect()) return;
     let socket: WebSocket;
     try { socket = new WebSocket(url); }
-    catch { this.scheduleReconnect(generation); return; }
-    this.ws = socket;
+    catch { this.scheduleReconnect(generation, attemptEpoch); return; }
     const socketGeneration = generation;
+    const socketEpoch = attemptEpoch;
+    this.ws = socket;
+    this.wsEpoch = socketEpoch;
 
     socket.onopen = () => {
-      if (this.ws !== socket) return;
+      if (!this.isTrackedSocket(socket, socketEpoch)) return;
       if (socketGeneration !== undefined && !this.generationIsCurrent(socketGeneration)) {
         socket.close(4003, 'Sesion no autorizada');
         return;
@@ -102,7 +133,7 @@ export class WebsocketService implements OnDestroy {
     };
 
     socket.onmessage = async (event) => {
-      if (this.ws !== socket) return;
+      if (!this.isTrackedSocket(socket, socketEpoch)) return;
       const msg = JSON.parse(event.data);
       if (!msg.data) return;
       switch (msg.data.type) {
@@ -123,28 +154,38 @@ export class WebsocketService implements OnDestroy {
     };
 
     socket.onerror = () => { /* close decide si corresponde reconectar */ };
-    socket.onclose = () => {
-      if (this.ws !== socket) return;
+    socket.onclose = (event) => {
+      if (!this.isTrackedSocket(socket, socketEpoch)) return;
       this.ws = undefined;
+      this.wsEpoch = undefined;
       this.connected.set(false);
-      this.scheduleReconnect(socketGeneration);
+      if (event.code === 4001 && socketGeneration !== undefined && this.generationIsCurrent(socketGeneration)) {
+        this.replacedNativeGeneration = socketGeneration;
+        this.reconnectEnabled = false;
+        this.clearReconnectTimer();
+        return;
+      }
+      this.scheduleReconnect(socketGeneration, socketEpoch);
     };
   }
 
-  private scheduleReconnect(generation?: number): void {
+  private scheduleReconnect(generation?: number, attemptEpoch?: number): void {
     if (!this.reconnectEnabled || this.destroyed || !this.canConnect() || this.reconnectTimer) return;
+    if (!this.attemptIsCurrent(attemptEpoch)) return;
     if (generation !== undefined && !this.generationIsCurrent(generation)) return;
     const delay = RECONNECT_DELAYS_MS[this.reconnectAttempt] ?? SLOW_RECONNECT_DELAY_MS;
     if (this.reconnectAttempt < RECONNECT_DELAYS_MS.length) this.reconnectAttempt += 1;
     this.reconnectGeneration = generation;
+    this.reconnectEpoch = attemptEpoch;
+    const timerEpoch = this.reconnectEpoch;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      if (
-        this.reconnectGeneration !== undefined &&
-        !this.generationIsCurrent(this.reconnectGeneration)
-      ) return;
+      if (this.reconnectEpoch !== timerEpoch || !this.attemptIsCurrent(timerEpoch)) return;
+      if (this.reconnectGeneration !== undefined && !this.generationIsCurrent(this.reconnectGeneration)) return;
       this.reconnectGeneration = undefined;
-      void this.openSocket();
+      this.reconnectEpoch = undefined;
+      if (this.authService.isNative()) this.connect();
+      else void this.openSocket();
     }, delay);
   }
 
@@ -154,13 +195,71 @@ export class WebsocketService implements OnDestroy {
     this.reconnectTimer = undefined;
   }
 
+  private requestNativeTicket(): Promise<{ ticket: string } | undefined> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let subscription: Subscription | undefined;
+      const request = {
+        cancel: () => {
+          if (settled) return;
+          settled = true;
+          subscription?.unsubscribe();
+          if (this.nativeTicketRequest === request) this.nativeTicketRequest = undefined;
+          resolve(undefined);
+        },
+      };
+      const finish = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        if (this.nativeTicketRequest === request) this.nativeTicketRequest = undefined;
+        callback();
+      };
+      this.nativeTicketRequest = request;
+      subscription = this.httpClient.post<{ ticket: string }>(
+        environment.apiURL + NATIVE_WS_TICKET,
+        null,
+      ).subscribe({
+        next: (response) => finish(() => resolve(response)),
+        error: (error: unknown) => finish(() => reject(error)),
+        complete: () => finish(() => resolve(undefined)),
+      });
+      if (settled) subscription.unsubscribe();
+    });
+  }
+
+  private clearNativeConnectFlight(flight: Promise<void>): void {
+    if (this.nativeConnectFlight !== flight) return;
+    this.nativeConnectFlight = undefined;
+    this.nativeConnectGeneration = undefined;
+  }
+
+  private invalidateNativeAttempt(): void {
+    this.connectionEpoch += 1;
+    this.nativeTicketRequest?.cancel();
+    this.nativeConnectFlight = undefined;
+    this.nativeConnectGeneration = undefined;
+  }
+
+  private attemptIsCurrent(epoch?: number): boolean {
+    return epoch === undefined || epoch === this.connectionEpoch;
+  }
+
+  private isTrackedSocket(socket: WebSocket, epoch?: number): boolean {
+    return this.ws === socket && this.wsEpoch === epoch;
+  }
+
   disconnect(): void {
     this.reconnectEnabled = false;
     this.reconnectAttempt = 0;
     this.clearReconnectTimer();
     this.reconnectGeneration = undefined;
+    this.reconnectEpoch = undefined;
+    if (this.authService.isNative()) {
+      this.invalidateNativeAttempt();
+    }
     const socket = this.ws;
     this.ws = undefined;
+    this.wsEpoch = undefined;
     this.connected.set(false);
     if (socket && (socket.readyState === WEBSOCKET_CONNECTING || socket.readyState === WEBSOCKET_OPEN))
       socket.close(1000, 'Cierre intencional');
