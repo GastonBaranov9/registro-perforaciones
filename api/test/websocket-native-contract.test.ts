@@ -30,3 +30,13 @@ test("redención usa update atómico y no SELECT seguido de UPDATE", async () =>
   assert.match(redemption, /SET used_at = now\(\)/);
   assert.match(redemption, /FOR UPDATE OF s, u/);
 });
+
+test("el socket native se activa despues de revalidar y no entra en fan-out antes", async () => {
+  const file = await fs.readFile(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "routes", "ws.ts"),
+    "utf8",
+  );
+  assert.match(file, /operational: false/);
+  assert.match(file, /validarYActivarConexionWebsocket\(connection\)/);
+  assert.match(file, /activarConexionWebsocket\(connection\)/);
+});

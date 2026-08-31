@@ -20,9 +20,33 @@ import {
 } from "../src/services/native-auth-service.ts";
 import { generarTokenNativo, hmacTokenNativo } from "../src/services/native-token-service.ts";
 import { hashPassword } from "../src/services/password-service.ts";
+import {
+  clientConnections,
+  cerrarConexionesNativeSession,
+  registrarConexionWebsocket,
+  type WebsocketSocket,
+} from "../src/plugins/websocket.ts";
 
 const PASSWORD = "NativePassword123!";
 const metadata = { platform: "android" as const, appBuild: 10, appVersion: "1.0.0" };
+
+class SocketControlado implements WebsocketSocket {
+  readyState = 1;
+  cierres = 0;
+  private listeners = new Map<string, Array<() => void>>();
+
+  send(): void {}
+  ping(): void {}
+  close(): void {
+    this.cierres += 1;
+    this.readyState = 3;
+    for (const listener of this.listeners.get("close") ?? []) listener();
+  }
+  terminate(): void { this.close(); }
+  on(event: "close" | "pong", listener: () => void): void {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+  }
+}
 
 async function activeCount(idUsuario: number): Promise<number> {
   const { rows } = await myPool.query<{ cantidad: string }>(
@@ -242,6 +266,42 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     replacements.map((session) => resolverSesionNative(session.token, config)),
   );
   assert.equal(activeReplacement.filter(Boolean).length, 1);
+  const replacementIdentity = activeReplacement.find((session): session is NonNullable<typeof session> => session !== null)!;
+  const replacementSocket = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: userC,
+    socket: replacementSocket,
+    auth: {
+      kind: "native",
+      versionSesion: replacementIdentity.versionSesionEmitida,
+      nativeSessionId: replacementIdentity.idSesionNativa,
+      nativePlatform: replacementIdentity.platform,
+      nativeAppBuild: metadata.appBuild,
+    },
+  });
+  await crearSesionNative({
+    email: emails[2], password: PASSWORD, installationId: sharedInstallation, ...metadata,
+  }, config);
+  assert.equal(replacementSocket.cierres, 1, "same-installation replacement cierra el WS después del commit");
+
+  const { rows: oldestRows } = await myPool.query<{ id_sesion_nativa: string }>(
+    `SELECT id_sesion_nativa FROM sesion_nativa
+      WHERE id_usuario = $1 AND revoked_at IS NULL
+      ORDER BY created_at ASC, id_sesion_nativa ASC LIMIT 1`,
+    [userA],
+  );
+  const evictionSessionId = Number(oldestRows[0].id_sesion_nativa);
+  const evictionSocket = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: userA,
+    socket: evictionSocket,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: evictionSessionId, nativePlatform: "android", nativeAppBuild: 10 },
+  });
+  await crearSesionNative({
+    email: emails[0], password: PASSWORD, installationId: randomUUID(), ...metadata,
+  }, config);
+  assert.equal(evictionSocket.cierres, 1, "max-session eviction cierra el WS después del commit");
+  assert.equal(clientConnections.some((connection) => connection.socket === evictionSocket), false);
 
   const userD = users.get(emails[3])!;
   const isolated = await crearSesionNative({
@@ -603,6 +663,9 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     const secondCleanup = await janitor.sweep();
     assert.deepEqual(secondCleanup, { ticketsDeleted: 0, sessionsDeleted: 0, hasBacklog: false });
   } finally {
+    for (const connection of [...clientConnections]) {
+      cerrarConexionesNativeSession(connection.auth?.nativeSessionId ?? -1);
+    }
     await app.close();
     janitor.stop();
     registrarNativeAuthJanitor(null);

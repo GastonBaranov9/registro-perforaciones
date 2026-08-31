@@ -5,10 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ejecutarHeartbeatWebsocket,
+  activarConexionWebsocket,
   registrarConexionWebsocket,
   cerrarConexionesNativeSession,
   notificarConexionesUsuario,
   revalidarConexionesWebsocket,
+  validarYActivarConexionWebsocket,
   WebsocketHeartbeat,
   WS_HEARTBEAT_INTERVAL_MS,
   type ClientConnection,
@@ -110,6 +112,45 @@ test("revalidación elimina una conexión native inválida", async () => {
     revalidate: async () => false,
   }, conexiones);
   await revalidarConexionesWebsocket(conexiones);
+  assert.equal(conexiones.length, 0);
+  assert.equal(socket.cierres, 1);
+});
+
+test("la conexion native no entra en fan-out hasta validar y activar", async () => {
+  const conexiones: ClientConnection[] = [];
+  const socket = new SocketControlado();
+  let liberar: ((valida: boolean) => void) | undefined;
+  const validacion = new Promise<boolean>((resolve) => { liberar = resolve; });
+  const connection = registrarConexionWebsocket({
+    id_usuario: 7, socket, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 12 },
+    revalidate: () => validacion,
+  }, conexiones);
+  const activacion = validarYActivarConexionWebsocket(connection, conexiones);
+  notificarConexionesUsuario(7, { type: "durante-validacion" }, conexiones);
+  assert.equal(socket.sent.length, 0);
+  liberar!(true);
+  assert.equal(await activacion, true);
+  notificarConexionesUsuario(7, { type: "despues-validacion" }, conexiones);
+  assert.equal(socket.sent.length, 1);
+  assert.equal(activarConexionWebsocket(connection, conexiones), true);
+});
+
+test("cierre concurrente con post-validacion es idempotente y no deja fantasma", async () => {
+  const conexiones: ClientConnection[] = [];
+  const socket = new SocketControlado();
+  let liberar: (() => void) | undefined;
+  const validacion = new Promise<boolean>((resolve) => { liberar = () => resolve(true); });
+  const connection = registrarConexionWebsocket({
+    id_usuario: 7, socket, operational: false,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 13 },
+    revalidate: () => validacion,
+  }, conexiones);
+  const activacion = validarYActivarConexionWebsocket(connection, conexiones);
+  cerrarConexionesNativeSession(13, conexiones);
+  liberar!();
+  assert.equal(await activacion, false);
+  cerrarConexionesNativeSession(13, conexiones);
   assert.equal(conexiones.length, 0);
   assert.equal(socket.cierres, 1);
 });
