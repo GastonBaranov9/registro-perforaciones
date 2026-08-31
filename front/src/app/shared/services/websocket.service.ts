@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, OnDestroy, signal } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Subscription, timeout } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
 import { NativeBackendConfigService } from '../../core/native/native-backend-config.service';
@@ -10,6 +10,7 @@ const SLOW_RECONNECT_DELAY_MS = 30_000;
 const WEBSOCKET_CONNECTING = 0;
 const WEBSOCKET_OPEN = 1;
 const NATIVE_WS_TICKET = 'auth/native/ws-ticket';
+const NATIVE_WS_TICKET_TIMEOUT_MS = 10_000;
 const NATIVE_TICKET_PATTERN = /^rspw1_[A-Za-z0-9_-]{43}$/;
 
 @Injectable({
@@ -218,7 +219,7 @@ export class WebsocketService implements OnDestroy {
       subscription = this.httpClient.post<{ ticket: string }>(
         environment.apiURL + NATIVE_WS_TICKET,
         null,
-      ).subscribe({
+      ).pipe(timeout({ each: NATIVE_WS_TICKET_TIMEOUT_MS })).subscribe({
         next: (response) => finish(() => resolve(response)),
         error: (error: unknown) => finish(() => reject(error)),
         complete: () => finish(() => resolve(undefined)),
