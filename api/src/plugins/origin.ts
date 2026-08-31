@@ -21,6 +21,26 @@ export function origenPublicoValido(
   return websocket ? origin === publicOrigin : httpOrigins.includes(origin);
 }
 
+export function origenWebsocketValido(
+  production: boolean,
+  publicOrigin: string | undefined,
+  nativeOrigins: readonly string[],
+  url: string,
+  origin: unknown,
+): boolean {
+  if (!production) return true;
+  if (typeof origin !== "string") return false;
+  try {
+    const parsed = new URL(url, "https://websocket.invalid");
+    if (parsed.pathname !== "/ws") return false;
+    return parsed.searchParams.has("ticket")
+      ? nativeOrigins.includes(origin)
+      : origin === publicOrigin;
+  } catch {
+    return false;
+  }
+}
+
 export async function registrarValidacionOrigin(
   fastify: FastifyInstance,
   runtime: Pick<
@@ -33,18 +53,13 @@ export async function registrarValidacionOrigin(
       req.headers.upgrade.toLowerCase() === "websocket";
     if (websocket) {
       if (runtime.production) {
-        const origin = req.headers.origin;
-        const nativeOrigin = typeof origin === "string" && runtime.nativeCorsOrigins.includes(origin);
-        const valid = nativeOrigin
-          ? req.url.split("?")[0] === "/ws"
-          : origenPublicoValido(
-            runtime.production,
-            runtime.publicOrigin,
-            runtime.corsOrigins,
-            req.method,
-            origin,
-            req.headers.upgrade,
-          );
+        const valid = origenWebsocketValido(
+          runtime.production,
+          runtime.publicOrigin,
+          runtime.nativeCorsOrigins,
+          req.url,
+          req.headers.origin,
+        );
         if (!valid) throw new err.T05CsrfInvalido();
       }
       return;

@@ -18,6 +18,10 @@ export default fp(async function rateLimits(fastify) {
       60_000,
     ),
   };
+  const nativeWsHandshakeLimiter = new MemoryRateLimiter(
+    config.rateLimits.nativeWsTicket,
+    60_000,
+  );
 
   fastify.addHook("onRequest", async (req, rep) => {
     const route = req.routeOptions?.url;
@@ -65,6 +69,22 @@ export default fp(async function rateLimits(fastify) {
         message: "Demasiadas solicitudes. Intente nuevamente más tarde.",
       });
   });
+  fastify.decorate("rateLimitNativeWsHandshake", async (req: FastifyRequest, rep: FastifyReply) => {
+    const result = nativeWsHandshakeLimiter.consume(`native-ws-handshake:ip:${req.ip}`);
+    if (result.allowed) return;
+    req.log.warn(
+      { event: "rate_limit_rejected", area: "native-ws-handshake" },
+      "Solicitud limitada",
+    );
+    return rep
+      .header("Retry-After", String(result.retryAfterSeconds))
+      .code(429)
+      .send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "Demasiadas solicitudes. Intente nuevamente más tarde.",
+      });
+  });
 });
 
 declare module "fastify" {
@@ -74,6 +94,10 @@ declare module "fastify" {
     rateLimitPdf: (req: FastifyRequest, rep: FastifyReply) => Promise<unknown>;
     rateLimitUpload: (req: FastifyRequest, rep: FastifyReply) => Promise<unknown>;
     rateLimitNativeWsTicket: (
+      req: FastifyRequest,
+      rep: FastifyReply,
+    ) => Promise<unknown>;
+    rateLimitNativeWsHandshake: (
       req: FastifyRequest,
       rep: FastifyReply,
     ) => Promise<unknown>;

@@ -1,6 +1,7 @@
 import {
   activarConexionWebsocket,
   cerrarConexionWebsocket,
+  clientConnections,
   registrarConexionWebsocket,
   validarYActivarConexionWebsocket,
   type WebsocketSocket,
@@ -12,8 +13,10 @@ import {
   validarSesionNativeParaWebsocket,
 } from "../services/native-auth-service.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+import { origenWebsocketValido } from "../plugins/origin.ts";
 import { getEstadoSesionUsuario } from "../services/auth-services.ts";
 import { sesionVigente } from "../plugins/jwt.ts";
+import { tokenNativoBienFormado } from "../services/native-token-service.ts";
 import * as err from "../models/errors.ts";
 
 const WS_PATH = "/ws";
@@ -46,17 +49,34 @@ const websocketRoute = async function (fastify: FastifyInstance) {
         description: "Ruta autenticada por cookie web o ticket native",
       },
       onRequest: [async (req, reply) => {
-        if (!esHandshakeNative(req)) {
+        const nativeHandshake = esHandshakeNative(req);
+        if (!nativeHandshake) {
+          if (!origenWebsocketValido(
+            config.production,
+            config.publicOrigin,
+            config.nativeCorsOrigins,
+            req.url,
+            req.headers.origin,
+          )) throw new err.T05CsrfInvalido();
           await fastify.authenticateWeb(req, reply);
           return;
         }
-        if (
-          typeof req.headers.origin !== "string" ||
-          !config.nativeCorsOrigins.includes(req.headers.origin)
-        ) throw new err.T05CsrfInvalido();
-        if (req.cookies.rsp_session || req.headers.authorization !== undefined) {
+        if (!origenWebsocketValido(
+          config.production,
+          config.publicOrigin,
+          config.nativeCorsOrigins,
+          req.url,
+          req.headers.origin,
+        )) throw new err.T05CsrfInvalido();
+        const ticket = queryTicket(req);
+        if (!ticket || !tokenNativoBienFormado(ticket, "ws-ticket")) {
           throw new err.T05NoAutorizado();
         }
+        if (req.headers.authorization !== undefined) {
+          throw new err.T05NoAutorizado();
+        }
+        const limited = await fastify.rateLimitNativeWsHandshake(req, reply);
+        if (limited) return;
       }],
     },
     async (socket, req) => {
@@ -87,7 +107,7 @@ const websocketRoute = async function (fastify: FastifyInstance) {
           },
           revalidate: () => validarSesionNativeParaWebsocket(identity, config),
         });
-        if (!(await validarYActivarConexionWebsocket(connection))) return;
+        if (!(await validarYActivarConexionWebsocket(connection, clientConnections))) return;
         connection.operational = false;
         try {
           connection.isAdmin = await isAdmin(identity.idUsuario);
@@ -95,7 +115,7 @@ const websocketRoute = async function (fastify: FastifyInstance) {
           cerrarConexionWebsocket(connection);
           return;
         }
-        if (!activarConexionWebsocket(connection)) return;
+        if (!activarConexionWebsocket(connection, clientConnections)) return;
         if (connection.socket.readyState === 1) {
           connection.socket.send(JSON.stringify({ mensaje: "Conectado al servidor" }));
         }
