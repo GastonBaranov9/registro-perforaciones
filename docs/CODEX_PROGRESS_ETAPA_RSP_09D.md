@@ -78,6 +78,14 @@ R4 limita el POST de ticket a 10 segundos con timeout RxJS cancelable. Un
 timeout vigente libera el flight y usa el backoff existente sin simular logout;
 un timeout stale por disconnect, generation/epoch o 4001 no reconecta.
 
+R5 trata el cierre web 4003 como terminal para la generacion web actual:
+detiene timers/reconnect, revalida una vez mediante AuthService.getUser y, si
+la sesion es invalida, limpia MainStore y navega a /login sin tocar la cookie
+HttpOnly. Aunque la revalidacion confirme la cookie, esa generacion no vuelve
+a abrir WS automaticamente; un login web nuevo incrementa la generacion y
+habilita la conexion. 4001 native y los cierres web recuperables conservan su
+semantica.
+
 La app raíz desconecta al comenzar logout o al invalidarse el estado. Resume
 continúa esperando la revalidación de AuthService antes de que el efecto vuelva
 a conectar. El soporte TypeScript es compartido para Android/iOS; no se creó
@@ -90,7 +98,7 @@ ni se modificó el appId placeholder; la validación física queda para RSP-09E.
   registry, reemplazo por sesión, fan-out, cierre device y revalidación: pasan.
 - API: `npm run build`: pasa.
 - Front: `npm run build`: pasa.
-- Suite Angular con ChromeHeadless: `296 SUCCESS`, incluyendo el flujo native
+- Suite Angular con ChromeHeadless: `301 SUCCESS`, incluyendo el flujo web
   de ticket, URL WSS, reconnect, logout-pending y protección de generation.
 - La integración PostgreSQL local de RSP-09B se ejecutó con redenciones
   single-use y concurrentes: `1/1` pasa. Para aislar el fixture se aplicó en la
