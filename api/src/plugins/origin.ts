@@ -32,14 +32,21 @@ export async function registrarValidacionOrigin(
     const websocket = typeof req.headers.upgrade === "string" &&
       req.headers.upgrade.toLowerCase() === "websocket";
     if (websocket) {
-      if (!origenPublicoValido(
-        runtime.production,
-        runtime.publicOrigin,
-        runtime.corsOrigins,
-        req.method,
-        req.headers.origin,
-        req.headers.upgrade,
-      )) throw new err.T05CsrfInvalido();
+      if (runtime.production) {
+        const origin = req.headers.origin;
+        const nativeOrigin = typeof origin === "string" && runtime.nativeCorsOrigins.includes(origin);
+        const valid = nativeOrigin
+          ? req.url.split("?")[0] === "/ws"
+          : origenPublicoValido(
+            runtime.production,
+            runtime.publicOrigin,
+            runtime.corsOrigins,
+            req.method,
+            origin,
+            req.headers.upgrade,
+          );
+        if (!valid) throw new err.T05CsrfInvalido();
+      }
       return;
     }
 
