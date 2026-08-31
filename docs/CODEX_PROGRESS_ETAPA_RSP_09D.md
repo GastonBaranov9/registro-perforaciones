@@ -9,8 +9,9 @@ web validado durante el upgrade. Android/iOS usa el contrato de RSP-09B:
 `Bearer HTTP → POST /auth/native/ws-ticket → ticket rspw1_ → GET /ws?ticket=...`
 
 El Bearer nunca se envía al handshake WebSocket, no se agrega a la URL, no se
-persiste y no se incluye en errores, close reasons o logs. El ticket es sólo
-memoria transitoria del cliente.
+persiste y no se incluye en errores, close reasons o logs. El ticket sí aparece
+transitoriamente sólo en el handshake `/ws?ticket=...`; es single-use, corto,
+aleatorio, vinculado a la sesión native y nunca se persiste ni se loguea.
 
 ## Backend
 
@@ -29,6 +30,8 @@ memoria transitoria del cliente.
 - Origin native es exacto: Android `https://localhost` e iOS
   `capacitor://localhost`. Un ticket sólo se acepta con esos origins. La web
   conserva `PUBLIC_ORIGIN` exacto; no hay wildcard, `startsWith` ni fallback.
+- La CSP native permite explícitamente el origin HTTPS del backend y su origen
+  WSS derivado con parser URL; no agrega hosts, wildcard ni `wss:` abierto.
 - El registry distingue `web` y `native`, permite varias sesiones native del
   mismo usuario y mantiene como máximo un socket por `id_sesion_nativa`. Una
   reconexión reemplaza/cierra el socket anterior con código interno 4001.
