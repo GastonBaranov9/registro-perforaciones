@@ -30,6 +30,7 @@ export class WebsocketService implements OnDestroy {
   private nativeConnectGeneration?: number;
   private nativeTicketRequest?: { cancel: () => void };
   private replacedNativeGeneration?: number;
+  private closedWebAuthGeneration?: number;
   private wsEpoch?: number;
   private destroyed = false;
   public ws?: WebSocket;
@@ -41,6 +42,13 @@ export class WebsocketService implements OnDestroy {
 
   connect(): void {
     if (this.destroyed || !this.canConnect()) return;
+    if (this.authService.isWeb()) {
+      const authSnapshot = this.authService.webSessionSnapshot();
+      if (this.closedWebAuthGeneration !== undefined) {
+        if (this.closedWebAuthGeneration === authSnapshot.generation) return;
+        this.closedWebAuthGeneration = undefined;
+      }
+    }
     this.reconnectEnabled = true;
     this.clearReconnectTimer();
     if (this.ws && (this.ws.readyState === WEBSOCKET_CONNECTING || this.ws.readyState === WEBSOCKET_OPEN)) return;
@@ -160,6 +168,14 @@ export class WebsocketService implements OnDestroy {
       this.ws = undefined;
       this.wsEpoch = undefined;
       this.connected.set(false);
+      if (event.code === 4003 && this.authService.isWeb()) {
+        this.reconnectEnabled = false;
+        this.clearReconnectTimer();
+        const authSnapshot = this.authService.webSessionSnapshot();
+        this.closedWebAuthGeneration = authSnapshot.generation;
+        void this.authService.synchronizeWebSession(authSnapshot.generation);
+        return;
+      }
       if (event.code === 4001 && socketGeneration !== undefined && this.generationIsCurrent(socketGeneration)) {
         this.replacedNativeGeneration = socketGeneration;
         this.reconnectEnabled = false;
