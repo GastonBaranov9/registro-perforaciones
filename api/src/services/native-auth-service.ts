@@ -107,6 +107,7 @@ export async function crearSesionNative(
   );
   const client = await myPool.connect();
   let discardClient = false;
+  const sesionesRevocadas = new Set<number>();
   try {
     await client.query("BEGIN");
     const { rows: usuarios } = await client.query<{
@@ -134,16 +135,21 @@ export async function crearSesionNative(
       usuario.password !== credencial.passwordHash
     ) throw new err.T05CredencialesInvalidas();
 
-    await client.query(
+    const { rows: reemplazadas } = await client.query<{ id_sesion_nativa: string | number }>(
       `UPDATE sesion_nativa
           SET revoked_at = now(), revocation_reason = 'installation_replaced'
         WHERE id_usuario = $1
           AND installation_id = $2::uuid
           AND revoked_at IS NULL
           AND expires_at > now()
-          AND version_sesion_emitida = $3`,
+          AND version_sesion_emitida = $3
+       RETURNING id_sesion_nativa`,
       [idUsuario, input.installationId, versionSesion],
     );
+    for (const row of reemplazadas) {
+      const idSesion = numeroEntero(row.id_sesion_nativa);
+      if (idSesion !== null) sesionesRevocadas.add(idSesion);
+    }
 
     const { rows: conteoRows } = await client.query<{ cantidad: string | number }>(
       `SELECT count(*) AS cantidad
@@ -160,7 +166,7 @@ export async function crearSesionNative(
       activas - config.nativeAuth.maxActiveSessionsPerUser + 1,
     );
     if (aRevocar > 0) {
-      await client.query(
+      const { rows: expulsadas } = await client.query<{ id_sesion_nativa: string | number }>(
         `WITH elegidas AS (
            SELECT id_sesion_nativa
              FROM sesion_nativa
@@ -175,9 +181,14 @@ export async function crearSesionNative(
          UPDATE sesion_nativa AS s
             SET revoked_at = now(), revocation_reason = 'session_limit_eviction'
            FROM elegidas
-          WHERE s.id_sesion_nativa = elegidas.id_sesion_nativa`,
+          WHERE s.id_sesion_nativa = elegidas.id_sesion_nativa
+       RETURNING s.id_sesion_nativa`,
         [idUsuario, versionSesion, aRevocar],
       );
+      for (const row of expulsadas) {
+        const idSesion = numeroEntero(row.id_sesion_nativa);
+        if (idSesion !== null) sesionesRevocadas.add(idSesion);
+      }
     }
 
     const { rows: sesiones } = await client.query<{
@@ -207,6 +218,7 @@ export async function crearSesionNative(
     const idSesionNativa = numeroEntero(sesion?.id_sesion_nativa);
     if (!sesion || idSesionNativa === null) throw new Error("No se pudo crear la sesión native");
     await client.query("COMMIT");
+    for (const idSesion of sesionesRevocadas) cerrarConexionesNativeSession(idSesion);
     return {
       token: rawToken,
       idSesionNativa,
