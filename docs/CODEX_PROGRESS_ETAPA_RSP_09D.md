@@ -65,6 +65,12 @@ del request y se verifica antes de abrir el socket; una respuesta tardía de A
 no puede conectar la sesión B. 401/426 siguen usando los handlers existentes de
 AuthService; un error de red no simula logout.
 
+R3 agrega un single-flight native: cada vuelo conserva un epoch de conexión
+separado de la auth generation, cancela la suscripción del ticket al
+desconectar y valida identidad/epoch en sockets, callbacks y timers. El cierre
+4001 indica replacement y es terminal sólo para esa auth generation; no inicia
+otro ticket ni reconnect. Una auth generation nueva puede volver a conectar.
+
 La app raíz desconecta al comenzar logout o al invalidarse el estado. Resume
 continúa esperando la revalidación de AuthService antes de que el efecto vuelva
 a conectar. El soporte TypeScript es compartido para Android/iOS; no se creó
@@ -77,7 +83,7 @@ ni se modificó el appId placeholder; la validación física queda para RSP-09E.
   registry, reemplazo por sesión, fan-out, cierre device y revalidación: pasan.
 - API: `npm run build`: pasa.
 - Front: `npm run build`: pasa.
-- Suite Angular con ChromeHeadless: `290 SUCCESS`, incluyendo el flujo native
+- Suite Angular con ChromeHeadless: `294 SUCCESS`, incluyendo el flujo native
   de ticket, URL WSS, reconnect, logout-pending y protección de generation.
 - La integración PostgreSQL local de RSP-09B se ejecutó con redenciones
   single-use y concurrentes: `1/1` pasa. Para aislar el fixture se aplicó en la
