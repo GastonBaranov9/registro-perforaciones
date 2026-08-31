@@ -29,6 +29,7 @@ export interface ClientConnection {
   socket: WebsocketSocket;
   isAlive: boolean;
   auth?: WebsocketAuthContext;
+  operational?: boolean;
   revalidate?: () => Promise<boolean>;
   revalidationInFlight?: boolean;
 }
@@ -60,6 +61,33 @@ export function registrarConexionWebsocket(
   connection.socket.on("pong", () => { connection.isAlive = true; });
   connection.socket.on("close", () => retirarConexion(connection, conexiones));
   return connection;
+}
+
+export function activarConexionWebsocket(
+  connection: ClientConnection,
+  conexiones: ClientConnection[] = clientConnections,
+): boolean {
+  if (!conexiones.includes(connection)) return false;
+  connection.operational = true;
+  return true;
+}
+
+export async function validarYActivarConexionWebsocket(
+  connection: ClientConnection,
+  conexiones: ClientConnection[] = clientConnections,
+): Promise<boolean> {
+  if (!conexiones.includes(connection)) return false;
+  try {
+    if (connection.revalidate && !(await connection.revalidate())) {
+      cerrarConexionWebsocket(connection, conexiones, 4003, "Sesion no autorizada");
+      return false;
+    }
+    if (!conexiones.includes(connection)) return false;
+    return activarConexionWebsocket(connection, conexiones);
+  } catch {
+    cerrarConexionWebsocket(connection, conexiones, 1011, "Error interno");
+    return false;
+  }
 }
 
 export function cerrarConexionesNativeSession(
@@ -96,9 +124,18 @@ function cerrarConexiones(
 ): void {
   for (const connection of [...conexiones]) {
     if (!predicate(connection)) continue;
-    retirarConexion(connection, conexiones);
-    try { connection.socket.close(code, reason); } catch { /* best effort */ }
+    cerrarConexionWebsocket(connection, conexiones, code, reason);
   }
+}
+
+export function cerrarConexionWebsocket(
+  connection: ClientConnection,
+  conexiones: ClientConnection[] = clientConnections,
+  code = 4003,
+  reason = "Sesion no autorizada",
+): void {
+  retirarConexion(connection, conexiones);
+  try { connection.socket.close(code, reason); } catch { /* best effort */ }
 }
 
 export async function revalidarConexionesWebsocket(
@@ -109,12 +146,10 @@ export async function revalidarConexionesWebsocket(
     connection.revalidationInFlight = true;
     try {
       if (!(await connection.revalidate())) {
-        retirarConexion(connection, conexiones);
-        try { connection.socket.close(4003, "Sesion no autorizada"); } catch { /* best effort */ }
+        cerrarConexionWebsocket(connection, conexiones);
       }
     } catch {
-      retirarConexion(connection, conexiones);
-      try { connection.socket.close(1011, "Error interno"); } catch { /* best effort */ }
+      cerrarConexionWebsocket(connection, conexiones, 1011, "Error interno");
     } finally {
       connection.revalidationInFlight = false;
     }
@@ -128,7 +163,7 @@ export function notificarConexionesUsuario(
 ): void {
   const payload = JSON.stringify({ data });
   for (const connection of conexiones) {
-    if (connection.id_usuario !== idUsuario || connection.socket.readyState !== WEBSOCKET_OPEN) continue;
+    if (connection.id_usuario !== idUsuario || connection.operational === false || connection.socket.readyState !== WEBSOCKET_OPEN) continue;
     try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
   }
 }
@@ -198,7 +233,7 @@ export default fastifyPlugin(async function websocketPlugin(fastify) {
   fastify.decorate("notifyAdmin", function (data: unknown) {
     const payload = JSON.stringify({ data });
     for (const connection of clientConnections) {
-      if (connection.isAdmin && connection.socket.readyState === WEBSOCKET_OPEN) {
+      if (connection.isAdmin && connection.operational !== false && connection.socket.readyState === WEBSOCKET_OPEN) {
         try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
       }
     }
@@ -207,7 +242,7 @@ export default fastifyPlugin(async function websocketPlugin(fastify) {
   fastify.decorate("notifyAll", function (data: unknown) {
     const payload = JSON.stringify({ data });
     for (const connection of clientConnections) {
-      if (connection.id_usuario !== undefined && connection.socket.readyState === WEBSOCKET_OPEN) {
+      if (connection.id_usuario !== undefined && connection.operational !== false && connection.socket.readyState === WEBSOCKET_OPEN) {
         try { connection.socket.send(payload); } catch { /* cierre concurrente */ }
       }
     }

@@ -1,4 +1,10 @@
-import { registrarConexionWebsocket, type WebsocketSocket } from "../plugins/websocket.ts";
+import {
+  activarConexionWebsocket,
+  cerrarConexionWebsocket,
+  registrarConexionWebsocket,
+  validarYActivarConexionWebsocket,
+  type WebsocketSocket,
+} from "../plugins/websocket.ts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { isAdmin } from "../services/roles-services.ts";
 import {
@@ -70,7 +76,8 @@ const websocketRoute = async function (fastify: FastifyInstance) {
         const connection = registrarConexionWebsocket({
           id_usuario: identity.idUsuario,
           socket: socket as WebsocketSocket,
-          isAdmin: await isAdmin(identity.idUsuario),
+          isAdmin: false,
+          operational: false,
           auth: {
             kind: "native",
             versionSesion: identity.versionSesionEmitida,
@@ -80,6 +87,15 @@ const websocketRoute = async function (fastify: FastifyInstance) {
           },
           revalidate: () => validarSesionNativeParaWebsocket(identity, config),
         });
+        if (!(await validarYActivarConexionWebsocket(connection))) return;
+        connection.operational = false;
+        try {
+          connection.isAdmin = await isAdmin(identity.idUsuario);
+        } catch {
+          cerrarConexionWebsocket(connection);
+          return;
+        }
+        if (!activarConexionWebsocket(connection)) return;
         if (connection.socket.readyState === 1) {
           connection.socket.send(JSON.stringify({ mensaje: "Conectado al servidor" }));
         }
