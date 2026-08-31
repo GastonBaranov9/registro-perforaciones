@@ -1,6 +1,7 @@
 import { myPool } from "../db/pool.ts";
 import { Rol, RolBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
+import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
 export async function changeRol(
   id_usuario: number,
   id_rol: number
@@ -45,6 +46,7 @@ export async function changeRol(
     );
 
     await client.query("COMMIT");
+    cerrarConexionesUsuario(id_usuario);
   } catch (error) {
     try {
       await client.query("ROLLBACK");
@@ -93,6 +95,7 @@ export async function updateRol(
   const client = await myPool.connect();
   try {
     await client.query("BEGIN");
+    const usuariosAfectados: number[] = [];
     const { rows: actuales } = await client.query<{ nombre: string }>(
       `SELECT nombre FROM rol WHERE id_rol = $1 FOR UPDATE`,
       [id_rol]
@@ -113,6 +116,11 @@ export async function updateRol(
     );
 
     if (actuales[0].nombre !== data.nombre) {
+      const { rows: vinculados } = await client.query<{ id_usuario: string | number }>(
+        `SELECT id_usuario FROM usuario_rol WHERE id_rol = $1`,
+        [id_rol],
+      );
+      usuariosAfectados.push(...vinculados.map((row) => Number(row.id_usuario)));
       await client.query(
         `
           UPDATE usuario
@@ -126,6 +134,7 @@ export async function updateRol(
     }
 
     await client.query("COMMIT");
+    for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return rows[0] ?? null;
   } catch (error: unknown) {
     await client.query("ROLLBACK");
@@ -139,11 +148,18 @@ export async function deleteRol(id_rol: number): Promise<Boolean> {
   const client = await myPool.connect();
   try {
     await client.query("BEGIN");
+    const usuariosAfectados: number[] = [];
     const { rows } = await client.query(
       `SELECT id_rol FROM rol WHERE id_rol = $1 FOR UPDATE`,
       [id_rol]
     );
     if (!rows[0]) throw new err.T05RolNoEncontrado();
+
+    const { rows: vinculados } = await client.query<{ id_usuario: string | number }>(
+      `SELECT id_usuario FROM usuario_rol WHERE id_rol = $1`,
+      [id_rol],
+    );
+    usuariosAfectados.push(...vinculados.map((row) => Number(row.id_usuario)));
 
     await client.query(
       `
@@ -157,6 +173,7 @@ export async function deleteRol(id_rol: number): Promise<Boolean> {
     );
     await client.query(`DELETE FROM rol WHERE id_rol = $1`, [id_rol]);
     await client.query("COMMIT");
+    for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return true;
   } catch (error: unknown) {
     await client.query("ROLLBACK");

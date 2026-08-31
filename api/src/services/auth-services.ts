@@ -2,6 +2,7 @@ import { myPool } from "../db/pool.ts";
 import type { Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import {verifyPassword } from "./password-service.ts";
+import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
 
 type AuthenticatedUser = Pick<
   Usuario,
@@ -96,5 +97,6 @@ export async function revocarSesionesUsuario(
      WHERE id_usuario = $1 AND activo = TRUE`,
     [idUsuario],
   );
+  if (rowCount === 1) cerrarConexionesUsuario(idUsuario);
   return rowCount === 1;
 }
