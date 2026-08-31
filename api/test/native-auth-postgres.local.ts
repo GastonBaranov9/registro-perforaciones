@@ -13,6 +13,7 @@ import nativeAuthRoutes from "../src/routes/native-auth.ts";
 import { NativeAuthJanitor, registrarNativeAuthJanitor } from "../src/services/native-auth-janitor.ts";
 import {
   crearSesionNative,
+  consumirTicketWsNative,
   emitirTicketWsNative,
   resolverSesionNative,
   revocarSesionNativePorToken,
@@ -66,12 +67,14 @@ async function historicalSession(
 test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () => {
   const config = cargarConfiguracionRuntime();
   const passwordHash = await hashPassword(PASSWORD);
-  const emails = ["a", "b", "c", "d", "http", "owner", "limit", "state", "ios"].map(
-    (name) => `${name}@native.example.test`,
+  const runId = randomUUID();
+  const fixtureNames = ["a", "b", "c", "d", "http", "owner", "limit", "state", "ios"];
+  const emails = fixtureNames.map(
+    (name) => `${name}-${runId}@native.example.test`,
   );
   const users = new Map<string, number>();
   for (const email of emails) {
-    const access = !email.startsWith("owner@");
+    const access = fixtureNames[emails.indexOf(email)] !== "owner";
     const { rows } = await myPool.query<{ id_usuario: string }>(
       `INSERT INTO usuario(email,nombre,password,activo,cuenta_acceso)
        VALUES($1,$2,$3,TRUE,$4) RETURNING id_usuario`,
@@ -464,6 +467,17 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     assert.equal(ticket2.statusCode, 200, ticket2.body);
     assert.equal(ticket3.statusCode, 429, "cambiar IP no amplía el cupo por sesión");
 
+    const redeemed = await consumirTicketWsNative(ticket1.json().ticket, config);
+    assert.equal(redeemed?.idUsuario, httpUser);
+    assert.equal(await consumirTicketWsNative(ticket1.json().ticket, config), null, "ticket single-use");
+    const raceTicket = ticket2.json().ticket as string;
+    const raceResults = await Promise.all([
+      consumirTicketWsNative(raceTicket, config),
+      consumirTicketWsNative(raceTicket, config),
+    ]);
+    assert.equal(raceResults.filter((result) => result !== null).length, 1, "una sola redención concurrente gana");
+    assert.equal(raceResults.filter((result) => result === null).length, 1);
+
     const logoutAll = await app.inject({
       method: "POST",
       url: "/auth/native/logout-all",
@@ -507,7 +521,17 @@ test("RSP-09B funciona sobre PostgreSQL real con concurrencia y HTTP", async () 
     const closeDevice = await crearSesionNative({
       email: emails[3], password: PASSWORD, installationId: randomUUID(), ...metadata,
     }, config);
+    const revokedDevice = await crearSesionNative({
+      email: emails[3], password: PASSWORD, installationId: randomUUID(), ...metadata,
+    }, config);
+    const revokedBeforeRedemptionTicket = await emitirTicketWsNative(revokedDevice, metadata, config);
     assert.equal(await revocarSesionNativePorToken(closeDevice.token, config), true);
+    assert.equal(await revocarSesionNativePorToken(revokedDevice.token, config), true);
+    assert.equal(
+      await consumirTicketWsNative(revokedBeforeRedemptionTicket.ticket, config),
+      null,
+      "ticket emitido antes de logout no revive la sesión padre",
+    );
     assert.equal(await resolverSesionNative(closeDevice.token, config), null);
     assert.notEqual(
       await resolverSesionNative(keepDevice.token, config),

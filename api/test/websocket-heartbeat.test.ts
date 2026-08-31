@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import {
   ejecutarHeartbeatWebsocket,
   registrarConexionWebsocket,
+  cerrarConexionesNativeSession,
+  notificarConexionesUsuario,
+  revalidarConexionesWebsocket,
   WebsocketHeartbeat,
   WS_HEARTBEAT_INTERVAL_MS,
   type ClientConnection,
@@ -17,9 +20,10 @@ class SocketControlado implements WebsocketSocket {
   pings = 0;
   terminaciones = 0;
   cierres = 0;
+  sent: string[] = [];
   private listeners = new Map<string, Array<() => void>>();
 
-  send(): void {}
+  send(data: string): void { this.sent.push(data); }
   ping(): void { this.pings += 1; }
   close(): void { this.cierres += 1;this.emit("close"); }
   terminate(): void { this.terminaciones += 1;this.emit("close"); }
@@ -56,6 +60,58 @@ test("heartbeat termina y retira un cliente que no responde pong", () => {
   ejecutarHeartbeatWebsocket(conexiones);
   assert.equal(socket.terminaciones, 1);
   assert.equal(conexiones.length, 0);
+});
+
+test("registry reemplaza sólo el socket native de la misma sesión", () => {
+  const conexiones: ClientConnection[] = [];
+  const first = new SocketControlado();
+  const second = new SocketControlado();
+  const otherSession = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: first, auth: { kind: "native", versionSesion: 1, nativeSessionId: 10 },
+  }, conexiones);
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: otherSession, auth: { kind: "native", versionSesion: 1, nativeSessionId: 11 },
+  }, conexiones);
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: second, auth: { kind: "native", versionSesion: 1, nativeSessionId: 10 },
+  }, conexiones);
+  assert.equal(conexiones.length, 2);
+  assert.equal(first.cierres, 1);
+  assert.equal(conexiones.some((connection) => connection.socket === otherSession), true);
+  assert.equal(conexiones.some((connection) => connection.socket === second), true);
+});
+
+test("registry permite fan-out a dos sesiones y limpia logout-device", () => {
+  const conexiones: ClientConnection[] = [];
+  const first = new SocketControlado();
+  const second = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: first, auth: { kind: "native", versionSesion: 1, nativeSessionId: 10 },
+  }, conexiones);
+  registrarConexionWebsocket({
+    id_usuario: 7, socket: second, auth: { kind: "native", versionSesion: 1, nativeSessionId: 11 },
+  }, conexiones);
+  notificarConexionesUsuario(7, { type: "pozo" }, conexiones);
+  assert.equal(first.sent.length, 1);
+  assert.equal(second.sent.length, 1);
+  cerrarConexionesNativeSession(10, conexiones);
+  assert.equal(conexiones.length, 1);
+  assert.equal(first.cierres, 1);
+  assert.equal(second.cierres, 0);
+});
+
+test("revalidación elimina una conexión native inválida", async () => {
+  const conexiones: ClientConnection[] = [];
+  const socket = new SocketControlado();
+  registrarConexionWebsocket({
+    id_usuario: 7, socket,
+    auth: { kind: "native", versionSesion: 1, nativeSessionId: 10 },
+    revalidate: async () => false,
+  }, conexiones);
+  await revalidarConexionesWebsocket(conexiones);
+  assert.equal(conexiones.length, 0);
+  assert.equal(socket.cierres, 1);
 });
 
 test("el controlador de heartbeat no duplica timers y los limpia", async () => {
