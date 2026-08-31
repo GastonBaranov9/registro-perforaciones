@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import cookies, { CSRF_COOKIE, SESSION_COOKIE } from "../src/plugins/cookies.ts";
 import csrf from "../src/plugins/csrf.ts";
-import originPlugin, { origenPublicoValido, registrarValidacionOrigin } from "../src/plugins/origin.ts";
+import originPlugin, { origenPublicoValido, origenWebsocketValido, registrarValidacionOrigin } from "../src/plugins/origin.ts";
 
 test("Origin de producción protege mutaciones y WebSocket", () => {
   const origin = "https://perforaciones.example.test";
@@ -103,4 +103,16 @@ test("Fastify confía exactamente un salto para protocolo e IP", async () => {
   });
   assert.deepEqual(response.json(), { protocol: "https", ip: "203.0.113.44" });
   await app.close();
+});
+
+test("la matriz WebSocket separa ticket native de cookie web por Origin", () => {
+  const publicOrigin = "https://app.example.test";
+  const nativeOrigins = ["https://localhost", "capacitor://localhost"];
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws", publicOrigin), true);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws", "https://localhost"), false);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws?ticket=rspw1_x", "https://localhost"), true);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws?ticket=rspw1_x", "capacitor://localhost"), true);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws?ticket=rspw1_x", publicOrigin), false);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws?ticket=rspw1_x", "https://evil.example.test"), false);
+  assert.equal(origenWebsocketValido(true, publicOrigin, nativeOrigins, "/ws", undefined), false);
 });

@@ -37,6 +37,17 @@ test("el socket native se activa despues de revalidar y no entra en fan-out ante
     "utf8",
   );
   assert.match(file, /operational: false/);
-  assert.match(file, /validarYActivarConexionWebsocket\(connection\)/);
-  assert.match(file, /activarConexionWebsocket\(connection\)/);
+  assert.match(file, /validarYActivarConexionWebsocket\(connection, clientConnections\)/);
+  assert.match(file, /activarConexionWebsocket\(connection, clientConnections\)/);
+});
+
+test("el handshake native valida formato y limita antes de redimir", async () => {
+  const file = await fs.readFile(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "routes", "ws.ts"),
+    "utf8",
+  );
+  const hook = file.slice(file.indexOf("onRequest:"));
+  assert.ok(hook.indexOf("tokenNativoBienFormado") < hook.indexOf("rateLimitNativeWsHandshake"));
+  assert.ok(hook.indexOf("rateLimitNativeWsHandshake") < file.indexOf("consumirTicketWsNative(nativeTicket"));
+  assert.doesNotMatch(hook, /req\.headers\.x-forwarded-for|req\.headers\.x-real-ip/);
 });
