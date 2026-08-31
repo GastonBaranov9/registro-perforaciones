@@ -37,13 +37,16 @@ aleatorio, vinculado a la sesión native y nunca se persiste ni se loguea.
   válido y un rate limit por IP antes de tocar PostgreSQL. Nunca hay fallback
   entre autenticación web y native.
 - El registry distingue `web` y `native`, permite varias sesiones native del
-  mismo usuario y mantiene como máximo un socket por `id_sesion_nativa`. Una
-  reconexión reemplaza/cierra el socket anterior con código interno 4001.
+  mismo usuario y mantiene como máximo un socket operativo por `id_sesion_nativa`. Una
+  reconexión entra como candidate no operativo; el active anterior permanece
+  en fan-out hasta que el candidate termina de validarse y se promueve. Recién
+  entonces el active anterior se retira y cierra con código interno 4001.
 - `notifyClient` entrega una vez a todos los sockets válidos del usuario;
   `notifyAdmin` y `notifyAll` recorren el registry directamente, evitando el
   `find()` que impedía fan-out múltiple.
 - El heartbeat conserva ping/pong cada 30 s y ejecuta revalidación periódica.
-  Web conserva la `version_sesion` capturada del JWT en el handshake. Native
+  Web conserva `version_sesion` y el `exp` verificado del JWT en el handshake;
+  heartbeat y fan-out lo cierran al alcanzar `exp` aunque DB siga válida. Native
   revalida sesión, revocación, expiry, usuario/cuenta, versión, plataforma y
   build. Fallos cierran el socket sin datos sensibles.
 - Logout web/global, logout native-device, cambio de estado de usuario y
@@ -71,6 +74,10 @@ desconectar y valida identidad/epoch en sockets, callbacks y timers. El cierre
 4001 indica replacement y es terminal sólo para esa auth generation; no inicia
 otro ticket ni reconnect. Una auth generation nueva puede volver a conectar.
 
+R4 limita el POST de ticket a 10 segundos con timeout RxJS cancelable. Un
+timeout vigente libera el flight y usa el backoff existente sin simular logout;
+un timeout stale por disconnect, generation/epoch o 4001 no reconecta.
+
 La app raíz desconecta al comenzar logout o al invalidarse el estado. Resume
 continúa esperando la revalidación de AuthService antes de que el efecto vuelva
 a conectar. El soporte TypeScript es compartido para Android/iOS; no se creó
@@ -83,7 +90,7 @@ ni se modificó el appId placeholder; la validación física queda para RSP-09E.
   registry, reemplazo por sesión, fan-out, cierre device y revalidación: pasan.
 - API: `npm run build`: pasa.
 - Front: `npm run build`: pasa.
-- Suite Angular con ChromeHeadless: `294 SUCCESS`, incluyendo el flujo native
+- Suite Angular con ChromeHeadless: `296 SUCCESS`, incluyendo el flujo native
   de ticket, URL WSS, reconnect, logout-pending y protección de generation.
 - La integración PostgreSQL local de RSP-09B se ejecutó con redenciones
   single-use y concurrentes: `1/1` pasa. Para aislar el fixture se aplicó en la
