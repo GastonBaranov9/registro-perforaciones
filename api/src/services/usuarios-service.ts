@@ -7,6 +7,7 @@ import type {
 } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { hashPassword } from "./password-service.ts";
+import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
 
 type UsuarioPublicoSinRoles = Omit<UsuarioPublico, "roles">;
 
@@ -190,6 +191,7 @@ export async function updateUsuario(
     );
 
     await client.query("COMMIT");
+    if (debeRevocar) cerrarConexionesUsuario(id_usuario);
 
     return {
       ...usuario,
@@ -212,6 +214,7 @@ export async function deleteUsuario(id_usuario: number): Promise<Boolean> {
     [id_usuario]
   );
   if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
+  cerrarConexionesUsuario(id_usuario);
   return (rowCount ?? 0) > 0;
 }
 

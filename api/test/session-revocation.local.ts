@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fastify from "fastify";
 import { myPool } from "../src/db/pool.ts";
 import jwtPlugin from "../src/plugins/jwt.ts";
+import cookies, { SESSION_COOKIE } from "../src/plugins/cookies.ts";
 import { logUser } from "../src/services/auth-services.ts";
 import { changeRol, getAllRoles, getRoles } from "../src/services/roles-services.ts";
 import {
@@ -18,6 +19,7 @@ let idUsuario: number | null = null;
 const app = fastify();
 
 try {
+  await app.register(cookies);
   await app.register(jwtPlugin);
   app.get("/protegido", { onRequest: [app.authenticate] }, async () => ({ ok: true }));
   await app.ready();
@@ -55,14 +57,14 @@ try {
       sub: usuario.id_usuario,
       roles,
       version_sesion: usuario.version_sesion,
-    });
+    }, { expiresIn: "10h" });
   };
 
   const acceder = (token: string) =>
     app.inject({
       method: "GET",
       url: "/protegido",
-      headers: { authorization: `Bearer ${token}` },
+      cookies: { [SESSION_COOKIE]: token },
     });
 
   assert.equal((await estado()).version_sesion, 1);

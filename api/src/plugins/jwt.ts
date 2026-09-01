@@ -35,6 +35,25 @@ export function sesionVigente(
   );
 }
 
+export function normalizarExpJwt(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+export function normalizarClaimsWeb(payload: {
+  sub?: unknown;
+  version_sesion?: unknown;
+  exp?: unknown;
+}): { idUsuario: number; versionToken: number; expiresAtSeconds: number } | null {
+  const idUsuario = normalizarEnteroPositivoSeguro(payload.sub);
+  const versionToken = normalizarEnteroPositivoSeguro(payload.version_sesion);
+  const expiresAtSeconds = normalizarExpJwt(payload.exp);
+  return idUsuario === null || versionToken === null || expiresAtSeconds === null
+    ? null
+    : { idUsuario, versionToken, expiresAtSeconds };
+}
+
 export function leerMetadataNative(
   headers: { [key: string]: unknown },
 ): NativeClientMetadata | null {
@@ -92,16 +111,9 @@ export default fastifyPlugin(async function (fastify) {
       throw new err.T05NoAutorizado();
     }
 
-    const { sub, version_sesion } = req.user as {
-      sub: unknown;
-      version_sesion: unknown;
-    };
-    const idUsuario = normalizarEnteroPositivoSeguro(sub);
-    const versionToken = normalizarEnteroPositivoSeguro(version_sesion);
-
-    if (idUsuario === null || versionToken === null) {
-      throw new err.T05NoAutorizado();
-    }
+    const claims = normalizarClaimsWeb(req.user);
+    if (!claims) throw new err.T05NoAutorizado();
+    const { idUsuario, versionToken } = claims;
 
     const estado = await getEstadoSesionUsuario(idUsuario);
     if (!sesionVigente(estado, versionToken)) {
@@ -282,12 +294,12 @@ declare module "fastify" {
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
-    payload: { sub: number; version_sesion: number; roles?: {
+    payload: { sub: number; version_sesion: number; exp?: number; roles?: {
       id_rol: number,
       nombre: string,
       descr: string
     }[] };
-    user: { sub: number; version_sesion: number; roles?: {
+    user: { sub: number; version_sesion: number; exp?: number; roles?: {
       id_rol: number,
       nombre: string,
       descr: string

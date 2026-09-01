@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assertProductionAppId,
+  deriveNativeWebsocketOrigin,
   validateNativeBackendOrigin,
 } from './native-backend-config.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const mode = process.argv[2];
 const origin = validateNativeBackendOrigin(process.env.NATIVE_BACKEND_ORIGIN, mode);
+const websocketOrigin = deriveNativeWebsocketOrigin(origin);
 const environmentPath = join(frontRoot, 'src', 'environments', 'environment.native.generated.ts');
 const indexPath = join(frontRoot, 'src', 'index.native.generated.html');
 const angularCli = fileURLToPath(new URL('../node_modules/@angular/cli/bin/ng.js', import.meta.url));
@@ -33,7 +35,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: ${origin}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${origin}`,
+  `connect-src 'self' ${origin} ${websocketOrigin}`,
   "object-src 'none'",
   "base-uri 'self'",
   "frame-src 'none'",

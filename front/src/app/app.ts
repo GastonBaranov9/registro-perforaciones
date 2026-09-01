@@ -54,7 +54,11 @@ export class App implements OnDestroy {
   public authService = inject(AuthService);
 
   public wsConnection = effect(() => {
-    if (this.authService.isWeb() && this.mainStore.user()) {
+    if (
+      this.mainStore.user() &&
+      ((this.authService.isWeb() && this.authService.state() === 'authenticated') ||
+        (this.authService.isNative() && this.authService.state() === 'authenticated'))
+    ) {
       this.webSocketService.connect();
     } else this.webSocketService.disconnect();
   });

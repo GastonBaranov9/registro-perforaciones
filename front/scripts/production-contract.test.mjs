@@ -3,6 +3,10 @@ import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import {
+  deriveNativeWebsocketOrigin,
+  validateNativeBackendOrigin,
+} from './native-backend-config.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -62,10 +66,32 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   assert.match(source, /Content-Security-Policy/);
   assert.match(source, /finally/);
   assert.match(source, /rm\(environmentPath, \{ force: true \}\)/);
+  assert.match(source, /deriveNativeWebsocketOrigin/);
+  assert.match(source, /connect-src 'self' \$\{origin\} \$\{websocketOrigin\}/);
   assert.doesNotMatch(source, /server\.url|allowNavigation/);
 
   const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
   assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
+});
+
+test('CSP native deriva HTTPS a WSS con el mismo host y puerto', () => {
+  assert.equal(
+    deriveNativeWebsocketOrigin('https://api.example.com'),
+    'wss://api.example.com',
+  );
+  assert.equal(
+    deriveNativeWebsocketOrigin('https://api.example.com:8443'),
+    'wss://api.example.com:8443',
+  );
+});
+
+test('derivación WSS falla cerrado y no agrega hosts ni wildcard', async () => {
+  assert.throws(() => deriveNativeWebsocketOrigin('http://api.example.com'));
+  assert.throws(() => deriveNativeWebsocketOrigin('https://api.example.com/api'));
+  assert.equal(validateNativeBackendOrigin('https://api.example.com', 'development'), 'https://api.example.com');
+  const source = await readFile(join(frontRoot, 'scripts/build-native.mjs'), 'utf8');
+  assert.doesNotMatch(source, /connect-src[^\n]*\bwss:\s*['"]?/);
+  assert.doesNotMatch(source, /connect-src[^\n]*\*/);
 });
 
 test('Android mantiene el minSdk requerido por Capacitor 8', async () => {

@@ -41,6 +41,28 @@ export function validateNativeBackendOrigin(rawOrigin, mode) {
   return parsed.origin;
 }
 
+export function deriveNativeWebsocketOrigin(origin) {
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    throw new Error('El backend native WS debe derivar de un origin HTTPS válido.');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash ||
+    origin !== parsed.origin
+  ) {
+    throw new Error('El backend native WS sólo acepta un origin HTTPS exacto.');
+  }
+  parsed.protocol = 'wss:';
+  return parsed.origin;
+}
+
 export function assertProductionAppId(capacitorSource) {
   if (/appId:\s*['"]com\.example\.app['"]/.test(capacitorSource)) {
     throw new Error('El appId placeholder bloquea un build native production.');

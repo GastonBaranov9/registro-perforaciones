@@ -7,7 +7,9 @@ import { verifyPassword } from "./password-service.ts";
 import {
   generarTokenNativo,
   hmacTokenNativo,
+  tokenNativoBienFormado,
 } from "./native-token-service.ts";
+import { cerrarConexionesNativeSession } from "../plugins/websocket.ts";
 
 export type NativePlatform = "android" | "ios";
 
@@ -43,6 +45,14 @@ export interface NativeSessionIssued extends NativeSessionIdentity {
 export interface NativeWsTicketIssued {
   ticket: string;
   expiresAt: Date;
+}
+
+export interface NativeWsConnectionIdentity {
+  idSesionNativa: number;
+  idUsuario: number;
+  versionSesionEmitida: number;
+  platform: NativePlatform;
+  appBuildEmitido: number;
 }
 
 function numeroEntero(value: unknown): number | null {
@@ -97,6 +107,7 @@ export async function crearSesionNative(
   );
   const client = await myPool.connect();
   let discardClient = false;
+  const sesionesRevocadas = new Set<number>();
   try {
     await client.query("BEGIN");
     const { rows: usuarios } = await client.query<{
@@ -124,16 +135,21 @@ export async function crearSesionNative(
       usuario.password !== credencial.passwordHash
     ) throw new err.T05CredencialesInvalidas();
 
-    await client.query(
+    const { rows: reemplazadas } = await client.query<{ id_sesion_nativa: string | number }>(
       `UPDATE sesion_nativa
           SET revoked_at = now(), revocation_reason = 'installation_replaced'
         WHERE id_usuario = $1
           AND installation_id = $2::uuid
           AND revoked_at IS NULL
           AND expires_at > now()
-          AND version_sesion_emitida = $3`,
+          AND version_sesion_emitida = $3
+       RETURNING id_sesion_nativa`,
       [idUsuario, input.installationId, versionSesion],
     );
+    for (const row of reemplazadas) {
+      const idSesion = numeroEntero(row.id_sesion_nativa);
+      if (idSesion !== null) sesionesRevocadas.add(idSesion);
+    }
 
     const { rows: conteoRows } = await client.query<{ cantidad: string | number }>(
       `SELECT count(*) AS cantidad
@@ -150,7 +166,7 @@ export async function crearSesionNative(
       activas - config.nativeAuth.maxActiveSessionsPerUser + 1,
     );
     if (aRevocar > 0) {
-      await client.query(
+      const { rows: expulsadas } = await client.query<{ id_sesion_nativa: string | number }>(
         `WITH elegidas AS (
            SELECT id_sesion_nativa
              FROM sesion_nativa
@@ -165,9 +181,14 @@ export async function crearSesionNative(
          UPDATE sesion_nativa AS s
             SET revoked_at = now(), revocation_reason = 'session_limit_eviction'
            FROM elegidas
-          WHERE s.id_sesion_nativa = elegidas.id_sesion_nativa`,
+          WHERE s.id_sesion_nativa = elegidas.id_sesion_nativa
+       RETURNING s.id_sesion_nativa`,
         [idUsuario, versionSesion, aRevocar],
       );
+      for (const row of expulsadas) {
+        const idSesion = numeroEntero(row.id_sesion_nativa);
+        if (idSesion !== null) sesionesRevocadas.add(idSesion);
+      }
     }
 
     const { rows: sesiones } = await client.query<{
@@ -197,6 +218,7 @@ export async function crearSesionNative(
     const idSesionNativa = numeroEntero(sesion?.id_sesion_nativa);
     if (!sesion || idSesionNativa === null) throw new Error("No se pudo crear la sesión native");
     await client.query("COMMIT");
+    for (const idSesion of sesionesRevocadas) cerrarConexionesNativeSession(idSesion);
     return {
       token: rawToken,
       idSesionNativa,
@@ -271,8 +293,11 @@ export async function revocarSesionNativePorToken(
     config.nativeAuth.hmacSecret,
     "session",
   );
-  const { rows } = await myPool.query<{ id_usuario: string | number }>(
-    `SELECT id_usuario
+  const { rows } = await myPool.query<{
+    id_usuario: string | number;
+    id_sesion_nativa: string | number;
+  }>(
+    `SELECT id_usuario, id_sesion_nativa
        FROM sesion_nativa
       WHERE token_hash = $1
       LIMIT 1`,
@@ -307,6 +332,7 @@ export async function revocarSesionNativePorToken(
       [tokenHash, idUsuario],
     );
     await client.query("COMMIT");
+    if (rowCount === 1) cerrarConexionesNativeSession(Number(rows[0].id_sesion_nativa));
     return rowCount === 1;
   } catch (error) {
     discardClient = !(await rollbackSeguro(client));
@@ -345,4 +371,178 @@ export async function emitirTicketWsNative(
   const ticket = rows[0];
   if (!ticket) throw new Error("No se pudo emitir el ticket WebSocket native");
   return { ticket: rawTicket, expiresAt: ticket.expires_at };
+}
+
+/**
+ * Discovers the ticket owner without locking, then redeems it while holding
+ * the canonical user -> native-session locks. Every authorization condition
+ * is revalidated under those locks and the ticket claim remains atomic.
+ */
+export async function consumirTicketWsNative(
+  rawTicket: string,
+  config: RuntimeConfig = cargarConfiguracionRuntime(),
+): Promise<NativeWsConnectionIdentity | null> {
+  if (!tokenNativoBienFormado(rawTicket, "ws-ticket")) return null;
+  const ticketHash = hmacTokenNativo(rawTicket, config.nativeAuth.hmacSecret, "ws-ticket");
+  const { rows: descubiertos } = await myPool.query<{
+    id_sesion_nativa: string | number;
+    id_usuario: string | number;
+  }>(
+    `/* native-ws-ticket-discovery-no-lock */
+     SELECT t.id_sesion_nativa, s.id_usuario
+       FROM ticket_ws_nativo AS t
+       JOIN sesion_nativa AS s ON s.id_sesion_nativa = t.id_sesion_nativa
+      WHERE t.ticket_hash = $1
+      LIMIT 1`,
+    [ticketHash],
+  );
+  const descubierto = descubiertos[0];
+  const idSesionDescubierta = numeroEntero(descubierto?.id_sesion_nativa);
+  const idUsuarioDescubierto = numeroEntero(descubierto?.id_usuario);
+  if (idSesionDescubierta === null || idUsuarioDescubierto === null) return null;
+
+  const client = await myPool.connect();
+  let discardClient = false;
+  try {
+    await client.query("BEGIN");
+    const { rows: usuarios } = await client.query<{
+      id_usuario: string | number;
+      version_sesion: string | number;
+    }>(
+      `/* native-ws-ticket-user-lock */
+       SELECT id_usuario, version_sesion
+         FROM usuario
+        WHERE id_usuario = $1
+          AND activo = TRUE
+          AND cuenta_acceso = TRUE
+          AND password IS NOT NULL
+        FOR UPDATE`,
+      [idUsuarioDescubierto],
+    );
+    const usuario = usuarios[0];
+    const idUsuario = numeroEntero(usuario?.id_usuario);
+    const versionUsuario = numeroEntero(usuario?.version_sesion);
+    if (idUsuario !== idUsuarioDescubierto || versionUsuario === null) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: sesiones } = await client.query<{
+      id_sesion_nativa: string | number;
+      id_usuario: string | number;
+      version_sesion_emitida: string | number;
+      platform: NativePlatform;
+    }>(
+      `/* native-ws-ticket-session-lock */
+       SELECT s.id_sesion_nativa, s.id_usuario, s.version_sesion_emitida,
+              s.platform
+         FROM sesion_nativa AS s
+        WHERE s.id_sesion_nativa = $1
+          AND s.id_usuario = $2
+          AND s.revoked_at IS NULL
+          AND s.expires_at > now()
+        FOR UPDATE`,
+      [idSesionDescubierta, idUsuarioDescubierto],
+    );
+    const sesion = sesiones[0];
+    const idSesionNativa = numeroEntero(sesion?.id_sesion_nativa);
+    const versionSesionEmitida = numeroEntero(sesion?.version_sesion_emitida);
+    if (
+      idSesionNativa !== idSesionDescubierta ||
+      Number(sesion?.id_usuario) !== idUsuarioDescubierto ||
+      versionSesionEmitida === null ||
+      versionSesionEmitida !== versionUsuario
+    ) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: tickets } = await client.query<{
+      id_ticket_ws_nativo: string | number;
+      id_sesion_nativa: string | number;
+      platform: NativePlatform;
+      app_build_emitido: string | number;
+    }>(
+      `/* native-ws-ticket-atomic-claim */
+       UPDATE ticket_ws_nativo AS t
+          SET used_at = now()
+        WHERE t.ticket_hash = $1
+          AND t.id_sesion_nativa = $2
+          AND t.used_at IS NULL
+          AND t.expires_at > now()
+          AND t.platform = $3
+          AND t.app_build_emitido >= CASE
+            WHEN $3 = 'android' THEN $4::integer
+            ELSE $5::integer
+          END
+      RETURNING t.id_ticket_ws_nativo, t.id_sesion_nativa,
+                t.platform, t.app_build_emitido`,
+      [
+        ticketHash,
+        idSesionNativa,
+        sesion.platform,
+        config.nativeAuth.minAndroidBuild,
+        config.nativeAuth.minIosBuild,
+      ],
+    );
+    const ticket = tickets[0];
+    const idSesionTicket = numeroEntero(ticket?.id_sesion_nativa);
+    const appBuildEmitido = numeroEntero(ticket?.app_build_emitido);
+    if (
+      !ticket || idSesionTicket !== idSesionNativa ||
+      ticket.platform !== sesion.platform || appBuildEmitido === null
+    ) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    await client.query("COMMIT");
+    return {
+      idSesionNativa,
+      idUsuario,
+      versionSesionEmitida,
+      platform: ticket.platform,
+      appBuildEmitido,
+    };
+  } catch (error) {
+    discardClient = !(await rollbackSeguro(client));
+    throw error;
+  } finally {
+    client.release(discardClient);
+  }
+}
+
+export async function validarSesionNativeParaWebsocket(
+  identity: NativeWsConnectionIdentity,
+  config: RuntimeConfig = cargarConfiguracionRuntime(),
+): Promise<boolean> {
+  const { rows } = await myPool.query<{
+    id_usuario: string | number;
+    version_sesion_emitida: string | number;
+    platform: NativePlatform;
+    expires_at: Date;
+    activo: boolean;
+    cuenta_acceso: boolean;
+    version_sesion: string | number;
+  }>(
+    `SELECT s.id_usuario, s.version_sesion_emitida, s.platform, s.expires_at,
+            u.activo, u.cuenta_acceso, u.version_sesion
+       FROM sesion_nativa AS s
+       JOIN usuario AS u ON u.id_usuario = s.id_usuario
+      WHERE s.id_sesion_nativa = $1
+        AND s.revoked_at IS NULL
+        AND s.expires_at > now()
+      LIMIT 1`,
+    [identity.idSesionNativa],
+  );
+  const row = rows[0];
+  const version = numeroEntero(row?.version_sesion);
+  return Boolean(
+    row && Number(row.id_usuario) === identity.idUsuario &&
+    Number(row.version_sesion_emitida) === identity.versionSesionEmitida &&
+    row.platform === identity.platform && row.activo && row.cuenta_acceso &&
+    version === identity.versionSesionEmitida &&
+    identity.appBuildEmitido >= (
+      identity.platform === "android" ? config.nativeAuth.minAndroidBuild : config.nativeAuth.minIosBuild
+    ),
+  );
 }

@@ -105,6 +105,7 @@ export class AuthService {
 
   private nativeToken: string | null = null;
   private nativeAuthGeneration = 0;
+  private webAuthGeneration = 0;
   private installationId: string | null = null;
   private pendingLogoutUserId: number | null = null;
   private bootstrapFlight?: Promise<void>;
@@ -149,6 +150,7 @@ export class AuthService {
   public async logout(): Promise<void> {
     switch (this.runtime.platform()) {
       case 'web':
+        this.webAuthGeneration++;
         try {
           await firstValueFrom(this.httpClient.post<void>(environment.apiURL + 'logout', null));
         } finally {
@@ -194,13 +196,16 @@ export class AuthService {
   public async getUser(): Promise<void> {
     if (this.runtime.isNative()) return this.restoreNativeSession();
     if (!this.runtime.isWeb()) throw this.failUnknownRuntime();
+    const requestGeneration = this.webAuthGeneration;
     try {
       const user = await firstValueFrom(
         this.httpClient.get<UsuarioPublico>(this.baseURL).pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
       );
+      if (requestGeneration !== this.webAuthGeneration) return;
       this.mainStore.setUser(user);
       this.state.set('authenticated');
     } catch (error) {
+      if (requestGeneration !== this.webAuthGeneration) return;
       this.mainStore.clearSession();
       this.state.set('unauthenticated');
       if (error instanceof HttpErrorResponse && error.status === 0) {
@@ -208,6 +213,27 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  public webSessionSnapshot(): { userId: number | null; generation: number } {
+    return { userId: this.userId(), generation: this.webAuthGeneration };
+  }
+
+  public async synchronizeWebSession(expectedGeneration: number): Promise<boolean> {
+    if (!this.runtime.isWeb() || expectedGeneration !== this.webAuthGeneration) return false;
+    try {
+      await this.getUser();
+    } catch {
+      if (expectedGeneration !== this.webAuthGeneration) return false;
+      await this.navigateOnce('/login');
+      return false;
+    }
+    if (expectedGeneration !== this.webAuthGeneration) return false;
+    if (this.state() !== 'authenticated' || this.userId() === null) {
+      await this.navigateOnce('/login');
+      return false;
+    }
+    return true;
   }
 
   nativeAuthorizationFor(pathname: string): string | null {
@@ -374,6 +400,7 @@ export class AuthService {
   }
 
   private async webLogin(email: string, password: string): Promise<void> {
+    this.webAuthGeneration++;
     try {
       await firstValueFrom(
         this.httpClient.post<{ authenticated: true }>(this.baseURL, { email, password }),
