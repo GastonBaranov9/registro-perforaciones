@@ -374,9 +374,9 @@ export async function emitirTicketWsNative(
 }
 
 /**
- * Redeems a WS ticket in one PostgreSQL UPDATE. The parent session is checked
- * in the same transaction and locked before commit, so a concurrent logout
- * cannot leave a newly accepted socket attached to a revoked session.
+ * Discovers the ticket owner without locking, then redeems it while holding
+ * the canonical user -> native-session locks. Every authorization condition
+ * is revalidated under those locks and the ticket claim remains atomic.
  */
 export async function consumirTicketWsNative(
   rawTicket: string,
@@ -384,88 +384,113 @@ export async function consumirTicketWsNative(
 ): Promise<NativeWsConnectionIdentity | null> {
   if (!tokenNativoBienFormado(rawTicket, "ws-ticket")) return null;
   const ticketHash = hmacTokenNativo(rawTicket, config.nativeAuth.hmacSecret, "ws-ticket");
+  const { rows: descubiertos } = await myPool.query<{
+    id_sesion_nativa: string | number;
+    id_usuario: string | number;
+  }>(
+    `/* native-ws-ticket-discovery-no-lock */
+     SELECT t.id_sesion_nativa, s.id_usuario
+       FROM ticket_ws_nativo AS t
+       JOIN sesion_nativa AS s ON s.id_sesion_nativa = t.id_sesion_nativa
+      WHERE t.ticket_hash = $1
+      LIMIT 1`,
+    [ticketHash],
+  );
+  const descubierto = descubiertos[0];
+  const idSesionDescubierta = numeroEntero(descubierto?.id_sesion_nativa);
+  const idUsuarioDescubierto = numeroEntero(descubierto?.id_usuario);
+  if (idSesionDescubierta === null || idUsuarioDescubierto === null) return null;
+
   const client = await myPool.connect();
   let discardClient = false;
   try {
     await client.query("BEGIN");
-    const { rows } = await client.query<{
-      id_ticket_ws_nativo: string | number;
+    const { rows: usuarios } = await client.query<{
+      id_usuario: string | number;
+      version_sesion: string | number;
+    }>(
+      `/* native-ws-ticket-user-lock */
+       SELECT id_usuario, version_sesion
+         FROM usuario
+        WHERE id_usuario = $1
+          AND activo = TRUE
+          AND cuenta_acceso = TRUE
+          AND password IS NOT NULL
+        FOR UPDATE`,
+      [idUsuarioDescubierto],
+    );
+    const usuario = usuarios[0];
+    const idUsuario = numeroEntero(usuario?.id_usuario);
+    const versionUsuario = numeroEntero(usuario?.version_sesion);
+    if (idUsuario !== idUsuarioDescubierto || versionUsuario === null) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: sesiones } = await client.query<{
       id_sesion_nativa: string | number;
       id_usuario: string | number;
-      platform: NativePlatform;
-      app_build_emitido: string | number;
       version_sesion_emitida: string | number;
+      platform: NativePlatform;
     }>(
-      `UPDATE ticket_ws_nativo AS t
-          SET used_at = now()
-        FROM sesion_nativa AS s
-        JOIN usuario AS u ON u.id_usuario = s.id_usuario
-       WHERE t.ticket_hash = $1
-         AND t.used_at IS NULL
-         AND t.expires_at > now()
-         AND t.id_sesion_nativa = s.id_sesion_nativa
-         AND t.platform = s.platform
-         AND s.revoked_at IS NULL
-         AND s.expires_at > now()
-         AND u.activo = TRUE
-         AND u.cuenta_acceso = TRUE
-         AND u.password IS NOT NULL
-         AND s.version_sesion_emitida = u.version_sesion
-         AND t.app_build_emitido >= CASE
-           WHEN s.platform = 'android' THEN $2::integer
-           ELSE $3::integer
-         END
-       RETURNING t.id_ticket_ws_nativo, s.id_sesion_nativa, u.id_usuario,
-                 t.platform, t.app_build_emitido, s.version_sesion_emitida`,
-      [ticketHash, config.nativeAuth.minAndroidBuild, config.nativeAuth.minIosBuild],
+      `/* native-ws-ticket-session-lock */
+       SELECT s.id_sesion_nativa, s.id_usuario, s.version_sesion_emitida,
+              s.platform
+         FROM sesion_nativa AS s
+        WHERE s.id_sesion_nativa = $1
+          AND s.id_usuario = $2
+          AND s.revoked_at IS NULL
+          AND s.expires_at > now()
+        FOR UPDATE`,
+      [idSesionDescubierta, idUsuarioDescubierto],
     );
-    const row = rows[0];
-    const idSesionNativa = numeroEntero(row?.id_sesion_nativa);
-    const idUsuario = numeroEntero(row?.id_usuario);
-    const versionSesionEmitida = numeroEntero(row?.version_sesion_emitida);
-    const appBuildEmitido = numeroEntero(row?.app_build_emitido);
+    const sesion = sesiones[0];
+    const idSesionNativa = numeroEntero(sesion?.id_sesion_nativa);
+    const versionSesionEmitida = numeroEntero(sesion?.version_sesion_emitida);
     if (
-      !row || idSesionNativa === null || idUsuario === null ||
-      versionSesionEmitida === null || appBuildEmitido === null
+      idSesionNativa !== idSesionDescubierta ||
+      Number(sesion?.id_usuario) !== idUsuarioDescubierto ||
+      versionSesionEmitida === null ||
+      versionSesionEmitida !== versionUsuario
     ) {
       await client.query("ROLLBACK");
       return null;
     }
 
-    // Re-read under row locks after the atomic claim. This closes the gap
-    // between ticket claim and parent-session revocation.
-    const parent = await client.query<{
+    const { rows: tickets } = await client.query<{
+      id_ticket_ws_nativo: string | number;
       id_sesion_nativa: string | number;
-      id_usuario: string | number;
-      version_sesion_emitida: string | number;
       platform: NativePlatform;
-      app_build_at_login: string | number;
-      expires_at: Date;
-      activo: boolean;
-      cuenta_acceso: boolean;
-      version_sesion: string | number;
+      app_build_emitido: string | number;
     }>(
-      `SELECT s.id_sesion_nativa, s.id_usuario, s.version_sesion_emitida,
-              s.platform, s.app_build_at_login, s.expires_at,
-              u.activo, u.cuenta_acceso, u.version_sesion
-         FROM sesion_nativa AS s
-         JOIN usuario AS u ON u.id_usuario = s.id_usuario
-        WHERE s.id_sesion_nativa = $1
-          AND s.revoked_at IS NULL
-          AND s.expires_at > now()
-        FOR UPDATE OF s, u`,
-      [idSesionNativa],
+      `/* native-ws-ticket-atomic-claim */
+       UPDATE ticket_ws_nativo AS t
+          SET used_at = now()
+        WHERE t.ticket_hash = $1
+          AND t.id_sesion_nativa = $2
+          AND t.used_at IS NULL
+          AND t.expires_at > now()
+          AND t.platform = $3
+          AND t.app_build_emitido >= CASE
+            WHEN $3 = 'android' THEN $4::integer
+            ELSE $5::integer
+          END
+      RETURNING t.id_ticket_ws_nativo, t.id_sesion_nativa,
+                t.platform, t.app_build_emitido`,
+      [
+        ticketHash,
+        idSesionNativa,
+        sesion.platform,
+        config.nativeAuth.minAndroidBuild,
+        config.nativeAuth.minIosBuild,
+      ],
     );
-    const current = parent.rows[0];
-    const currentVersion = numeroEntero(current?.version_sesion);
+    const ticket = tickets[0];
+    const idSesionTicket = numeroEntero(ticket?.id_sesion_nativa);
+    const appBuildEmitido = numeroEntero(ticket?.app_build_emitido);
     if (
-      !current || Number(current.id_usuario) !== idUsuario ||
-      Number(current.version_sesion_emitida) !== versionSesionEmitida ||
-      current.platform !== row.platform || !current.activo ||
-      !current.cuenta_acceso || currentVersion !== versionSesionEmitida ||
-      Number(row.app_build_emitido) < (
-        row.platform === "android" ? config.nativeAuth.minAndroidBuild : config.nativeAuth.minIosBuild
-      )
+      !ticket || idSesionTicket !== idSesionNativa ||
+      ticket.platform !== sesion.platform || appBuildEmitido === null
     ) {
       await client.query("ROLLBACK");
       return null;
@@ -475,7 +500,7 @@ export async function consumirTicketWsNative(
       idSesionNativa,
       idUsuario,
       versionSesionEmitida,
-      platform: row.platform,
+      platform: ticket.platform,
       appBuildEmitido,
     };
   } catch (error) {
