@@ -110,3 +110,18 @@ ni se modificó el appId placeholder; la validación física queda para RSP-09E.
 - No se creó migración nueva ni se modificó 000–008.
 - Pendiente operativo: validación física Android/iOS y Gradle cuando exista JDK,
   SDK y hardware; corresponde a RSP-09E.
+
+## R6 — Orden de locks native WS
+
+R6 elimina la inversión de locks de la redención native. Una lectura inicial
+sin lock descubre usuario/sesión; la transacción vuelve a validar y bloquea
+siempre `usuario → sesion_nativa`, y recién entonces reclama el ticket con
+`UPDATE ... WHERE used_at IS NULL ... RETURNING`. Se conserva single-use,
+expiry, plataforma/build, revocación, versión y post-registration validation.
+
+El harness R6 sobre PostgreSQL 16.14 usa barreras de fila y `pg_stat_activity`
+para cubrir redemption normal y doble, logout-device en ambos órdenes,
+replacement same-installation, eviction al límite, sesión revocada sin socket
+operativo, usuarios distintos y rollback posterior al claim. Todas las
+operaciones terminan sin deadlock. No se añadió retry `40P01`, migración ni
+cambio frontend. El detalle queda en `CODEX_PROGRESS_ETAPA_RSP_09D_R6.md`.
