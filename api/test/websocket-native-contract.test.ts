@@ -19,16 +19,19 @@ test("Origin distingue web público de Android/iOS native con comparación exact
   assert.equal(native.includes("https://localhost.evil"), false);
 });
 
-test("redención usa update atómico y no SELECT seguido de UPDATE", async () => {
+test("redención descubre identidad sin lock y consume con locks canónicos", async () => {
   const file = await fs.readFile(
     path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "services", "native-auth-service.ts"),
     "utf8",
   );
   const redemption = file.slice(file.indexOf("export async function consumirTicketWsNative"));
+  assert.match(redemption, /native-ws-ticket-discovery-no-lock/);
   assert.match(redemption, /UPDATE ticket_ws_nativo AS t/);
   assert.match(redemption, /t\.used_at IS NULL/);
   assert.match(redemption, /SET used_at = now\(\)/);
-  assert.match(redemption, /FOR UPDATE OF s, u/);
+  assert.doesNotMatch(redemption, /FOR UPDATE OF s, u/);
+  assert.ok(redemption.indexOf("native-ws-ticket-user-lock") < redemption.indexOf("native-ws-ticket-session-lock"));
+  assert.ok(redemption.indexOf("native-ws-ticket-session-lock") < redemption.indexOf("native-ws-ticket-atomic-claim"));
 });
 
 test("el socket native se activa despues de revalidar y no entra en fan-out antes", async () => {
