@@ -42,6 +42,14 @@ test('Angular separa configuraciones web y native sin service worker remoto', as
       with: 'src/environments/environment.native.generated.ts',
     }]);
   }
+
+  const main = await readFile(join(frontRoot, 'src/main.ts'), 'utf8');
+  assert.match(main, /bootstrapApplication\(App, appConfig\)/);
+  assert.doesNotMatch(main, /provideServiceWorker|ngsw-worker\.js|mergeApplicationConfig|isDevMode/);
+
+  const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
+  assert.match(appConfig, /provideServiceWorker\('ngsw-worker\.js'/);
+  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
 
 test('web conserva API/WebSocket same-origin y Capacitor carga assets locales', async () => {
@@ -69,9 +77,6 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   assert.match(source, /deriveNativeWebsocketOrigin/);
   assert.match(source, /connect-src 'self' \$\{origin\} \$\{websocketOrigin\}/);
   assert.doesNotMatch(source, /server\.url|allowNavigation/);
-
-  const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
-  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
 
 test('CSP native deriva HTTPS a WSS con el mismo host y puerto', () => {
