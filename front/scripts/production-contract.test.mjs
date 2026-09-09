@@ -35,6 +35,14 @@ test('Angular separa configuraciones web y native sin service worker remoto', as
   ]);
   for (const mode of ['native-development', 'native-production']) {
     const configuration = build.configurations[mode];
+    assert.deepEqual(configuration.optimization, {
+      scripts: true,
+      styles: {
+        minify: true,
+        inlineCritical: false,
+      },
+      fonts: true,
+    });
     assert.equal(configuration.serviceWorker, false);
     assert.equal(configuration.index.input, 'src/index.native.generated.html');
     assert.deepEqual(configuration.fileReplacements, [{
@@ -75,6 +83,7 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   assert.match(source, /finally/);
   assert.match(source, /rm\(environmentPath, \{ force: true \}\)/);
   assert.match(source, /deriveNativeWebsocketOrigin/);
+  assert.match(source, /validateNativeStyleDelivery/);
   assert.match(source, /connect-src 'self' \$\{origin\} \$\{websocketOrigin\}/);
   assert.doesNotMatch(source, /server\.url|allowNavigation/);
 });
