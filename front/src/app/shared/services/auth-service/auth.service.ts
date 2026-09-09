@@ -4,7 +4,11 @@ import { Router } from '@angular/router';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { firstValueFrom, timeout } from 'rxjs';
 import { environment } from '../../../../environments/environment';
-import { NativeBackendConfigService } from '../../../core/native/native-backend-config.service';
+import {
+  NATIVE_AUTH_PUBLIC_PATHS,
+  type NativeAuthPublicPath,
+  NativeBackendConfigService,
+} from '../../../core/native/native-backend-config.service';
 import { NativeMetadataService } from '../../../core/native/native-metadata.service';
 import { CAPACITOR_APP } from '../../../core/native/native-plugin.tokens';
 import { nativeAuthMutationContext } from '../../../core/native/native-auth-http-context';
@@ -23,10 +27,10 @@ import {
 import { MainStore } from '../mainstore-service/main.store';
 import { Rol, UsuarioPublico } from '../../types/schemas';
 
-const NATIVE_LOGIN = '/auth/native/login';
-const NATIVE_SESSION = '/auth/native/session';
-const NATIVE_LOGOUT = '/auth/native/logout';
-const NATIVE_LOGOUT_ALL = '/auth/native/logout-all';
+const NATIVE_LOGIN = NATIVE_AUTH_PUBLIC_PATHS.login;
+const NATIVE_SESSION = NATIVE_AUTH_PUBLIC_PATHS.session;
+const NATIVE_LOGOUT = NATIVE_AUTH_PUBLIC_PATHS.logout;
+const NATIVE_LOGOUT_ALL = NATIVE_AUTH_PUBLIC_PATHS.logoutAll;
 const RESUME_REVALIDATION_MS = 5 * 60 * 1_000;
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
@@ -676,7 +680,7 @@ export class AuthService {
     try { await this.pendingStorage.clear(); } catch { /* marker huérfano no autentica */ }
   }
 
-  private nativeAuthUrl(path: string): string {
+  private nativeAuthUrl(path: NativeAuthPublicPath): string {
     return this.backendConfig.nativeAuthUrl(path);
   }
 

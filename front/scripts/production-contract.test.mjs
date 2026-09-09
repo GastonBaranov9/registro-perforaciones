@@ -9,6 +9,30 @@ import {
 } from './native-backend-config.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
+const repositoryRoot = join(frontRoot, '..');
+
+test('auth native separa contrato publico /api de rutas internas Fastify', async () => {
+  const [clientConfig, productionProxy, developmentProxySource, fastifyRoutes] =
+    await Promise.all([
+      readFile(join(frontRoot, 'src/app/core/native/native-backend-config.service.ts'), 'utf8'),
+      readFile(join(repositoryRoot, 'proxy/https.conf.template'), 'utf8'),
+      readFile(join(frontRoot, 'proxy.conf.json'), 'utf8'),
+      readFile(join(repositoryRoot, 'api/src/routes/native-auth.ts'), 'utf8'),
+    ]);
+
+  const endpoints = ['login', 'session', 'logout', 'logout-all', 'ws-ticket'];
+  for (const endpoint of endpoints) {
+    assert.match(clientConfig, new RegExp(`/api/auth/native/${endpoint}`));
+    assert.match(fastifyRoutes, new RegExp(`["']/auth/native/${endpoint}["']`));
+  }
+
+  assert.match(
+    productionProxy,
+    /location \/api\/ \{[\s\S]*?proxy_pass http:\/\/api:3000\/;/,
+  );
+  const developmentProxy = JSON.parse(developmentProxySource);
+  assert.equal(developmentProxy['/api'].pathRewrite['^/api'], '');
+});
 
 test('mantiene builds web independientes y publica targets native explícitos', async () => {
   const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));

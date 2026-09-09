@@ -1,5 +1,6 @@
 import {
   isWebApiRequest,
+  NATIVE_AUTH_PUBLIC_PATHS,
   NativeBackendConfigService,
   validateNativeBackendOrigin,
 } from './native-backend-config.service';
@@ -24,13 +25,36 @@ describe('configuración del backend native', () => {
     expect(isWebApiRequest('/api-evil/pozos', '/api/')).toBeFalse();
   });
 
-  it('separa las rutas auth native del prefijo de APIs normales', () => {
+  it('construye el contrato auth native publico bajo /api', () => {
     const configured = new NativeBackendConfigService();
     (configured as unknown as { parsed: URL }).parsed = new URL('https://api.example.test');
-    expect(configured.nativeAuthUrl('/auth/native/login')).toBe('https://api.example.test/auth/native/login');
-    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/auth/native/session')).toBeTrue();
+
+    expect(configured.nativeAuthUrl(NATIVE_AUTH_PUBLIC_PATHS.login))
+      .toBe('https://api.example.test/api/auth/native/login');
+    expect(configured.nativeAuthUrl(NATIVE_AUTH_PUBLIC_PATHS.session))
+      .toBe('https://api.example.test/api/auth/native/session');
+    expect(configured.nativeAuthUrl(NATIVE_AUTH_PUBLIC_PATHS.logout))
+      .toBe('https://api.example.test/api/auth/native/logout');
+    expect(configured.nativeAuthUrl(NATIVE_AUTH_PUBLIC_PATHS.logoutAll))
+      .toBe('https://api.example.test/api/auth/native/logout-all');
+    expect(configured.nativeAuthUrl(NATIVE_AUTH_PUBLIC_PATHS.wsTicket))
+      .toBe('https://api.example.test/api/auth/native/ws-ticket');
+  });
+
+  it('autoriza solo endpoints auth native publicos exactos del origin configurado', () => {
+    const configured = new NativeBackendConfigService();
+    (configured as unknown as { parsed: URL }).parsed = new URL('https://api.example.test');
+
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api/auth/native/session')).toBeTrue();
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api/auth/native/logout')).toBeTrue();
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/auth/native/session')).toBeFalse();
+    expect(configured.isAuthorizedNativeAuthRequest('https://evil.example/api/auth/native/session')).toBeFalse();
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api-evil/auth/native/session')).toBeFalse();
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api/auth/native/session/extra')).toBeFalse();
     expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api/pozos')).toBeFalse();
     expect(configured.isAuthorizedApiRequest('https://api.example.test/api/pozos')).toBeTrue();
+    expect(configured.isAuthorizedApiRequest('https://api.example.test/api/auth/native/session')).toBeFalse();
+    expect(configured.isAuthorizedApiRequest('https://api.example.test/api/auth/native/session/extra')).toBeFalse();
     expect(configured.isAuthorizedApiRequest('https://api.example.test/auth/native/login')).toBeFalse();
   });
 });

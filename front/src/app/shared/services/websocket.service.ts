@@ -3,13 +3,16 @@ import { inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { Subscription, timeout } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
-import { NativeBackendConfigService } from '../../core/native/native-backend-config.service';
+import {
+  NATIVE_AUTH_PUBLIC_PATHS,
+  NativeBackendConfigService,
+} from '../../core/native/native-backend-config.service';
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 10_000] as const;
 const SLOW_RECONNECT_DELAY_MS = 30_000;
 const WEBSOCKET_CONNECTING = 0;
 const WEBSOCKET_OPEN = 1;
-const NATIVE_WS_TICKET = '/auth/native/ws-ticket';
+const NATIVE_WS_TICKET = NATIVE_AUTH_PUBLIC_PATHS.wsTicket;
 const NATIVE_WS_TICKET_TIMEOUT_MS = 10_000;
 const NATIVE_TICKET_PATTERN = /^rspw1_[A-Za-z0-9_-]{43}$/;
 

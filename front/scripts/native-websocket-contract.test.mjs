@@ -9,9 +9,14 @@ const service = await readFile(
   join(root, 'src', 'app', 'shared', 'services', 'websocket.service.ts'),
   'utf8',
 );
+const backendConfig = await readFile(
+  join(root, 'src', 'app', 'core', 'native', 'native-backend-config.service.ts'),
+  'utf8',
+);
 
 test('native websocket usa ticket HTTP, URL WSS validada y no storage', () => {
-  assert.match(service, /auth\/native\/ws-ticket/);
+  assert.match(backendConfig, /wsTicket:\s*'\/api\/auth\/native\/ws-ticket'/);
+  assert.match(service, /NATIVE_AUTH_PUBLIC_PATHS\.wsTicket/);
   assert.match(service, /httpClient\.post/);
   assert.match(service, /new URL\('\/ws', this\.backendConfig\.origin\(\)\)/);
   assert.match(service, /wsUrl\.protocol = 'wss:'/);

@@ -13,12 +13,14 @@ describe('tokenInterceptor runtime unknown', () => {
   let controller: HttpTestingController;
 
   beforeEach(() => {
+    const backend = new NativeBackendConfigService();
+    (backend as unknown as { parsed: URL }).parsed = new URL('https://backend.example.test');
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([tokenInterceptor])),
         provideHttpClientTesting(),
         { provide: RuntimePlatformService, useValue: { platform: () => 'unknown' } },
-        { provide: NativeBackendConfigService, useValue: { isAuthorizedApiRequest: (url: string) => { const parsed = new URL(url); return parsed.origin === 'https://backend.example.test' && parsed.pathname.startsWith('/api/'); }, isAuthorizedNativeAuthRequest: (url: string) => { const parsed = new URL(url); return parsed.origin === 'https://backend.example.test' && parsed.pathname.startsWith('/auth/native/'); }, origin: () => new URL('https://backend.example.test') } },
+        { provide: NativeBackendConfigService, useValue: backend },
         { provide: NativeMetadataService, useValue: { current: jasmine.createSpy('current') } },
         { provide: AuthService, useValue: { nativeAuthorizationFor: jasmine.createSpy('nativeAuthorizationFor') } },
       ],
@@ -32,6 +34,15 @@ describe('tokenInterceptor runtime unknown', () => {
   it('rechaza API propia antes de enviar y no cae en transporte web', async () => {
     let error: unknown;
     http.get('https://backend.example.test/api/pozos').subscribe({ error: (value) => (error = value) });
+    await Promise.resolve();
+    expect(error instanceof RuntimePlatformUnknownError).toBeTrue();
+    controller.expectNone(() => true);
+  });
+
+  it('rechaza auth native publico antes de enviar', async () => {
+    let error: unknown;
+    http.get('https://backend.example.test/api/auth/native/session')
+      .subscribe({ error: (value) => (error = value) });
     await Promise.resolve();
     expect(error instanceof RuntimePlatformUnknownError).toBeTrue();
     controller.expectNone(() => true);

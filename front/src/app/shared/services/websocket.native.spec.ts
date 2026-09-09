@@ -80,7 +80,7 @@ describe('WebsocketService native', () => {
   it('pide ticket por HTTP y abre WSS sólo con ticket, nunca Bearer', fakeAsync(() => {
     service.connect();
     service.connect();
-    const request = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const request = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     expect(request.request.headers.has('Authorization')).toBeFalse();
     request.flush({ ticket: ticket('A'), expires_at: new Date().toISOString() });
     flushMicrotasks();
@@ -97,12 +97,12 @@ describe('WebsocketService native', () => {
 
   it('disconnect invalida y cancela un ticket pendiente antes de permitir B', fakeAsync(() => {
     service.connect();
-    const requestA = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const requestA = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     service.disconnect();
     expect(requestA.cancelled).toBeTrue();
 
     service.connect();
-    const pending = controller.match('https://api.example.test/auth/native/ws-ticket');
+    const pending = controller.match('https://api.example.test/api/auth/native/ws-ticket');
     expect(pending.length).toBe(1);
     const requestB = pending.find((request) => !request.cancelled);
     expect(requestB).toBeDefined();
@@ -114,16 +114,16 @@ describe('WebsocketService native', () => {
 
   it('timeout cancela el ticket pendiente, libera el flight y reconecta con ticket nuevo', fakeAsync(() => {
     service.connect();
-    const requestA = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const requestA = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     tick(9_999);
     expect(requestA.cancelled).toBeFalse();
     tick(1);
     flushMicrotasks();
     expect(requestA.cancelled).toBeTrue();
     tick(999);
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
     tick(1);
-    const requestB = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const requestB = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     requestB.flush({ ticket: ticket('L') });
     flushMicrotasks();
     expect(NativeWebSocketControlado.instances.length).toBe(1);
@@ -132,36 +132,36 @@ describe('WebsocketService native', () => {
 
   it('timeout stale tras logout no programa reconnect', fakeAsync(() => {
     service.connect();
-    const request = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const request = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     authState = 'logout-pending';
     tick(10_000);
     flushMicrotasks();
     expect(request.cancelled).toBeTrue();
     tick(60_000);
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
     expect(NativeWebSocketControlado.instances.length).toBe(0);
   }));
 
   it('un cierre 4001 es terminal para la generation reemplazada y no solicita otro ticket', fakeAsync(() => {
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('G') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('G') });
     flushMicrotasks();
     const socket = NativeWebSocketControlado.instances[0];
     socket.open();
     socket.serverClose(4001);
     tick(60_000);
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
     expect(NativeWebSocketControlado.instances.length).toBe(1);
   }));
 
   it('una generation nueva puede conectar después de un 4001 terminal', fakeAsync(() => {
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('H') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('H') });
     flushMicrotasks();
     NativeWebSocketControlado.instances[0].serverClose(4001);
     generation = 8;
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('I') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('I') });
     flushMicrotasks();
     expect(NativeWebSocketControlado.instances.length).toBe(2);
     expect(NativeWebSocketControlado.instances[1].url).toContain(ticket('I'));
@@ -169,31 +169,31 @@ describe('WebsocketService native', () => {
 
   it('callbacks de un socket viejo no afectan al socket actualmente rastreado', fakeAsync(() => {
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('J') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('J') });
     flushMicrotasks();
     const socketA = NativeWebSocketControlado.instances[0];
     socketA.serverClose();
     generation = 8;
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('K') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('K') });
     flushMicrotasks();
     const socketB = NativeWebSocketControlado.instances[1];
     socketA.onerror?.(new Event('error'));
     socketA.onclose?.(new CloseEvent('close', { code: 4001 }));
     expect(service.ws).toBe(socketB as unknown as WebSocket);
     tick(60_000);
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
   }));
 
   it('reconnect solicita un ticket nuevo y no reutiliza el anterior', fakeAsync(() => {
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('B') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('B') });
     flushMicrotasks();
     const first = NativeWebSocketControlado.instances[0];
     first.open();
     first.serverClose();
     tick(1_000);
-    const secondRequest = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const secondRequest = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     secondRequest.flush({ ticket: ticket('C') });
     flushMicrotasks();
     expect(NativeWebSocketControlado.instances.length).toBe(2);
@@ -203,7 +203,7 @@ describe('WebsocketService native', () => {
 
   it('descarta un ticket cuya generation quedó obsoleta', fakeAsync(() => {
     service.connect();
-    const request = controller.expectOne('https://api.example.test/auth/native/ws-ticket');
+    const request = controller.expectOne('https://api.example.test/api/auth/native/ws-ticket');
     generation = 8;
     request.flush({ ticket: ticket('D') });
     flushMicrotasks();
@@ -213,15 +213,15 @@ describe('WebsocketService native', () => {
   it('logout-pending no conecta y desconectar cancela el reconnect', fakeAsync(() => {
     authState = 'logout-pending';
     service.connect();
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
     authState = 'authenticated';
     service.connect();
-    controller.expectOne('https://api.example.test/auth/native/ws-ticket').flush({ ticket: ticket('E') });
+    controller.expectOne('https://api.example.test/api/auth/native/ws-ticket').flush({ ticket: ticket('E') });
     flushMicrotasks();
     NativeWebSocketControlado.instances[0].serverClose();
     service.disconnect();
     tick(60_000);
-    controller.expectNone('https://api.example.test/auth/native/ws-ticket');
+    controller.expectNone('https://api.example.test/api/auth/native/ws-ticket');
     expect(NativeWebSocketControlado.instances.length).toBe(1);
   }));
 });

@@ -3,6 +3,30 @@ import { environment } from '../../../environments/environment';
 
 export type NativeBuildMode = 'web' | 'development' | 'production';
 
+// Public ingress contract. Both proxies strip /api before Fastify handles these routes.
+export const NATIVE_AUTH_PUBLIC_PATHS = {
+  login: '/api/auth/native/login',
+  session: '/api/auth/native/session',
+  logout: '/api/auth/native/logout',
+  logoutAll: '/api/auth/native/logout-all',
+  wsTicket: '/api/auth/native/ws-ticket',
+} as const;
+
+export type NativeAuthPublicPath =
+  (typeof NATIVE_AUTH_PUBLIC_PATHS)[keyof typeof NATIVE_AUTH_PUBLIC_PATHS];
+
+const NATIVE_AUTH_PUBLIC_PREFIX = '/api/auth/native';
+const AUTHORIZED_NATIVE_AUTH_PATHS = new Set<string>(
+  Object.values(NATIVE_AUTH_PUBLIC_PATHS),
+);
+
+function isNativeAuthPublicNamespace(pathname: string): boolean {
+  return (
+    pathname === NATIVE_AUTH_PUBLIC_PREFIX ||
+    pathname.startsWith(`${NATIVE_AUTH_PUBLIC_PREFIX}/`)
+  );
+}
+
 export class NativeClientConfigurationError extends Error {
   constructor() {
     super('La configuración segura de la aplicación mobile no es válida.');
@@ -78,7 +102,8 @@ export class NativeBackendConfigService {
     const origin = this.origin();
     return (
       requestUrl.origin === origin.origin &&
-      (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))
+      (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/')) &&
+      !isNativeAuthPublicNamespace(requestUrl.pathname)
     );
   }
 
@@ -90,11 +115,14 @@ export class NativeBackendConfigService {
       return false;
     }
 
-    return requestUrl.origin === this.origin().origin && requestUrl.pathname.startsWith('/auth/native/');
+    return (
+      requestUrl.origin === this.origin().origin &&
+      AUTHORIZED_NATIVE_AUTH_PATHS.has(requestUrl.pathname)
+    );
   }
 
-  nativeAuthUrl(path: string): string {
-    return new URL(path.startsWith('/') ? path : `/${path}`, this.origin()).toString();
+  nativeAuthUrl(path: NativeAuthPublicPath): string {
+    return new URL(path, this.origin()).toString();
   }
 }
 
