@@ -274,9 +274,9 @@ Un `npm ci` adicional no pudo borrar un binario temporal de esbuild porque habí
 Artefactos locales demostrados, ambos ignorados por Git:
 
 - `front/android/app/build/outputs/apk/debug/app-debug.apk` — 10.582.996 bytes, firmado con debug.
-- `front/android/app/build/outputs/apk/release/app-release-unsigned.apk` — 8.802.105 bytes, sin firma.
+- `front/android/app/build/outputs/apk/release/app-release-unsigned.apk` — 8.801.973 bytes, sin firma.
 
-Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. Hoy el comando termina con código 2 y enumera decisiones pendientes. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
+Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. Hoy el helper Node establece código 2 (el wrapper npm lo expone simplemente como fallo no cero) y enumera decisiones pendientes. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
 
 ## Pruebas y resultados
 
@@ -310,6 +310,7 @@ Para producción, después de resolver los blockers, el primer paso debe ser `np
 
 Warnings Android clasificados:
 
+- future compatibility: Gradle emite además el resumen genérico de features deprecadas que serán incompatibles con Gradle 9; no bloquea el wrapper 8.13 actual y no se intentó resolver anticipadamente sin un finding funcional concreto;
 - future compatibility: sintaxis Groovy space assignment prevista para retiro en Gradle 10; también aparece dentro de Camera 7;
 - third-party/build model: `flatDir` sin metadata;
 - future maintenance: AppCompat/CoordinatorLayout/Splashscreen disponibles en versiones nuevas;
