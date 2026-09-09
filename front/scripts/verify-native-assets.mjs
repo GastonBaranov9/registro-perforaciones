@@ -55,4 +55,3 @@ if (!distFiles.some((file) => /^styles(?:-[^.]+)?\.css$/.test(file))) {
 }
 
 console.log(`Assets Capacitor verificados: ${distFiles.length} archivos idénticos por SHA-256.`);
-
