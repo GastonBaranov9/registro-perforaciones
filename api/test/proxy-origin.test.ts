@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Fastify from "fastify";
+import { confiarSoloEnProxyEdge } from "../src/config/trust-proxy.ts";
 import fastifyCors from "@fastify/cors";
 import cookies, { CSRF_COOKIE, SESSION_COOKIE } from "../src/plugins/cookies.ts";
 import csrf from "../src/plugins/csrf.ts";
@@ -90,7 +91,7 @@ test("Origin native queda separado del web y nunca relaja WebSocket web", async 
 });
 
 test("Fastify confía exactamente un salto para protocolo e IP", async () => {
-  const app = Fastify({ trustProxy: 1 });
+  const app = Fastify({ trustProxy: confiarSoloEnProxyEdge });
   app.get("/proxy", async (req) => ({ protocol: req.protocol, ip: req.ip }));
   const response = await app.inject({
     method: "GET",

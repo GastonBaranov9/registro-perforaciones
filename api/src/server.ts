@@ -1,5 +1,5 @@
 import fastify from "fastify";
-import type { FastifyInstance, FastifyListenOptions } from "fastify";
+import type { FastifyListenOptions } from "fastify";
 import autoLoad from "@fastify/autoload";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -7,11 +7,12 @@ import type { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { cargarConfiguracionRuntime, prepararDirectorioFotos } from "./config/runtime.ts";
 import { loggerOptions } from "./logging.ts";
 import { myPool } from "./db/pool.ts";
+import { confiarSoloEnProxyEdge } from "./config/trust-proxy.ts";
 
 const runtime = cargarConfiguracionRuntime();
 await prepararDirectorioFotos(runtime);
 
-const server: FastifyInstance = fastify({
+const server = fastify({
   logger: loggerOptions(runtime.logLevel),
   disableRequestLogging: true,
   requestIdHeader: runtime.production ? "x-request-id" : false,
@@ -19,7 +20,7 @@ const server: FastifyInstance = fastify({
   return503OnClosing: true,
   forceCloseConnections: "idle",
   // La API no publica puertos; el único salto confiable es el proxy de la red edge.
-  trustProxy: runtime.trustProxy,
+  trustProxy: runtime.trustProxy === 1 ? confiarSoloEnProxyEdge : false,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 const ListeningOptions: FastifyListenOptions = {
