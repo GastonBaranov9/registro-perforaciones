@@ -9,8 +9,6 @@ async function main() {
     console.error("No se encontró información para el pozo indicado.");
     return;
   }
-  console.log("Datos obtenidos:", data);
-
   await generarPDF(data, pozoId);
   console.log(`Informe generado en ./output/informe_pozo_${pozoId}.pdf`);
 }

@@ -56,13 +56,12 @@ export class IntervalosDiametrosEditPage {
       const id_pozo = this.id_pozo();
       const id_intervalo_diametro = this.id_intervalo_diametro();
       this.disabled.set(true);
-      const intervaloDiamEdit = await this.interevaloEditService.editIntervaloDiam(
+      await this.interevaloEditService.editIntervaloDiam(
         id_pozo,
         id_intervalo_diametro,
         intervalo
       );
 
-      console.log('Perforacion editada', intervaloDiamEdit);
       this.router.navigate([`/pozos/${id_pozo}/intervalos-diametros-list`]);
     } catch (err: any) {
       const toast = await this.toastController.create({

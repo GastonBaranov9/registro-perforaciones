@@ -40,7 +40,6 @@ export class SitiosCreatePage {
     try {
       this.disabled.set(true);
       const nuevositio = await this.sitiosCreateService.createSitio(this.idUsuario, sitio);
-      console.log('sitio creado: ', nuevositio);
       this.sitioReturn.sitioCreado.set(nuevositio);
       this.router.navigateByUrl(this.returnTo());
     } catch (err: any) {

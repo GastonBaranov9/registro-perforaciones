@@ -56,6 +56,11 @@ front/src/environments/environment.native.generated.ts
 front/src/index.native.generated.html
 *.jks
 *.keystore
+*.apk
+*.aab
+**/key.properties
+**/keystore.properties
+**/signing.properties
 
 # Certificados/llaves TLS locales o accidentales. La producción los monta fuera de Git.
 *.crt

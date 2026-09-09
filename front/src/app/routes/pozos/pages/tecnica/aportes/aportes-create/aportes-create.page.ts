@@ -31,11 +31,10 @@ public toastController = inject(ToastController)
     const id_pozo = this.id_pozo();
     try {
       this.disabled.set(true);
-      const nuevoNivelAporte = await this.aporteCreateService.createNivelAporte(
+      await this.aporteCreateService.createNivelAporte(
         id_pozo,
         body
       );
-      console.log('Nivel aporte creado: ', nuevoNivelAporte);
       this.router.navigate([`/pozos/${id_pozo}/aportes-list`]);
     } catch (err: any) {
             const toast = await this.toastController.create({
