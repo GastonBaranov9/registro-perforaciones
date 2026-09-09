@@ -29,8 +29,11 @@ assert.equal(result.status, 0, 'Angular production web build falló');
 const webArtifact = await artifactText(dist);
 assert.match(webArtifact, /\/api\//);
 assert.match(webArtifact, /\/ws/);
+assert.match(webArtifact, /ngsw-worker\.js/);
 assert.doesNotMatch(webArtifact, /NATIVE_BACKEND_ORIGIN|native-backend\.example/);
 assert.doesNotMatch(webArtifact, /capacitor:\/\/localhost/i);
+await access(join(dist, 'ngsw-worker.js'));
+await access(join(dist, 'ngsw.json'));
 
 for (const generated of [
   'src/environments/environment.native.generated.ts',

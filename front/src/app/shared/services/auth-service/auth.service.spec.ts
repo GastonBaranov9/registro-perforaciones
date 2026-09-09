@@ -74,7 +74,13 @@ describe('AuthService native', () => {
         { provide: CAPACITOR_APP, useValue: app },
         { provide: CAPACITOR_SECURE_STORAGE, useValue: secure },
         { provide: CAPACITOR_PREFERENCES, useValue: preferences },
-        { provide: NativeBackendConfigService, useValue: { origin: () => new URL('https://api.example.test') } },
+        {
+          provide: NativeBackendConfigService,
+          useValue: {
+            origin: () => new URL('https://api.example.test'),
+            nativeAuthUrl: (path: string) => new URL(path, 'https://api.example.test').toString(),
+          },
+        },
       ],
     });
     controller = TestBed.inject(HttpTestingController);
@@ -90,7 +96,7 @@ describe('AuthService native', () => {
   async function login(service: AuthService) {
     const promise = service.logged('user@example.test', 'password-secreto');
     await settle();
-    const request = controller.expectOne('/api/auth/native/login');
+    const request = controller.expectOne('https://api.example.test/api/auth/native/login');
     request.flush({
       token_type: 'Bearer', session_token: token, expires_at: expiration, user,
     });
@@ -124,11 +130,11 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const promise = service.logged('user@example.test', 'password-secreto');
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: token, expires_at: expiration, user,
     });
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await expectAsync(promise).toBeRejected();
     expect(service.state()).toBe('client-error');
     expect(secureRecord).toBeNull();
@@ -144,7 +150,7 @@ describe('AuthService native', () => {
 
     await expectAsync(service.logged('user@example.test', 'password-secreto')).toBeRejected();
 
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('client-error');
     expect(secure.set).not.toHaveBeenCalled();
   });
@@ -153,11 +159,11 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const promise = service.logged('user@example.test', 'password-secreto');
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: token, expires_at: 'fecha-inválida', user,
     });
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
 
     await expectAsync(promise).toBeRejected();
     expect(service.state()).toBe('client-error');
@@ -181,7 +187,7 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     service.bootstrap();
     flushMicrotasks();
-    controller.expectOne('/api/auth/native/session');
+    controller.expectOne('https://api.example.test/api/auth/native/session');
     tick(10_001);
     flushMicrotasks();
     expect(service.state()).toBe('offline-unverified');
@@ -193,7 +199,7 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    const request = controller.expectOne('/api/auth/native/session');
+    const request = controller.expectOne('https://api.example.test/api/auth/native/session');
     request.flush({ user, expires_at: expiration });
     await bootstrap;
     expect(service.state()).toBe('authenticated');
@@ -207,7 +213,7 @@ describe('AuthService native', () => {
     let service = TestBed.inject(AuthService);
     let bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' },
     );
     await bootstrap;
@@ -220,7 +226,7 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'NATIVE_APP_UPGRADE_REQUIRED' }, { status: 426, statusText: 'Upgrade Required' },
     );
     await bootstrap;
@@ -238,7 +244,13 @@ describe('AuthService native', () => {
           { provide: CAPACITOR_APP, useValue: app },
           { provide: CAPACITOR_SECURE_STORAGE, useValue: secure },
           { provide: CAPACITOR_PREFERENCES, useValue: preferences },
-          { provide: NativeBackendConfigService, useValue: { origin: () => new URL('https://api.example.test') } },
+          {
+            provide: NativeBackendConfigService,
+            useValue: {
+              origin: () => new URL('https://api.example.test'),
+              nativeAuthUrl: (path: string) => new URL(path, 'https://api.example.test').toString(),
+            },
+          },
         ],
       });
       controller = TestBed.inject(HttpTestingController);
@@ -246,7 +258,7 @@ describe('AuthService native', () => {
       const service = TestBed.inject(AuthService);
       const bootstrap = service.bootstrap();
       await settle();
-      controller.expectOne('/api/auth/native/session').flush(
+      controller.expectOne('https://api.example.test/api/auth/native/session').flush(
         { code: 'TEMPORARY' }, { status, statusText: status === 0 ? 'Network Error' : 'Unavailable' },
       );
       await bootstrap;
@@ -262,7 +274,7 @@ describe('AuthService native', () => {
     await service.bootstrap();
     expect(service.state()).toBe('unauthenticated');
     expect(secureRecord).toBeNull();
-    controller.expectNone('/api/auth/native/session');
+    controller.expectNone('https://api.example.test/api/auth/native/session');
   });
 
   it('logout 204 limpia y error de red persiste logout-pending para restart', async () => {
@@ -270,7 +282,7 @@ describe('AuthService native', () => {
     await login(service);
     let logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       { message: 'offline' }, { status: 0, statusText: 'Network Error' },
     );
     await logout;
@@ -280,7 +292,7 @@ describe('AuthService native', () => {
 
     logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await logout;
     expect(service.state()).toBe('unauthenticated');
     expect(secureRecord).toBeNull();
@@ -298,7 +310,7 @@ describe('AuthService native', () => {
 
     await expectAsync(service.logout()).toBeRejected();
 
-    controller.expectNone('/api/auth/native/logout');
+    controller.expectNone('https://api.example.test/api/auth/native/logout');
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(user.id_usuario);
     expect(secureRecord).toEqual({
@@ -315,7 +327,7 @@ describe('AuthService native', () => {
 
     const logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       null,
       { status: 204, statusText: 'No Content' },
     );
@@ -327,7 +339,7 @@ describe('AuthService native', () => {
 
     const restart = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'ERR4_T05' },
       { status: 401, statusText: 'Unauthorized' },
     );
@@ -342,8 +354,8 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectNone('/api/auth/native/session');
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectNone('https://api.example.test/api/auth/native/session');
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await bootstrap;
     expect(service.state()).toBe('unauthenticated');
   });
@@ -355,8 +367,8 @@ describe('AuthService native', () => {
     let completed = false;
     void service.bootstrap().then(() => { completed = true; });
     flushMicrotasks();
-    const blackholed = controller.expectOne('/api/auth/native/logout');
-    controller.expectNone('/api/auth/native/session');
+    const blackholed = controller.expectOne('https://api.example.test/api/auth/native/logout');
+    controller.expectNone('https://api.example.test/api/auth/native/session');
 
     tick(10_001);
     flushMicrotasks();
@@ -371,7 +383,7 @@ describe('AuthService native', () => {
 
     const retry = service.logout();
     flushMicrotasks();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       null,
       { status: 204, statusText: 'No Content' },
     );
@@ -387,7 +399,7 @@ describe('AuthService native', () => {
 
     const logoutAll = service.logoutAll();
     await settle();
-    controller.expectOne('/api/auth/native/logout-all').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout-all').flush(
       { code: 'ERR4_T05' },
       { status: 401, statusText: 'Unauthorized' },
     );
@@ -396,7 +408,7 @@ describe('AuthService native', () => {
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer',
       session_token: replacementToken,
       expires_at: expiration,
@@ -407,7 +419,7 @@ describe('AuthService native', () => {
 
     const logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       null,
       { status: 204, statusText: 'No Content' },
     );
@@ -424,7 +436,7 @@ describe('AuthService native', () => {
 
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush({ user, expires_at: expiration });
     await bootstrap;
     await settle();
 
@@ -446,7 +458,7 @@ describe('AuthService native', () => {
 
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush({ user, expires_at: expiration });
     await bootstrap;
     await settle();
 
@@ -461,7 +473,7 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     await service.bootstrap();
     expect(service.state()).toBe('unauthenticated');
-    controller.expectNone('/api/auth/native/session');
+    controller.expectNone('https://api.example.test/api/auth/native/session');
     expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
   });
 
@@ -470,14 +482,14 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush({ user, expires_at: expiration });
     await bootstrap;
 
     await service.handleAppStateChange(false, 1_000);
     const firstResume = service.handleAppStateChange(true, 301_001);
     const duplicateResume = service.handleAppStateChange(true, 301_002);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush({ user, expires_at: expiration });
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush({ user, expires_at: expiration });
     await Promise.all([firstResume, duplicateResume]);
     expect(service.state()).toBe('authenticated');
   });
@@ -488,7 +500,7 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'ERR4_T05' }, { status: 401, statusText: 'Unauthorized' },
     );
     await resume;
@@ -502,7 +514,7 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'NATIVE_APP_UPGRADE_REQUIRED' }, { status: 426, statusText: 'Upgrade Required' },
     );
     await resume;
@@ -517,7 +529,7 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await resume;
@@ -531,7 +543,7 @@ describe('AuthService native', () => {
     await login(service);
     const logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await logout;
@@ -539,8 +551,8 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectNone('/api/auth/native/session');
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectNone('https://api.example.test/api/auth/native/session');
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await resume;
     expect(service.state()).toBe('unauthenticated');
   });
@@ -560,16 +572,16 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await bootstrap;
     expect(service.state()).toBe('logout-pending');
     const login = service.logged('new@example.test', 'bad-password');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush(
       { code: 'INVALID_CREDENTIALS' }, { status: 401, statusText: 'Unauthorized' },
     );
     await expectAsync(login).toBeRejected();
@@ -585,15 +597,15 @@ describe('AuthService native', () => {
     const service = TestBed.inject(AuthService);
     const bootstrap = service.bootstrap();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await bootstrap;
     const login = service.logged('new@example.test', 'good-password');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user,
     });
     await login;
@@ -609,7 +621,7 @@ describe('AuthService native', () => {
     });
     const service = TestBed.inject(AuthService);
     await expectAsync(service.logged('user@example.test', 'password-secreto')).toBeRejected();
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('client-error');
   });
   it('probe fallido no promueve offline-unverified a authenticated', async () => {
@@ -618,7 +630,7 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await resume;
@@ -629,8 +641,8 @@ describe('AuthService native', () => {
       preferenceValues.set(key, value);
     });
     await expectAsync(service.logged('other@example.test', 'password')).toBeRejected();
-    controller.expectNone('/api/auth/native/logout');
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/logout');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('offline-unverified');
     expect(secureRecord).not.toBeNull();
   });
@@ -641,7 +653,7 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    controller.expectOne('/api/auth/native/session').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/session').flush(
       { code: 'NATIVE_APP_UPGRADE_REQUIRED' }, { status: 426, statusText: 'Upgrade Required' },
     );
     await resume;
@@ -652,8 +664,8 @@ describe('AuthService native', () => {
       preferenceValues.set(key, value);
     });
     await expectAsync(service.logged('other@example.test', 'password')).toBeRejected();
-    controller.expectNone('/api/auth/native/logout');
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/logout');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('upgrade-required');
     expect(secureRecord).not.toBeNull();
   });
@@ -669,7 +681,7 @@ describe('AuthService native', () => {
 
     const logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await logout;
 
     expect(service.state()).toBe('unauthenticated');
@@ -685,13 +697,13 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    const sessionRequest = controller.expectOne('/api/auth/native/session');
+    const sessionRequest = controller.expectOne('https://api.example.test/api/auth/native/session');
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
     await replacement;
@@ -710,13 +722,13 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    const sessionRequest = controller.expectOne('/api/auth/native/session');
+    const sessionRequest = controller.expectOne('https://api.example.test/api/auth/native/session');
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
     await replacement;
@@ -735,13 +747,13 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    const sessionRequest = controller.expectOne('/api/auth/native/session');
+    const sessionRequest = controller.expectOne('https://api.example.test/api/auth/native/session');
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
     await replacement;
@@ -759,11 +771,11 @@ describe('AuthService native', () => {
     await service.handleAppStateChange(false, 1_000);
     const resume = service.handleAppStateChange(true, 301_001);
     await settle();
-    const sessionRequest = controller.expectOne('/api/auth/native/session');
+    const sessionRequest = controller.expectOne('https://api.example.test/api/auth/native/session');
 
     const logout = service.logout();
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await logout;
     sessionRequest.flush({ user, expires_at: expiration });
     await resume;
@@ -779,10 +791,10 @@ describe('AuthService native', () => {
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectNone('/api/auth/native/login');
-    controller.expectOne('/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
+    controller.expectNone('https://api.example.test/api/auth/native/login');
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    controller.expectOne('/api/auth/native/login').flush({
+    controller.expectOne('https://api.example.test/api/auth/native/login').flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
     await replacement;
@@ -798,12 +810,12 @@ describe('AuthService native', () => {
 
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectOne('/api/auth/native/logout').flush(
+    controller.expectOne('https://api.example.test/api/auth/native/logout').flush(
       { code: 'OFFLINE' }, { status: 0, statusText: 'Network Error' },
     );
     await expectAsync(replacement).toBeRejected();
 
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('logout-pending');
     expect(secureRecord).toEqual({ token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
     expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
@@ -816,15 +828,15 @@ describe('AuthService native', () => {
 
     const logout = service.logout();
     await settle();
-    const logoutRequest = controller.expectOne('/api/auth/native/logout');
+    const logoutRequest = controller.expectOne('https://api.example.test/api/auth/native/logout');
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
 
     logoutRequest.flush(null, { status: 204, statusText: 'No Content' });
     await logout;
     await settle();
-    const loginRequest = controller.expectOne('/api/auth/native/login');
+    const loginRequest = controller.expectOne('https://api.example.test/api/auth/native/login');
     loginRequest.flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
@@ -845,12 +857,12 @@ describe('AuthService native', () => {
     await settle();
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    controller.expectNone('/api/auth/native/login');
+    controller.expectNone('https://api.example.test/api/auth/native/login');
 
     releaseStorage();
     await invalidation;
     await settle();
-    const loginRequest = controller.expectOne('/api/auth/native/login');
+    const loginRequest = controller.expectOne('https://api.example.test/api/auth/native/login');
     loginRequest.flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });
@@ -866,11 +878,11 @@ describe('AuthService native', () => {
     const oldGeneration = service.nativeRequestAuthSnapshot('/api/pozos')?.generation;
     const replacement = service.logged('other@example.test', 'password-nueva');
     await settle();
-    const logoutRequest = controller.expectOne('/api/auth/native/logout');
+    const logoutRequest = controller.expectOne('https://api.example.test/api/auth/native/logout');
     const invalidation = service.handleNative401(oldGeneration);
     logoutRequest.flush(null, { status: 204, statusText: 'No Content' });
     await settle();
-    const loginRequest = controller.expectOne('/api/auth/native/login');
+    const loginRequest = controller.expectOne('https://api.example.test/api/auth/native/login');
     loginRequest.flush({
       token_type: 'Bearer', session_token: replacementToken, expires_at: expiration, user: userB,
     });

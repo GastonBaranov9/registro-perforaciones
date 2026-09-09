@@ -26,7 +26,7 @@
         </ion-item>
       </ion-list>
       @if(!this.id_pozo){
-      <ion-content>Pozo No Encontrado</ion-content>
+      <p role="alert">Pozo No Encontrado</p>
       }@else{
       <ion-button (click)="irAEditar(nivelAporte)">Editar</ion-button>
       <ion-button color="danger" (click)="borrarNivelAporte(nivelAporte)"> Borrar </ion-button>

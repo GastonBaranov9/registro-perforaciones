@@ -16,7 +16,7 @@
   justify-content: center;
   align-items: center;
   /* si queda muy arriba o abajo, ajustá este min-height */
-  min-height: calc(100vh - 170px); /* resta el alto del header */
+  min-height: 100%;
 }
 
 /* Tarjeta principal más clara y transparente */

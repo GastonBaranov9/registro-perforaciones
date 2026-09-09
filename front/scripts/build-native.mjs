@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -7,6 +7,7 @@ import {
   deriveNativeWebsocketOrigin,
   validateNativeBackendOrigin,
 } from './native-backend-config.mjs';
+import { validateNativeStyleDelivery } from './native-style-contract.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const mode = process.argv[2];
@@ -67,7 +68,22 @@ try {
     { cwd: frontRoot, env: process.env, stdio: 'inherit' },
   );
   if (result.error) throw result.error;
-  if (result.status !== 0) process.exitCode = result.status ?? 1;
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+  } else {
+    const outputPath = join(frontRoot, 'dist', 'front', 'browser');
+    const outputIndex = await readFile(join(outputPath, 'index.html'), 'utf8');
+    const stylesheetNames = (await readdir(outputPath)).filter((name) =>
+      /^styles(?:-[^.]+)?\.css$/i.test(name),
+    );
+    const stylesheetCss = (
+      await Promise.all(
+        stylesheetNames.map((name) => readFile(join(outputPath, name), 'utf8')),
+      )
+    ).join('\n');
+    const contract = validateNativeStyleDelivery(outputIndex, stylesheetCss);
+    console.log(`Contrato CSS nativo validado: ${contract.stylesheetHref}`);
+  }
 } finally {
   await Promise.all([
     rm(environmentPath, { force: true }),

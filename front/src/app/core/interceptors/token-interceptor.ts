@@ -4,6 +4,7 @@ import { catchError, from, Observable, of, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   isWebApiRequest,
+  NATIVE_AUTH_PUBLIC_PATHS,
   NativeBackendConfigService,
 } from '../native/native-backend-config.service';
 import { NativeMetadataService } from '../native/native-metadata.service';
@@ -14,9 +15,6 @@ import {
   RuntimePlatformUnknownError,
 } from '../native/runtime-platform.service';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
-
-const NATIVE_LOGIN_PATH = '/api/auth/native/login';
-const NATIVE_LOGOUT_PATH = '/api/auth/native/logout';
 
 function requestPath(rawUrl: string): string {
   return new URL(rawUrl, globalThis.location?.href ?? 'https://localhost/').pathname;
@@ -70,19 +68,23 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
   const backend = inject(NativeBackendConfigService);
   if (platform === 'unknown') {
     const isOwnApi =
-      isWebApiRequest(req.url, environment.apiURL) || backend.isAuthorizedApiRequest(req.url);
+      isWebApiRequest(req.url, environment.apiURL) ||
+      backend.isAuthorizedApiRequest(req.url) ||
+      backend.isAuthorizedNativeAuthRequest(req.url);
     return isOwnApi
       ? throwError(() => new RuntimePlatformUnknownError())
       : next(req);
   }
-  if (!backend.isAuthorizedApiRequest(req.url)) return next(req);
+  if (!backend.isAuthorizedApiRequest(req.url) && !backend.isAuthorizedNativeAuthRequest(req.url)) {
+    return next(req);
+  }
 
   const auth = inject(AuthService);
   const metadata = inject(NativeMetadataService);
   const pathname = requestPath(req.url);
   const skipGlobalNativeAuthHandler = req.context.get(SKIP_GLOBAL_NATIVE_AUTH_HANDLER);
   const metadataFlight: Observable<NativeAppMetadata | null> =
-    pathname === NATIVE_LOGOUT_PATH ? of(null) : from(metadata.current());
+    pathname === NATIVE_AUTH_PUBLIC_PATHS.logout ? of(null) : from(metadata.current());
 
   return metadataFlight.pipe(
     switchMap((currentMetadata) => {
@@ -96,7 +98,7 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
 
       const authSnapshot = auth.nativeRequestAuthSnapshot(pathname);
       const token = authSnapshot?.token ?? null;
-      if (token && pathname !== NATIVE_LOGIN_PATH) {
+      if (token && pathname !== NATIVE_AUTH_PUBLIC_PATHS.login) {
         headers = headers.set('Authorization', `Bearer ${token}`);
       }
 
@@ -116,8 +118,8 @@ export const tokenInterceptor: HttpInterceptorFn = (req, next) => {
           if (
             error.status === 401 &&
             !skipGlobalNativeAuthHandler &&
-            pathname !== NATIVE_LOGIN_PATH &&
-            pathname !== NATIVE_LOGOUT_PATH
+            pathname !== NATIVE_AUTH_PUBLIC_PATHS.login &&
+            pathname !== NATIVE_AUTH_PUBLIC_PATHS.logout
           ) {
             return from(auth.handleNative401(authSnapshot?.generation)).pipe(
               switchMap(() => throwError(() => error)),

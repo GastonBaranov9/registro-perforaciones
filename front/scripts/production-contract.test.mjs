@@ -9,6 +9,30 @@ import {
 } from './native-backend-config.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
+const repositoryRoot = join(frontRoot, '..');
+
+test('auth native separa contrato publico /api de rutas internas Fastify', async () => {
+  const [clientConfig, productionProxy, developmentProxySource, fastifyRoutes] =
+    await Promise.all([
+      readFile(join(frontRoot, 'src/app/core/native/native-backend-config.service.ts'), 'utf8'),
+      readFile(join(repositoryRoot, 'proxy/https.conf.template'), 'utf8'),
+      readFile(join(frontRoot, 'proxy.conf.json'), 'utf8'),
+      readFile(join(repositoryRoot, 'api/src/routes/native-auth.ts'), 'utf8'),
+    ]);
+
+  const endpoints = ['login', 'session', 'logout', 'logout-all', 'ws-ticket'];
+  for (const endpoint of endpoints) {
+    assert.match(clientConfig, new RegExp(`/api/auth/native/${endpoint}`));
+    assert.match(fastifyRoutes, new RegExp(`["']/auth/native/${endpoint}["']`));
+  }
+
+  assert.match(
+    productionProxy,
+    /location \/api\/ \{[\s\S]*?proxy_pass http:\/\/api:3000\/;/,
+  );
+  const developmentProxy = JSON.parse(developmentProxySource);
+  assert.equal(developmentProxy['/api'].pathRewrite['^/api'], '');
+});
 
 test('mantiene builds web independientes y publica targets native explícitos', async () => {
   const packageJson = JSON.parse(await readFile(join(frontRoot, 'package.json'), 'utf8'));
@@ -35,6 +59,14 @@ test('Angular separa configuraciones web y native sin service worker remoto', as
   ]);
   for (const mode of ['native-development', 'native-production']) {
     const configuration = build.configurations[mode];
+    assert.deepEqual(configuration.optimization, {
+      scripts: true,
+      styles: {
+        minify: true,
+        inlineCritical: false,
+      },
+      fonts: true,
+    });
     assert.equal(configuration.serviceWorker, false);
     assert.equal(configuration.index.input, 'src/index.native.generated.html');
     assert.deepEqual(configuration.fileReplacements, [{
@@ -42,6 +74,14 @@ test('Angular separa configuraciones web y native sin service worker remoto', as
       with: 'src/environments/environment.native.generated.ts',
     }]);
   }
+
+  const main = await readFile(join(frontRoot, 'src/main.ts'), 'utf8');
+  assert.match(main, /bootstrapApplication\(App, appConfig\)/);
+  assert.doesNotMatch(main, /provideServiceWorker|ngsw-worker\.js|mergeApplicationConfig|isDevMode/);
+
+  const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
+  assert.match(appConfig, /provideServiceWorker\('ngsw-worker\.js'/);
+  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
 
 test('web conserva API/WebSocket same-origin y Capacitor carga assets locales', async () => {
@@ -67,11 +107,9 @@ test('build native exige origin, genera CSP local y siempre retira temporales', 
   assert.match(source, /finally/);
   assert.match(source, /rm\(environmentPath, \{ force: true \}\)/);
   assert.match(source, /deriveNativeWebsocketOrigin/);
+  assert.match(source, /validateNativeStyleDelivery/);
   assert.match(source, /connect-src 'self' \$\{origin\} \$\{websocketOrigin\}/);
   assert.doesNotMatch(source, /server\.url|allowNavigation/);
-
-  const appConfig = await readFile(join(frontRoot, 'src/app/app.config.ts'), 'utf8');
-  assert.match(appConfig, /enabled:\s*String\(environment\.nativeBuildMode\) === 'web' && !isDevMode\(\)/);
 });
 
 test('CSP native deriva HTTPS a WSS con el mismo host y puerto', () => {

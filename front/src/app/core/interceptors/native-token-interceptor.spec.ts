@@ -34,12 +34,8 @@ describe('tokenInterceptor native', () => {
     metadata = jasmine.createSpyObj<NativeMetadataService>('metadata', ['current']);
     metadata.current.and.resolveTo({ platform: 'android', appBuild: 120, appVersion: '1.4.2' });
 
-    const backend = {
-      isAuthorizedApiRequest: (rawUrl: string) => {
-        const url = new URL(rawUrl, 'https://localhost/');
-        return url.origin === backendOrigin && (url.pathname === '/api' || url.pathname.startsWith('/api/'));
-      },
-    };
+    const backend = new NativeBackendConfigService();
+    (backend as unknown as { parsed: URL }).parsed = new URL(backendOrigin);
 
     TestBed.configureTestingModule({
       providers: [
@@ -75,6 +71,9 @@ describe('tokenInterceptor native', () => {
       'https://backend.example:8443/api/pozos',
       'https://backend.example.evil.com/api/pozos',
       'https://sub.backend.example/api/pozos',
+      'https://backend.example/auth/native/session',
+      'https://backend.example/api-evil/auth/native/session',
+      'https://backend.example/api/auth/native/session/extra',
       'https://maps.googleapis.com/maps/api/staticmap',
       'blob:https://localhost/id',
       'data:image/png;base64,AAAA',

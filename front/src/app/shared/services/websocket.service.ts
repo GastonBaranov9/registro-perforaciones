@@ -3,13 +3,16 @@ import { inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { Subscription, timeout } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
-import { NativeBackendConfigService } from '../../core/native/native-backend-config.service';
+import {
+  NATIVE_AUTH_PUBLIC_PATHS,
+  NativeBackendConfigService,
+} from '../../core/native/native-backend-config.service';
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 10_000] as const;
 const SLOW_RECONNECT_DELAY_MS = 30_000;
 const WEBSOCKET_CONNECTING = 0;
 const WEBSOCKET_OPEN = 1;
-const NATIVE_WS_TICKET = 'auth/native/ws-ticket';
+const NATIVE_WS_TICKET = NATIVE_AUTH_PUBLIC_PATHS.wsTicket;
 const NATIVE_WS_TICKET_TIMEOUT_MS = 10_000;
 const NATIVE_TICKET_PATTERN = /^rspw1_[A-Za-z0-9_-]{43}$/;
 
@@ -54,7 +57,7 @@ export class WebsocketService implements OnDestroy {
     if (this.ws && (this.ws.readyState === WEBSOCKET_CONNECTING || this.ws.readyState === WEBSOCKET_OPEN)) return;
     let nativeGeneration: number | undefined;
     if (this.authService.isNative()) {
-      const authSnapshot = this.authService.nativeRequestAuthSnapshot(`/api/${NATIVE_WS_TICKET}`);
+      const authSnapshot = this.authService.nativeRequestAuthSnapshot(NATIVE_WS_TICKET);
       if (!authSnapshot) return;
       nativeGeneration = authSnapshot.generation;
       if (this.replacedNativeGeneration !== undefined) {
@@ -89,7 +92,7 @@ export class WebsocketService implements OnDestroy {
     let generation: number | undefined;
     try {
       if (this.authService.isNative()) {
-        const authSnapshot = this.authService.nativeRequestAuthSnapshot(`/api/${NATIVE_WS_TICKET}`);
+        const authSnapshot = this.authService.nativeRequestAuthSnapshot(NATIVE_WS_TICKET);
         if (!authSnapshot || this.authService.state() !== 'authenticated') return;
         // The native Bearer remains inside the HttpClient interceptor. This
         // service only retains the generation needed to reject stale replies.
@@ -233,7 +236,7 @@ export class WebsocketService implements OnDestroy {
       };
       this.nativeTicketRequest = request;
       subscription = this.httpClient.post<{ ticket: string }>(
-        environment.apiURL + NATIVE_WS_TICKET,
+        this.backendConfig.nativeAuthUrl(NATIVE_WS_TICKET),
         null,
       ).pipe(timeout({ each: NATIVE_WS_TICKET_TIMEOUT_MS })).subscribe({
         next: (response) => finish(() => resolve(response)),
@@ -284,7 +287,7 @@ export class WebsocketService implements OnDestroy {
 
   private generationIsCurrent(generation: number): boolean {
     try {
-      return this.authService.nativeRequestAuthSnapshot(`/api/${NATIVE_WS_TICKET}`)?.generation === generation;
+      return this.authService.nativeRequestAuthSnapshot(NATIVE_WS_TICKET)?.generation === generation;
     } catch {
       return false;
     }
