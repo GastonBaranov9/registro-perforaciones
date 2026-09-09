@@ -23,10 +23,10 @@ import {
 import { MainStore } from '../mainstore-service/main.store';
 import { Rol, UsuarioPublico } from '../../types/schemas';
 
-const NATIVE_LOGIN = 'auth/native/login';
-const NATIVE_SESSION = 'auth/native/session';
-const NATIVE_LOGOUT = 'auth/native/logout';
-const NATIVE_LOGOUT_ALL = 'auth/native/logout-all';
+const NATIVE_LOGIN = '/auth/native/login';
+const NATIVE_SESSION = '/auth/native/session';
+const NATIVE_LOGOUT = '/auth/native/logout';
+const NATIVE_LOGOUT_ALL = '/auth/native/logout-all';
 const RESUME_REVALIDATION_MS = 5 * 60 * 1_000;
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
@@ -173,7 +173,7 @@ export class AuthService {
       if (!this.nativeToken) return this.finishLocalLogout();
       try {
         await firstValueFrom(
-          this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT_ALL, null, {
+          this.httpClient.post<void>(this.nativeAuthUrl(NATIVE_LOGOUT_ALL), null, {
             context: nativeAuthMutationContext(),
           }),
         );
@@ -242,12 +242,12 @@ export class AuthService {
 
   nativeRequestAuthSnapshot(pathname: string): { token: string; generation: number } | null {
     if (!this.nativeToken) return null;
-    if (pathname === `/api/${NATIVE_LOGIN}`) return null;
-    if (pathname === `/api/${NATIVE_LOGOUT}`) return { token: this.nativeToken, generation: this.nativeAuthGeneration };
-    if (pathname === `/api/${NATIVE_SESSION}`) {
+    if (pathname === NATIVE_LOGIN) return null;
+    if (pathname === NATIVE_LOGOUT) return { token: this.nativeToken, generation: this.nativeAuthGeneration };
+    if (pathname === NATIVE_SESSION) {
       return this.state() === 'logout-pending' ? null : { token: this.nativeToken, generation: this.nativeAuthGeneration };
     }
-    if (pathname === `/api/${NATIVE_LOGOUT_ALL}`) {
+    if (pathname === NATIVE_LOGOUT_ALL) {
       return this.state() === 'logout-pending' ? null : { token: this.nativeToken, generation: this.nativeAuthGeneration };
     }
     if (this.state() !== 'authenticated') throw new NativeBusinessRequestBlockedError();
@@ -459,7 +459,7 @@ export class AuthService {
       await this.pendingStorage.clear();
 
       const response = await firstValueFrom(
-        this.httpClient.post<NativeLoginResponse>(environment.apiURL + NATIVE_LOGIN, {
+        this.httpClient.post<NativeLoginResponse>(this.nativeAuthUrl(NATIVE_LOGIN), {
           email,
           password,
           installation_id: this.installationId,
@@ -542,14 +542,14 @@ export class AuthService {
       this.state.set('unauthenticated');
       return;
     }
-    const authSnapshot = this.nativeRequestAuthSnapshot(`/api/${NATIVE_SESSION}`);
+    const authSnapshot = this.nativeRequestAuthSnapshot(NATIVE_SESSION);
     if (!authSnapshot) return;
     this.state.set('initializing');
     this.mainStore.clearSession();
     try {
       const response = await firstValueFrom(
         this.httpClient
-          .get<NativeSessionResponse>(environment.apiURL + NATIVE_SESSION)
+          .get<NativeSessionResponse>(this.nativeAuthUrl(NATIVE_SESSION))
           .pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
       );
       if (authSnapshot.generation !== this.nativeAuthGeneration) return;
@@ -612,7 +612,7 @@ export class AuthService {
 
     try {
       await firstValueFrom(
-        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+        this.httpClient.post<void>(this.nativeAuthUrl(NATIVE_LOGOUT), null, {
           context: nativeAuthMutationContext(),
         }),
       );
@@ -651,7 +651,7 @@ export class AuthService {
     try {
       await firstValueFrom(
         this.httpClient
-          .post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+          .post<void>(this.nativeAuthUrl(NATIVE_LOGOUT), null, {
             context: nativeAuthMutationContext(),
           })
           .pipe(timeout({ each: SESSION_BOOTSTRAP_TIMEOUT_MS })),
@@ -676,12 +676,16 @@ export class AuthService {
     try { await this.pendingStorage.clear(); } catch { /* marker huérfano no autentica */ }
   }
 
+  private nativeAuthUrl(path: string): string {
+    return this.backendConfig.nativeAuthUrl(path);
+  }
+
   private async revokeUncommittedToken(token: string): Promise<void> {
     const previousToken = this.nativeToken;
     this.nativeToken = token;
     try {
       await firstValueFrom(
-        this.httpClient.post<void>(environment.apiURL + NATIVE_LOGOUT, null, {
+        this.httpClient.post<void>(this.nativeAuthUrl(NATIVE_LOGOUT), null, {
           context: nativeAuthMutationContext(),
         }),
       );

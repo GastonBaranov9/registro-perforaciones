@@ -18,7 +18,7 @@ describe('tokenInterceptor runtime unknown', () => {
         provideHttpClient(withInterceptors([tokenInterceptor])),
         provideHttpClientTesting(),
         { provide: RuntimePlatformService, useValue: { platform: () => 'unknown' } },
-        { provide: NativeBackendConfigService, useValue: { isAuthorizedApiRequest: (url: string) => { const parsed = new URL(url); return parsed.origin === 'https://backend.example.test' && parsed.pathname.startsWith('/api/'); }, origin: () => new URL('https://backend.example.test') } },
+        { provide: NativeBackendConfigService, useValue: { isAuthorizedApiRequest: (url: string) => { const parsed = new URL(url); return parsed.origin === 'https://backend.example.test' && parsed.pathname.startsWith('/api/'); }, isAuthorizedNativeAuthRequest: (url: string) => { const parsed = new URL(url); return parsed.origin === 'https://backend.example.test' && parsed.pathname.startsWith('/auth/native/'); }, origin: () => new URL('https://backend.example.test') } },
         { provide: NativeMetadataService, useValue: { current: jasmine.createSpy('current') } },
         { provide: AuthService, useValue: { nativeAuthorizationFor: jasmine.createSpy('nativeAuthorizationFor') } },
       ],

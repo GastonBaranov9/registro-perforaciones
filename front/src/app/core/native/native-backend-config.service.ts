@@ -81,6 +81,21 @@ export class NativeBackendConfigService {
       (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))
     );
   }
+
+  isAuthorizedNativeAuthRequest(rawUrl: string): boolean {
+    let requestUrl: URL;
+    try {
+      requestUrl = new URL(rawUrl, globalThis.location?.href ?? 'https://localhost/');
+    } catch {
+      return false;
+    }
+
+    return requestUrl.origin === this.origin().origin && requestUrl.pathname.startsWith('/auth/native/');
+  }
+
+  nativeAuthUrl(path: string): string {
+    return new URL(path.startsWith('/') ? path : `/${path}`, this.origin()).toString();
+  }
 }
 
 export function isWebApiRequest(rawUrl: string, apiUrl: string): boolean {

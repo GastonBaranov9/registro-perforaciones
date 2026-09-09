@@ -1,4 +1,8 @@
-import { isWebApiRequest, validateNativeBackendOrigin } from './native-backend-config.service';
+import {
+  isWebApiRequest,
+  NativeBackendConfigService,
+  validateNativeBackendOrigin,
+} from './native-backend-config.service';
 
 describe('configuración del backend native', () => {
   it('acepta un origin HTTPS exacto y rechaza paths/HTTP', () => {
@@ -18,5 +22,15 @@ describe('configuración del backend native', () => {
     expect(isWebApiRequest('/api/pozos', '/api/')).toBeTrue();
     expect(isWebApiRequest('https://example.evil/api/pozos', '/api/')).toBeFalse();
     expect(isWebApiRequest('/api-evil/pozos', '/api/')).toBeFalse();
+  });
+
+  it('separa las rutas auth native del prefijo de APIs normales', () => {
+    const configured = new NativeBackendConfigService();
+    (configured as unknown as { parsed: URL }).parsed = new URL('https://api.example.test');
+    expect(configured.nativeAuthUrl('/auth/native/login')).toBe('https://api.example.test/auth/native/login');
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/auth/native/session')).toBeTrue();
+    expect(configured.isAuthorizedNativeAuthRequest('https://api.example.test/api/pozos')).toBeFalse();
+    expect(configured.isAuthorizedApiRequest('https://api.example.test/api/pozos')).toBeTrue();
+    expect(configured.isAuthorizedApiRequest('https://api.example.test/auth/native/login')).toBeFalse();
   });
 });

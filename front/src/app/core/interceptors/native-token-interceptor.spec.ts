@@ -23,10 +23,10 @@ describe('tokenInterceptor native', () => {
       'nativeAuthorizationFor', 'nativeRequestAuthSnapshot', 'handleNative401', 'handleNative426',
     ]);
     auth.nativeAuthorizationFor.and.callFake((pathname) =>
-      pathname === '/api/auth/native/login' ? null : token,
+      pathname === '/auth/native/login' ? null : token,
     );
     auth.nativeRequestAuthSnapshot.and.callFake((pathname) =>
-      pathname === '/api/auth/native/login' ? null : { token, generation: 1 },
+      pathname === '/auth/native/login' ? null : { token, generation: 1 },
     );
     auth.handleNative401.and.resolveTo();
     auth.handleNative426.and.resolveTo();
@@ -38,6 +38,10 @@ describe('tokenInterceptor native', () => {
       isAuthorizedApiRequest: (rawUrl: string) => {
         const url = new URL(rawUrl, 'https://localhost/');
         return url.origin === backendOrigin && (url.pathname === '/api' || url.pathname.startsWith('/api/'));
+      },
+      isAuthorizedNativeAuthRequest: (rawUrl: string) => {
+        const url = new URL(rawUrl, 'https://localhost/');
+        return url.origin === backendOrigin && url.pathname.startsWith('/auth/native/');
       },
     };
 
@@ -90,7 +94,7 @@ describe('tokenInterceptor native', () => {
   });
 
   it('login no hereda un Bearer anterior pero sí envía metadata', async () => {
-    const url = `${backendOrigin}/api/auth/native/login`;
+    const url = `${backendOrigin}/auth/native/login`;
     http.post(url, { email: 'a@b.test', password: 'secreto', installation_id: 'uuid' }).subscribe();
     await Promise.resolve();
     const request = controller.expectOne(url);
@@ -100,7 +104,7 @@ describe('tokenInterceptor native', () => {
   });
 
   it('logout-device adjunta sólo Bearer, sin metadata', () => {
-    const url = `${backendOrigin}/api/auth/native/logout`;
+    const url = `${backendOrigin}/auth/native/logout`;
     http.post(url, null).subscribe();
     const request = controller.expectOne(url);
     expect(request.request.headers.get('Authorization')).toBe(`Bearer ${token}`);
@@ -152,7 +156,7 @@ describe('tokenInterceptor native', () => {
   it('ignora un 401 cuya generación quedó obsoleta tras cambiar de token', async () => {
     let generation = 1;
     auth.nativeRequestAuthSnapshot.and.callFake((pathname) =>
-      pathname === '/api/auth/native/login' ? null : { token, generation },
+      pathname === '/auth/native/login' ? null : { token, generation },
     );
     const requestPromise = new Promise<void>((resolve) => {
       http.get(`${backendOrigin}/api/pozos`).subscribe({ error: () => resolve() });
@@ -166,7 +170,7 @@ describe('tokenInterceptor native', () => {
   });
 
   it('omite el handler global en mutaciones auth ya coordinadas por el lock', async () => {
-    const logoutAll = `${backendOrigin}/api/auth/native/logout-all`;
+    const logoutAll = `${backendOrigin}/auth/native/logout-all`;
     http.post(logoutAll, null, {
       context: new HttpContext().set(SKIP_GLOBAL_NATIVE_AUTH_HANDLER, true),
     }).subscribe({ error: () => undefined });
