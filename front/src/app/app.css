@@ -17,6 +17,28 @@ ion-button {
   text-align: center;
   margin: 1;
 }
+
+#main-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* The routed pages provide their own ion-content. Keep the outlet in a
+ * regular flex region so it occupies the space below the header. */
+.app-router {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.app-router ion-router-outlet {
+  width: 100%;
+  height: 100%;
+}
+
 ion-item {
   background: #f2f2f2;
   font-family: Verdana, Geneva, Tahoma, sans-serif;
@@ -52,4 +74,3 @@ ion-button {
   font-size: 0.9rem;
   color: #3b82f6;
 }
-
