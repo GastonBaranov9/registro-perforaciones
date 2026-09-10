@@ -28,37 +28,141 @@ function stringResource(source, name) {
     .replaceAll('&quot;', '"').replaceAll('&apos;', "'");
 }
 
-function namedBlock(source, name) {
-  const opening = new RegExp(`\\b${name}\\s*\\{`, 'g').exec(source);
-  if (!opening) return null;
-  const start = source.indexOf('{', opening.index);
-  let depth = 0;
+export function stripGradleComments(source) {
+  let result = '';
+  let index = 0;
   let quote = null;
-  let lineComment = false;
-  let blockComment = false;
-  for (let index = start; index < source.length; index += 1) {
+  let quoteLength = 0;
+
+  while (index < source.length) {
     const char = source[index];
     const next = source[index + 1];
-    if (lineComment) {
-      if (char === '\n') lineComment = false;
-      continue;
-    }
-    if (blockComment) {
-      if (char === '*' && next === '/') { blockComment = false; index += 1; }
-      continue;
-    }
+
     if (quote) {
-      if (char === '\\') { index += 1; continue; }
-      if (char === quote) quote = null;
+      const delimiter = quote.repeat(quoteLength);
+      if (source.startsWith(delimiter, index)) {
+        result += delimiter;
+        index += quoteLength;
+        quote = null;
+        quoteLength = 0;
+        continue;
+      }
+      if (quoteLength === 1 && char === '\\' && index + 1 < source.length) {
+        result += source.slice(index, index + 2);
+        index += 2;
+        continue;
+      }
+      result += char;
+      index += 1;
       continue;
     }
-    if (char === '/' && next === '/') { lineComment = true; index += 1; continue; }
-    if (char === '/' && next === '*') { blockComment = true; index += 1; continue; }
-    if (char === '"' || char === "'") { quote = char; continue; }
-    if (char === '{') depth += 1;
-    if (char === '}' && --depth === 0) return source.slice(start + 1, index);
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      quoteLength = source.startsWith(char.repeat(3), index) ? 3 : 1;
+      result += char.repeat(quoteLength);
+      index += quoteLength;
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      result += '  ';
+      index += 2;
+      while (index < source.length && source[index] !== '\r' && source[index] !== '\n') {
+        result += ' ';
+        index += 1;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      result += '  ';
+      index += 2;
+      while (index < source.length) {
+        if (source[index] === '*' && source[index + 1] === '/') {
+          result += '  ';
+          index += 2;
+          break;
+        }
+        result += source[index] === '\r' || source[index] === '\n' ? source[index] : ' ';
+        index += 1;
+      }
+      continue;
+    }
+
+    result += char;
+    index += 1;
   }
-  return null;
+
+  return result;
+}
+
+function gradleBlockEnd(source, start) {
+  let depth = 0;
+  let quote = null;
+  let quoteLength = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      const delimiter = quote.repeat(quoteLength);
+      if (source.startsWith(delimiter, index)) {
+        index += quoteLength - 1;
+        quote = null;
+        quoteLength = 0;
+      } else if (quoteLength === 1 && char === '\\') {
+        index += 1;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      quoteLength = source.startsWith(char.repeat(3), index) ? 3 : 1;
+      index += quoteLength - 1;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}' && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function namedBlocks(source, name) {
+  const blocks = [];
+  let quote = null;
+  let quoteLength = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      const delimiter = quote.repeat(quoteLength);
+      if (source.startsWith(delimiter, index)) {
+        index += quoteLength - 1;
+        quote = null;
+        quoteLength = 0;
+      } else if (quoteLength === 1 && char === '\\') {
+        index += 1;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      quoteLength = source.startsWith(char.repeat(3), index) ? 3 : 1;
+      index += quoteLength - 1;
+      continue;
+    }
+    if (!source.startsWith(name, index)) continue;
+    const previous = source[index - 1];
+    const afterName = source[index + name.length];
+    if ((previous && /[A-Za-z0-9_$]/.test(previous)) ||
+        (afterName && /[A-Za-z0-9_$]/.test(afterName))) continue;
+    let opening = index + name.length;
+    while (/\s/.test(source[opening] ?? '')) opening += 1;
+    if (source[opening] !== '{') continue;
+    const end = gradleBlockEnd(source, opening);
+    if (end === -1) return blocks;
+    blocks.push(source.slice(opening + 1, end));
+    index = end;
+  }
+  return blocks;
 }
 
 export async function discoverMainActivities(javaRoot) {
@@ -135,8 +239,67 @@ export function evaluateVersion(appBuild) {
   return entry(READINESS_STATUS.ready, 'release version', `versionCode=${parsedCode}; versionName=${versionName}`);
 }
 
-function signingAssignment(source, name) {
-  return new RegExp(`\\b${name}\\s*(?:=\\s*)?([^\\r\\n;]+)`).exec(source)?.[1]?.trim();
+function gradleStatements(source) {
+  const statements = [];
+  let current = '';
+  let quote = null;
+  let quoteLength = 0;
+  let parentheses = 0;
+  let brackets = 0;
+
+  const finishStatement = () => {
+    if (current.trim()) statements.push(current.trim());
+    current = '';
+  };
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      const delimiter = quote.repeat(quoteLength);
+      if (source.startsWith(delimiter, index)) {
+        current += delimiter;
+        index += quoteLength - 1;
+        quote = null;
+        quoteLength = 0;
+      } else if (quoteLength === 1 && char === '\\' && index + 1 < source.length) {
+        current += source.slice(index, index + 2);
+        index += 1;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      quoteLength = source.startsWith(char.repeat(3), index) ? 3 : 1;
+      current += char.repeat(quoteLength);
+      index += quoteLength - 1;
+      continue;
+    }
+
+    if (char === '(') parentheses += 1;
+    else if (char === ')') parentheses = Math.max(0, parentheses - 1);
+    else if (char === '[') brackets += 1;
+    else if (char === ']') brackets = Math.max(0, brackets - 1);
+
+    if ((char === ';' || char === '\r' || char === '\n' || char === '{' || char === '}') &&
+        parentheses === 0 && brackets === 0) {
+      finishStatement();
+      if (char === '\r' && source[index + 1] === '\n') index += 1;
+      continue;
+    }
+    current += char;
+  }
+  finishStatement();
+  return statements;
+}
+
+function signingAssignments(source, name) {
+  const directive = new RegExp(`^${name}\\b\\s*(?:=\\s*)?([\\s\\S]+)$`);
+  return gradleStatements(source)
+    .map((statement) => directive.exec(statement)?.[1]?.trim())
+    .filter((value) => value !== undefined);
 }
 
 function safeExternalValue(value, field) {
@@ -152,25 +315,58 @@ function safeExternalValue(value, field) {
 }
 
 export function evaluateReleaseSigning(appBuild) {
-  const signingConfigs = namedBlock(appBuild, 'signingConfigs');
-  const releaseSigning = signingConfigs && namedBlock(signingConfigs, 'release');
-  const buildTypes = namedBlock(appBuild, 'buildTypes');
-  const releaseBuild = buildTypes && namedBlock(buildTypes, 'release');
-  if (!releaseSigning) {
-    return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'no existe signingConfigs.release');
+  const effectiveSource = stripGradleComments(appBuild);
+  const signingConfigs = namedBlocks(effectiveSource, 'signingConfigs');
+  if (signingConfigs.length !== 1) {
+    const detail = signingConfigs.length === 0
+      ? 'no existe signingConfigs.release'
+      : 'existen bloques signingConfigs duplicados o ambiguos';
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
   }
-  if (/\bsigningConfig\s*(?:=\s*)?signingConfigs\.debug\b/.test(releaseBuild ?? '')) {
-    return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'release usa signingConfigs.debug');
+  const releaseSigning = namedBlocks(signingConfigs[0], 'release');
+  if (releaseSigning.length !== 1) {
+    const detail = releaseSigning.length === 0
+      ? 'no existe signingConfigs.release'
+      : 'existen bloques signingConfigs.release duplicados o ambiguos';
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
   }
-  if (!releaseBuild || !/\bsigningConfig\s*(?:=\s*)?signingConfigs\.release\b/.test(releaseBuild)) {
+
+  const buildTypes = namedBlocks(effectiveSource, 'buildTypes');
+  if (buildTypes.length !== 1) {
+    const detail = buildTypes.length === 0
+      ? 'no existe buildTypes.release'
+      : 'existen bloques buildTypes duplicados o ambiguos';
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
+  }
+  const releaseBuild = namedBlocks(buildTypes[0], 'release');
+  if (releaseBuild.length !== 1) {
+    const detail = releaseBuild.length === 0
+      ? 'no existe buildTypes.release'
+      : 'existen bloques buildTypes.release duplicados o ambiguos';
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
+  }
+  const signingConfigAssignments = signingAssignments(releaseBuild[0], 'signingConfig');
+  if (signingConfigAssignments.length === 0) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release no usa signingConfigs.release');
   }
-  const values = Object.fromEntries(['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
-    .map((name) => [name, signingAssignment(releaseSigning, name)]));
-  const missing = Object.entries(values).filter(([, value]) => !value).map(([name]) => name);
+  if (signingConfigAssignments.length > 1) {
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release tiene asignaciones signingConfig duplicadas');
+  }
+  if (signingConfigAssignments[0] !== 'signingConfigs.release') {
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release no apunta exclusivamente a signingConfigs.release');
+  }
+
+  const assignments = Object.fromEntries(['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+    .map((name) => [name, signingAssignments(releaseSigning[0], name)]));
+  const missing = Object.entries(assignments).filter(([, values]) => values.length === 0).map(([name]) => name);
   if (missing.length) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', `faltan campos: ${missing.join(', ')}`);
   }
+  const duplicated = Object.entries(assignments).filter(([, values]) => values.length > 1).map(([name]) => name);
+  if (duplicated.length) {
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', `asignaciones duplicadas: ${duplicated.join(', ')}`);
+  }
+  const values = Object.fromEntries(Object.entries(assignments).map(([name, matches]) => [name, matches[0]]));
   const unsafe = Object.entries(values).filter(([name, value]) => !safeExternalValue(value, name)).map(([name]) => name);
   if (unsafe.length) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', `campos no externalizados o potencialmente hardcodeados: ${unsafe.join(', ')}`);

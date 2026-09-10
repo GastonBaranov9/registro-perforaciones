@@ -6,6 +6,7 @@ import {
   evaluateReleaseSigning,
   evaluateVersion,
   READINESS_STATUS,
+  stripGradleComments,
 } from './native-release-readiness.mjs';
 
 function identityFixture(appId = 'uy.com.empresa.perforaciones', appName = 'Perforaciones') {
@@ -134,6 +135,76 @@ test('signing distingue unsigned, debug, secretos hardcodeados y providers segur
   );
 });
 
+test('signing considera sólo directivas efectivas y preserva marcadores dentro de strings', () => {
+  const commentedLink = appBuildFixture().replace(
+    'signingConfig signingConfigs.release',
+    '// signingConfig signingConfigs.release',
+  );
+  assert.equal(evaluateReleaseSigning(commentedLink).status, READINESS_STATUS.technicalBlocker);
+
+  const blockCommentedLink = appBuildFixture().replace(
+    'signingConfig signingConfigs.release',
+    '/*\n        signingConfig signingConfigs.release\n        */',
+  );
+  assert.equal(evaluateReleaseSigning(blockCommentedLink).status, READINESS_STATUS.technicalBlocker);
+
+  const commentedSafeThenHardcoded = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    '// storePassword providers.environmentVariable("SAFE").get()\n      storePassword "hardcoded-secret"',
+  );
+  assert.equal(
+    evaluateReleaseSigning(commentedSafeThenHardcoded).status,
+    READINESS_STATUS.technicalBlocker,
+  );
+
+  const commentedHardcodedThenSafe = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    '// storePassword "hardcoded"\n      storePassword providers.environmentVariable("SAFE").get()',
+  );
+  assert.equal(evaluateReleaseSigning(commentedHardcodedThenSafe).status, READINESS_STATUS.ready);
+
+  const urlInsideString = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'def endpoint = "https://example.com/a//b"; storePassword providers.environmentVariable("SAFE").get()',
+  );
+  assert.equal(evaluateReleaseSigning(urlInsideString).status, READINESS_STATUS.ready);
+  assert.match(stripGradleComments('def endpoint = "https://example.com/a//b" // quitar'), /https:\/\/example\.com\/a\/\/b/);
+  const escapedString = String.raw`def endpoint = "https://example.com/a//b/\"quoted\"" // quitar`;
+  const normalizedEscapedString = stripGradleComments(escapedString);
+  assert.ok(normalizedEscapedString.includes(String.raw`"https://example.com/a//b/\"quoted\""`));
+  assert.doesNotMatch(normalizedEscapedString, /quitar/);
+});
+
+test('signing bloquea campos efectivos duplicados sin decidir precedencia Groovy', () => {
+  const safeThenHardcoded = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'storePassword providers.environmentVariable("SAFE").get()\n      storePassword "hardcoded-secret"',
+  );
+  const hardcodedThenSafe = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'storePassword "hardcoded-secret"\n      storePassword providers.environmentVariable("SAFE").get()',
+  );
+  const conditionalDuplicate = appBuildFixture().replace(
+    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'storePassword providers.environmentVariable("SAFE").get()\n      if (true) { storePassword "hardcoded-secret" }',
+  );
+  for (const appBuild of [safeThenHardcoded, hardcodedThenSafe, conditionalDuplicate]) {
+    const result = evaluateReleaseSigning(appBuild);
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+    assert.match(result.detail, /asignaciones duplicadas: storePassword/);
+  }
+});
+
+test('signing bloquea enlaces efectivos duplicados en buildTypes.release', () => {
+  const duplicateLink = appBuildFixture().replace(
+    'signingConfig signingConfigs.release',
+    'signingConfig signingConfigs.release\n        signingConfig signingConfigs.release',
+  );
+  const result = evaluateReleaseSigning(duplicateLink);
+  assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+  assert.match(result.detail, /signingConfig duplicadas/);
+});
+
 test('signing rechaza una Map hardcodeada aunque nombres comunes estén protegidos por gitignore', () => {
   const hardcodedMapSigning = `
   def keystoreProperties = [
@@ -170,7 +241,7 @@ test('preflight actual bloquea y una configuración futura estructuralmente vál
   const ready = evaluateNativeReleaseReadiness({
     ...finalIdentity,
     appBuild: appBuildFixture(),
-    origin: 'https://api.perforaciones.invalid',
+    origin: 'https://api.release-readiness.uy',
   });
   assert.equal(ready.blocked, false);
   assert.equal(ready.exitCode, 0);

@@ -172,7 +172,7 @@ Angular/Capacitor público  /api/auth/native/*
 - WebSocket pide un ticket por HTTP autenticado y abre WSS con ese ticket; nunca lleva el Bearer.
 - Logs del API redactan authorization, cookies, passwords, tokens y tickets incluso anidados/query.
 
-`NATIVE_BACKEND_ORIGIN` acepta exclusivamente un origin HTTPS exacto, sin slash final, path, query, fragment, credenciales ni whitespace. Production rechaza localhost, IP literal y marcadores dev/stage/staging/test. El build deriva un único origin WSS con mismo host/puerto.
+`NATIVE_BACKEND_ORIGIN` acepta exclusivamente un origin HTTPS exacto, sin slash final, path, query, fragment, credenciales ni whitespace. Production rechaza localhost, IP literal, marcadores dev/stage/staging/test, los namespaces reservados `.invalid`, `.example`, `.test` y `.localhost`, y los dominios documentales `example.com`, `example.net` y `example.org` con sus subdominios. Development conserva su comportamiento para fixtures locales. El build deriva un único origin WSS con mismo host/puerto.
 
 El artifact native development fue inspeccionado:
 
@@ -251,6 +251,8 @@ Procedimiento futuro, después de decisiones humanas:
 
 El preflight no acepta accesos indirectos como `keystoreProperties[...]`, `signingProperties[...]` o `localProperties[...]`, aunque existan nombres habituales en `.gitignore`: el nombre de la variable y las reglas de ignore no prueban de qué archivo o literal se cargó. Soportar esos patrones requeriría demostrar su procedencia sin interpretar Groovy de forma frágil.
 
+Antes de evaluar signing se eliminan comentarios de línea y bloque mediante un scanner que conserva strings y escapes. Cada campo y el enlace `buildTypes.release.signingConfig` deben tener exactamente una asignación efectiva; cero asignaciones bloquea por ausencia y dos o más bloquean por ambigüedad, sin intentar reproducir precedencia Groovy.
+
 ## Identidad: lugares a cambiar juntos
 
 Cuando exista `applicationId` definitivo deben actualizarse de forma atómica:
@@ -297,7 +299,7 @@ Para producción, después de resolver los blockers, el primer paso debe ser `np
 
 Con el estado actual termina con código 2 por appId/nombre placeholder y signing release ausente; origin ausente o inválido agrega otro blocker. `versionCode=1` y `versionName=1.0` son técnicamente válidos y ya no se bloquean por una confirmación externa. Un origin productivo válido tampoco genera un segundo bloqueo incondicional. Los tests construyen un estado futuro con identidad coherente, versión válida y referencias de signing explícitamente externalizadas que alcanza `READY`/exit 0; el branding queda como `MANUAL_CHECK` hasta su inspección humana.
 
-Para signing, `READY` significa únicamente que `signingConfigs.release` está enlazado desde `buildTypes.release`, declara los cuatro campos y cada expresión tiene una forma externa admitida sin literal, fallback ni valor nullable. El preflight no inspecciona ni imprime secretos, tampoco afirma que las variables estén presentes, que el keystore exista o que las credenciales sean válidas. Gradle y sus tareas de signing/release son la autoridad para esas comprobaciones en el entorno real. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
+Para signing, `READY` significa únicamente que `signingConfigs.release` está enlazado una sola vez desde `buildTypes.release`, declara una sola vez cada uno de los cuatro campos efectivos y cada expresión tiene una forma externa admitida sin literal, fallback ni valor nullable. El preflight no inspecciona ni imprime secretos, tampoco afirma que las variables estén presentes, que el keystore exista o que las credenciales sean válidas. Gradle y sus tareas de signing/release son la autoridad para esas comprobaciones en el entorno real. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
 
 ## Pruebas y resultados
 
@@ -308,8 +310,8 @@ Para signing, `READY` significa únicamente que `signingConfigs.release` está e
 | `npm ci` frontend | BLOCKED por lock de esbuild de un `ng serve` preexistente; no se detuvo el proceso ajeno |
 | `npm audit --omit=dev` frontend | PASS — 0 vulnerabilidades |
 | `npm test -- --watch=false --browsers=ChromeHeadless --progress=false` | PASS — 306/306 |
-| `npm run test:config` | PASS — 32 contratos después de corregir los P2 de readiness |
-| `npm run test:native-config` | PASS — 23 contratos después de corregir los P2 de readiness |
+| `npm run test:config` | PASS — 36 contratos después de corregir los P2 de readiness |
+| `npm run test:native-config` | PASS — 27 contratos después de corregir los P2 de readiness |
 | `npm run test:production-build` | PASS |
 | `npm run check:utf8` | PASS |
 | `npm run build` | PASS |

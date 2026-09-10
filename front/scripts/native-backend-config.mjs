@@ -1,4 +1,13 @@
 const PRODUCTION_HOST_MARKER = /(^|[.-])(dev|stage|staging|test)([.-]|$)/i;
+const RESERVED_PRODUCTION_SUFFIXES = ['invalid', 'example', 'localhost', 'test'];
+const RESERVED_DOCUMENTATION_DOMAINS = ['example.com', 'example.net', 'example.org'];
+
+export function isReservedProductionHostname(rawHostname) {
+  const hostname = rawHostname.toLowerCase().replace(/\.$/, '');
+  const belongsTo = (domain) => hostname === domain || hostname.endsWith(`.${domain}`);
+  return RESERVED_PRODUCTION_SUFFIXES.some(belongsTo) ||
+    RESERVED_DOCUMENTATION_DOMAINS.some(belongsTo);
+}
 
 export function validateNativeBackendOrigin(rawOrigin, mode) {
   if (!['development', 'production'].includes(mode)) {
@@ -31,12 +40,11 @@ export function validateNativeBackendOrigin(rawOrigin, mode) {
   const ipLiteral = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
   if (
     mode === 'production' &&
-    (hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      ipLiteral ||
+    (ipLiteral ||
+      isReservedProductionHostname(hostname) ||
       PRODUCTION_HOST_MARKER.test(hostname))
   ) {
-    throw new Error('El backend native production no puede ser local, IP ni staging/test.');
+    throw new Error('El backend native production no puede ser local, IP, staging/test ni reservado.');
   }
   return parsed.origin;
 }
