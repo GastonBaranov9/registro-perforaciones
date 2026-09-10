@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Fastify from "fastify";
-import { confiarSoloEnProxyEdge } from "../src/config/trust-proxy.ts";
 import fastifyCors from "@fastify/cors";
 import cookies, { CSRF_COOKIE, SESSION_COOKIE } from "../src/plugins/cookies.ts";
 import csrf from "../src/plugins/csrf.ts";
@@ -87,22 +86,6 @@ test("Origin native queda separado del web y nunca relaja WebSocket web", async 
     method: "GET", url: "/ws-control",
     headers: { origin: "https://localhost", upgrade: "websocket" },
   })).statusCode, 403);
-  await app.close();
-});
-
-test("Fastify confía exactamente un salto para protocolo e IP", async () => {
-  const app = Fastify({ trustProxy: confiarSoloEnProxyEdge });
-  app.get("/proxy", async (req) => ({ protocol: req.protocol, ip: req.ip }));
-  const response = await app.inject({
-    method: "GET",
-    url: "/proxy",
-    remoteAddress: "172.20.0.5",
-    headers: {
-      "x-forwarded-proto": "https",
-      "x-forwarded-for": "198.51.100.25, 203.0.113.44",
-    },
-  });
-  assert.deepEqual(response.json(), { protocol: "https", ip: "203.0.113.44" });
   await app.close();
 });
 

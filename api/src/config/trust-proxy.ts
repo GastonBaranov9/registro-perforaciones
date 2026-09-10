@@ -1,8 +1,10 @@
 /**
  * Fastify evalúa el salto 0 como la conexión directa al proceso API.
- * Sólo ese salto (el proxy edge de la red Compose) es confiable; cualquier
- * X-Forwarded-* anterior queda tratado como aportado por el cliente.
+ * Esta función conserva la semántica histórica de un único salto: confía en
+ * cualquier peer TCP inmediato, sin verificar que su identidad sea Nginx.
+ * La configuración productiva debe impedir el acceso público directo a la API
+ * y hacer que el proxy reemplace los headers X-Forwarded-* recibidos.
  */
-export function confiarSoloEnProxyEdge(_address: string, hop: number): boolean {
+export function confiarSoloEnPeerInmediato(_address: string, hop: number): boolean {
   return hop === 0;
 }

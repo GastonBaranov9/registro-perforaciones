@@ -7,7 +7,7 @@ import type { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { cargarConfiguracionRuntime, prepararDirectorioFotos } from "./config/runtime.ts";
 import { loggerOptions } from "./logging.ts";
 import { myPool } from "./db/pool.ts";
-import { confiarSoloEnProxyEdge } from "./config/trust-proxy.ts";
+import { confiarSoloEnPeerInmediato } from "./config/trust-proxy.ts";
 
 const runtime = cargarConfiguracionRuntime();
 await prepararDirectorioFotos(runtime);
@@ -19,8 +19,9 @@ const server = fastify({
   // Rechazar trabajo nuevo y cerrar conexiones idle sin cortar requests activas.
   return503OnClosing: true,
   forceCloseConnections: "idle",
-  // La API no publica puertos; el único salto confiable es el proxy de la red edge.
-  trustProxy: runtime.trustProxy === 1 ? confiarSoloEnProxyEdge : false,
+  // Se confía sólo en el peer TCP inmediato. En production, Compose no publica
+  // la API al host y Nginx reemplaza los headers forwarded antes de este salto.
+  trustProxy: runtime.trustProxy === 1 ? confiarSoloEnPeerInmediato : false,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 const ListeningOptions: FastifyListenOptions = {
