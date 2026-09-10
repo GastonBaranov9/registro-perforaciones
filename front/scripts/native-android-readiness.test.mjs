@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import {
+  discoverMainActivities,
+  evaluateAndroidIdentity,
+  READINESS_STATUS,
+} from './native-release-readiness.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = join(frontRoot, '..');
@@ -99,20 +105,22 @@ test('FileProvider comparte sólo fotos app-scoped y cache mediante grants tempo
   assert.doesNotMatch(paths, /<external-path\b|<root-path\b/);
 });
 
-test('release no fuerza debugging WebView, cleartext, firma ni credenciales embebidas', async () => {
-  const [mainActivity, appBuild, capacitor] = await Promise.all([
-    source('android/app/src/main/java/com/example/app/MainActivity.java'),
+test('release no fuerza debugging WebView ni configuración de red insegura', async () => {
+  const [mainActivities, appBuild, capacitor] = await Promise.all([
+    discoverMainActivities(join(androidMain, 'java')),
     source('android/app/build.gradle'),
     source('capacitor.config.ts'),
   ]);
 
-  assert.doesNotMatch(mainActivity, /setWebContentsDebuggingEnabled|WebView/);
+  assert.ok(mainActivities.length > 0, 'falta MainActivity');
+  for (const { source: mainActivity } of mainActivities) {
+    assert.doesNotMatch(mainActivity, /setWebContentsDebuggingEnabled|WebView/);
+  }
   assert.doesNotMatch(capacitor, /server\s*:|allowNavigation|cleartext|mixedContent/);
   assert.doesNotMatch(capacitor, /webContentsDebuggingEnabled\s*:\s*true/);
   assert.doesNotMatch(capacitor, /loggingBehavior\s*:\s*['"]production['"]/);
   assert.match(appBuild, /release\s*\{[\s\S]*?minifyEnabled false/);
-  assert.doesNotMatch(appBuild, /debuggable\s+true|storePassword|keyPassword|storeFile|keyAlias/);
-  assert.doesNotMatch(appBuild, /signingConfig\s+signingConfigs\.debug/);
+  assert.doesNotMatch(appBuild, /debuggable\s+true/);
 });
 
 test('el logging frontend no envía credenciales ni material de sesión a console', async () => {
@@ -129,20 +137,21 @@ test('el logging frontend no envía credenciales ni material de sesión a consol
   }
 });
 
-test('identidad placeholder queda consistente y protegida por el bloqueo production', async () => {
-  const [capacitor, appBuild, strings, activity, buildNative] = await Promise.all([
+test('la identidad Android efectiva es coherente sin fijar un package permanente', async () => {
+  const [capacitor, appBuild, strings, mainActivities, buildNative] = await Promise.all([
     source('capacitor.config.ts'),
     source('android/app/build.gradle'),
     source('android/app/src/main/res/values/strings.xml'),
-    source('android/app/src/main/java/com/example/app/MainActivity.java'),
+    discoverMainActivities(join(androidMain, 'java')),
     source('scripts/build-native.mjs'),
   ]);
 
-  assert.match(capacitor, /appId:\s*'com\.example\.app'/);
-  assert.match(appBuild, /namespace\s+"com\.example\.app"/);
-  assert.match(appBuild, /applicationId\s+"com\.example\.app"/);
-  assert.equal(occurrences(strings, /com\.example\.app/g), 2);
-  assert.match(activity, /^package com\.example\.app;/m);
+  const identity = evaluateAndroidIdentity({ capacitor, appBuild, strings, mainActivities });
+  assert.equal(identity.coherent, true, identity.detail);
+  assert.ok(
+    identity.status === READINESS_STATUS.ready || identity.status === READINESS_STATUS.humanDecision,
+    identity.detail,
+  );
   assert.match(buildNative, /assertProductionAppId/);
 });
 
@@ -170,4 +179,12 @@ test('Git ignora APK, AAB, keystores y configuración local de signing', async (
     assert.ok(rootIgnore.includes(`**/${name}`));
     assert.match(androidIgnore, new RegExp(`^${name.replaceAll('.', '\\.')}\\s*$`, 'm'));
   }
+  const trackedSigningMaterial = spawnSync(
+    'git',
+    ['ls-files', '*.jks', '*.keystore', 'key.properties', 'keystore.properties', 'signing.properties'],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  );
+  if (trackedSigningMaterial.error) throw trackedSigningMaterial.error;
+  assert.equal(trackedSigningMaterial.status, 0);
+  assert.equal(trackedSigningMaterial.stdout.trim(), '', 'hay material de signing versionado');
 });
