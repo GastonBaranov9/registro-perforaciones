@@ -61,7 +61,7 @@ Alcance: preparación técnica local; no firma, publicación, identidad comercia
 - [x] Backup excluye sesión, installation ID y `logout_pending`.
 - [x] FileProvider limitado a `external-files/Pictures` y cache app-scoped.
 - [x] WebView debugging deshabilitado automáticamente en release.
-- [x] Auth, CORS, Origin, proxy y WebSocket ticket verificados.
+- [x] Auth, CORS, Origin, proxy y WebSocket ticket verificados; la confianza de headers forwarded cubre exactamente un peer TCP inmediato y depende del aislamiento de red productivo.
 - [x] CSP, CSS Ionic y Service Worker verificados en build real.
 - [x] Assets de Capacitor comparados por SHA-256.
 - [x] APK debug generado.
@@ -221,7 +221,17 @@ API:
 - `adm-zip` vulnerable fue retirado porque no tenía ninguna importación ni uso.
 - `npm audit --omit=dev`: 0.
 
-Fastify 5.12 dejó de aceptar `trustProxy: 1`. Se reemplazó por una función explícita que confía sólo `hop === 0`; el test demuestra que un header X-Forwarded-For anterior no puede desplazar el único proxy edge confiable.
+Fastify 5.12 dejó de aceptar `trustProxy: 1`. Se reemplazó por una función explícita que conserva la semántica histórica de un solo salto: `hop === 0` confía en el peer TCP inmediato, cualquiera sea su dirección. Esto no identifica exclusiva ni criptográficamente a Nginx.
+
+La garantía productiva surge de varias condiciones comprobadas en conjunto:
+
+- `api` usa sólo `expose: 3000` y no publica el puerto al host mediante `ports`;
+- el ingreso público HTTP/HTTPS se publica mediante el servicio `proxy`;
+- Nginx reemplaza, tanto para `/api/` como para `/ws`, `X-Forwarded-For` con `$remote_addr`, fija `X-Forwarded-Proto https` y fija `Host`/`X-Forwarded-Host` con `$host`;
+- Fastify sólo avanza un salto dentro de una cadena forwarded y utiliza el valor derecho aportado por ese peer;
+- los tests cubren peer IPv4/IPv6, cadenas múltiples, `request.ip`, host/protocolo forwarded y el efecto sobre rate limiting.
+
+Supuesto de seguridad residual: si otro peer interno puede conectarse directamente a Fastify, `trustProxy` no lo autentica como Nginx y ese peer puede aportar su propio `X-Forwarded-*`. Por eso todo acceso directo a `api:3000` queda fuera del contrato público y debe continuar limitado por la topología/controles de red. No se agregó una allowlist por IP o CIDR porque Docker reasigna direcciones y el repositorio no posee una identidad estable del ingress que Fastify pueda verificar sin rediseñar infraestructura.
 
 ## Signing readiness
 
@@ -235,9 +245,11 @@ Procedimiento futuro, después de decisiones humanas:
 
 1. Crear/conservar el keystore privado fuera del repositorio y respaldarlo mediante un canal seguro.
 2. Elegir alias y passwords; no escribirlos en Gradle, Git, documentación ni shell history compartido.
-3. Definir un mecanismo local/CI seguro para entregar path, alias y passwords a Gradle.
+3. Definir un mecanismo local/CI seguro para entregar path, alias y passwords a Gradle mediante `providers.environmentVariable(...).get()`, `providers.gradleProperty(...).get()` o `System.getenv(...)`.
 4. Agregar `signingConfig.release` que falle si falta cualquiera de esos valores; nunca usar debug signing en release.
 5. Generar APK/AAB, verificar firma con `apksigner` y probar upgrade/instalación en dispositivo físico antes de publicar.
+
+El preflight no acepta accesos indirectos como `keystoreProperties[...]`, `signingProperties[...]` o `localProperties[...]`, aunque existan nombres habituales en `.gitignore`: el nombre de la variable y las reglas de ignore no prueban de qué archivo o literal se cargó. Soportar esos patrones requeriría demostrar su procedencia sin interpretar Groovy de forma frágil.
 
 ## Identidad: lugares a cambiar juntos
 
@@ -245,9 +257,9 @@ Cuando exista `applicationId` definitivo deben actualizarse de forma atómica:
 
 - `front/capacitor.config.ts`: `appId`.
 - `front/android/app/build.gradle`: `namespace` y `applicationId`.
-- `front/android/app/src/main/java/com/example/app/MainActivity.java`: package y ubicación de directorio.
+- el `MainActivity.java` o `MainActivity.kt` descubierto bajo `front/android/app/src/main/java`: package y ubicación de directorio coherentes con el nuevo appId.
 - `front/android/app/src/main/res/values/strings.xml`: `package_name` y `custom_url_scheme` si ese scheme sigue siendo deseado.
-- contratos en `front/scripts/native-android-readiness.test.mjs` y `native-backend-config.test.mjs`.
+- contratos de identidad: no requieren editarse para una identidad válida; descubren MainActivity y comparan Capacitor, Gradle, namespace, `package_name`, package Java/Kotlin y ruta.
 - documentación que describe el placeholder.
 
 No debe quitarse el bloqueo production antes de que todos esos lugares sean coherentes.
@@ -276,7 +288,16 @@ Artefactos locales demostrados, ambos ignorados por Git:
 - `front/android/app/build/outputs/apk/debug/app-debug.apk` — 10.582.996 bytes, firmado con debug.
 - `front/android/app/build/outputs/apk/release/app-release-unsigned.apk` — 8.801.973 bytes, sin firma.
 
-Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. Hoy el helper Node establece código 2 (el wrapper npm lo expone simplemente como fallo no cero) y enumera decisiones pendientes. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
+Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. El preflight deriva el resultado del estado efectivo y distingue:
+
+- `TECHNICAL_BLOCKER`: configuración ausente, inválida, incoherente o insegura;
+- `HUMAN_DECISION`: un placeholder detectable continúa activo;
+- `MANUAL_CHECK`: validación que no puede automatizarse de forma robusta, como confirmar visualmente branding; no fuerza por sí sola un fallo;
+- `READY`: condición técnica satisfecha.
+
+Con el estado actual termina con código 2 por appId/nombre placeholder y signing release ausente; origin ausente o inválido agrega otro blocker. `versionCode=1` y `versionName=1.0` son técnicamente válidos y ya no se bloquean por una confirmación externa. Un origin productivo válido tampoco genera un segundo bloqueo incondicional. Los tests construyen un estado futuro con identidad coherente, versión válida y referencias de signing explícitamente externalizadas que alcanza `READY`/exit 0; el branding queda como `MANUAL_CHECK` hasta su inspección humana.
+
+Para signing, `READY` significa únicamente que `signingConfigs.release` está enlazado desde `buildTypes.release`, declara los cuatro campos y cada expresión tiene una forma externa admitida sin literal, fallback ni valor nullable. El preflight no inspecciona ni imprime secretos, tampoco afirma que las variables estén presentes, que el keystore exista o que las credenciales sean válidas. Gradle y sus tareas de signing/release son la autoridad para esas comprobaciones en el entorno real. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
 
 ## Pruebas y resultados
 
@@ -287,8 +308,8 @@ Para producción, después de resolver los blockers, el primer paso debe ser `np
 | `npm ci` frontend | BLOCKED por lock de esbuild de un `ng serve` preexistente; no se detuvo el proceso ajeno |
 | `npm audit --omit=dev` frontend | PASS — 0 vulnerabilidades |
 | `npm test -- --watch=false --browsers=ChromeHeadless --progress=false` | PASS — 306/306 |
-| `npm run test:config` | PASS — 26 contratos después de RSP-09E |
-| `npm run test:native-config` | PASS — 17 contratos después de RSP-09E |
+| `npm run test:config` | PASS — 32 contratos después de corregir los P2 de readiness |
+| `npm run test:native-config` | PASS — 23 contratos después de corregir los P2 de readiness |
 | `npm run test:production-build` | PASS |
 | `npm run check:utf8` | PASS |
 | `npm run build` | PASS |
@@ -304,7 +325,7 @@ Para producción, después de resolver los blockers, el primer paso debe ser `np
 | Gradle `test` | PASS |
 | ADB device discovery | BLOCKED — lista vacía |
 | `npm run build` API | PASS |
-| `npm test` API | PASS — 301/301 |
+| `npm test` API | PASS — 304/304 |
 | tests específicos native auth/origin/ws | PASS — 47/47 antes de suite completa |
 | `npm audit --omit=dev` API | PASS — 0 vulnerabilidades |
 
