@@ -80,16 +80,151 @@ test('identidad inconsistente bloquea y el placeholder coherente requiere decisi
   assert.equal(current.coherent, true);
 });
 
+test('identidad Gradle usa solo asignaciones efectivas canonicas', () => {
+  const appId = 'uy.com.empresa.perforaciones';
+  const identity = identityFixture(appId);
+  const commentedNamespace = appBuildFixture(appId).replace(
+    `namespace "${appId}"`,
+    `// namespace "uy.com.correcta"\n    namespace "${appId}"`,
+  );
+  const commentedApplicationId = appBuildFixture(appId).replace(
+    `applicationId "${appId}"`,
+    `// applicationId "uy.com.correcta"\n      applicationId "${appId}"`,
+  );
+
+  for (const appBuild of [commentedNamespace, commentedApplicationId]) {
+    const result = evaluateAndroidIdentity({ ...identity, appBuild });
+    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
+    assert.equal(result.appId, appId);
+  }
+});
+
+test('identidad Gradle bloquea duplicados y overrides externos', () => {
+  const appId = 'uy.com.empresa.perforaciones';
+  const identity = identityFixture(appId);
+  const duplicateNamespace = appBuildFixture(appId).replace(
+    `namespace "${appId}"`,
+    `namespace "uy.com.uno"\n    namespace "${appId}"`,
+  );
+  const duplicateApplicationId = appBuildFixture(appId).replace(
+    `applicationId "${appId}"`,
+    `applicationId "uy.com.uno"\n      applicationId "${appId}"`,
+  );
+  const externalApplicationId = `${appBuildFixture(appId)}\nandroid.defaultConfig.applicationId = "uy.com.otro"`;
+  const externalNamespace = `${appBuildFixture(appId)}\nandroid.namespace = "uy.com.otro"`;
+  const bracketApplicationId = `${appBuildFixture(appId)}\nandroid["defaultConfig"]["applicationId"] = "uy.com.otro"`;
+  const setterNamespace = `${appBuildFixture(appId)}\nandroid.setNamespace("uy.com.otro")`;
+
+  for (const appBuild of [
+    duplicateNamespace,
+    duplicateApplicationId,
+    externalApplicationId,
+    externalNamespace,
+    bracketApplicationId,
+    setterNamespace,
+  ]) {
+    const result = evaluateAndroidIdentity({ ...identity, appBuild });
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+  }
+
+  const commentedOverride = `${appBuildFixture(appId)}\n// android.namespace = "uy.com.otro"`;
+  assert.equal(
+    evaluateAndroidIdentity({ ...identity, appBuild: commentedOverride }).status,
+    READINESS_STATUS.ready,
+  );
+});
+
+test('identidad y version exigen bloques Android canonicos unicos', () => {
+  const appId = 'uy.com.empresa.perforaciones';
+  const identity = identityFixture(appId);
+  const duplicateAndroid = `${appBuildFixture(appId)}\n${appBuildFixture(appId)}`;
+  const duplicateDefaultConfig = appBuildFixture(appId).replace(
+    '      versionName "1.2.3"\n    }',
+    '      versionName "1.2.3"\n    }\n    defaultConfig { applicationId "uy.com.otro"; versionCode 8; versionName "2.0" }',
+  );
+  for (const appBuild of [duplicateAndroid, duplicateDefaultConfig]) {
+    assert.equal(
+      evaluateAndroidIdentity({ ...identity, appBuild }).status,
+      READINESS_STATUS.technicalBlocker,
+    );
+    assert.equal(evaluateVersion(appBuild).status, READINESS_STATUS.technicalBlocker);
+  }
+});
+
+test('identidad y version bloquean bloques calificados o sintaxis Gradle incompleta', () => {
+  const appId = 'uy.com.empresa.perforaciones';
+  const identity = identityFixture(appId);
+  const qualifiedAndroid = appBuildFixture(appId).replace(/^android/, 'holder.android');
+  const qualifiedDefaultConfig = appBuildFixture(appId).replace('defaultConfig {', 'holder.defaultConfig {');
+  const malformedSources = [
+    `${appBuildFixture(appId)}\nandroid {`,
+    `${appBuildFixture(appId)}\n/* comentario sin cierre`,
+    appBuildFixture(appId).replace('versionName "1.2.3"', 'versionName "1.2.3"\n      helper('),
+  ];
+
+  for (const appBuild of [qualifiedAndroid, qualifiedDefaultConfig, ...malformedSources]) {
+    assert.equal(
+      evaluateAndroidIdentity({ ...identity, appBuild }).status,
+      READINESS_STATUS.technicalBlocker,
+    );
+    assert.equal(evaluateVersion(appBuild).status, READINESS_STATUS.technicalBlocker);
+  }
+});
+
 test('versionado válido pasa y valores ausentes o inválidos bloquean', () => {
-  assert.equal(evaluateVersion('versionCode 1\nversionName "1.0"').status, READINESS_STATUS.ready);
+  assert.equal(evaluateVersion(appBuildFixture()).status, READINESS_STATUS.ready);
   for (const source of [
-    'versionCode 0\nversionName "1.0"',
-    'versionCode -1\nversionName "1.0"',
-    'versionCode 1\nversionName ""',
-    'versionCode 1',
+    appBuildFixture().replace('versionCode 7', 'versionCode 0'),
+    appBuildFixture().replace('versionCode 7', 'versionCode -1'),
+    appBuildFixture().replace('versionName "1.2.3"', 'versionName ""'),
+    appBuildFixture().replace('versionName "1.2.3"', 'versionName "${RELEASE_VERSION}"'),
+    appBuildFixture().replace('versionName "1.2.3"', ''),
   ]) {
     assert.equal(evaluateVersion(source).status, READINESS_STATUS.technicalBlocker);
   }
+});
+
+test('versionado Gradle ignora comentarios y bloquea duplicados efectivos', () => {
+  const commentedCode = appBuildFixture().replace(
+    'versionCode 7',
+    '// versionCode 100\n      versionCode 1',
+  );
+  const commentedName = appBuildFixture().replace(
+    'versionName "1.2.3"',
+    '// versionName "9.9"\n      versionName "1.0"',
+  );
+  assert.match(evaluateVersion(commentedCode).detail, /versionCode=1;/);
+  assert.match(evaluateVersion(commentedName).detail, /versionName=1\.0/);
+
+  const duplicateCode = appBuildFixture().replace(
+    'versionCode 7',
+    'versionCode 1\n      versionCode 2',
+  );
+  const duplicateName = appBuildFixture().replace(
+    'versionName "1.2.3"',
+    'versionName "1.0"\n      versionName "2.0"',
+  );
+  for (const source of [duplicateCode, duplicateName]) {
+    assert.equal(evaluateVersion(source).status, READINESS_STATUS.technicalBlocker);
+  }
+});
+
+test('versionado Gradle bloquea overrides externos pero no comentarios', () => {
+  for (const override of [
+    'android.defaultConfig.versionCode = 8',
+    'defaultConfig.versionName = "2.0"',
+    'android.defaultConfig["versionCode"] = 8',
+    'android.defaultConfig.setVersionName("2.0")',
+  ]) {
+    assert.equal(
+      evaluateVersion(`${appBuildFixture()}\n${override}`).status,
+      READINESS_STATUS.technicalBlocker,
+    );
+  }
+  assert.equal(
+    evaluateVersion(`${appBuildFixture()}\n/* android.defaultConfig.versionCode = 8 */`).status,
+    READINESS_STATUS.ready,
+  );
 });
 
 test('signing distingue unsigned, debug, secretos hardcodeados y providers seguros', () => {
@@ -200,9 +335,61 @@ test('signing bloquea enlaces efectivos duplicados en buildTypes.release', () =>
     'signingConfig signingConfigs.release',
     'signingConfig signingConfigs.release\n        signingConfig signingConfigs.release',
   );
-  const result = evaluateReleaseSigning(duplicateLink);
-  assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-  assert.match(result.detail, /signingConfig duplicadas/);
+  const nestedLink = appBuildFixture().replace(
+    'signingConfig signingConfigs.release',
+    'signingConfig signingConfigs.release\n        if (true) { signingConfig signingConfigs.debug }',
+  );
+  for (const appBuild of [duplicateLink, nestedLink]) {
+    const result = evaluateReleaseSigning(appBuild);
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+    assert.match(result.detail, /signingConfig duplicadas/);
+  }
+});
+
+test('signing bloquea overrides externos al bloque release canonico', () => {
+  const qualifiedHardcoded = `${appBuildFixture()}\nsigningConfigs.release.storePassword = "hardcoded"`;
+  const androidQualified = `${appBuildFixture()}\nandroid.signingConfigs.release.keyAlias = "hardcoded"`;
+  const qualifiedProvider = `${appBuildFixture()}\nsigningConfigs.release.storePassword =\n  providers.environmentVariable("OTHER").get()`;
+  const bracketOverride = `${appBuildFixture()}\nandroid["signingConfigs"]["release"]["storePassword"] = "hardcoded"`;
+  const setterOverride = `${appBuildFixture()}\nandroid.signingConfigs.release.setKeyAlias("hardcoded")`;
+  const propertiesOverride = `${appBuildFixture()}\nandroid.signingConfigs.release.properties["keyPassword"] = "hardcoded"`;
+  const scopedSigning = envSigning.replace(
+    /\n  }\s*$/,
+    '\n    release.storePassword = "hardcoded"\n  }\n',
+  );
+  for (const appBuild of [
+    qualifiedHardcoded,
+    androidQualified,
+    qualifiedProvider,
+    bracketOverride,
+    setterOverride,
+    propertiesOverride,
+    appBuildFixture(undefined, scopedSigning),
+  ]) {
+    const result = evaluateReleaseSigning(appBuild);
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+    assert.match(result.detail, /overrides fuera del bloque canónico/);
+  }
+
+  const commentedOverride = `${appBuildFixture()}\n// signingConfigs.release.storePassword = "hardcoded"`;
+  assert.equal(evaluateReleaseSigning(commentedOverride).status, READINESS_STATUS.ready);
+});
+
+test('signing bloquea overrides externos del enlace buildTypes.release', () => {
+  for (const override of [
+    'buildTypes.release.signingConfig = signingConfigs.debug',
+    'android.buildTypes.release.signingConfig = signingConfigs.release',
+    'android["buildTypes"]["release"]["signingConfig"] = signingConfigs.debug',
+    'android.buildTypes.release.setSigningConfig(signingConfigs.debug)',
+  ]) {
+    const result = evaluateReleaseSigning(`${appBuildFixture()}\n${override}`);
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
+    assert.match(result.detail, /signingConfig tiene overrides fuera del bloque canónico/);
+  }
+  assert.equal(
+    evaluateReleaseSigning(`${appBuildFixture()}\n/* buildTypes.release.signingConfig = signingConfigs.debug */`).status,
+    READINESS_STATUS.ready,
+  );
 });
 
 test('signing rechaza una Map hardcodeada aunque nombres comunes estén protegidos por gitignore', () => {
