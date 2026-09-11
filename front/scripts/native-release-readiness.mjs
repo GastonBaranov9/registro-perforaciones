@@ -220,6 +220,26 @@ function canonicalAndroidBlocks(appBuild) {
   };
 }
 
+function canonicalReleaseBuildBlocks(gradle) {
+  const buildTypes = namedBlocks(gradle.androidSource, 'buildTypes');
+  if (buildTypes.length !== 1) {
+    return {
+      error: buildTypes.length === 0
+        ? 'no existe un bloque android.buildTypes canónico'
+        : 'existen bloques android.buildTypes duplicados o ambiguos',
+    };
+  }
+  const releaseBuilds = namedBlocks(buildTypes[0], 'release');
+  if (releaseBuilds.length !== 1) {
+    return {
+      error: releaseBuilds.length === 0
+        ? 'no existe un bloque android.buildTypes.release canónico'
+        : 'existen bloques android.buildTypes.release duplicados o ambiguos',
+    };
+  }
+  return { buildTypesSource: buildTypes[0], releaseBuildSource: releaseBuilds[0] };
+}
+
 export async function discoverMainActivities(javaRoot) {
   async function visit(directory) {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -263,6 +283,15 @@ export function evaluateAndroidIdentity({ capacitor, appBuild, strings, mainActi
       'application identity',
       namespaceResult.error ?? applicationIdResult.error,
       { coherent: false },
+    );
+  }
+  const releaseIdentityError = releaseIdentityMutationError(gradle);
+  if (releaseIdentityError) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'application identity',
+      releaseIdentityError,
+      { coherent: false, appId },
     );
   }
   const namespace = namespaceResult.value;
@@ -473,11 +502,34 @@ function directGradleStatements(source) {
   return statements;
 }
 
+const NAMED_CONTAINER_METHODS = new Set([
+  'getByName',
+  'named',
+  'findByName',
+  'maybeCreate',
+  'create',
+  'register',
+  'getAt',
+]);
+
 function leadingGradlePath(statement) {
   const first = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(statement);
   if (!first) return undefined;
   const segments = [first[0]];
+  const namedAccessors = [];
   let index = first[0].length;
+  if (NAMED_CONTAINER_METHODS.has(first[0])) {
+    let callStart = index;
+    while (statement[callStart] === ' ' || statement[callStart] === '\t') callStart += 1;
+    if (statement[callStart] === '(') {
+      const accessor = /^\(\s*(["'])([A-Za-z0-9_.-]+)\1\s*\)/.exec(statement.slice(callStart));
+      namedAccessors.push({ method: first[0], owner: undefined, target: accessor?.[2] });
+      if (accessor) {
+        segments.push(accessor[2]);
+        index = callStart + accessor[0].length;
+      }
+    }
+  }
 
   while (index < statement.length) {
     let opening = index;
@@ -489,6 +541,15 @@ function leadingGradlePath(statement) {
       if (!identifier) break;
       segments.push(identifier[0]);
       index = identifierStart + identifier[0].length;
+      let callStart = index;
+      while (statement[callStart] === ' ' || statement[callStart] === '\t') callStart += 1;
+      if (NAMED_CONTAINER_METHODS.has(identifier[0]) && statement[callStart] === '(') {
+        const accessor = /^\(\s*(["'])([A-Za-z0-9_.-]+)\1\s*\)/.exec(statement.slice(callStart));
+        namedAccessors.push({ method: identifier[0], owner: segments.at(-2), target: accessor?.[2] });
+        if (!accessor) break;
+        segments.push(accessor[2]);
+        index = callStart + accessor[0].length;
+      }
       continue;
     }
     if (statement[opening] === '[') {
@@ -501,7 +562,7 @@ function leadingGradlePath(statement) {
     break;
   }
 
-  return { segments, expression: statement.slice(index).trim() };
+  return { segments, namedAccessors, expression: statement.slice(index).trim() };
 }
 
 function propertyDirectives(statements, name) {
@@ -514,7 +575,7 @@ function propertyDirectives(statements, name) {
       const targetsProperty = last === name || last === setter ||
         (last === 'set' && directive.segments.at(-2) === name);
       return targetsProperty
-        ? { path: directive.segments.join('.'), expression: directive.expression }
+        ? { path: directive.segments.join('.'), segments: directive.segments, expression: directive.expression }
         : undefined;
     })
     .filter((value) => value !== undefined);
@@ -555,6 +616,117 @@ function canonicalProperty(effectiveSource, canonicalSource, name, parseValue) {
   return { value };
 }
 
+function namedContainerPropertyTargets(owner, targetName, propertyName) {
+  return [
+    ...propertyTargetSuffixes([owner, targetName], propertyName),
+    ...[...NAMED_CONTAINER_METHODS].flatMap((accessor) =>
+      propertyTargetSuffixes([owner, accessor, targetName], propertyName)),
+  ];
+}
+
+function releaseIdentityMutationError(gradle) {
+  const releaseBuild = canonicalReleaseBuildBlocks(gradle);
+  if (releaseBuild.error) return releaseBuild.error;
+  if (hasNamedAccessor(gradle.effectiveSource, 'buildTypes', 'release') ||
+      hasNamedAccessor(releaseBuild.buildTypesSource, 'buildTypes', 'release', true)) {
+    return 'android.buildTypes.release usa un accessor dinámico no canónico';
+  }
+
+  const releaseSuffixes = propertyDirectives(
+    gradleStatements(releaseBuild.releaseBuildSource),
+    'applicationIdSuffix',
+  );
+  if (releaseSuffixes.length > 0) {
+    return 'android.buildTypes.release no admite applicationIdSuffix';
+  }
+
+  const releaseTargets = namedContainerPropertyTargets('buildTypes', 'release', 'applicationIdSuffix');
+  const scopedReleaseTargets = releaseTargets.map((target) => target.slice(1));
+  if (hasTargetedMutation(gradle.effectiveSource, releaseTargets) ||
+      hasTargetedMutation(releaseBuild.buildTypesSource, scopedReleaseTargets)) {
+    return 'applicationIdSuffix de release usa un override no canónico';
+  }
+
+  const productFlavors = namedBlocks(gradle.androidSource, 'productFlavors');
+  const flavorIdentityProperties = ['applicationId', 'applicationIdSuffix'];
+  const flavorIdentityProperty = flavorIdentityProperties.find((property) =>
+    productFlavors.some((source) =>
+      propertyDirectives(gradleStatements(source), property).length > 0));
+  if (flavorIdentityProperty) {
+    return `productFlavors con ${flavorIdentityProperty} no está soportado por el release gate`;
+  }
+
+  if (hasAnyNamedAccessor(gradle.effectiveSource, 'productFlavors') ||
+      productFlavors.some((source) =>
+        hasAnyNamedAccessor(source, 'productFlavors', true))) {
+    return 'productFlavors usa un accessor dinámico no canónico que puede modificar la identidad';
+  }
+
+  const externalFlavorIdentityProperty = flavorIdentityProperties.find((property) =>
+    propertyDirectives(gradleStatements(gradle.effectiveSource), property)
+      .some(({ segments, expression }) =>
+        Boolean(expression) && segments.includes('productFlavors')));
+  return externalFlavorIdentityProperty
+    ? `${externalFlavorIdentityProperty} de productFlavors usa un override no canónico`
+    : undefined;
+}
+
+export function evaluateReleaseDebuggable(appBuild) {
+  const gradle = canonicalAndroidBlocks(appBuild);
+  if (gradle.error) {
+    return entry(READINESS_STATUS.technicalBlocker, 'release debuggable', gradle.error);
+  }
+  const releaseBuild = canonicalReleaseBuildBlocks(gradle);
+  if (releaseBuild.error) {
+    return entry(READINESS_STATUS.technicalBlocker, 'release debuggable', releaseBuild.error);
+  }
+  if (hasNamedAccessor(gradle.effectiveSource, 'buildTypes', 'release') ||
+      hasNamedAccessor(releaseBuild.buildTypesSource, 'buildTypes', 'release', true)) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release debuggable',
+      'buildTypes.release usa un accessor dinámico no canónico',
+    );
+  }
+
+  const releaseTargets = namedContainerPropertyTargets('buildTypes', 'release', 'debuggable');
+  const scopedReleaseTargets = releaseTargets.map((target) => target.slice(1));
+  if (hasTargetedMutation(gradle.effectiveSource, releaseTargets) ||
+      hasTargetedMutation(releaseBuild.buildTypesSource, scopedReleaseTargets)) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release debuggable',
+      'debuggable de release usa un override fuera del bloque canónico',
+    );
+  }
+
+  const assignments = directPropertyAssignments(releaseBuild.releaseBuildSource, 'debuggable');
+  const directives = propertyDirectives(
+    gradleStatements(releaseBuild.releaseBuildSource),
+    'debuggable',
+  );
+  if (assignments.length === 0 && directives.length === 0) {
+    return entry(READINESS_STATUS.ready, 'release debuggable', 'release no habilita debuggable');
+  }
+  if (assignments.length !== 1 || directives.length !== 1 || directives[0].path !== 'debuggable') {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release debuggable',
+      'debuggable de release tiene asignaciones duplicadas o no canónicas',
+    );
+  }
+  if (assignments[0] !== 'true' && assignments[0] !== 'false') {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release debuggable',
+      'debuggable de release no usa un booleano literal canónico',
+    );
+  }
+  return assignments[0] === 'true'
+    ? entry(READINESS_STATUS.technicalBlocker, 'release debuggable', 'release habilita debuggable')
+    : entry(READINESS_STATUS.ready, 'release debuggable', 'release declara debuggable=false');
+}
+
 function signingAssignments(source, name) {
   const directive = new RegExp(`^${name}\\b\\s*(?:=\\s*)?([\\s\\S]+)$`);
   return directGradleStatements(source)
@@ -567,11 +739,38 @@ function hasPathSuffix(segments, suffix) {
     suffix.every((part, index) => segments[segments.length - suffix.length + index] === part);
 }
 
+function propertyTargetSuffixes(prefix, name) {
+  const setter = `set${name[0].toUpperCase()}${name.slice(1)}`;
+  return [
+    [...prefix, name],
+    [...prefix, 'properties', name],
+    [...prefix, setter],
+    [...prefix, name, 'set'],
+  ];
+}
+
 function hasTargetedMutation(source, targetSuffixes) {
   return gradleStatements(source).some((statement) => {
     const directive = leadingGradlePath(statement);
     return Boolean(directive?.expression) &&
       targetSuffixes.some((suffix) => hasPathSuffix(directive.segments, suffix));
+  });
+}
+
+function hasNamedAccessor(source, owner, targetName, allowScoped = false) {
+  return gradleStatements(source).some((statement) => {
+    const accessors = leadingGradlePath(statement)?.namedAccessors ?? [];
+    return accessors.some((accessor) =>
+      (accessor.owner === owner || (allowScoped && accessor.owner === undefined)) &&
+      (accessor.target === targetName || accessor.target === undefined));
+  });
+}
+
+function hasAnyNamedAccessor(source, owner, allowScoped = false) {
+  return gradleStatements(source).some((statement) => {
+    const accessors = leadingGradlePath(statement)?.namedAccessors ?? [];
+    return accessors.some((accessor) =>
+      accessor.owner === owner || (allowScoped && accessor.owner === undefined));
   });
 }
 
@@ -593,6 +792,20 @@ export function evaluateReleaseSigning(appBuild) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', gradle.error);
   }
   const { effectiveSource, androidSource } = gradle;
+  if (hasNamedAccessor(effectiveSource, 'signingConfigs', 'release')) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'signingConfigs.release usa un accessor dinámico no canónico',
+    );
+  }
+  if (hasNamedAccessor(effectiveSource, 'buildTypes', 'release')) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'buildTypes.release usa un accessor dinámico no canónico',
+    );
+  }
   const signingConfigs = namedBlocks(androidSource, 'signingConfigs');
   if (signingConfigs.length !== 1) {
     const detail = signingConfigs.length === 0
@@ -607,29 +820,33 @@ export function evaluateReleaseSigning(appBuild) {
       : 'existen bloques signingConfigs.release duplicados o ambiguos';
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
   }
+  if (hasNamedAccessor(signingConfigs[0], 'signingConfigs', 'release', true)) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'signingConfigs.release usa un accessor dinámico no canónico',
+    );
+  }
 
-  const buildTypes = namedBlocks(androidSource, 'buildTypes');
-  if (buildTypes.length !== 1) {
-    const detail = buildTypes.length === 0
-      ? 'no existe buildTypes.release'
-      : 'existen bloques buildTypes duplicados o ambiguos';
-    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
+  const releaseBuild = canonicalReleaseBuildBlocks(gradle);
+  if (releaseBuild.error) {
+    return entry(READINESS_STATUS.technicalBlocker, 'release signing', releaseBuild.error);
   }
-  const releaseBuild = namedBlocks(buildTypes[0], 'release');
-  if (releaseBuild.length !== 1) {
-    const detail = releaseBuild.length === 0
-      ? 'no existe buildTypes.release'
-      : 'existen bloques buildTypes.release duplicados o ambiguos';
-    return entry(READINESS_STATUS.technicalBlocker, 'release signing', detail);
+  if (hasNamedAccessor(releaseBuild.buildTypesSource, 'buildTypes', 'release', true)) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'buildTypes.release usa un accessor dinámico no canónico',
+    );
   }
-  const signingConfigAssignments = signingAssignments(releaseBuild[0], 'signingConfig');
+  const signingConfigAssignments = signingAssignments(releaseBuild.releaseBuildSource, 'signingConfig');
   if (signingConfigAssignments.length === 0) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release no usa signingConfigs.release');
   }
   if (signingConfigAssignments.length > 1) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release tiene asignaciones signingConfig duplicadas');
   }
-  if (propertyDirectives(gradleStatements(releaseBuild[0]), 'signingConfig').length >
+  if (propertyDirectives(gradleStatements(releaseBuild.releaseBuildSource), 'signingConfig').length >
       signingConfigAssignments.length) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release tiene asignaciones signingConfig duplicadas o no canónicas');
   }
@@ -665,7 +882,7 @@ export function evaluateReleaseSigning(appBuild) {
   ];
   const scopedBuildTypeSigningTargets = buildTypeSigningTargets.map((target) => target.slice(1));
   if (hasTargetedMutation(effectiveSource, buildTypeSigningTargets) ||
-      hasTargetedMutation(buildTypes[0], scopedBuildTypeSigningTargets)) {
+      hasTargetedMutation(releaseBuild.buildTypesSource, scopedBuildTypeSigningTargets)) {
     return entry(
       READINESS_STATUS.technicalBlocker,
       'release signing',
@@ -711,6 +928,7 @@ export function evaluateNativeReleaseReadiness(inputs) {
     evaluateAndroidIdentity(inputs),
     evaluateAppName(inputs),
     evaluateVersion(inputs.appBuild),
+    evaluateReleaseDebuggable(inputs.appBuild),
     evaluateReleaseSigning(inputs.appBuild),
     entry(READINESS_STATUS.manualCheck, 'branding assets', 'confirmar visualmente icono y splash definitivos'),
   ];

@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   discoverMainActivities,
   evaluateAndroidIdentity,
+  evaluateReleaseDebuggable,
   READINESS_STATUS,
 } from './native-release-readiness.mjs';
 
@@ -120,7 +121,8 @@ test('release no fuerza debugging WebView ni configuración de red insegura', as
   assert.doesNotMatch(capacitor, /webContentsDebuggingEnabled\s*:\s*true/);
   assert.doesNotMatch(capacitor, /loggingBehavior\s*:\s*['"]production['"]/);
   assert.match(appBuild, /release\s*\{[\s\S]*?minifyEnabled false/);
-  assert.doesNotMatch(appBuild, /debuggable\s+true/);
+  const releaseDebuggable = evaluateReleaseDebuggable(appBuild);
+  assert.equal(releaseDebuggable.status, READINESS_STATUS.ready, releaseDebuggable.detail);
 });
 
 test('el logging frontend no envía credenciales ni material de sesión a console', async () => {
