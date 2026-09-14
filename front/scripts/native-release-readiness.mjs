@@ -265,6 +265,15 @@ export function evaluateAndroidIdentity({ capacitor, appBuild, strings, mainActi
       { coherent: false },
     );
   }
+  const releaseIdentityError = releaseIdentityMutationError(gradle);
+  if (releaseIdentityError) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'application identity',
+      releaseIdentityError,
+      { coherent: false, appId },
+    );
+  }
   const namespaceResult = canonicalProperty(
     gradle.effectiveSource,
     gradle.androidSource,
@@ -283,15 +292,6 @@ export function evaluateAndroidIdentity({ capacitor, appBuild, strings, mainActi
       'application identity',
       namespaceResult.error ?? applicationIdResult.error,
       { coherent: false },
-    );
-  }
-  const releaseIdentityError = releaseIdentityMutationError(gradle);
-  if (releaseIdentityError) {
-    return entry(
-      READINESS_STATUS.technicalBlocker,
-      'application identity',
-      releaseIdentityError,
-      { coherent: false, appId },
     );
   }
   const namespace = namespaceResult.value;
@@ -346,6 +346,14 @@ export function evaluateVersion(appBuild) {
       READINESS_STATUS.technicalBlocker,
       'release version',
       gradle.error ?? gradle.defaultConfigError,
+    );
+  }
+  const releaseVersionError = releaseVersionMutationError(gradle);
+  if (releaseVersionError) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release version',
+      releaseVersionError,
     );
   }
   const versionCodeResult = canonicalProperty(
@@ -616,6 +624,37 @@ function canonicalProperty(effectiveSource, canonicalSource, name, parseValue) {
   return { value };
 }
 
+function setPropertyCall(statement) {
+  const directive = leadingGradlePath(statement);
+  if (directive?.segments.at(-1) !== 'setProperty' ||
+      !directive.expression || directive.expression.startsWith('=')) return undefined;
+  const literalName = /^(?:\(\s*)?(["'])([A-Za-z_$][A-Za-z0-9_$]*)\1\s*,/.exec(
+    directive.expression,
+  )?.[2];
+  return {
+    ownerSegments: directive.segments.slice(0, -1),
+    propertyName: literalName,
+  };
+}
+
+function hasProtectedSetProperty(source, protectedProperties, {
+  allowUnqualified = false,
+  anyOwner = false,
+  ownerIncludes = [],
+  ownerSuffixes = [],
+} = {}) {
+  return gradleStatements(source).some((statement) => {
+    const call = setPropertyCall(statement);
+    if (!call) return false;
+    const protectedOwner = anyOwner ||
+      (allowUnqualified && call.ownerSegments.length === 0) ||
+      ownerIncludes.some((segment) => call.ownerSegments.includes(segment)) ||
+      ownerSuffixes.some((suffix) => hasPathSuffix(call.ownerSegments, suffix));
+    return protectedOwner &&
+      (call.propertyName === undefined || protectedProperties.includes(call.propertyName));
+  });
+}
+
 function namedContainerPropertyTargets(owner, targetName, propertyName) {
   return [
     ...propertyTargetSuffixes([owner, targetName], propertyName),
@@ -627,9 +666,67 @@ function namedContainerPropertyTargets(owner, targetName, propertyName) {
 function releaseIdentityMutationError(gradle) {
   const releaseBuild = canonicalReleaseBuildBlocks(gradle);
   if (releaseBuild.error) return releaseBuild.error;
+  const productFlavors = namedBlocks(gradle.androidSource, 'productFlavors');
+  const flavorIdentityProperties = ['applicationId', 'applicationIdSuffix'];
+
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    ['namespace'],
+    { ownerSuffixes: [['android']] },
+  ) || hasProtectedSetProperty(
+    gradle.androidSource,
+    ['namespace'],
+    { allowUnqualified: true },
+  )) {
+    return 'namespace usa setProperty sobre el bloque android protegido';
+  }
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    flavorIdentityProperties,
+    { ownerSuffixes: [['defaultConfig']] },
+  ) || hasProtectedSetProperty(
+    gradle.defaultConfigSource,
+    flavorIdentityProperties,
+    { allowUnqualified: true },
+  )) {
+    return 'defaultConfig usa setProperty sobre una propiedad de identidad protegida';
+  }
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    flavorIdentityProperties,
+    { ownerIncludes: ['productFlavors'] },
+  ) || productFlavors.some((source) =>
+    hasProtectedSetProperty(source, flavorIdentityProperties, { anyOwner: true }))) {
+    return 'productFlavors usa setProperty sobre una propiedad de identidad protegida';
+  }
   if (hasNamedAccessor(gradle.effectiveSource, 'buildTypes', 'release') ||
       hasNamedAccessor(releaseBuild.buildTypesSource, 'buildTypes', 'release', true)) {
     return 'android.buildTypes.release usa un accessor dinámico no canónico';
+  }
+
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    ['applicationIdSuffix'],
+    { ownerSuffixes: [['buildTypes', 'release']] },
+  ) || hasProtectedSetProperty(
+    releaseBuild.releaseBuildSource,
+    ['applicationIdSuffix'],
+    { allowUnqualified: true },
+  )) {
+    return 'buildTypes.release usa setProperty sobre applicationIdSuffix';
+  }
+
+  const defaultSuffixes = propertyDirectives(
+    gradleStatements(gradle.defaultConfigSource),
+    'applicationIdSuffix',
+  );
+  if (defaultSuffixes.length > 0) {
+    return 'android.defaultConfig no admite applicationIdSuffix';
+  }
+
+  const defaultSuffixTargets = propertyTargetSuffixes(['defaultConfig'], 'applicationIdSuffix');
+  if (hasTargetedMutation(gradle.effectiveSource, defaultSuffixTargets)) {
+    return 'applicationIdSuffix de defaultConfig usa un override no canónico';
   }
 
   const releaseSuffixes = propertyDirectives(
@@ -647,8 +744,6 @@ function releaseIdentityMutationError(gradle) {
     return 'applicationIdSuffix de release usa un override no canónico';
   }
 
-  const productFlavors = namedBlocks(gradle.androidSource, 'productFlavors');
-  const flavorIdentityProperties = ['applicationId', 'applicationIdSuffix'];
   const flavorIdentityProperty = flavorIdentityProperties.find((property) =>
     productFlavors.some((source) =>
       propertyDirectives(gradleStatements(source), property).length > 0));
@@ -671,6 +766,97 @@ function releaseIdentityMutationError(gradle) {
     : undefined;
 }
 
+function releaseVersionMutationError(gradle) {
+  const releaseBuild = canonicalReleaseBuildBlocks(gradle);
+  if (releaseBuild.error) return releaseBuild.error;
+  const productFlavors = namedBlocks(gradle.androidSource, 'productFlavors');
+  const defaultVersionProperties = ['versionCode', 'versionName', 'versionNameSuffix'];
+  const flavorVersionProperties = ['versionCode', 'versionName', 'versionNameSuffix'];
+
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    defaultVersionProperties,
+    { ownerSuffixes: [['defaultConfig']] },
+  ) || hasProtectedSetProperty(
+    gradle.defaultConfigSource,
+    defaultVersionProperties,
+    { allowUnqualified: true },
+  )) {
+    return 'defaultConfig usa setProperty sobre una propiedad de versión protegida';
+  }
+  if (hasNamedAccessor(gradle.effectiveSource, 'buildTypes', 'release') ||
+      hasNamedAccessor(releaseBuild.buildTypesSource, 'buildTypes', 'release', true)) {
+    return 'android.buildTypes.release usa un accessor dinámico no canónico';
+  }
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    ['versionNameSuffix'],
+    { ownerSuffixes: [['buildTypes', 'release']] },
+  ) || hasProtectedSetProperty(
+    releaseBuild.releaseBuildSource,
+    ['versionNameSuffix'],
+    { allowUnqualified: true },
+  )) {
+    return 'buildTypes.release usa setProperty sobre versionNameSuffix';
+  }
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    flavorVersionProperties,
+    { ownerIncludes: ['productFlavors'] },
+  ) || productFlavors.some((source) =>
+    hasProtectedSetProperty(source, flavorVersionProperties, { anyOwner: true }))) {
+    return 'productFlavors usa setProperty sobre una propiedad de versión protegida';
+  }
+
+  if (propertyDirectives(
+    gradleStatements(gradle.defaultConfigSource),
+    'versionNameSuffix',
+  ).length > 0) {
+    return 'android.defaultConfig no admite versionNameSuffix';
+  }
+  const defaultSuffixTargets = propertyTargetSuffixes(['defaultConfig'], 'versionNameSuffix');
+  if (hasTargetedMutation(gradle.effectiveSource, defaultSuffixTargets)) {
+    return 'versionNameSuffix de defaultConfig usa un override no canónico';
+  }
+
+  if (propertyDirectives(
+    gradleStatements(releaseBuild.releaseBuildSource),
+    'versionNameSuffix',
+  ).length > 0) {
+    return 'android.buildTypes.release no admite versionNameSuffix';
+  }
+  const releaseSuffixTargets = namedContainerPropertyTargets(
+    'buildTypes',
+    'release',
+    'versionNameSuffix',
+  );
+  const scopedReleaseSuffixTargets = releaseSuffixTargets.map((target) => target.slice(1));
+  if (hasTargetedMutation(gradle.effectiveSource, releaseSuffixTargets) ||
+      hasTargetedMutation(releaseBuild.buildTypesSource, scopedReleaseSuffixTargets)) {
+    return 'versionNameSuffix de release usa un override no canónico';
+  }
+
+  const flavorVersionProperty = flavorVersionProperties.find((property) =>
+    productFlavors.some((source) =>
+      propertyDirectives(gradleStatements(source), property).length > 0));
+  if (flavorVersionProperty) {
+    return `productFlavors con ${flavorVersionProperty} no está soportado por el release gate`;
+  }
+  if (hasAnyNamedAccessor(gradle.effectiveSource, 'productFlavors') ||
+      productFlavors.some((source) =>
+        hasAnyNamedAccessor(source, 'productFlavors', true))) {
+    return 'productFlavors usa un accessor dinámico no canónico que puede modificar la versión';
+  }
+
+  const externalFlavorVersionProperty = flavorVersionProperties.find((property) =>
+    propertyDirectives(gradleStatements(gradle.effectiveSource), property)
+      .some(({ segments, expression }) =>
+        Boolean(expression) && segments.includes('productFlavors')));
+  return externalFlavorVersionProperty
+    ? `${externalFlavorVersionProperty} de productFlavors usa un override no canónico`
+    : undefined;
+}
+
 export function evaluateReleaseDebuggable(appBuild) {
   const gradle = canonicalAndroidBlocks(appBuild);
   if (gradle.error) {
@@ -686,6 +872,21 @@ export function evaluateReleaseDebuggable(appBuild) {
       READINESS_STATUS.technicalBlocker,
       'release debuggable',
       'buildTypes.release usa un accessor dinámico no canónico',
+    );
+  }
+  if (hasProtectedSetProperty(
+    gradle.effectiveSource,
+    ['debuggable'],
+    { ownerSuffixes: [['buildTypes', 'release']] },
+  ) || hasProtectedSetProperty(
+    releaseBuild.releaseBuildSource,
+    ['debuggable'],
+    { allowUnqualified: true },
+  )) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release debuggable',
+      'buildTypes.release usa setProperty sobre debuggable o con nombre dinámico',
     );
   }
 
@@ -839,6 +1040,37 @@ export function evaluateReleaseSigning(appBuild) {
       'buildTypes.release usa un accessor dinámico no canónico',
     );
   }
+  const signingFields = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'];
+  if (hasProtectedSetProperty(
+    effectiveSource,
+    signingFields,
+    { ownerSuffixes: [['signingConfigs', 'release']] },
+  ) || hasProtectedSetProperty(
+    releaseSigning[0],
+    signingFields,
+    { allowUnqualified: true },
+  )) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'signingConfigs.release usa setProperty sobre un campo protegido o con nombre dinámico',
+    );
+  }
+  if (hasProtectedSetProperty(
+    effectiveSource,
+    ['signingConfig'],
+    { ownerSuffixes: [['buildTypes', 'release']] },
+  ) || hasProtectedSetProperty(
+    releaseBuild.releaseBuildSource,
+    ['signingConfig'],
+    { allowUnqualified: true },
+  )) {
+    return entry(
+      READINESS_STATUS.technicalBlocker,
+      'release signing',
+      'buildTypes.release usa setProperty sobre signingConfig o con nombre dinámico',
+    );
+  }
   const signingConfigAssignments = signingAssignments(releaseBuild.releaseBuildSource, 'signingConfig');
   if (signingConfigAssignments.length === 0) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release no usa signingConfigs.release');
@@ -854,7 +1086,6 @@ export function evaluateReleaseSigning(appBuild) {
     return entry(READINESS_STATUS.technicalBlocker, 'release signing', 'buildTypes.release no apunta exclusivamente a signingConfigs.release');
   }
 
-  const signingFields = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'];
   const signingFieldTargets = signingFields.flatMap((field) => {
     const setter = `set${field[0].toUpperCase()}${field.slice(1)}`;
     return [
