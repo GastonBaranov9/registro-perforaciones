@@ -11,6 +11,7 @@ const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const tests = (await readdir(join(frontRoot, 'scripts')))
   .filter((name) => /^native-.*\.test\.mjs$/.test(name))
   .map((name) => join('scripts', name));
+tests.push(join('scripts', 'production-contract.test.mjs'));
 const testResult = spawnSync(process.execPath, ['--test', ...tests], {
   cwd: frontRoot,
   env: process.env,

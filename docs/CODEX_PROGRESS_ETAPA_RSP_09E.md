@@ -140,7 +140,7 @@ Componentes merged:
 - `ProfileInstallReceiver`: exportado por AndroidX pero protegido por `android.permission.DUMP`.
 - no hay services ni foreground services propios.
 
-Debug incluye `android:debuggable=true`. Release no declara `debuggable`; AGP lo deja falso. Capacitor deriva `webContentsDebuggingEnabled` y `loggingBehavior=debug` del flag de aplicación, por lo que ambos están disponibles en debug y apagados en release. El gate inspecciona únicamente `android.buildTypes.release`: la configuración específica de `debug` no altera el resultado, mientras que `debuggable true`, duplicados u otras formas ambiguas en release bloquean. No existe override manual en `MainActivity` ni configuración que los fuerce en producción.
+Debug incluye `android:debuggable=true`. Release no declara `debuggable`; AGP lo deja falso. Capacitor deriva `webContentsDebuggingEnabled` y `loggingBehavior=debug` del flag de aplicación, por lo que ambos están disponibles en debug y apagados en release. El gate ya no intenta inferir este valor leyendo Groovy: consulta `ApplicationVariant.debuggable` en el modelo efectivo que AGP expone para la variante release. Por eso una configuración exclusiva de `debug` no bloquea, mientras que `initWith debug`, una closure o un script aplicado sí bloquean si dejan `debuggable=true` en release. No existe override manual en `MainActivity` ni configuración que los fuerce en producción.
 
 ## Backup, restore y storage
 
@@ -251,7 +251,11 @@ Procedimiento futuro, después de decisiones humanas:
 
 El preflight no acepta accesos indirectos como `keystoreProperties[...]`, `signingProperties[...]` o `localProperties[...]`, aunque existan nombres habituales en `.gitignore`: el nombre de la variable y las reglas de ignore no prueban de qué archivo o literal se cargó. Soportar esos patrones requeriría demostrar su procedencia sin interpretar Groovy de forma frágil.
 
-Antes de evaluar Gradle se eliminan comentarios de línea y bloque mediante un scanner que conserva strings y escapes. El gate exige una estructura deliberadamente canónica: un único bloque `android`, un único `defaultConfig`, las asignaciones de identidad/versión dentro de esos bloques y la configuración de firma dentro de `signingConfigs.release`, enlazada desde `buildTypes.release`. Cada valor debe tener exactamente una asignación efectiva. Cero asignaciones bloquea por ausencia; duplicados, mutaciones externas o sintaxis cuyo valor no pueda demostrarse bloquean por ambigüedad. Para preservar una identidad empaquetada exacta, `applicationIdSuffix` no está admitido en `defaultConfig`, `buildTypes.release` ni `productFlavors`, y los flavors tampoco pueden reemplazar `applicationId`; un suffix exclusivo de `buildTypes.debug` no afecta el release. Para preservar la versión efectiva, `versionNameSuffix` está sujeto a la misma política y los flavors tampoco pueden reemplazar `versionName` ni `versionCode`; un suffix de versión exclusivo de `buildTypes.debug` sí está permitido. Los accessors no canónicos de `productFlavors` (`getByName`, `named`, `findByName`, `maybeCreate`, `create`, `register` o `getAt`) también bloquean porque el gate no interpreta sus efectos dinámicos. Las llamadas `setProperty(...)` sobre objetos protegidos se rechazan cuando nombran un campo protegido o cuando su primer argumento es dinámico y no permite demostrar qué propiedad cambia. El preflight no intenta interpretar Gradle/Groovy arbitrario ni reproducir su precedencia.
+La autoridad para identidad, versión, `debuggable` y selección final de signing es ahora Gradle/AGP 8.13. El checker Node crea un init script temporal, registra una tarea de verificación al aplicar `com.android.application` y selecciona con `androidComponents.selector().withBuildType('release')`. `onVariants` conserva las variantes y el snapshot se materializa en el `doLast` de la tarea: para entonces terminó la configuración de todos los proyectos, incluidos `apply from:`, `capacitor.build.gradle`, `postBuildExtras` y callbacks `afterEvaluate`. El probe no interpreta `initWith`, `with {}`, `configure {}` ni otras closures; observa su resultado en el modelo de AGP.
+
+Se usan APIs públicas: `ApplicationVariant.applicationId`, `Component.namespace`, `Component.debuggable` y los `VariantOutput.versionCode/versionName/enabled`. Cero variantes release o más de una bloquean; mientras no exista una política de flavors sólo se admite exactamente una. `applicationId` efectivo se compara con Capacitor, `package_name` y MainActivity; los suffixes y flavors no se calculan en Node. Del mismo modo, `versionCode` y `versionName` se validan después de todas las combinaciones y mutaciones Gradle. Un suffix exclusivo de debug no afecta release si el modelo efectivo conserva la identidad y versión esperadas.
+
+El parsing estático Gradle quedó reducido al contrato de fuente que el modelo efectivo no demuestra: dentro del único `android.signingConfigs.release` canónico, cada uno de `storeFile`, `storePassword`, `keyAlias` y `keyPassword` debe declararse exactamente una vez y usar directamente `providers.environmentVariable(...).get()`, `providers.gradleProperty(...).get()` o `System.getenv(...)`; comentarios, literales, fallbacks, valores nullable e indirecciones no califican. No se intenta extraer de fuente ningún valor efectivo de identidad, versión o debuggability.
 
 ## Identidad: lugares a cambiar juntos
 
@@ -261,7 +265,7 @@ Cuando exista `applicationId` definitivo deben actualizarse de forma atómica:
 - `front/android/app/build.gradle`: `namespace` y `applicationId`.
 - el `MainActivity.java` o `MainActivity.kt` descubierto bajo `front/android/app/src/main/java`: package y ubicación de directorio coherentes con el nuevo appId.
 - `front/android/app/src/main/res/values/strings.xml`: `package_name` y `custom_url_scheme` si ese scheme sigue siendo deseado.
-- contratos de identidad: no requieren editarse para una identidad válida; descubren MainActivity y comparan Capacitor, Gradle, namespace, `package_name`, package Java/Kotlin y ruta.
+- contratos de identidad: no requieren editarse para una identidad válida; descubren MainActivity y comparan Capacitor, `applicationId` y namespace efectivos informados por AGP, `package_name`, package Java/Kotlin y ruta.
 - documentación que describe el placeholder.
 
 No debe quitarse el bloqueo production antes de que todos esos lugares sean coherentes.
@@ -290,16 +294,18 @@ Artefactos locales demostrados, ambos ignorados por Git:
 - `front/android/app/build/outputs/apk/debug/app-debug.apk` — 10.582.996 bytes, firmado con debug.
 - `front/android/app/build/outputs/apk/release/app-release-unsigned.apk` — 8.801.973 bytes, sin firma.
 
-Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. El preflight deriva el resultado del estado efectivo y distingue:
+Para producción, después de resolver los blockers, el primer paso debe ser `npm run check:native-release-readiness`. Ese comando ejecuta los contratos `native-*.test.mjs`, incluye explícitamente `production-contract.test.mjs` sin delegar en `test:config` y luego ejecuta el probe Gradle; así el standalone no puede devolver `READY` si fallan los contratos del target Angular native production, Service Worker, CSP, routing o versiones Capacitor. El preflight deriva el resultado del estado efectivo y distingue:
 
 - `TECHNICAL_BLOCKER`: configuración ausente, inválida, incoherente o insegura;
 - `HUMAN_DECISION`: un placeholder detectable continúa activo;
 - `MANUAL_CHECK`: validación que no puede automatizarse de forma robusta, como confirmar visualmente branding; no fuerza por sí sola un fallo;
 - `READY`: condición técnica satisfecha.
 
-Con el estado actual termina con código 2 por appId/nombre placeholder y signing release ausente; origin ausente o inválido agrega otro blocker. `versionCode=1` y `versionName=1.0` son técnicamente válidos y ya no se bloquean por una confirmación externa. Un origin productivo válido tampoco genera un segundo bloqueo incondicional. Los tests construyen un estado futuro con identidad coherente, versión válida y referencias de signing explícitamente externalizadas que alcanza `READY`/exit 0; el branding queda como `MANUAL_CHECK` hasta su inspección humana.
+Con el estado actual termina con código 2 por appId/nombre placeholder y signing release ausente; origin ausente o inválido agrega otro blocker. El probe real informa `versionCode=1`, `versionName=1.0` y `debuggable=false`, que son técnicamente válidos. Un origin productivo válido tampoco genera un segundo bloqueo incondicional. Los tests construyen modelos efectivos sintéticos para los casos de cero/una/múltiples variantes, identidad, versión, debuggability y signing, además de consultar el proyecto Android real. El branding queda como `MANUAL_CHECK` hasta su inspección humana.
 
-Para signing, `READY` significa únicamente que `signingConfigs.release` está enlazado una sola vez desde `buildTypes.release`, declara una sola vez cada uno de los cuatro campos efectivos, no presenta overrides dirigidos al release fuera de esos bloques canónicos y cada expresión tiene una forma externa admitida sin literal, fallback ni valor nullable. Incluso un override externo que use otro provider seguro queda bloqueado: el gate no decide precedencias. Accessors dinámicos de release como `getByName("release")`, `named("release")` y `findByName("release")` no se interpretan y bloquean por configuración no canónica; accessors dirigidos explícitamente a otro nombre no se consideran overrides del release. `setProperty(...)` tampoco puede modificar los cuatro campos de `signingConfigs.release` ni el enlace `buildTypes.release.signingConfig`; un nombre de propiedad dinámico sobre esos objetos falla cerrado. El preflight no inspecciona ni imprime secretos, tampoco afirma que las variables estén presentes, que el keystore exista o que las credenciales sean válidas. Gradle y sus tareas de signing/release son la autoridad para esas comprobaciones en el entorno real. Luego corresponde `build:native:production`, sync, verificación de assets y recién entonces Gradle release/signing.
+Para signing, Node extrae solamente los nombres de las cuatro fuentes externas permitidas y reemplaza esas entradas en el proceso hijo por sentinels aleatorios. El path de `storeFile` apunta a un archivo sintético temporal; passwords y alias son strings sintéticos. La tarea consulta la selección final del `ApplicationBuildType` público y sus flags de presencia/coincidencia con los sentinels: cualquier literal u override posterior deja de coincidir y bloquea. También bloquea si release no selecciona exactamente el objeto canónico `signingConfigs.release` o si `defaultConfig`/un flavor introduce otra selección. La API pública `ApplicationVariant.signingConfig` no expone credenciales; por eso la atestación de los cuatro campos usa el DSL público final en tiempo de tarea, una vez cerrada la configuración. Para cubrir además una sustitución mediante `ApplicationVariant.signingConfig.setConfig(...)`, `finalizeDsl` asigna al config release una combinación efímera de flags V1–V4 que no usa ningún otro signing config y el snapshot exige que el signing efectivo de la variante conserve esa marca; si no existe una marca inequívoca, bloquea. No se genera ningún artefacto. El reporte JSON contiene sólo nombres de variante, metadata no secreta y booleanos; no serializa passwords, alias, paths, la combinación de la marca ni stderr de Gradle. El init script, el archivo sentinel y su directorio se eliminan en `finally`, incluso ante fallo. Esto no afirma que el keystore real exista o que sus credenciales sean válidas: esas comprobaciones corresponden al build/signing real posterior.
+
+La integración del probe usa opcionalmente un segundo init script que sólo los tests proporcionan. Esa fixture crea en memoria `signingConfigs.release`, carga los cuatro sentinels y enlaza `buildTypes.release` antes de `finalizeDsl`; un caso demuestra todos los matches y otro reemplaza sintéticamente `storePassword` para demostrar el mismatch. Ambos comparan antes/después `android/app/build.gradle` y el environment generado. La ruta productiva del probe no inyecta esa fixture.
 
 ## Pruebas y resultados
 
@@ -309,18 +315,21 @@ Para signing, `READY` significa únicamente que `signingConfigs.release` está e
 | `npm ls` frontend | PASS — sin invalid/peer errors críticos |
 | `npm ci` frontend | BLOCKED por lock de esbuild de un `ng serve` preexistente; no se detuvo el proceso ajeno |
 | `npm audit --omit=dev` frontend | PASS — 0 vulnerabilidades |
-| `npm test -- --watch=false --browsers=ChromeHeadless --progress=false` | PASS — 306/306 |
-| `npm run test:config` | PASS — 36 contratos después de corregir los P2 de readiness |
-| `npm run test:native-config` | PASS — 27 contratos después de corregir los P2 de readiness |
+| `npm test -- --watch=false` | PASS — 306/306 |
+| `node --test scripts/native-release-readiness.test.mjs` | PASS — 12/12 |
+| `npm run test:config` | PASS — 42/42, incluidos los tres casos del probe Gradle real |
+| `npm run test:native-config` | PASS — 33/33, incluidos unsigned, signing sentinel y override en Gradle real |
 | `npm run test:production-build` | PASS |
 | `npm run check:utf8` | PASS |
 | `npm run build` | PASS |
 | native development con origin HTTPS fixture | PASS |
+| `npm run probe:native-release-model` | PASS — una variante release; identidad/version/debuggable efectivos; signing ausente sanitizado |
+| `npm run check:native-release-readiness` | EXPECTED BLOCK — 41/41 contratos; sólo appId/nombre placeholder y signing release ausente |
 | native sin origin | EXPECTED BLOCK — exit 1, sin temporales |
 | native production con appId placeholder | EXPECTED BLOCK — exit 1, sin temporales |
 | `cap sync android` directo | PASS — cinco plugins |
 | `npm run verify:native-assets` | PASS — 211 hashes idénticos |
-| Gradle 8.13 / JDK 21 | PASS |
+| Gradle 8.13 / JDK 21; `gradlew tasks` | PASS |
 | `assembleDebug` | PASS |
 | `assembleRelease` sin firma | PASS técnico; artefacto unsigned |
 | Gradle `lint` | PASS — 0 errores, 16 warnings no críticos |

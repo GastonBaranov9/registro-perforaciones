@@ -4,12 +4,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import {
-  discoverMainActivities,
-  evaluateAndroidIdentity,
-  evaluateReleaseDebuggable,
-  READINESS_STATUS,
-} from './native-release-readiness.mjs';
+import { discoverMainActivities } from './native-release-readiness.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = join(frontRoot, '..');
@@ -121,8 +116,6 @@ test('release no fuerza debugging WebView ni configuración de red insegura', as
   assert.doesNotMatch(capacitor, /webContentsDebuggingEnabled\s*:\s*true/);
   assert.doesNotMatch(capacitor, /loggingBehavior\s*:\s*['"]production['"]/);
   assert.match(appBuild, /release\s*\{[\s\S]*?minifyEnabled false/);
-  const releaseDebuggable = evaluateReleaseDebuggable(appBuild);
-  assert.equal(releaseDebuggable.status, READINESS_STATUS.ready, releaseDebuggable.detail);
 });
 
 test('el logging frontend no envía credenciales ni material de sesión a console', async () => {
@@ -139,21 +132,8 @@ test('el logging frontend no envía credenciales ni material de sesión a consol
   }
 });
 
-test('la identidad Android efectiva es coherente sin fijar un package permanente', async () => {
-  const [capacitor, appBuild, strings, mainActivities, buildNative] = await Promise.all([
-    source('capacitor.config.ts'),
-    source('android/app/build.gradle'),
-    source('android/app/src/main/res/values/strings.xml'),
-    discoverMainActivities(join(androidMain, 'java')),
-    source('scripts/build-native.mjs'),
-  ]);
-
-  const identity = evaluateAndroidIdentity({ capacitor, appBuild, strings, mainActivities });
-  assert.equal(identity.coherent, true, identity.detail);
-  assert.ok(
-    identity.status === READINESS_STATUS.ready || identity.status === READINESS_STATUS.humanDecision,
-    identity.detail,
-  );
+test('el build nativo exige un appId de producción antes de sincronizar Android', async () => {
+  const buildNative = await source('scripts/build-native.mjs');
   assert.match(buildNative, /assertProductionAppId/);
 });
 

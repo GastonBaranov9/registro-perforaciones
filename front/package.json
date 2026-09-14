@@ -16,6 +16,7 @@
     "test:native-config": "node --test scripts/native-*.test.mjs",
     "check:utf8": "node scripts/check-interface-mojibake.mjs",
     "verify:native-assets": "node scripts/verify-native-assets.mjs",
+    "probe:native-release-model": "node scripts/probe-native-release-model.mjs",
     "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs"
   },
   "prettier": {

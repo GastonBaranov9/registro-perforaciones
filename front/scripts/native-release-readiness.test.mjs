@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import {
+  GRADLE_PROBE_INIT_SCRIPT,
+  GRADLE_PROBE_PREFIX,
+  parseGradleProbeOutput,
+} from './native-gradle-release-probe.mjs';
 import {
   evaluateAndroidIdentity,
   evaluateNativeReleaseReadiness,
   evaluateReleaseDebuggable,
   evaluateReleaseSigning,
   evaluateVersion,
+  inspectReleaseSigningSource,
   READINESS_STATUS,
+  selectEffectiveReleaseVariant,
   stripGradleComments,
 } from './native-release-readiness.mjs';
 
@@ -37,11 +45,11 @@ const envSigning = `
   }
 `;
 
-function appBuildFixture(appId = 'uy.com.empresa.perforaciones', signing = envSigning) {
+function appBuildFixture(signing = envSigning) {
   return `android {
-    namespace "${appId}"
+    namespace "uy.com.empresa.perforaciones"
     defaultConfig {
-      applicationId "${appId}"
+      applicationId "uy.com.empresa.perforaciones"
       versionCode 7
       versionName "1.2.3"
     }
@@ -49,654 +57,268 @@ function appBuildFixture(appId = 'uy.com.empresa.perforaciones', signing = envSi
     buildTypes {
       release {
         signingConfig signingConfigs.release
-        minifyEnabled false
       }
     }
   }`;
 }
 
-function withReleaseDirective(appBuild, directive) {
-  return appBuild.replace(
-    '        signingConfig signingConfigs.release',
-    `        ${directive}\n        signingConfig signingConfigs.release`,
-  );
+function signingFixture(overrides = {}) {
+  const fields = Object.fromEntries(['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+    .map((field) => [field, { present: true, matchesSentinel: true }]));
+  return {
+    selectedName: 'release',
+    selectedIsCanonicalRelease: true,
+    effectiveSelectionMatchesCanonicalMarker: true,
+    selectionUnambiguous: true,
+    fields,
+    ...overrides,
+  };
 }
 
-function withDefaultConfigDirective(appBuild, directive) {
-  return appBuild.replace(
-    '      versionCode 7',
-    `      ${directive}\n      versionCode 7`,
-  );
+function variantFixture(overrides = {}) {
+  return {
+    name: 'release',
+    buildType: 'release',
+    productFlavors: [],
+    applicationId: 'uy.com.empresa.perforaciones',
+    namespace: 'uy.com.empresa.perforaciones',
+    debuggable: false,
+    outputs: [{ enabled: true, versionCode: 7, versionName: '1.2.3' }],
+    signing: signingFixture(),
+    ...overrides,
+  };
 }
 
-function withBuildTypesDirective(appBuild, directive) {
-  const androidEnd = appBuild.lastIndexOf('}');
-  const buildTypesEnd = appBuild.lastIndexOf('}', androidEnd - 1);
-  return `${appBuild.slice(0, buildTypesEnd)}  ${directive}\n    ${appBuild.slice(buildTypesEnd)}`;
+function probeFixture(...variants) {
+  return {
+    schemaVersion: 1,
+    projectPath: ':app',
+    variants: variants.length > 0 ? variants : [variantFixture()],
+  };
 }
 
-test('identidad coherente acepta packages finales distintos sin fijar su valor', () => {
-  for (const appId of ['uy.com.empresa.perforaciones', 'com.organizacion.registro_app']) {
-    const identity = identityFixture(appId);
-    const result = evaluateAndroidIdentity({ ...identity, appBuild: appBuildFixture(appId) });
-    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
-    assert.equal(result.coherent, true);
-  }
+test('scanner estático de signing ignora comentarios y preserva strings', () => {
+  const source = String.raw`
+    def endpoint = "https://example.com/a//b/\"quoted\""
+    // storePassword "commented"
+    /* keyAlias "commented" */
+  `;
+  const effective = stripGradleComments(source);
+  assert.match(effective, /https:\/\/example\.com\/a\/\/b/);
+  assert.doesNotMatch(effective, /commented/);
 });
 
-test('identidad inconsistente bloquea y el placeholder coherente requiere decisión', () => {
-  const finalIdentity = identityFixture();
-  const mismatch = evaluateAndroidIdentity({
-    ...finalIdentity,
-    appBuild: appBuildFixture('com.organizacion.otro'),
+test('contrato estático extrae sólo nombres de fuentes externas permitidas', () => {
+  const contract = inspectReleaseSigningSource(appBuildFixture());
+  assert.equal(contract.error, undefined);
+  assert.deepEqual(contract.fields, {
+    storeFile: { kind: 'environment', name: 'ANDROID_STORE_FILE' },
+    storePassword: { kind: 'environment', name: 'ANDROID_STORE_PASSWORD' },
+    keyAlias: { kind: 'gradleProperty', name: 'ANDROID_KEY_ALIAS' },
+    keyPassword: { kind: 'environment', name: 'ANDROID_KEY_PASSWORD' },
   });
-  assert.equal(mismatch.status, READINESS_STATUS.technicalBlocker);
+  assert.equal(JSON.stringify(contract).includes('password-value'), false);
 
-  const placeholder = identityFixture('com.example.app', 'front');
-  const current = evaluateAndroidIdentity({
-    ...placeholder,
-    appBuild: appBuildFixture('com.example.app', ''),
-  });
-  assert.equal(current.status, READINESS_STATUS.humanDecision);
-  assert.equal(current.coherent, true);
-});
-
-test('identidad Gradle usa solo asignaciones efectivas canonicas', () => {
-  const appId = 'uy.com.empresa.perforaciones';
-  const identity = identityFixture(appId);
-  const commentedNamespace = appBuildFixture(appId).replace(
-    `namespace "${appId}"`,
-    `// namespace "uy.com.correcta"\n    namespace "${appId}"`,
-  );
-  const commentedApplicationId = appBuildFixture(appId).replace(
-    `applicationId "${appId}"`,
-    `// applicationId "uy.com.correcta"\n      applicationId "${appId}"`,
-  );
-
-  for (const appBuild of [commentedNamespace, commentedApplicationId]) {
-    const result = evaluateAndroidIdentity({ ...identity, appBuild });
-    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
-    assert.equal(result.appId, appId);
-  }
-});
-
-test('identidad Gradle bloquea duplicados y overrides externos', () => {
-  const appId = 'uy.com.empresa.perforaciones';
-  const identity = identityFixture(appId);
-  const duplicateNamespace = appBuildFixture(appId).replace(
-    `namespace "${appId}"`,
-    `namespace "uy.com.uno"\n    namespace "${appId}"`,
-  );
-  const duplicateApplicationId = appBuildFixture(appId).replace(
-    `applicationId "${appId}"`,
-    `applicationId "uy.com.uno"\n      applicationId "${appId}"`,
-  );
-  const externalApplicationId = `${appBuildFixture(appId)}\nandroid.defaultConfig.applicationId = "uy.com.otro"`;
-  const externalNamespace = `${appBuildFixture(appId)}\nandroid.namespace = "uy.com.otro"`;
-  const bracketApplicationId = `${appBuildFixture(appId)}\nandroid["defaultConfig"]["applicationId"] = "uy.com.otro"`;
-  const setterNamespace = `${appBuildFixture(appId)}\nandroid.setNamespace("uy.com.otro")`;
-
-  for (const appBuild of [
-    duplicateNamespace,
-    duplicateApplicationId,
-    externalApplicationId,
-    externalNamespace,
-    bracketApplicationId,
-    setterNamespace,
-  ]) {
-    const result = evaluateAndroidIdentity({ ...identity, appBuild });
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-  }
-
-  const commentedOverride = `${appBuildFixture(appId)}\n// android.namespace = "uy.com.otro"`;
-  assert.equal(
-    evaluateAndroidIdentity({ ...identity, appBuild: commentedOverride }).status,
-    READINESS_STATUS.ready,
-  );
-});
-
-test('identidad y version exigen bloques Android canonicos unicos', () => {
-  const appId = 'uy.com.empresa.perforaciones';
-  const identity = identityFixture(appId);
-  const duplicateAndroid = `${appBuildFixture(appId)}\n${appBuildFixture(appId)}`;
-  const duplicateDefaultConfig = appBuildFixture(appId).replace(
-    '      versionName "1.2.3"\n    }',
-    '      versionName "1.2.3"\n    }\n    defaultConfig { applicationId "uy.com.otro"; versionCode 8; versionName "2.0" }',
-  );
-  for (const appBuild of [duplicateAndroid, duplicateDefaultConfig]) {
-    assert.equal(
-      evaluateAndroidIdentity({ ...identity, appBuild }).status,
-      READINESS_STATUS.technicalBlocker,
-    );
-    assert.equal(evaluateVersion(appBuild).status, READINESS_STATUS.technicalBlocker);
-  }
-});
-
-test('identidad y version bloquean bloques calificados o sintaxis Gradle incompleta', () => {
-  const appId = 'uy.com.empresa.perforaciones';
-  const identity = identityFixture(appId);
-  const qualifiedAndroid = appBuildFixture(appId).replace(/^android/, 'holder.android');
-  const qualifiedDefaultConfig = appBuildFixture(appId).replace('defaultConfig {', 'holder.defaultConfig {');
-  const malformedSources = [
-    `${appBuildFixture(appId)}\nandroid {`,
-    `${appBuildFixture(appId)}\n/* comentario sin cierre`,
-    appBuildFixture(appId).replace('versionName "1.2.3"', 'versionName "1.2.3"\n      helper('),
-  ];
-
-  for (const appBuild of [qualifiedAndroid, qualifiedDefaultConfig, ...malformedSources]) {
-    assert.equal(
-      evaluateAndroidIdentity({ ...identity, appBuild }).status,
-      READINESS_STATUS.technicalBlocker,
-    );
-    assert.equal(evaluateVersion(appBuild).status, READINESS_STATUS.technicalBlocker);
-  }
-});
-
-test('identidad release rechaza mutaciones de productFlavors y suffix salvo configuración exclusiva de debug', () => {
-  const appId = 'uy.com.empresa.perforaciones';
-  const identity = identityFixture(appId);
-  const debugSuffix = appBuildFixture(appId).replace(
-    '    buildTypes {\n      release {',
-    '    buildTypes {\n      debug { applicationIdSuffix ".debug" }\n      release {',
-  );
-  const commentedSuffix = withReleaseDirective(
-    appBuildFixture(appId),
-    '// applicationIdSuffix ".fake"',
-  );
-  const commentedDefaultSuffix = withDefaultConfigDirective(
-    appBuildFixture(appId),
-    '// applicationIdSuffix ".fake"',
-  );
-  const commentedFlavorSuffix = appBuildFixture(appId).replace(
-    '    buildTypes {',
-    '    productFlavors {\n      demo { // applicationIdSuffix ".fake"\n        dimension "mode"\n      }\n    }\n    buildTypes {',
-  );
-  const commentedFlavorAccessors = `${appBuildFixture(appId)}
-// android.productFlavors.getByName(flavorName).applicationIdSuffix = ".fake"
-/* productFlavors.named("demo").applicationId = "uy.com.otro" */`;
-
-  for (const appBuild of [
-    debugSuffix,
-    commentedSuffix,
-    commentedDefaultSuffix,
-    commentedFlavorSuffix,
-    commentedFlavorAccessors,
-    `${appBuildFixture(appId)}\nbuildTypes.getByName("debug").applicationIdSuffix = ".debug"`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.setProperty("minSdk", 24)`,
-  ]) {
-    const result = evaluateAndroidIdentity({ ...identity, appBuild });
-    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
-  }
-
-  const flavored = appBuildFixture(appId).replace(
-    '    buildTypes {',
-    '    productFlavors {\n      demo { applicationIdSuffix ".demo" }\n    }\n    buildTypes {',
-  );
-  const flavoredApplicationId = appBuildFixture(appId).replace(
-    '    buildTypes {',
-    '    productFlavors {\n      demo { applicationId "uy.com.otro" }\n    }\n    buildTypes {',
-  );
-  for (const appBuild of [
-    withDefaultConfigDirective(appBuildFixture(appId), 'applicationIdSuffix ".x"'),
-    withDefaultConfigDirective(appBuildFixture(appId), 'applicationIdSuffix = ".x"'),
-    withDefaultConfigDirective(appBuildFixture(appId), 'applicationIdSuffix ""'),
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.applicationIdSuffix = ".x"`,
-    `${appBuildFixture(appId)}\ndefaultConfig.applicationIdSuffix = ".x"`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig["applicationIdSuffix"] = ".x"`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.setApplicationIdSuffix(".x")`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.setProperty("applicationIdSuffix", ".x")`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.setProperty(identityProperty, ".x")`,
-    `${appBuildFixture(appId)}\nandroid.defaultConfig.setProperty("applicationId", "uy.com.otro")`,
-    `${appBuildFixture(appId)}\nandroid.setProperty("namespace", "uy.com.otro")`,
-    withDefaultConfigDirective(
-      appBuildFixture(appId),
-      'if (true) { setProperty("applicationIdSuffix", ".x") }',
-    ),
-    withReleaseDirective(appBuildFixture(appId), 'applicationIdSuffix ".prod"'),
-    withReleaseDirective(appBuildFixture(appId), 'applicationIdSuffix = ".prod"'),
-    withReleaseDirective(appBuildFixture(appId), 'applicationIdSuffix ""'),
-    flavored,
-    flavoredApplicationId,
-    `${appBuildFixture(appId)}\nandroid.buildTypes.release.applicationIdSuffix = ".x"`,
-    `${appBuildFixture(appId)}\nbuildTypes.getByName("release").applicationIdSuffix = ".x"`,
-    `${appBuildFixture(appId)}\nandroid.productFlavors.getByName(flavorName).applicationIdSuffix = ".x"`,
-    `${appBuildFixture(appId)}\nandroid.productFlavors.getByName(flavorName).applicationId = "uy.com.otro"`,
-    `${appBuildFixture(appId)}\nproductFlavors.named("demo").applicationId = "uy.com.otro"`,
-    withBuildTypesDirective(
-      appBuildFixture(appId),
-      'getByName("release") { applicationIdSuffix ".x" }',
-    ),
-  ]) {
-    const result = evaluateAndroidIdentity({ ...identity, appBuild });
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-  }
-});
-
-test('versionado válido pasa y valores ausentes o inválidos bloquean', () => {
-  assert.equal(evaluateVersion(appBuildFixture()).status, READINESS_STATUS.ready);
-  for (const source of [
-    appBuildFixture().replace('versionCode 7', 'versionCode 0'),
-    appBuildFixture().replace('versionCode 7', 'versionCode -1'),
-    appBuildFixture().replace('versionName "1.2.3"', 'versionName ""'),
-    appBuildFixture().replace('versionName "1.2.3"', 'versionName "${RELEASE_VERSION}"'),
-    appBuildFixture().replace('versionName "1.2.3"', ''),
-  ]) {
-    assert.equal(evaluateVersion(source).status, READINESS_STATUS.technicalBlocker);
-  }
-});
-
-test('versionado Gradle ignora comentarios y bloquea duplicados efectivos', () => {
-  const commentedCode = appBuildFixture().replace(
-    'versionCode 7',
-    '// versionCode 100\n      versionCode 1',
-  );
-  const commentedName = appBuildFixture().replace(
-    'versionName "1.2.3"',
-    '// versionName "9.9"\n      versionName "1.0"',
-  );
-  assert.match(evaluateVersion(commentedCode).detail, /versionCode=1;/);
-  assert.match(evaluateVersion(commentedName).detail, /versionName=1\.0/);
-
-  const duplicateCode = appBuildFixture().replace(
-    'versionCode 7',
-    'versionCode 1\n      versionCode 2',
-  );
-  const duplicateName = appBuildFixture().replace(
-    'versionName "1.2.3"',
-    'versionName "1.0"\n      versionName "2.0"',
-  );
-  for (const source of [duplicateCode, duplicateName]) {
-    assert.equal(evaluateVersion(source).status, READINESS_STATUS.technicalBlocker);
-  }
-});
-
-test('versionado Gradle bloquea overrides externos pero no comentarios', () => {
-  for (const override of [
-    'android.defaultConfig.versionCode = 8',
-    'defaultConfig.versionName = "2.0"',
-    'android.defaultConfig["versionCode"] = 8',
-    'android.defaultConfig.setVersionName("2.0")',
-  ]) {
-    assert.equal(
-      evaluateVersion(`${appBuildFixture()}\n${override}`).status,
-      READINESS_STATUS.technicalBlocker,
-    );
-  }
-  assert.equal(
-    evaluateVersion(`${appBuildFixture()}\n/* android.defaultConfig.versionCode = 8 */`).status,
-    READINESS_STATUS.ready,
-  );
-});
-
-test('versión release rechaza suffixes y overrides derivados de productFlavors', () => {
-  const debugSuffix = appBuildFixture().replace(
-    '    buildTypes {\n      release {',
-    '    buildTypes {\n      debug { versionNameSuffix "-debug" }\n      release {',
-  );
-  for (const appBuild of [
-    debugSuffix,
-    `${appBuildFixture()}\nandroid.buildTypes.debug.versionNameSuffix = "-debug"`,
-    `${appBuildFixture()}\nandroid.buildTypes.debug.setProperty("versionNameSuffix", "-debug")`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setProperty("minSdk", 24)`,
-    withDefaultConfigDirective(appBuildFixture(), '// versionNameSuffix "-fake"'),
-    withReleaseDirective(appBuildFixture(), '// versionNameSuffix "-fake"'),
-    `${appBuildFixture()}\n// android.defaultConfig.setProperty("versionNameSuffix", "-fake")`,
-  ]) {
-    const result = evaluateVersion(appBuild);
-    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
-  }
-
-  const flavorMutation = (directive) => appBuildFixture().replace(
-    '    buildTypes {',
-    `    productFlavors {\n      demo { ${directive} }\n    }\n    buildTypes {`,
-  );
-  for (const appBuild of [
-    withDefaultConfigDirective(appBuildFixture(), 'versionNameSuffix "-x"'),
-    withDefaultConfigDirective(appBuildFixture(), 'versionNameSuffix = "-x"'),
-    withDefaultConfigDirective(appBuildFixture(), 'versionNameSuffix ""'),
-    `${appBuildFixture()}\nandroid.defaultConfig.versionNameSuffix = "-x"`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setVersionNameSuffix("-x")`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setProperty("versionNameSuffix", "-x")`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setProperty(versionProperty, "-x")`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setProperty("versionCode", 8)`,
-    `${appBuildFixture()}\nandroid.defaultConfig.setProperty("versionName", "2.0")`,
-    withDefaultConfigDirective(
-      appBuildFixture(),
-      'if (true) { setProperty("versionNameSuffix", "-x") }',
-    ),
-    withReleaseDirective(appBuildFixture(), 'versionNameSuffix "-prod"'),
-    withReleaseDirective(appBuildFixture(), 'versionNameSuffix = "-prod"'),
-    `${appBuildFixture()}\nandroid.buildTypes.release.versionNameSuffix = "-prod"`,
-    `${appBuildFixture()}\nbuildTypes.getByName("release").versionNameSuffix = "-prod"`,
-    flavorMutation('versionNameSuffix "-demo"'),
-    flavorMutation('versionName "2.0"'),
-    flavorMutation('versionCode 8'),
-    `${appBuildFixture()}\nproductFlavors.named("demo").versionName = "2.0"`,
-  ]) {
-    const result = evaluateVersion(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-  }
-});
-
-test('debuggable se evalúa sólo en buildTypes.release con sintaxis canónica', () => {
-  const debugEnabled = appBuildFixture().replace(
-    '    buildTypes {\n      release {',
-    '    buildTypes {\n      debug { debuggable true }\n      release {',
-  );
-  for (const appBuild of [
-    appBuildFixture(),
-    debugEnabled,
-    withReleaseDirective(appBuildFixture(), 'debuggable false'),
-    withReleaseDirective(appBuildFixture(), 'debuggable = false'),
-    withReleaseDirective(appBuildFixture(), '// debuggable true'),
-    `${appBuildFixture()}\nbuildTypes.getByName("debug").debuggable = true`,
-    `${appBuildFixture()}\nandroid.buildTypes.debug.setProperty("debuggable", true)`,
-    `${appBuildFixture()}\nandroid.buildTypes.release.setProperty("minifyEnabled", false)`,
-    `${appBuildFixture()}\n// android.buildTypes.release.setProperty("debuggable", true)`,
-  ]) {
-    const result = evaluateReleaseDebuggable(appBuild);
-    assert.equal(result.status, READINESS_STATUS.ready, result.detail);
-  }
-
-  for (const appBuild of [
-    withReleaseDirective(appBuildFixture(), 'debuggable true'),
-    withReleaseDirective(appBuildFixture(), 'debuggable = true'),
-    withReleaseDirective(appBuildFixture(), 'debuggable false\n        debuggable = false'),
-    withReleaseDirective(appBuildFixture(), 'debuggable providers.gradleProperty("DEBUGGABLE").get()'),
-    `${appBuildFixture()}\nbuildTypes.getByName("release").debuggable = false`,
-    `${appBuildFixture()}\nandroid.buildTypes.release.setProperty("debuggable", true)`,
-    `${appBuildFixture()}\nandroid.buildTypes.release.setProperty "debuggable", true`,
-    `${appBuildFixture()}\nandroid.buildTypes.release.setProperty(releaseProperty, true)`,
-    withReleaseDirective(appBuildFixture(), 'if (true) { setProperty("debuggable", true) }'),
-    withBuildTypesDirective(
-      appBuildFixture(),
-      'getByName("release") { debuggable false }',
-    ),
-  ]) {
-    const result = evaluateReleaseDebuggable(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-  }
-});
-
-test('signing distingue unsigned, debug, secretos hardcodeados y providers seguros', () => {
-  const unsigned = appBuildFixture(undefined, '');
-  assert.equal(evaluateReleaseSigning(unsigned).status, READINESS_STATUS.technicalBlocker);
-
-  const debugSigning = appBuildFixture().replace('signingConfigs.release\n        minifyEnabled', 'signingConfigs.debug\n        minifyEnabled');
-  assert.equal(evaluateReleaseSigning(debugSigning).status, READINESS_STATUS.technicalBlocker);
-
-  const hardcoded = appBuildFixture().replace(
-    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    '"fixture-hardcoded-secret"',
-  );
-  assert.equal(evaluateReleaseSigning(hardcoded).status, READINESS_STATUS.technicalBlocker);
-
-  const hardcodedStorePath = appBuildFixture().replace(
-    'file(providers.environmentVariable("ANDROID_STORE_FILE").get())',
-    'file("fixture-release.jks")',
-  );
-  assert.equal(evaluateReleaseSigning(hardcodedStorePath).status, READINESS_STATUS.technicalBlocker);
-
-  const hardcodedAlias = appBuildFixture().replace(
-    'providers.gradleProperty("ANDROID_KEY_ALIAS").get()',
-    '"fixture-hardcoded-alias"',
-  );
-  assert.equal(evaluateReleaseSigning(hardcodedAlias).status, READINESS_STATUS.technicalBlocker);
-
-  const hardcodedFallback = appBuildFixture().replace(
-    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'providers.environmentVariable("ANDROID_STORE_PASSWORD").orElse("fixture-hardcoded-fallback").get()',
-  );
-  assert.equal(evaluateReleaseSigning(hardcodedFallback).status, READINESS_STATUS.technicalBlocker);
-
-  const nullableProvider = appBuildFixture().replace(
-    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'providers.environmentVariable("ANDROID_STORE_PASSWORD").orNull',
-  );
-  assert.equal(evaluateReleaseSigning(nullableProvider).status, READINESS_STATUS.technicalBlocker);
-
-  assert.equal(
-    evaluateReleaseSigning(appBuildFixture()).status,
-    READINESS_STATUS.ready,
-  );
-});
-
-test('signing considera sólo directivas efectivas y preserva marcadores dentro de strings', () => {
-  const commentedLink = appBuildFixture().replace(
-    'signingConfig signingConfigs.release',
-    '// signingConfig signingConfigs.release',
-  );
-  assert.equal(evaluateReleaseSigning(commentedLink).status, READINESS_STATUS.technicalBlocker);
-
-  const blockCommentedLink = appBuildFixture().replace(
-    'signingConfig signingConfigs.release',
-    '/*\n        signingConfig signingConfigs.release\n        */',
-  );
-  assert.equal(evaluateReleaseSigning(blockCommentedLink).status, READINESS_STATUS.technicalBlocker);
-
-  const commentedSafeThenHardcoded = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    '// storePassword providers.environmentVariable("SAFE").get()\n      storePassword "hardcoded-secret"',
-  );
-  assert.equal(
-    evaluateReleaseSigning(commentedSafeThenHardcoded).status,
-    READINESS_STATUS.technicalBlocker,
-  );
-
-  const commentedHardcodedThenSafe = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    '// storePassword "hardcoded"\n      storePassword providers.environmentVariable("SAFE").get()',
-  );
-  assert.equal(evaluateReleaseSigning(commentedHardcodedThenSafe).status, READINESS_STATUS.ready);
-
-  const urlInsideString = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'def endpoint = "https://example.com/a//b"; storePassword providers.environmentVariable("SAFE").get()',
-  );
-  assert.equal(evaluateReleaseSigning(urlInsideString).status, READINESS_STATUS.ready);
-  assert.match(stripGradleComments('def endpoint = "https://example.com/a//b" // quitar'), /https:\/\/example\.com\/a\/\/b/);
-  const escapedString = String.raw`def endpoint = "https://example.com/a//b/\"quoted\"" // quitar`;
-  const normalizedEscapedString = stripGradleComments(escapedString);
-  assert.ok(normalizedEscapedString.includes(String.raw`"https://example.com/a//b/\"quoted\""`));
-  assert.doesNotMatch(normalizedEscapedString, /quitar/);
-});
-
-test('signing bloquea campos efectivos duplicados sin decidir precedencia Groovy', () => {
-  const safeThenHardcoded = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'storePassword providers.environmentVariable("SAFE").get()\n      storePassword "hardcoded-secret"',
-  );
-  const hardcodedThenSafe = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'storePassword "hardcoded-secret"\n      storePassword providers.environmentVariable("SAFE").get()',
-  );
-  const conditionalDuplicate = appBuildFixture().replace(
-    'storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    'storePassword providers.environmentVariable("SAFE").get()\n      if (true) { storePassword "hardcoded-secret" }',
-  );
-  for (const appBuild of [safeThenHardcoded, hardcodedThenSafe, conditionalDuplicate]) {
-    const result = evaluateReleaseSigning(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-    assert.match(result.detail, /asignaciones duplicadas: storePassword/);
-  }
-});
-
-test('signing bloquea enlaces efectivos duplicados en buildTypes.release', () => {
-  const duplicateLink = appBuildFixture().replace(
-    'signingConfig signingConfigs.release',
-    'signingConfig signingConfigs.release\n        signingConfig signingConfigs.release',
-  );
-  const nestedLink = appBuildFixture().replace(
-    'signingConfig signingConfigs.release',
-    'signingConfig signingConfigs.release\n        if (true) { signingConfig signingConfigs.debug }',
-  );
-  for (const appBuild of [duplicateLink, nestedLink]) {
-    const result = evaluateReleaseSigning(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-    assert.match(result.detail, /signingConfig duplicadas/);
-  }
-});
-
-test('signing bloquea overrides externos al bloque release canonico', () => {
-  const qualifiedHardcoded = `${appBuildFixture()}\nsigningConfigs.release.storePassword = "hardcoded"`;
-  const androidQualified = `${appBuildFixture()}\nandroid.signingConfigs.release.keyAlias = "hardcoded"`;
-  const qualifiedProvider = `${appBuildFixture()}\nsigningConfigs.release.storePassword =\n  providers.environmentVariable("OTHER").get()`;
-  const bracketOverride = `${appBuildFixture()}\nandroid["signingConfigs"]["release"]["storePassword"] = "hardcoded"`;
-  const setterOverride = `${appBuildFixture()}\nandroid.signingConfigs.release.setKeyAlias("hardcoded")`;
-  const propertiesOverride = `${appBuildFixture()}\nandroid.signingConfigs.release.properties["keyPassword"] = "hardcoded"`;
-  const scopedSigning = envSigning.replace(
-    /\n  }\s*$/,
-    '\n    release.storePassword = "hardcoded"\n  }\n',
-  );
-  for (const appBuild of [
-    qualifiedHardcoded,
-    androidQualified,
-    qualifiedProvider,
-    bracketOverride,
-    setterOverride,
-    propertiesOverride,
-    appBuildFixture(undefined, scopedSigning),
-  ]) {
-    const result = evaluateReleaseSigning(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-    assert.match(result.detail, /overrides fuera del bloque canónico/);
-  }
-
-  const commentedOverride = `${appBuildFixture()}\n// signingConfigs.release.storePassword = "hardcoded"`;
-  assert.equal(evaluateReleaseSigning(commentedOverride).status, READINESS_STATUS.ready);
-});
-
-test('signing bloquea overrides externos del enlace buildTypes.release', () => {
-  for (const override of [
-    'buildTypes.release.signingConfig = signingConfigs.debug',
-    'android.buildTypes.release.signingConfig = signingConfigs.release',
-    'android["buildTypes"]["release"]["signingConfig"] = signingConfigs.debug',
-    'android.buildTypes.release.setSigningConfig(signingConfigs.debug)',
-  ]) {
-    const result = evaluateReleaseSigning(`${appBuildFixture()}\n${override}`);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-    assert.match(result.detail, /signingConfig tiene overrides fuera del bloque canónico/);
-  }
-  assert.equal(
-    evaluateReleaseSigning(`${appBuildFixture()}\n/* buildTypes.release.signingConfig = signingConfigs.debug */`).status,
-    READINESS_STATUS.ready,
-  );
-});
-
-test('signing bloquea setProperty sobre campos protegidos de release', () => {
-  for (const override of [
-    'signingConfigs.release.setProperty("storePassword", "hardcoded")',
-    'android.signingConfigs.getByName("release")\n  .setProperty("keyAlias", "hardcoded")',
-    'signingConfigs.release.setProperty(signingProperty, "hardcoded")',
-    'android.buildTypes.release.setProperty("signingConfig", signingConfigs.debug)',
-    'android.buildTypes.release.setProperty(releaseProperty, signingConfigs.debug)',
-  ]) {
-    const result = evaluateReleaseSigning(`${appBuildFixture()}\n${override}`);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-  }
-
-  const scopedSetProperty = envSigning.replace(
+  const commented = appBuildFixture().replace(
     '      storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
-    '      storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()\n' +
-      '      if (true) { setProperty("storePassword", "hardcoded") }',
+    '      // storePassword "hardcoded"\n' +
+      '      storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
   );
+  assert.equal(inspectReleaseSigningSource(commented).error, undefined);
+});
+
+test('contrato estático bloquea signing ausente, duplicado, literal o indirecto', () => {
+  const duplicate = envSigning.replace(
+    '      storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    '      storePassword providers.environmentVariable("SAFE_A").get()\n' +
+      '      storePassword providers.environmentVariable("SAFE_B").get()',
+  );
+  const hardcoded = envSigning.replace(
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    '"hardcoded-secret"',
+  );
+  const fallback = envSigning.replace(
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").orElse("fallback").get()',
+  );
+  const indirect = envSigning.replace(
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'signingProperties["storePassword"]',
+  );
+  const reserved = envSigning.replace('ANDROID_STORE_PASSWORD', 'PATH');
+  for (const appBuild of [
+    appBuildFixture(''),
+    appBuildFixture(duplicate),
+    appBuildFixture(hardcoded),
+    appBuildFixture(fallback),
+    appBuildFixture(indirect),
+    appBuildFixture(reserved),
+  ]) {
+    assert.ok(inspectReleaseSigningSource(appBuild).error);
+  }
+});
+
+test('output del probe se parsea por prefijo único y contrato versionado', () => {
+  const report = probeFixture();
+  assert.deepEqual(
+    parseGradleProbeOutput(`ruido Gradle\n${GRADLE_PROBE_PREFIX}${JSON.stringify(report)}\n`),
+    report,
+  );
+  assert.throws(() => parseGradleProbeOutput('sin reporte'));
+  assert.throws(() => parseGradleProbeOutput(
+    `${GRADLE_PROBE_PREFIX}${JSON.stringify(report)}\n` +
+    `${GRADLE_PROBE_PREFIX}${JSON.stringify(report)}`,
+  ));
+  assert.throws(() => parseGradleProbeOutput(`${GRADLE_PROBE_PREFIX}{}`));
+});
+
+test('init script delega el modelo efectivo a APIs públicas y emite sólo estados sanitizados', () => {
+  assert.match(GRADLE_PROBE_INIT_SCRIPT, /androidComponents\.onVariants/);
+  assert.match(GRADLE_PROBE_INIT_SCRIPT, /androidComponents\.finalizeDsl/);
+  assert.match(GRADLE_PROBE_INIT_SCRIPT, /selector\(\)\.withBuildType\('release'\)/);
+  assert.match(GRADLE_PROBE_INIT_SCRIPT, /doLast/);
+  assert.match(GRADLE_PROBE_INIT_SCRIPT, /matchesSentinel/);
+  assert.doesNotMatch(GRADLE_PROBE_INIT_SCRIPT, /initWith|afterEvaluate|postBuildExtras/);
+  assert.doesNotMatch(GRADLE_PROBE_INIT_SCRIPT, /storePassword:\s*selectedSigning/);
+  assert.doesNotMatch(GRADLE_PROBE_INIT_SCRIPT, /keyAlias:\s*selectedSigning/);
+  assert.doesNotMatch(GRADLE_PROBE_INIT_SCRIPT, /keyPassword:\s*selectedSigning/);
+});
+
+test('preflight standalone incluye los contratos production sin recursión por test:config', async () => {
+  const source = await readFile(
+    new URL('./check-native-release-readiness.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /production-contract\.test\.mjs/);
+  assert.doesNotMatch(source, /test:config/);
+});
+
+test('selección release falla cerrado con cero o múltiples variantes', () => {
+  assert.match(selectEffectiveReleaseVariant({ variants: [] }).error, /no informó variantes/);
+  assert.match(
+    selectEffectiveReleaseVariant({ variants: [variantFixture(), variantFixture({ name: 'demoRelease' })] }).error,
+    /2 variantes release/,
+  );
+  assert.equal(selectEffectiveReleaseVariant(probeFixture()).variant.name, 'release');
+});
+
+test('identidad compara applicationId y namespace efectivos con el contrato Android', () => {
+  const identity = identityFixture();
+  const ready = evaluateAndroidIdentity({ ...identity, gradleProbe: probeFixture() });
+  assert.equal(ready.status, READINESS_STATUS.ready, ready.detail);
+
+  for (const variant of [
+    variantFixture({ applicationId: 'uy.com.otro' }),
+    variantFixture({ namespace: 'uy.com.otro' }),
+  ]) {
+    const result = evaluateAndroidIdentity({ ...identity, gradleProbe: probeFixture(variant) });
+    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
+  }
+
+  const placeholder = identityFixture('com.example.app', 'front');
+  const placeholderVariant = variantFixture({
+    applicationId: 'com.example.app',
+    namespace: 'com.example.app',
+  });
   assert.equal(
-    evaluateReleaseSigning(appBuildFixture(undefined, scopedSetProperty)).status,
+    evaluateAndroidIdentity({ ...placeholder, gradleProbe: probeFixture(placeholderVariant) }).status,
+    READINESS_STATUS.humanDecision,
+  );
+});
+
+test('versión valida los valores efectivos y bloquea outputs ambiguos', () => {
+  assert.equal(evaluateVersion(probeFixture()).status, READINESS_STATUS.ready);
+  for (const outputs of [
+    [{ enabled: true, versionCode: 0, versionName: '1.0' }],
+    [{ enabled: true, versionCode: 1, versionName: '' }],
+    [{ enabled: true, versionCode: 1, versionName: '1.0\nunsafe' }],
+    [
+      { enabled: true, versionCode: 1, versionName: '1.0' },
+      { enabled: true, versionCode: 2, versionName: '2.0' },
+    ],
+  ]) {
+    assert.equal(
+      evaluateVersion(probeFixture(variantFixture({ outputs }))).status,
+      READINESS_STATUS.technicalBlocker,
+    );
+  }
+  const suffixedEffective = probeFixture(variantFixture({
+    outputs: [{ enabled: true, versionCode: 7, versionName: '1.2.3-prod' }],
+  }));
+  assert.match(evaluateVersion(suffixedEffective).detail, /versionName=1\.2\.3-prod/);
+});
+
+test('debuggable usa exclusivamente el booleano efectivo de la variante release', () => {
+  assert.equal(evaluateReleaseDebuggable(probeFixture()).status, READINESS_STATUS.ready);
+  assert.equal(
+    evaluateReleaseDebuggable(probeFixture(variantFixture({ debuggable: true }))).status,
     READINESS_STATUS.technicalBlocker,
   );
   assert.equal(
-    evaluateReleaseSigning(
-      `${appBuildFixture()}\n// signingConfigs.release.setProperty("storePassword", "hardcoded")`,
-    ).status,
-    READINESS_STATUS.ready,
+    evaluateReleaseDebuggable(probeFixture(variantFixture({ debuggable: undefined }))).status,
+    READINESS_STATUS.technicalBlocker,
   );
 });
 
-test('signing bloquea accessors dinámicos dirigidos a release', () => {
-  for (const override of [
-    'signingConfigs.getByName("release").storePassword = "hardcoded"',
-    'android.signingConfigs.getByName("release").keyAlias = "hardcoded"',
-    'signingConfigs.named("release").keyPassword = "hardcoded"',
-    'signingConfigs.findByName("release").storeFile = file("hardcoded.jks")',
-    'signingConfigs.maybeCreate("release").storePassword = "hardcoded"',
-    'signingConfigs.getByName(targetConfig).storePassword = "hardcoded"',
-    'buildTypes.getByName("release").signingConfig = signingConfigs.debug',
-    'android.buildTypes.named("release").signingConfig = signingConfigs.debug',
+test('signing exige selección canónica y match de los cuatro sentinels', () => {
+  const contract = inspectReleaseSigningSource(appBuildFixture());
+  assert.equal(evaluateReleaseSigning({
+    appBuild: appBuildFixture(),
+    gradleProbe: probeFixture(),
+    signingContract: contract,
+  }).status, READINESS_STATUS.ready);
+
+  const mismatchedFields = signingFixture();
+  mismatchedFields.fields.storePassword = { present: true, matchesSentinel: false };
+  for (const signing of [
+    signingFixture({ selectedName: 'debug', selectedIsCanonicalRelease: false }),
+    signingFixture({ effectiveSelectionMatchesCanonicalMarker: false }),
+    signingFixture({ selectionUnambiguous: false }),
+    mismatchedFields,
+    signingFixture({ fields: {} }),
   ]) {
-    const result = evaluateReleaseSigning(`${appBuildFixture()}\n${override}`);
+    const result = evaluateReleaseSigning({
+      appBuild: appBuildFixture(),
+      gradleProbe: probeFixture(variantFixture({ signing })),
+      signingContract: contract,
+    });
     assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-    assert.match(result.detail, /accessor dinámico no canónico/);
   }
-
-  const signingConfigsEnd = envSigning.lastIndexOf('}');
-  const scopedSigning = `${envSigning.slice(0, signingConfigsEnd)}` +
-    `  getByName("release") { storePassword "hardcoded" }\n  ${envSigning.slice(signingConfigsEnd)}`;
-  for (const appBuild of [
-    appBuildFixture(undefined, scopedSigning),
-    withBuildTypesDirective(
-      appBuildFixture(),
-      'getByName("release") { signingConfig signingConfigs.debug }',
-    ),
-  ]) {
-    const result = evaluateReleaseSigning(appBuild);
-    assert.equal(result.status, READINESS_STATUS.technicalBlocker, result.detail);
-    assert.match(result.detail, /accessor dinámico no canónico/);
-  }
-
-  assert.equal(
-    evaluateReleaseSigning(
-      `${appBuildFixture()}\n// signingConfigs.getByName("release").storePassword = "hardcoded"`,
-    ).status,
-    READINESS_STATUS.ready,
-  );
-  assert.equal(
-    evaluateReleaseSigning(
-      `${appBuildFixture()}\nsigningConfigs.getByName("debug").storePassword = "debug-only"`,
-    ).status,
-    READINESS_STATUS.ready,
-  );
 });
 
-test('signing rechaza una Map hardcodeada aunque nombres comunes estén protegidos por gitignore', () => {
-  const hardcodedMapSigning = `
-  def keystoreProperties = [
-    storeFile: "release.jks",
-    storePassword: "hardcoded-secret",
-    keyAlias: "hardcoded-alias",
-    keyPassword: "hardcoded-password"
-  ]
-
-  signingConfigs {
-    release {
-      storeFile file(keystoreProperties['storeFile'])
-      storePassword keystoreProperties['storePassword']
-      keyAlias keystoreProperties['keyAlias']
-      keyPassword keystoreProperties['keyPassword']
-    }
-  }`;
-  const result = evaluateReleaseSigning(appBuildFixture(undefined, hardcodedMapSigning));
-  assert.equal(result.status, READINESS_STATUS.technicalBlocker);
-  assert.match(result.detail, /storeFile, storePassword, keyAlias, keyPassword/);
-});
-
-test('preflight actual bloquea y una configuración futura estructuralmente válida llega a exit 0', () => {
+test('preflight sintético bloquea placeholders y permite un modelo futuro seguro', () => {
   const placeholder = identityFixture('com.example.app', 'front');
+  const placeholderVariant = variantFixture({
+    applicationId: 'com.example.app',
+    namespace: 'com.example.app',
+    signing: signingFixture({
+      selectedName: null,
+      selectedIsCanonicalRelease: false,
+      fields: {},
+    }),
+  });
   const blocked = evaluateNativeReleaseReadiness({
     ...placeholder,
-    appBuild: appBuildFixture('com.example.app', ''),
-    origin: undefined,
+    appBuild: appBuildFixture(''),
+    gradleProbe: probeFixture(placeholderVariant),
+    origin: 'https://api.release-readiness.uy',
   });
   assert.equal(blocked.blocked, true);
   assert.equal(blocked.exitCode, 2);
+  assert.deepEqual(
+    blocked.entries
+      .filter(({ status }) => status === READINESS_STATUS.technicalBlocker ||
+        status === READINESS_STATUS.humanDecision)
+      .map(({ item }) => item),
+    ['application identity', 'app name', 'release signing'],
+  );
 
-  const finalIdentity = identityFixture();
   const ready = evaluateNativeReleaseReadiness({
-    ...finalIdentity,
+    ...identityFixture(),
     appBuild: appBuildFixture(),
+    gradleProbe: probeFixture(),
     origin: 'https://api.release-readiness.uy',
   });
   assert.equal(ready.blocked, false);
   assert.equal(ready.exitCode, 0);
-  assert.ok(ready.entries.every(({ status }) =>
-    status === READINESS_STATUS.ready || status === READINESS_STATUS.manualCheck));
 });
