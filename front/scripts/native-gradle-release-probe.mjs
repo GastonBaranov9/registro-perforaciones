@@ -183,11 +183,9 @@ async function sentinelInputs(signingContract, temporaryDirectory) {
   }
 
   const environment = { ...process.env };
-  const gradleProperties = [];
   for (const source of sources) {
     const value = sourceValues.get(externalSourceKey(source));
     if (source.kind === 'environment') environment[source.name] = value;
-    if (source.kind === 'gradleProperty') gradleProperties.push(`-P${source.name}=${value}`);
   }
 
   const expectedEnvironmentNames = {
@@ -200,7 +198,7 @@ async function sentinelInputs(signingContract, temporaryDirectory) {
   for (const [field, source] of Object.entries(signingContract?.fields ?? {})) {
     environment[expectedEnvironmentNames[field]] = sourceValues.get(externalSourceKey(source));
   }
-  return { environment, gradleProperties: [...new Set(gradleProperties)] };
+  return environment;
 }
 
 function runProcess(command, args, options) {
@@ -234,7 +232,7 @@ export async function runGradleReleaseProbe({
       await writeFile(fixtureInitScript, testFixtureInitScript, 'utf8');
       fixtureArguments.push('--init-script', fixtureInitScript);
     }
-    const { environment, gradleProperties } = await sentinelInputs(
+    const environment = await sentinelInputs(
       signingContract,
       temporaryDirectory,
     );
@@ -259,7 +257,6 @@ export async function runGradleReleaseProbe({
       '--console=plain',
       '--quiet',
       '--no-daemon',
-      ...gradleProperties,
       ':app:rspNativeReleaseProbe',
     ], {
       cwd: androidRoot,

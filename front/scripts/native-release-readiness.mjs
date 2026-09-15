@@ -272,16 +272,13 @@ function externalSigningSource(expression, field) {
   let value = expression.trim();
   if (field === 'storeFile') {
     const fileCall = /^(?:rootProject\.)?file\(\s*([\s\S]+)\s*\)$/.exec(value);
-    if (fileCall) value = fileCall[1].trim();
+    if (!fileCall) return undefined;
+    value = fileCall[1].trim();
   }
   const patterns = [
     {
       kind: 'environment',
       regex: new RegExp(`^providers\\.environmentVariable\\(\\s*(["'])(${EXTERNAL_SOURCE_NAME})\\1\\s*\\)\\.get\\(\\)$`),
-    },
-    {
-      kind: 'gradleProperty',
-      regex: new RegExp(`^providers\\.gradleProperty\\(\\s*(["'])(${EXTERNAL_SOURCE_NAME})\\1\\s*\\)\\.get\\(\\)$`),
     },
     {
       kind: 'environment',
@@ -360,7 +357,7 @@ export function inspectReleaseSigningSource(appBuild) {
     .map(([field]) => field);
   if (unsafe.length > 0) {
     return {
-      error: `campos sin fuente externa explícita permitida: ${unsafe.join(', ')}`,
+      error: `campos sin variable de entorno directa permitida: ${unsafe.join(', ')}`,
       fields: undefined,
       probeSources,
     };
@@ -537,7 +534,7 @@ export function evaluateReleaseSigning({ appBuild, gradleProbe, signingContract 
   return entry(
     READINESS_STATUS.ready,
     'release signing',
-    'signingConfigs.release efectivo coincide con las cuatro fuentes externas sentinel',
+    'signingConfigs.release efectivo coincide con las cuatro variables de entorno sentinel',
   );
 }
 

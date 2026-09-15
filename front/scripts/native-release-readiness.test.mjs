@@ -39,7 +39,7 @@ const envSigning = `
     release {
       storeFile file(providers.environmentVariable("ANDROID_STORE_FILE").get())
       storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()
-      keyAlias providers.gradleProperty("ANDROID_KEY_ALIAS").get()
+      keyAlias System.getenv("ANDROID_KEY_ALIAS")
       keyPassword System.getenv("ANDROID_KEY_PASSWORD")
     }
   }
@@ -108,13 +108,13 @@ test('scanner estático de signing ignora comentarios y preserva strings', () =>
   assert.doesNotMatch(effective, /commented/);
 });
 
-test('contrato estático extrae sólo nombres de fuentes externas permitidas', () => {
+test('contrato estático extrae sólo nombres de variables de entorno directas', () => {
   const contract = inspectReleaseSigningSource(appBuildFixture());
   assert.equal(contract.error, undefined);
   assert.deepEqual(contract.fields, {
     storeFile: { kind: 'environment', name: 'ANDROID_STORE_FILE' },
     storePassword: { kind: 'environment', name: 'ANDROID_STORE_PASSWORD' },
-    keyAlias: { kind: 'gradleProperty', name: 'ANDROID_KEY_ALIAS' },
+    keyAlias: { kind: 'environment', name: 'ANDROID_KEY_ALIAS' },
     keyPassword: { kind: 'environment', name: 'ANDROID_KEY_PASSWORD' },
   });
   assert.equal(JSON.stringify(contract).includes('password-value'), false);
@@ -125,6 +125,38 @@ test('contrato estático extrae sólo nombres de fuentes externas permitidas', (
       '      storePassword providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
   );
   assert.equal(inspectReleaseSigningSource(commented).error, undefined);
+});
+
+test('contrato estático rechaza gradleProperty en cualquiera de los cuatro campos', () => {
+  const replacements = {
+    storeFile: [
+      'file(providers.environmentVariable("ANDROID_STORE_FILE").get())',
+      'file(providers.gradleProperty("ANDROID_STORE_FILE").get())',
+    ],
+    storePassword: [
+      'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+      'providers.gradleProperty("ANDROID_STORE_PASSWORD").get()',
+    ],
+    keyAlias: [
+      'System.getenv("ANDROID_KEY_ALIAS")',
+      'providers.gradleProperty("ANDROID_KEY_ALIAS").get()',
+    ],
+    keyPassword: [
+      'System.getenv("ANDROID_KEY_PASSWORD")',
+      'providers.gradleProperty("ANDROID_KEY_PASSWORD").get()',
+    ],
+  };
+
+  for (const [field, [allowed, projectProperty]] of Object.entries(replacements)) {
+    const appBuild = appBuildFixture(envSigning.replace(allowed, projectProperty));
+    const contract = inspectReleaseSigningSource(appBuild);
+    assert.match(contract.error, new RegExp(field));
+    assert.equal(evaluateReleaseSigning({
+      appBuild,
+      gradleProbe: probeFixture(),
+      signingContract: contract,
+    }).status, READINESS_STATUS.technicalBlocker);
+  }
 });
 
 test('contrato estático bloquea signing ausente, duplicado, literal o indirecto', () => {
@@ -141,9 +173,17 @@ test('contrato estático bloquea signing ausente, duplicado, literal o indirecto
     'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
     'providers.environmentVariable("ANDROID_STORE_PASSWORD").orElse("fallback").get()',
   );
+  const nullable = envSigning.replace(
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
+    'providers.environmentVariable("ANDROID_STORE_PASSWORD").getOrNull()',
+  );
   const indirect = envSigning.replace(
     'providers.environmentVariable("ANDROID_STORE_PASSWORD").get()',
     'signingProperties["storePassword"]',
+  );
+  const unwrappedStoreFile = envSigning.replace(
+    'file(providers.environmentVariable("ANDROID_STORE_FILE").get())',
+    'providers.environmentVariable("ANDROID_STORE_FILE").get()',
   );
   const reserved = envSigning.replace('ANDROID_STORE_PASSWORD', 'PATH');
   for (const appBuild of [
@@ -151,7 +191,9 @@ test('contrato estático bloquea signing ausente, duplicado, literal o indirecto
     appBuildFixture(duplicate),
     appBuildFixture(hardcoded),
     appBuildFixture(fallback),
+    appBuildFixture(nullable),
     appBuildFixture(indirect),
+    appBuildFixture(unwrappedStoreFile),
     appBuildFixture(reserved),
   ]) {
     assert.ok(inspectReleaseSigningSource(appBuild).error);

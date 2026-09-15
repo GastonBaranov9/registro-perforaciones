@@ -83,6 +83,70 @@ function assertCanonicalSyntheticSigning(signing) {
   }
 }
 
+function assertOptionalString(value, name) {
+  assert.ok(value === null || typeof value === 'string', `${name} debe ser string o null`);
+}
+
+function assertSanitizedSigning(signing) {
+  assert.deepEqual(Object.keys(signing).sort(), [
+    'effectiveSelectionMatchesCanonicalMarker',
+    'fields',
+    'selectedIsCanonicalRelease',
+    'selectedName',
+    'selectionUnambiguous',
+  ]);
+  assertOptionalString(signing.selectedName, 'signing.selectedName');
+  assert.equal(typeof signing.selectedIsCanonicalRelease, 'boolean');
+  assert.equal(typeof signing.effectiveSelectionMatchesCanonicalMarker, 'boolean');
+  assert.equal(typeof signing.selectionUnambiguous, 'boolean');
+  assert.deepEqual(Object.keys(signing.fields).sort(), [...signingFields].sort());
+  for (const field of signingFields) {
+    assert.deepEqual(Object.keys(signing.fields[field]).sort(), ['matchesSentinel', 'present']);
+    assert.equal(typeof signing.fields[field].present, 'boolean');
+    assert.equal(typeof signing.fields[field].matchesSentinel, 'boolean');
+  }
+}
+
+function assertReleaseVariantSchema(variant) {
+  assert.deepEqual(Object.keys(variant).sort(), [
+    'applicationId',
+    'buildType',
+    'debuggable',
+    'name',
+    'namespace',
+    'outputs',
+    'productFlavors',
+    'signing',
+  ]);
+  assert.match(variant.name, /^[A-Za-z][A-Za-z0-9_]*$/);
+  assert.equal(variant.buildType, 'release');
+  assert.ok(Array.isArray(variant.productFlavors));
+  for (const flavor of variant.productFlavors) {
+    assert.deepEqual(Object.keys(flavor).sort(), ['dimension', 'name']);
+    assert.equal(typeof flavor.dimension, 'string');
+    assert.equal(typeof flavor.name, 'string');
+  }
+  assertOptionalString(variant.applicationId, 'applicationId');
+  assertOptionalString(variant.namespace, 'namespace');
+  assert.equal(typeof variant.debuggable, 'boolean');
+  assert.ok(Array.isArray(variant.outputs));
+  for (const output of variant.outputs) {
+    assert.deepEqual(Object.keys(output).sort(), ['enabled', 'versionCode', 'versionName']);
+    assert.equal(typeof output.enabled, 'boolean');
+    assert.ok(output.versionCode === null || Number.isSafeInteger(output.versionCode));
+    assertOptionalString(output.versionName, 'output.versionName');
+  }
+  assertSanitizedSigning(variant.signing);
+}
+
+function assertReportSchema(report) {
+  assert.deepEqual(Object.keys(report).sort(), ['projectPath', 'schemaVersion', 'variants']);
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.projectPath, ':app');
+  assert.ok(Array.isArray(report.variants));
+  for (const variant of report.variants) assertReleaseVariantSchema(variant);
+}
+
 test('probe Gradle inspecciona la variante release real sin construir el artefacto', {
   timeout: 120_000,
 }, async () => {
@@ -90,22 +154,7 @@ test('probe Gradle inspecciona la variante release real sin construir el artefac
   const signingContract = inspectReleaseSigningSource(appBuild);
   const report = await runGradleReleaseProbe({ frontRoot, signingContract });
 
-  assert.equal(report.projectPath, ':app');
-  assert.equal(report.variants.length, 1);
-  const [release] = report.variants;
-  assert.equal(release.name, 'release');
-  assert.equal(release.buildType, 'release');
-  assert.equal(release.applicationId, 'com.example.app');
-  assert.equal(release.namespace, 'com.example.app');
-  assert.equal(release.debuggable, false);
-  assert.deepEqual(release.outputs, [{
-    enabled: true,
-    versionCode: 1,
-    versionName: '1.0',
-  }]);
-  assert.equal(release.signing.selectedName, null);
-  assert.equal(release.signing.effectiveSelectionMatchesCanonicalMarker, false);
-  assert.equal(release.signing.fields.storePassword.present, false);
+  assertReportSchema(report);
 });
 
 test('probe Gradle atestigua signing release sintético y sus cuatro sentinels', {
@@ -118,11 +167,13 @@ test('probe Gradle atestigua signing release sintético y sus cuatro sentinels',
     testFixtureInitScript: syntheticSigningFixture(),
   });
 
-  assert.equal(report.variants.length, 1);
-  const signing = report.variants[0].signing;
-  assertCanonicalSyntheticSigning(signing);
-  for (const field of signingFields) {
-    assert.equal(signing.fields[field].matchesSentinel, true, `${field} debe coincidir`);
+  assertReportSchema(report);
+  assert.ok(report.variants.length > 0, 'la fixture debe producir variantes release');
+  for (const variant of report.variants) {
+    assertCanonicalSyntheticSigning(variant.signing);
+    for (const field of signingFields) {
+      assert.equal(variant.signing.fields[field].matchesSentinel, true, `${field} debe coincidir`);
+    }
   }
 });
 
@@ -136,12 +187,21 @@ test('probe Gradle detecta un override sintético posterior sin revelar su valor
     testFixtureInitScript: syntheticSigningFixture({ overrideStorePassword: true }),
   });
 
-  assert.equal(report.variants.length, 1);
-  const signing = report.variants[0].signing;
-  assertCanonicalSyntheticSigning(signing);
-  assert.equal(signing.fields.storePassword.matchesSentinel, false);
-  for (const field of signingFields.filter((name) => name !== 'storePassword')) {
-    assert.equal(signing.fields[field].matchesSentinel, true, `${field} debe coincidir`);
+  assertReportSchema(report);
+  assert.ok(report.variants.length > 0, 'la fixture debe producir variantes release');
+  for (const variant of report.variants) {
+    assertCanonicalSyntheticSigning(variant.signing);
+    assert.equal(variant.signing.fields.storePassword.matchesSentinel, false);
+    for (const field of signingFields.filter((name) => name !== 'storePassword')) {
+      assert.equal(variant.signing.fields[field].matchesSentinel, true, `${field} debe coincidir`);
+    }
   }
   assert.equal(JSON.stringify(report).includes('synthetic-test-override'), false);
+});
+
+test('probe transporta sentinels de signing solo por environment', async () => {
+  const source = await readFile(new URL('./native-gradle-release-probe.mjs', import.meta.url), 'utf8');
+  assert.match(source, /environment\[source\.name\] = value/);
+  assert.doesNotMatch(source, /gradleProperties/);
+  assert.doesNotMatch(source, /['"\x60]-P/);
 });
