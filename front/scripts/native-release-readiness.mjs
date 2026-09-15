@@ -568,9 +568,14 @@ export async function loadNativeReleaseInputs(frontRoot, origin) {
     discoverMainActivities(join(frontRoot, 'android/app/src/main/java')),
   ]);
   const signingContract = inspectReleaseSigningSource(appBuild);
+  const androidRoot = join(frontRoot, 'android');
   let gradleProbe;
   try {
-    gradleProbe = await runGradleReleaseProbe({ frontRoot, signingContract });
+    gradleProbe = await runGradleReleaseProbe({
+      projectRoot: androidRoot,
+      wrapperRoot: androidRoot,
+      signingContract,
+    });
   } catch (error) {
     gradleProbe = {
       error: error instanceof Error ? error.message : 'Gradle release probe falló',

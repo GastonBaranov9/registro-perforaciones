@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -9,6 +10,14 @@ import { discoverMainActivities } from './native-release-readiness.mjs';
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const repositoryRoot = join(frontRoot, '..');
 const androidMain = join(frontRoot, 'android', 'app', 'src', 'main');
+const signingPropertyFilenames = [
+  'key.properties',
+  'signing.properties',
+  'keystore.properties',
+];
+const recursiveSigningPropertyPathspecs = signingPropertyFilenames.map(
+  (name) => `:(glob)**/${name}`,
+);
 
 async function source(relativePath) {
   return readFile(join(frontRoot, relativePath), 'utf8');
@@ -157,16 +166,72 @@ test('Git ignora APK, AAB, keystores y configuración local de signing', async (
     assert.match(rootIgnore, new RegExp(`^${pattern.replaceAll('*', '\\*').replaceAll('.', '\\.')}\\s*$`, 'm'));
     assert.match(androidIgnore, new RegExp(`^${pattern.replaceAll('*', '\\*').replaceAll('.', '\\.')}\\s*$`, 'm'));
   }
-  for (const name of ['key.properties', 'keystore.properties', 'signing.properties']) {
+  for (const name of signingPropertyFilenames) {
     assert.ok(rootIgnore.includes(`**/${name}`));
     assert.match(androidIgnore, new RegExp(`^${name.replaceAll('.', '\\.')}\\s*$`, 'm'));
   }
   const trackedSigningMaterial = spawnSync(
     'git',
-    ['ls-files', '*.jks', '*.keystore', 'key.properties', 'keystore.properties', 'signing.properties'],
+    ['ls-files', '--', '*.jks', '*.keystore', ...recursiveSigningPropertyPathspecs],
     { cwd: repositoryRoot, encoding: 'utf8' },
   );
   if (trackedSigningMaterial.error) throw trackedSigningMaterial.error;
   assert.equal(trackedSigningMaterial.status, 0);
   assert.equal(trackedSigningMaterial.stdout.trim(), '', 'hay material de signing versionado');
+});
+
+test('Git busca recursivamente los tres filenames de propiedades de signing', () => {
+  assert.deepEqual(recursiveSigningPropertyPathspecs, [
+    ':(glob)**/key.properties',
+    ':(glob)**/signing.properties',
+    ':(glob)**/keystore.properties',
+  ]);
+});
+
+test('Git ignora signing local no versionado y detecta los tres nombres a cualquier profundidad', async (testContext) => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'rsp-signing-pathspecs-'));
+  testContext.after(() => rm(fixtureRoot, { recursive: true, force: true }));
+
+  const trackedPaths = [
+    'tracked/key.properties',
+    'tracked/nested/signing.properties',
+    'tracked/deeply/nested/keystore.properties',
+  ];
+  const untrackedPaths = signingPropertyFilenames.map((name) => `local/deep/${name}`);
+  await Promise.all([...trackedPaths, ...untrackedPaths].map(async (relativePath) => {
+    const absolutePath = join(fixtureRoot, relativePath);
+    await mkdir(join(absolutePath, '..'), { recursive: true });
+    await writeFile(absolutePath, 'fixture-only=true\n', 'utf8');
+  }));
+
+  const initialized = spawnSync('git', ['init', '--quiet'], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+  });
+  if (initialized.error) throw initialized.error;
+  assert.equal(initialized.status, 0, initialized.stderr);
+
+  const signingPathspecs = ['*.jks', '*.keystore', ...recursiveSigningPropertyPathspecs];
+  const beforeTracking = spawnSync('git', ['ls-files', '--', ...signingPathspecs], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+  });
+  if (beforeTracking.error) throw beforeTracking.error;
+  assert.equal(beforeTracking.status, 0, beforeTracking.stderr);
+  assert.equal(beforeTracking.stdout.trim(), '', 'signing local no trackeado no debe bloquear');
+
+  const added = spawnSync('git', ['add', '--', ...trackedPaths], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+  });
+  if (added.error) throw added.error;
+  assert.equal(added.status, 0, added.stderr);
+
+  const afterTracking = spawnSync('git', ['ls-files', '--', ...signingPathspecs], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+  });
+  if (afterTracking.error) throw afterTracking.error;
+  assert.equal(afterTracking.status, 0, afterTracking.stderr);
+  assert.deepEqual(afterTracking.stdout.trim().split(/\r?\n/).sort(), trackedPaths.sort());
 });

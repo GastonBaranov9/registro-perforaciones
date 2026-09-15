@@ -5,8 +5,13 @@ import { runGradleReleaseProbe } from './native-gradle-release-probe.mjs';
 import { inspectReleaseSigningSource } from './native-release-readiness.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
-const appBuild = await readFile(join(frontRoot, 'android/app/build.gradle'), 'utf8');
+const androidRoot = join(frontRoot, 'android');
+const appBuild = await readFile(join(androidRoot, 'app/build.gradle'), 'utf8');
 const signingContract = inspectReleaseSigningSource(appBuild);
-const report = await runGradleReleaseProbe({ frontRoot, signingContract });
+const report = await runGradleReleaseProbe({
+  projectRoot: androidRoot,
+  wrapperRoot: androidRoot,
+  signingContract,
+});
 
 console.log(JSON.stringify(report, null, 2));

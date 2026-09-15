@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -7,70 +8,137 @@ import { runGradleReleaseProbe } from './native-gradle-release-probe.mjs';
 import { inspectReleaseSigningSource } from './native-release-readiness.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
+const androidRoot = join(frontRoot, 'android');
 const appBuildPath = join(frontRoot, 'android/app/build.gradle');
-const generatedEnvironmentPath = join(
-  frontRoot,
-  'src/environments/environment.native.generated.ts',
-);
 const signingFields = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'];
-const syntheticSources = {
-  storeFile: { kind: 'environment', name: 'RSP_TEST_STORE_FILE' },
-  storePassword: { kind: 'environment', name: 'RSP_TEST_STORE_PASSWORD' },
-  keyAlias: { kind: 'environment', name: 'RSP_TEST_KEY_ALIAS' },
-  keyPassword: { kind: 'environment', name: 'RSP_TEST_KEY_PASSWORD' },
-};
-const syntheticSigningContract = {
-  fields: syntheticSources,
-  probeSources: Object.entries(syntheticSources).map(([field, source]) => ({
-    field,
-    ...source,
-  })),
-};
 
-function syntheticSigningFixture({ overrideStorePassword = false } = {}) {
-  return `
-gradle.beforeProject { project ->
-  if (project.path == ':app') {
-    project.pluginManager.withPlugin('com.android.application') {
-      def android = project.extensions.getByName('android')
-      def releaseSigning = android.signingConfigs.maybeCreate('release')
-      releaseSigning.storeFile = project.file(
-        project.providers.environmentVariable('RSP_TEST_STORE_FILE').get()
-      )
-      releaseSigning.storePassword = project.providers
-        .environmentVariable('RSP_TEST_STORE_PASSWORD').get()
-      releaseSigning.keyAlias = project.providers
-        .environmentVariable('RSP_TEST_KEY_ALIAS').get()
-      releaseSigning.keyPassword = project.providers
-        .environmentVariable('RSP_TEST_KEY_PASSWORD').get()
-      ${overrideStorePassword
-        ? "releaseSigning.storePassword = 'synthetic-test-override'"
-        : ''}
-      android.buildTypes.getByName('release').signingConfig = releaseSigning
+function requiredVersion(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, `no se pudo derivar ${label} del proyecto Android real`);
+  return match[1];
+}
+
+async function minimalLocalProperties() {
+  if (process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME) return null;
+  let source;
+  try {
+    source = await readFile(join(androidRoot, 'local.properties'), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      assert.fail('falta ANDROID_SDK_ROOT/ANDROID_HOME y android/local.properties con sdk.dir');
+    }
+    throw error;
+  }
+  const sdkDir = source.match(/^\s*sdk\.dir\s*=\s*(.+?)\s*$/m)?.[1];
+  assert.ok(sdkDir, 'android/local.properties no contiene sdk.dir');
+  return `sdk.dir=${sdkDir}\n`;
+}
+
+async function createSyntheticAndroidProject(testContext, {
+  overrideStorePassword = false,
+} = {}) {
+  const projectRoot = await mkdtemp(join(tmpdir(), 'rsp-native-gradle-fixture-'));
+  let realAppBuildBefore;
+  testContext.after(async () => {
+    try {
+      if (realAppBuildBefore !== undefined) {
+        assert.deepEqual(
+          await readFile(appBuildPath),
+          realAppBuildBefore,
+          'la fixture sintética no debe modificar android/app/build.gradle',
+        );
+      }
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+  realAppBuildBefore = await readFile(appBuildPath);
+
+  const [rootBuild, variables, localProperties] = await Promise.all([
+    readFile(join(androidRoot, 'build.gradle'), 'utf8'),
+    readFile(join(androidRoot, 'variables.gradle'), 'utf8'),
+    minimalLocalProperties(),
+  ]);
+  const agpVersion = requiredVersion(
+    rootBuild,
+    /com\.android\.tools\.build:gradle:([^'"\s]+)/,
+    'la versión AGP',
+  );
+  const compileSdk = requiredVersion(variables, /compileSdkVersion\s*=\s*(\d+)/, 'compileSdk');
+  const minSdk = requiredVersion(variables, /minSdkVersion\s*=\s*(\d+)/, 'minSdk');
+  const targetSdk = requiredVersion(variables, /targetSdkVersion\s*=\s*(\d+)/, 'targetSdk');
+  const storePasswordOverride = overrideStorePassword
+    ? "storePassword = 'synthetic-test-override'"
+    : '';
+  const appBuild = `
+apply plugin: 'com.android.application'
+
+android {
+  namespace 'uy.test.rsp.releaseprobe'
+  compileSdk ${compileSdk}
+
+  defaultConfig {
+    applicationId 'uy.test.rsp.releaseprobe'
+    minSdk ${minSdk}
+    targetSdk ${targetSdk}
+    versionCode 9001
+    versionName '9.0.1-test'
+  }
+
+  signingConfigs {
+    release {
+      storeFile file(providers.environmentVariable('RSP_TEST_STORE_FILE').get())
+      storePassword providers.environmentVariable('RSP_TEST_STORE_PASSWORD').get()
+      keyAlias providers.environmentVariable('RSP_TEST_KEY_ALIAS').get()
+      keyPassword providers.environmentVariable('RSP_TEST_KEY_PASSWORD').get()
+      ${storePasswordOverride}
+    }
+  }
+
+  buildTypes {
+    release {
+      signingConfig signingConfigs.release
     }
   }
 }
 `;
-}
 
-async function snapshot(path) {
-  try {
-    return { exists: true, contents: await readFile(path) };
-  } catch (error) {
-    if (error?.code === 'ENOENT') return { exists: false };
-    throw error;
+  await mkdir(join(projectRoot, 'app'));
+  await Promise.all([
+    writeFile(
+      join(projectRoot, 'settings.gradle'),
+      "rootProject.name = 'rsp-release-probe-fixture'\ninclude ':app'\n",
+      'utf8',
+    ),
+    writeFile(join(projectRoot, 'build.gradle'), `
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath 'com.android.tools.build:gradle:${agpVersion}'
   }
 }
 
-async function preserveRepositoryFiles(testContext) {
-  const before = new Map(await Promise.all(
-    [appBuildPath, generatedEnvironmentPath].map(async (path) => [path, await snapshot(path)]),
-  ));
-  testContext.after(async () => {
-    for (const [path, expected] of before) {
-      assert.deepEqual(await snapshot(path), expected, `${path} cambió durante el probe`);
-    }
-  });
+allprojects {
+  repositories {
+    google()
+    mavenCentral()
+  }
+}
+`, 'utf8'),
+    writeFile(join(projectRoot, 'app/build.gradle'), appBuild, 'utf8'),
+    ...(localProperties === null
+      ? []
+      : [writeFile(join(projectRoot, 'local.properties'), localProperties, 'utf8')]),
+  ]);
+
+  const signingContract = inspectReleaseSigningSource(
+    overrideStorePassword ? appBuild.replace(storePasswordOverride, '') : appBuild,
+  );
+  assert.equal(signingContract.error, undefined);
+  return { projectRoot, signingContract };
 }
 
 function assertCanonicalSyntheticSigning(signing) {
@@ -81,6 +149,14 @@ function assertCanonicalSyntheticSigning(signing) {
   for (const field of signingFields) {
     assert.equal(signing.fields[field].present, true, `${field} debe estar presente`);
   }
+}
+
+function assertSanitizedSyntheticReport(report) {
+  assert.doesNotMatch(
+    JSON.stringify(report),
+    /RSP_(?:PROBE|TEST)_|synthetic-test-override/,
+    'el reporte no debe revelar sentinels, nombres de variables ni overrides',
+  );
 }
 
 function assertOptionalString(value, name) {
@@ -152,7 +228,11 @@ test('probe Gradle inspecciona la variante release real sin construir el artefac
 }, async () => {
   const appBuild = await readFile(appBuildPath, 'utf8');
   const signingContract = inspectReleaseSigningSource(appBuild);
-  const report = await runGradleReleaseProbe({ frontRoot, signingContract });
+  const report = await runGradleReleaseProbe({
+    projectRoot: androidRoot,
+    wrapperRoot: androidRoot,
+    signingContract,
+  });
 
   assertReportSchema(report);
 });
@@ -160,15 +240,16 @@ test('probe Gradle inspecciona la variante release real sin construir el artefac
 test('probe Gradle atestigua signing release sintético y sus cuatro sentinels', {
   timeout: 120_000,
 }, async (testContext) => {
-  await preserveRepositoryFiles(testContext);
+  const fixture = await createSyntheticAndroidProject(testContext);
   const report = await runGradleReleaseProbe({
-    frontRoot,
-    signingContract: syntheticSigningContract,
-    testFixtureInitScript: syntheticSigningFixture(),
+    projectRoot: fixture.projectRoot,
+    wrapperRoot: androidRoot,
+    signingContract: fixture.signingContract,
   });
 
   assertReportSchema(report);
-  assert.ok(report.variants.length > 0, 'la fixture debe producir variantes release');
+  assertSanitizedSyntheticReport(report);
+  assert.equal(report.variants.length, 1, 'la fixture debe producir una variante release utilizable');
   for (const variant of report.variants) {
     assertCanonicalSyntheticSigning(variant.signing);
     for (const field of signingFields) {
@@ -180,15 +261,18 @@ test('probe Gradle atestigua signing release sintético y sus cuatro sentinels',
 test('probe Gradle detecta un override sintético posterior sin revelar su valor', {
   timeout: 120_000,
 }, async (testContext) => {
-  await preserveRepositoryFiles(testContext);
+  const fixture = await createSyntheticAndroidProject(testContext, {
+    overrideStorePassword: true,
+  });
   const report = await runGradleReleaseProbe({
-    frontRoot,
-    signingContract: syntheticSigningContract,
-    testFixtureInitScript: syntheticSigningFixture({ overrideStorePassword: true }),
+    projectRoot: fixture.projectRoot,
+    wrapperRoot: androidRoot,
+    signingContract: fixture.signingContract,
   });
 
   assertReportSchema(report);
-  assert.ok(report.variants.length > 0, 'la fixture debe producir variantes release');
+  assertSanitizedSyntheticReport(report);
+  assert.equal(report.variants.length, 1, 'la fixture debe producir una variante release utilizable');
   for (const variant of report.variants) {
     assertCanonicalSyntheticSigning(variant.signing);
     assert.equal(variant.signing.fields.storePassword.matchesSentinel, false);
@@ -196,7 +280,6 @@ test('probe Gradle detecta un override sintético posterior sin revelar su valor
       assert.equal(variant.signing.fields[field].matchesSentinel, true, `${field} debe coincidir`);
     }
   }
-  assert.equal(JSON.stringify(report).includes('synthetic-test-override'), false);
 });
 
 test('probe transporta sentinels de signing solo por environment', async () => {

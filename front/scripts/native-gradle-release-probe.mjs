@@ -214,24 +214,14 @@ function runProcess(command, args, options) {
 }
 
 export async function runGradleReleaseProbe({
-  frontRoot,
+  projectRoot,
+  wrapperRoot = projectRoot,
   signingContract,
-  testFixtureInitScript,
 }) {
-  const androidRoot = join(frontRoot, 'android');
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'rsp-native-release-probe-'));
   try {
     const initScript = join(temporaryDirectory, 'probe.init.gradle');
     await writeFile(initScript, GRADLE_PROBE_INIT_SCRIPT, 'utf8');
-    const fixtureArguments = [];
-    if (testFixtureInitScript !== undefined) {
-      if (typeof testFixtureInitScript !== 'string' || !testFixtureInitScript.trim()) {
-        throw safeProbeError('La fixture Gradle opcional del probe debe ser texto no vacío');
-      }
-      const fixtureInitScript = join(temporaryDirectory, 'test-fixture.init.gradle');
-      await writeFile(fixtureInitScript, testFixtureInitScript, 'utf8');
-      fixtureArguments.push('--init-script', fixtureInitScript);
-    }
     const environment = await sentinelInputs(
       signingContract,
       temporaryDirectory,
@@ -239,7 +229,7 @@ export async function runGradleReleaseProbe({
     const javaExecutable = process.env.JAVA_HOME
       ? join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
       : 'java';
-    const wrapperJar = join(androidRoot, 'gradle', 'wrapper', 'gradle-wrapper.jar');
+    const wrapperJar = join(wrapperRoot, 'gradle', 'wrapper', 'gradle-wrapper.jar');
     const javaHomeArguments = process.env.USERPROFILE
       ? [
           `-Duser.home=${process.env.USERPROFILE}`,
@@ -251,7 +241,6 @@ export async function runGradleReleaseProbe({
       '-classpath',
       wrapperJar,
       'org.gradle.wrapper.GradleWrapperMain',
-      ...fixtureArguments,
       '--init-script',
       initScript,
       '--console=plain',
@@ -259,7 +248,7 @@ export async function runGradleReleaseProbe({
       '--no-daemon',
       ':app:rspNativeReleaseProbe',
     ], {
-      cwd: androidRoot,
+      cwd: projectRoot,
       env: environment,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
