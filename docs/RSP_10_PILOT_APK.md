@@ -61,9 +61,12 @@ npm.cmd test -- --watch=false
 npm.cmd run build
 npm.cmd run build:native:production
 node node_modules/@capacitor/cli/bin/capacitor sync android
+npm.cmd run verify:native-assets
 cd android
 .\gradlew.bat assembleRelease
 ```
+
+Ejecutar `build:native:production` y `sync android` **en ese orden antes de cada APK release**. Un `build:native:development` sincronizado puede compilar en Gradle pero contiene el origin de prueba; `verify:native-assets` confirma que la copia coincide con el último build, no decide por sí solo si ese build fue productivo. Confirmar en el artefacto que el origin corresponde al dominio real antes de instalarlo.
 
 El APK esperado es `front/android/app/build/outputs/apk/release/app-release.apk`. Verificarlo antes de distribuirlo:
 
