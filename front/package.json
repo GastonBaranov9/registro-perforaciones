@@ -17,7 +17,8 @@
     "check:utf8": "node scripts/check-interface-mojibake.mjs",
     "verify:native-assets": "node scripts/verify-native-assets.mjs",
     "probe:native-release-model": "node scripts/probe-native-release-model.mjs",
-    "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs"
+    "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs",
+    "check:android-signing-env": "node scripts/check-android-signing-env.mjs"
   },
   "prettier": {
     "printWidth": 100,

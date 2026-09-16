@@ -205,7 +205,6 @@ function directGradleStatements(source) {
   let quoteLength = 0;
   let parentheses = 0;
   let brackets = 0;
-  let braces = 0;
   const finish = () => {
     if (current.trim()) statements.push(current.trim());
     current = '';
@@ -216,14 +215,14 @@ function directGradleStatements(source) {
     if (quote) {
       const delimiter = quote.repeat(quoteLength);
       if (source.startsWith(delimiter, index)) {
-        if (braces === 0) current += delimiter;
+        current += delimiter;
         index += quoteLength - 1;
         quote = null;
         quoteLength = 0;
       } else if (quoteLength === 1 && char === '\\' && index + 1 < source.length) {
-        if (braces === 0) current += source.slice(index, index + 2);
+        current += source.slice(index, index + 2);
         index += 1;
-      } else if (braces === 0) {
+      } else {
         current += char;
       }
       continue;
@@ -231,20 +230,18 @@ function directGradleStatements(source) {
     if (char === '"' || char === "'") {
       quote = char;
       quoteLength = source.startsWith(char.repeat(3), index) ? 3 : 1;
-      if (braces === 0) current += char.repeat(quoteLength);
+      current += char.repeat(quoteLength);
       index += quoteLength - 1;
       continue;
     }
     if (char === '{') {
-      if (braces === 0) finish();
-      braces += 1;
+      finish();
       continue;
     }
     if (char === '}') {
-      braces = Math.max(0, braces - 1);
+      finish();
       continue;
     }
-    if (braces > 0) continue;
     if (char === '(') parentheses += 1;
     if (char === ')') parentheses = Math.max(0, parentheses - 1);
     if (char === '[') brackets += 1;

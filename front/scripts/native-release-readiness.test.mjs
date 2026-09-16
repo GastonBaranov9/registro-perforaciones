@@ -127,6 +127,22 @@ test('contrato estático extrae sólo nombres de variables de entorno directas',
   assert.equal(inspectReleaseSigningSource(commented).error, undefined);
 });
 
+test('contrato de firma conserva los cuatro campos dentro de una guarda de entorno', () => {
+  const guarded = envSigning.replace(
+    '    release {',
+    '    release {\n      if (signingVariablesPresent) {',
+  ).replace(
+    '      keyPassword System.getenv("ANDROID_KEY_PASSWORD")',
+    '      keyPassword System.getenv("ANDROID_KEY_PASSWORD")\n      }',
+  );
+  assert.equal(inspectReleaseSigningSource(appBuildFixture(guarded)).error, undefined);
+  const duplicated = guarded.replace(
+    '      }',
+    '        storePassword System.getenv("ANOTHER_STORE_PASSWORD")\n      }',
+  );
+  assert.match(inspectReleaseSigningSource(appBuildFixture(duplicated)).error, /duplicadas/);
+});
+
 test('contrato estático rechaza gradleProperty en cualquiera de los cuatro campos', () => {
   const replacements = {
     storeFile: [
