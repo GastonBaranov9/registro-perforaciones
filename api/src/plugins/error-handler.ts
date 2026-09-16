@@ -2,8 +2,11 @@ import fp from "fastify-plugin";
 
 export default fp(async function errorHandler(fastify) {
   fastify.setErrorHandler((error, req, rep) => {
-    const statusCode = typeof error.statusCode === "number" && error.statusCode >= 400
-      ? error.statusCode
+    const httpError = typeof error === "object" && error !== null
+      ? error as { statusCode?: unknown; name?: unknown; message?: unknown; code?: unknown }
+      : {};
+    const statusCode = typeof httpError.statusCode === "number" && httpError.statusCode >= 400
+      ? httpError.statusCode
       : 500;
     const route = req.routeOptions?.url ?? "unmatched";
 
@@ -18,9 +21,9 @@ export default fp(async function errorHandler(fastify) {
 
     return rep.code(statusCode).send({
       statusCode,
-      error: error.name || "Error",
-      message: error.message,
-      ...(typeof (error as { code?: unknown }).code === "string" ? { code: (error as { code: string }).code } : {}),
+      error: typeof httpError.name === "string" && httpError.name ? httpError.name : "Error",
+      message: typeof httpError.message === "string" ? httpError.message : "Solicitud inválida",
+      ...(typeof httpError.code === "string" ? { code: httpError.code } : {}),
     });
   });
 });

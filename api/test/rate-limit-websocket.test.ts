@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Fastify from "fastify";
+import { confiarSoloEnPeerInmediato } from "../src/config/trust-proxy.ts";
 import rateLimitPlugin from "../src/plugins/rate-limit.ts";
 import { MemoryRateLimiter } from "../src/services/rate-limit-service.ts";
 
@@ -16,7 +17,7 @@ async function withHandshakeLimit<T>(limit: number, run: () => Promise<T>): Prom
 
 test("handshake native limita por request.ip antes del handler de redencion", async () => {
   await withHandshakeLimit(2, async () => {
-    const app = Fastify({ logger: false, trustProxy: 1 });
+    const app = Fastify({ logger: false, trustProxy: confiarSoloEnPeerInmediato });
     let redemptions = 0;
     await app.register(rateLimitPlugin);
     app.get("/ws", { onRequest: [app.rateLimitNativeWsHandshake] }, async () => {

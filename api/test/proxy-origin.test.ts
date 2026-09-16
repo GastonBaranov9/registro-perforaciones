@@ -89,22 +89,6 @@ test("Origin native queda separado del web y nunca relaja WebSocket web", async 
   await app.close();
 });
 
-test("Fastify confía exactamente un salto para protocolo e IP", async () => {
-  const app = Fastify({ trustProxy: 1 });
-  app.get("/proxy", async (req) => ({ protocol: req.protocol, ip: req.ip }));
-  const response = await app.inject({
-    method: "GET",
-    url: "/proxy",
-    remoteAddress: "172.20.0.5",
-    headers: {
-      "x-forwarded-proto": "https",
-      "x-forwarded-for": "198.51.100.25, 203.0.113.44",
-    },
-  });
-  assert.deepEqual(response.json(), { protocol: "https", ip: "203.0.113.44" });
-  await app.close();
-});
-
 test("la matriz WebSocket separa ticket native de cookie web por Origin", () => {
   const publicOrigin = "https://app.example.test";
   const nativeOrigins = ["https://localhost", "capacitor://localhost"];

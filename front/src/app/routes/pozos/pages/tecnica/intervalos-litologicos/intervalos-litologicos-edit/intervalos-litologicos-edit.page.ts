@@ -32,13 +32,12 @@ export class IntervalosLitologicosEditPage {
       const id_pozo = this.id_pozo();
       const id_intervalo_litologico = this.id_intervalo_litologico();
       this.disabled.set(true);
-      const intervaloLitoEdit = await this.interevaloEditLito.editIntervaloLito(
+      await this.interevaloEditLito.editIntervaloLito(
         id_pozo,
         id_intervalo_litologico,
         intervalo
       );
 
-      console.log('Intervalo editado', intervaloLitoEdit);
        this.router.navigate([`/pozos/${id_pozo}/intervalos-litologicos-list`]);
     } catch (err: any) {
       const toast = await this.toastController.create({

@@ -31,13 +31,12 @@ public toastController = inject(ToastController)
       const id_pozo = this.id_pozo();
       const id_nivel = this.id_nivel_aporte();
       this.disabled.set(true);
-      const nivelEdit = await this.nivelAporteService.editNivelAporte(
+      await this.nivelAporteService.editNivelAporte(
         id_pozo,
         id_nivel,
         nivel
       );
 
-      console.log('Perforacion editada', nivelEdit);
       this.router.navigate([`pozos/${id_pozo}/aportes-list`]);
     } catch (err: any) {
             const toast = await this.toastController.create({

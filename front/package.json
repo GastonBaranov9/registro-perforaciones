@@ -14,7 +14,10 @@
     "test:config": "node --test scripts/*.test.mjs",
     "test:production-build": "node scripts/test-production-build.mjs",
     "test:native-config": "node --test scripts/native-*.test.mjs",
-    "check:utf8": "node scripts/check-interface-mojibake.mjs"
+    "check:utf8": "node scripts/check-interface-mojibake.mjs",
+    "verify:native-assets": "node scripts/verify-native-assets.mjs",
+    "probe:native-release-model": "node scripts/probe-native-release-model.mjs",
+    "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs"
   },
   "prettier": {
     "printWidth": 100,
@@ -30,34 +33,32 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^20.3.0",
-    "@angular/compiler": "^20.3.0",
-    "@angular/core": "^20.3.0",
-    "@angular/forms": "^20.3.0",
-    "@angular/platform-browser": "^20.3.0",
-    "@angular/router": "^20.3.0",
-    "@angular/service-worker": "^20.3.9",
+    "@angular/common": "20.3.30",
+    "@angular/compiler": "20.3.30",
+    "@angular/core": "20.3.30",
+    "@angular/forms": "20.3.30",
+    "@angular/platform-browser": "20.3.30",
+    "@angular/router": "20.3.30",
+    "@angular/service-worker": "20.3.30",
     "@aparajita/capacitor-secure-storage": "8.0.0",
     "@capacitor/android": "8.5.0",
     "@capacitor/app": "8.0.0",
     "@capacitor/camera": "^7.0.2",
-    "@capacitor/cli": "8.5.0",
     "@capacitor/core": "8.5.0",
     "@capacitor/geolocation": "^8.0.0",
     "@capacitor/preferences": "8.0.0",
-    "@fastify/multipart": "^9.3.0",
     "@ionic/angular": "^8.7.8",
-    "@ionic/angular-toolkit": "^12.3.0",
     "@ionic/pwa-elements": "^3.2.2",
     "pdf-lib": "^1.17.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
-    "@angular/build": "^20.3.6",
-    "@angular/cli": "^20.3.6",
-    "@angular/compiler-cli": "^20.3.0",
-    "@ionic/angular-toolkit": "latest",
+    "@angular/build": "20.3.30",
+    "@angular/cli": "20.3.30",
+    "@angular/compiler-cli": "20.3.30",
+    "@capacitor/cli": "8.5.0",
+    "@ionic/angular-toolkit": "12.3.0",
     "@types/jasmine": "~5.1.0",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",
@@ -65,6 +66,7 @@
     "karma-coverage": "~2.2.0",
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "zone.js": "0.15.1"
   }
 }

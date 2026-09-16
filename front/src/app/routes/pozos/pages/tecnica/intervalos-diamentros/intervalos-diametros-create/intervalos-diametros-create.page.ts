@@ -47,9 +47,8 @@ export class IntervalosDiametrosCreatePage implements OnInit {
 
     try {
       this.disabled.set(true);
-      const nuevoIntervalo = await this.createIntDiamService.createIntervaloDiametro(id_pozo, body);
+      await this.createIntDiamService.createIntervaloDiametro(id_pozo, body);
 
-      console.log('Intervalo diametro creado: ', nuevoIntervalo);
       this.router.navigate([`/pozos/${id_pozo}/intervalos-diametros-list`]);
     } catch (error: unknown) {
       const respuesta = error as { error?: { message?: string }; message?: string };

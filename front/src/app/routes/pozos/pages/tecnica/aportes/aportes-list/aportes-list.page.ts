@@ -78,7 +78,6 @@ export class AportesListPage implements OnInit, ViewWillEnter {
   }
 
   irAEditar(nivelAporte: NivelAporte) {
-    console.log(nivelAporte, nivelAporte.id_nivel_aporte);
     this.router.navigate([`/pozos/${this.id_pozo}/aportes-edit/${nivelAporte.id_nivel_aporte}`]);
   }
 

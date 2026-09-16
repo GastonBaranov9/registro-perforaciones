@@ -46,11 +46,10 @@ export class IntervalosLitologicosCreatePage implements OnInit {
     const id_pozo = this.id_pozo();
     try {
       this.disabled.set(true);
-      const nuevoIntervaloLit = await this.createService.createIntervaloLit(
+      await this.createService.createIntervaloLit(
         id_pozo,
         body
       );
-      console.log('Intervalo creado creado: ', nuevoIntervaloLit);
       this.router.navigate([`/pozos/${id_pozo}/intervalos-litologicos-list`]);
     } catch (error: unknown) {
       const respuesta = error as { error?: { message?: string }; message?: string };
