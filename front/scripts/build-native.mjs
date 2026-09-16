@@ -46,7 +46,7 @@ const indexSource = `<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Registro de perforaciones</title>
+  <title>Raul Silva Perforaciones</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content=${JSON.stringify(csp)}>

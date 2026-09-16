@@ -48,7 +48,7 @@ import { AuthService } from './shared/services/auth-service/auth.service';
   styleUrl: './app.css',
 })
 export class App implements OnDestroy {
-  protected readonly title = signal('front');
+  protected readonly title = signal('Raul Silva Perforaciones');
   public mainStore = inject(MainStore);
   public webSocketService = inject(WebsocketService);
   public authService = inject(AuthService);

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">front</string>
-    <string name="title_activity_main">front</string>
-    <string name="package_name">com.example.app</string>
-    <string name="custom_url_scheme">com.example.app</string>
+    <string name="app_name">Raul Silva Perforaciones</string>
+    <string name="title_activity_main">Raul Silva Perforaciones</string>
+    <string name="package_name">uy.com.raulsilva.perforaciones</string>
+    <string name="custom_url_scheme">uy.com.raulsilva.perforaciones</string>
 </resources>

@@ -2,10 +2,10 @@
 
 Este procedimiento distribuye un APK firmado directamente a celulares de la empresa. No requiere Play Console ni AAB. Ejecutarlo desde `feature/rsp-10-pilot-apk` y conservar el mismo `applicationId` y certificado en todas las actualizaciones.
 
-## Decisiones antes del build
+## Identidad fijada y decisiones antes del build
 
-1. Elegir el `applicationId` definitivo, en formato Android (por ejemplo, segmentos DNS propios; **no usar el ejemplo como valor real**). Cambiarlo en `front/capacitor.config.ts` (`appId`), `front/android/app/build.gradle` (`namespace` y `applicationId`), el package y la ruta de `front/android/app/src/main/java/com/example/app/MainActivity.java`, y `package_name` en `front/android/app/src/main/res/values/strings.xml`. Revisar `custom_url_scheme` del mismo archivo: actualmente coincide con el identificador. El readiness gate comprueba la coherencia efectiva.
-2. Elegir el nombre visible. Cambiar `appName` en Capacitor y `app_name` y `title_activity_main` en `strings.xml`.
+1. El `applicationId` y namespace definitivos son `uy.com.raulsilva.perforaciones`. Coinciden en Capacitor, Gradle, `package_name`, `custom_url_scheme` y `front/android/app/src/main/java/uy/com/raulsilva/perforaciones/MainActivity.java`. El readiness gate comprueba la coherencia efectiva. Conservar esta identidad en todas las actualizaciones.
+2. El nombre visible definitivo es `Raul Silva Perforaciones`. Ya figura en Capacitor, recursos Android, títulos HTML y manifiesto web.
 3. Confirmar el origin HTTPS productivo exacto para `NATIVE_BACKEND_ORIGIN`: esquema, host y puerto opcional, sin barra final ni rutas. El build rechaza hosts locales, IP y dominios de desarrollo, staging, test o ejemplo. El cliente deriva `/api/` y `wss://<host>/ws`.
 4. `versionCode=1` y `versionName=1.0` son válidos para el primer piloto. Para cada APK posterior, aumentar `versionCode` y mantener el mismo `applicationId` y clave; usar un `versionName` legible.
 5. Los iconos `front/android/app/src/main/res/mipmap-*` y splash `front/android/app/src/main/res/drawable*` muestran todavía el símbolo azul de plantilla de Capacitor. Son `MANUAL_CHECK` y `HUMAN_DECISION`: reemplazarlos cuando exista branding aprobado, sin bloquear una prueba funcional si la app se identifica claramente por su nombre.
@@ -84,10 +84,10 @@ En el celular: habilitar **Opciones de desarrollador**, habilitar **Depuración 
 
 ```powershell
 adb install -r .\app\build\outputs\apk\release\app-release.apk
-adb shell monkey -p <applicationId-definitivo> 1
+adb shell monkey -p uy.com.raulsilva.perforaciones 1
 ```
 
-Si falla la apertura, obtener el PID con `adb shell pidof <applicationId-definitivo>` y revisar `adb logcat --pid=<PID>` mientras se reproduce el problema. Registrar modelo, Android, versión y resultado; no copiar tokens ni datos personales a logs compartidos.
+Si falla la apertura, obtener el PID con `adb shell pidof uy.com.raulsilva.perforaciones` y revisar `adb logcat --pid=<PID>` mientras se reproduce el problema. Registrar modelo, Android, versión y resultado; no copiar tokens ni datos personales a logs compartidos.
 
 ## Prueba física mínima
 
