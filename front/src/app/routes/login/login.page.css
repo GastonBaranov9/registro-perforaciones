@@ -1,3 +1,12 @@
+.login-error {
+  padding: 0.8rem;
+  border: 1px solid #a31621;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #8c1520;
+  line-height: 1.4;
+}
+
 ion-content.hero-welcome::part(scroll) {
   display: flex;
   justify-content: center;

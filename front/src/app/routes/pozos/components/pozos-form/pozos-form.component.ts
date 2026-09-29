@@ -1,4 +1,4 @@
-import { Component, input, output, signal } from '@angular/core';
+import { Component, OnDestroy, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
@@ -39,7 +39,7 @@ type PropietarioEdicionEstado = {
     ProtectedResourceDirective,
 ],
 })
-export class PozosFormComponent {
+export class PozosFormComponent implements OnDestroy {
   public pozo = input.required<NuevoPozo>();
   public id_pozo = input<number | null>(null);
   public propietarios = input<CandidatoPozo[]>([]);
@@ -181,6 +181,7 @@ export class PozosFormComponent {
   }
 
   fotoCapturada(foto: FotoSeleccionada) {
+    this.liberarVistaPrevia();
     this.fotoBlob = foto.archivo;
     this.fotoFile = foto.archivo;
     this.fotoVistaPrevia.set(foto.vistaPrevia);
@@ -189,9 +190,17 @@ export class PozosFormComponent {
   }
 
   quitarFotoSeleccionada() {
+    this.liberarVistaPrevia();
     this.fotoBlob = null;
     this.fotoFile = null;
     this.fotoVistaPrevia.set(null);
+  }
+
+  ngOnDestroy(): void { this.liberarVistaPrevia(); }
+
+  private liberarVistaPrevia(): void {
+    const url = this.fotoVistaPrevia();
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
   }
 
   cancelarCambioFoto() {

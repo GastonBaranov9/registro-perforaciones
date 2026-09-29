@@ -9,6 +9,7 @@
         <ion-input
           type="email"
           [(ngModel)]="this.credenciales.email"
+          (ngModelChange)="error.set('')"
           name="email"
           placeholder="Ingresa tu correo"
           helperText="Introducir un email válido"
@@ -23,6 +24,7 @@
         <ion-input
           type="password"
           [(ngModel)]="this.credenciales.password"
+          (ngModelChange)="error.set('')"
           name="password"
           placeholder="••••••••"
   
@@ -30,14 +32,18 @@
         </ion-input>
       </div>
 
+      @if (error()) {
+        <p class="login-error" role="alert" aria-live="assertive">{{ error() }}</p>
+      }
       <ion-button
         expand="block"
         shape="round"
         class="login-button"
         (click)="logIn(this.credenciales.email, this.credenciales.password)"
         [disabled]="disabled()"
+        [attr.aria-busy]="disabled()"
       >
-        Entrar
+        {{ disabled() ? 'Ingresando…' : 'Entrar' }}
       </ion-button>
     </div>
   </div>

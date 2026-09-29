@@ -155,6 +155,19 @@ describe('PozosFormComponent', () => {
     expect(component.fotoBlob).toBeNull();
   });
 
+  it('libera ObjectURLs al reemplazar, quitar y destruir la vista previa', () => {
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    const archivo = new File(['foto'], 'foto.jpg', { type: 'image/jpeg' });
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:primera' });
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:segunda' });
+    expect(revoke).toHaveBeenCalledWith('blob:primera');
+    component.quitarFotoSeleccionada();
+    expect(revoke).toHaveBeenCalledWith('blob:segunda');
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:tercera' });
+    fixture.destroy();
+    expect(revoke).toHaveBeenCalledWith('blob:tercera');
+  });
+
   it('aplaza la eliminación persistida hasta guardar la edición', () => {
     component.solicitarEliminarFotoPersistida();
     expect(component.eliminarFotoPendiente()).toBeTrue();

@@ -1,4 +1,5 @@
 <ion-content>
+  @if (errorPdf()) { <p role="alert" aria-live="assertive">{{ errorPdf() }}</p> }
   @if (errorMessage()) {
     <p role="alert">{{ errorMessage() }}</p>
     <ion-button type="button" (click)="ionViewWillEnter()">Reintentar carga</ion-button>
@@ -118,7 +119,9 @@
           <ion-button color="primary" (click)="irAEditarPozo()"> Editar </ion-button>
         </ion-buttons>
         <ion-buttons slot="end">
-          <ion-button color="primary" (click)="generarPdf()"> Generar PDF </ion-button>
+          <ion-button color="primary" (click)="generarPdf()" [disabled]="generandoPdf()" [attr.aria-busy]="generandoPdf()">
+            {{ generandoPdf() ? 'Generando PDF…' : 'Generar PDF' }}
+          </ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-card-content> </ion-card

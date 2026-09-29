@@ -2,6 +2,9 @@ import { InjectionToken } from '@angular/core';
 import { App, type AppInfo, type StateChangeListener } from '@capacitor/app';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { Camera, type CameraPlugin } from '@capacitor/camera';
+import { Filesystem, type FilesystemPlugin } from '@capacitor/filesystem';
+import { Share, type SharePlugin } from '@capacitor/share';
 import {
   SecureStorage,
   type DataType,
@@ -12,6 +15,28 @@ export interface CapacitorRuntimeApi {
   getPlatform(): string;
   isNativePlatform(): boolean;
 }
+
+export const CAPACITOR_CAMERA = new InjectionToken<Pick<CameraPlugin, 'getPhoto'>>(
+  'CAPACITOR_CAMERA', {
+    providedIn: 'root', factory: () => ({ getPhoto: (options) => Camera.getPhoto(options) }),
+  },
+);
+
+export const CAPACITOR_FILESYSTEM = new InjectionToken<
+  Pick<FilesystemPlugin, 'writeFile' | 'readdir' | 'deleteFile'>
+>('CAPACITOR_FILESYSTEM', {
+  providedIn: 'root', factory: () => ({
+    writeFile: (options) => Filesystem.writeFile(options),
+    readdir: (options) => Filesystem.readdir(options),
+    deleteFile: (options) => Filesystem.deleteFile(options),
+  }),
+});
+
+export const CAPACITOR_SHARE = new InjectionToken<Pick<SharePlugin, 'share'>>(
+  'CAPACITOR_SHARE', {
+    providedIn: 'root', factory: () => ({ share: (options) => Share.share(options) }),
+  },
+);
 
 export interface NativeAppApi {
   getInfo(): Promise<AppInfo>;

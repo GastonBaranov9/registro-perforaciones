@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -62,6 +61,8 @@ export class PozosDetailPage implements ViewWillEnter {
   public id_pozo = Number(this.ruta.snapshot.paramMap.get('id_pozo'));
   public pozo = signal<Pozo | undefined>(undefined);
   public errorMessage = signal<string>('');
+  public generandoPdf = signal(false);
+  public errorPdf = signal('');
   public litologia = signal<IntervaloLitologico[]>([]);
   public diametros = signal<IntervaloDiametroPerforacion[]>([]);
   public aportes = signal<NivelAporte[]>([]);
@@ -122,22 +123,21 @@ getFoto() {
   }
   return environment.serverURL + path;
 }
-  generarPdf() {
+  async generarPdf(): Promise<void> {
+    if (this.generandoPdf()) return;
+    this.errorPdf.set('');
     const pozo = this.pozo();
     if (!pozo) {
-      this.errorMessage.set('No se pudo obtener la información del pozo.');
+      this.errorPdf.set('No se pudo obtener la información del pozo.');
       return;
     }
-    const id_usuario = pozo.id_propietario;
-    this.informeService.descargarInformePozo(id_usuario, this.id_pozo).subscribe((blob) => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `informe_pozo_${this.id_pozo}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    });
+    this.generandoPdf.set(true);
+    try {
+      await this.informeService.exportarInformePozo(pozo.id_propietario, this.id_pozo);
+    } catch {
+      this.errorPdf.set('No se pudo generar o abrir el PDF. Verificá la conexión e intentá nuevamente.');
+    } finally {
+      this.generandoPdf.set(false);
+    }
   }
 }
