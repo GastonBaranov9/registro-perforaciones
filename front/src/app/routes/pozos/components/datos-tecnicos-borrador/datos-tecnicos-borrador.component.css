@@ -1,8 +1,8 @@
-.tecnicos { margin: 1rem 0; }
-.seccion { border: 1px solid var(--ion-color-medium, #777); border-radius: .5rem; margin: 1rem 0; padding: .75rem; }
-.fila { display: grid; grid-template-columns: repeat(3, minmax(8rem, 1fr)) auto; gap: .6rem; align-items: end; border-top: 1px solid #bbb; padding: .7rem 0; }
-label { display: grid; gap: .25rem; }
-input { min-height: 2.4rem; padding: .35rem; }
-button { min-height: 2.4rem; }
-.errores { border-left: 4px solid var(--ion-color-danger, #b00020); padding-left: .75rem; }
-@media (max-width: 700px) { .fila { grid-template-columns: 1fr; } }
+:host { display: block; container-type: inline-size; }
+.tecnicos { margin: var(--rsp-space-6) 0; }
+.seccion { border: 1px solid var(--rsp-border); border-radius: var(--rsp-radius); margin: var(--rsp-space-4) 0; padding: var(--rsp-space-3); }
+.fila { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--rsp-space-3); align-items: end; border-top: 1px solid var(--rsp-border); margin-top: var(--rsp-space-3); padding-block: var(--rsp-space-4); }
+.fila > * { min-width: 0; }
+label { display: grid; gap: var(--rsp-space-1); color: var(--rsp-text-muted); }
+@container (min-width: 38rem) { .fila { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 56rem) { .fila { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

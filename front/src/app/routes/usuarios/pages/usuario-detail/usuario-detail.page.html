@@ -9,40 +9,40 @@
 
     <ion-card-content>
       <ion-list>
-        <ion-item>
-          <ion-label>Nombre</ion-label>
-          <ion-label>{{ this.usuario.nombre }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Nombre</dt>
+          <dd>{{ this.usuario.nombre }}</dd>
+        </dl>
         @if (this.usuario.email !== undefined && this.usuario.email !== null) {
-          <ion-item>
-            <ion-label>Email</ion-label>
-            <ion-label>{{ this.usuario.email }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Email</dt>
+            <dd>{{ this.usuario.email }}</dd>
+          </dl>
         }
 
         @if (this.usuario.activo !== undefined && this.usuario.activo !== null) {
-          <ion-item>
-            <ion-label>Activo</ion-label>
-            <ion-label>{{ this.usuario.activo }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Estado</dt>
+            <dd><span class="status-badge" [class.active]="usuario.activo">{{ usuario.activo ? 'Activo' : 'Inactivo' }}</span></dd>
+          </dl>
         }
 
         @if (this.usuario.fecha_registro !== undefined && this.usuario.fecha_registro !== null) {
-          <ion-item>
-            <ion-label>Fecha de registro</ion-label>
-            <ion-label>{{ this.usuario.fecha_registro | date : 'dd/MM/yyyy' }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Fecha de registro</dt>
+            <dd>{{ this.usuario.fecha_registro | date : 'dd/MM/yyyy' }}</dd>
+          </dl>
         }
 
-        <ion-item>
-          <ion-label>Roles</ion-label>
-          <ion-label>{{this.rolesString}}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Roles</dt>
+          <dd>{{this.rolesString}}</dd>
+        </dl>
       </ion-list>
 
-      <ion-button (click)="logOut()">LogOut</ion-button>
+      <ion-button fill="clear" (click)="logOut()">Cerrar sesión</ion-button>
       @if (mainStore.isAdmin()) {
-        <ion-button color="primary" (click)="irAEditarUser()"> Editar </ion-button>
+        <ion-button fill="outline" color="primary" (click)="irAEditarUser()"> Editar </ion-button>
       }
     </ion-card-content>
   </ion-card>

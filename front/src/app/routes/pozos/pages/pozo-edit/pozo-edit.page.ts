@@ -1,4 +1,4 @@
-import { Component, inject, input, resource, signal } from '@angular/core';
+import { Component, ViewChild, inject, input, resource, signal } from '@angular/core';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { Router } from '@angular/router';
 import { AccionFotoEdicion, DatosTecnicosBorrador, NuevoPozo, PropietarioOperativoActualizarBody, Sitio } from '../../../../shared/types/schemas';
@@ -48,6 +48,7 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
   styleUrl: './pozo-edit.page.css',
 })
 export class PozoEditPage {
+  @ViewChild(PozosFormComponent) public formulario?: PozosFormComponent;
   public pozoEditService: PozosEditService = inject(PozosEditService);
   public router: Router = inject(Router);
   public id_pozo = input.required<number>();
@@ -115,14 +116,17 @@ export class PozoEditPage {
     if (errores.length) { this.errorMessage.set(errores.join(' ')); return; }
     try {
       this.disabled.set(true);
-      await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, this.datosTecnicos(), data.foto, data.fotoAccion);
+      this.errorMessage.set('');
+      const resultado = await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, this.datosTecnicos(), data.foto, data.fotoAccion);
+      if (resultado.pozo) this.formulario?.confirmarFotoGuardada(resultado.pozo.foto_url);
       this.borradorDirty.set(false);
       await this.router.navigate(['/pozos-detail', this.id_pozo()]);
-    } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la perforación.')); }
+    } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la perforación.') + ' Los cambios y la fotografía siguen pendientes de guardar.'); }
     finally { this.disabled.set(false); }
   }
   recargar(): void {
-    if (this.borradorDirty() && !window.confirm('Hay cambios técnicos sin guardar. ¿Desea descartarlos y recargar?')) return;
+    if ((this.borradorDirty() || this.formulario?.fotoVistaPrevia() || this.formulario?.eliminarFotoPendiente()) && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
+    this.formulario?.cancelarCambioFoto();
     this.borradorDirty.set(false);
     this.versionDescartar.update((version) => version + 1);
     this.pozoResource.reload();

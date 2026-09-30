@@ -1,12 +1,12 @@
 import { Component, inject, input, resource } from '@angular/core';
-import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonItem, IonLabel, IonList } from '@ionic/angular/standalone';
+import { IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonList } from '@ionic/angular/standalone';
 import { SitiosListService } from '../../../../shared/services/sitios-list.service';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
 
 @Component({
   selector: 'app-sitio-detail',
-  imports: [IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonItem, IonLabel, IonList, MapaAereoComponent],
+  imports: [IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonList, MapaAereoComponent],
   templateUrl: './sitio-detail.page.html',
   styleUrl: './sitio-detail.page.css',
 })

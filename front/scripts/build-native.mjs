@@ -48,7 +48,7 @@ const indexSource = `<!doctype html>
   <meta charset="utf-8">
   <title>Raul Silva Perforaciones</title>
   <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content=${JSON.stringify(csp)}>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>

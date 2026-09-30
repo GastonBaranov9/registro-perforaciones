@@ -4,8 +4,6 @@ import { UsuarioPublico } from '../../../../shared/types/schemas';
 import {
   IonCol,
   IonGrid,
-  IonItem,
-  IonLabel,
   IonList,
   IonPickerColumn,
   IonRow,
@@ -31,8 +29,6 @@ import { WebsocketService } from '../../../../shared/services/websocket.service'
     IonCardTitle,
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
     DatePipe,
     IonContent,
   ],

@@ -8,38 +8,38 @@
 
       <ion-card-content>
         <ion-list>
-          <ion-item>
-            <ion-label>Departamento</ion-label>
-            <ion-label>{{ sitio.departamento }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Departamento</dt>
+            <dd>{{ sitio.departamento }}</dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Localidad</ion-label>
-            <ion-label>{{ sitio.localidad || 'No especificada' }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Localidad</dt>
+            <dd>{{ sitio.localidad || 'No especificada' }}</dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Padrón</ion-label>
-            <ion-label>{{ sitio.padron || 'No especificado' }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Padrón</dt>
+            <dd>{{ sitio.padron || 'No especificado' }}</dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Latitud</ion-label>
-            <ion-label>{{ sitio.latitud }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Latitud</dt>
+            <dd>{{ sitio.latitud }}</dd>
+          </dl>
 
-             <ion-item>
-            <ion-label>Longitud</ion-label>
-            <ion-label>{{ sitio.longitud }}</ion-label>
-          </ion-item>
+             <dl class="data-row">
+            <dt>Longitud</dt>
+            <dd>{{ sitio.longitud }}</dd>
+          </dl>
 
         </ion-list>
 
 
           <ion-button fill="outline" (click)="irADetalle(sitio)">Ver detalle</ion-button>
-          <ion-button (click)="irAEditar(sitio)">Editar</ion-button>
+          <ion-button fill="outline" (click)="irAEditar(sitio)">Editar</ion-button>
           @if (this.authService.tieneRol('administracion')) {
-          <ion-button  color="danger" (click)="borrarSitio(sitio)">
+          <ion-button fill="outline"  color="danger" (click)="borrarSitio(sitio)">
             Borrar
           </ion-button>
           }

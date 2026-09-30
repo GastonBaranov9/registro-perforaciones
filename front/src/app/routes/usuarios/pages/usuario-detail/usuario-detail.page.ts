@@ -10,8 +10,6 @@ import {
   IonCardTitle,
   IonCardContent,
   IonList,
-  IonItem,
-  IonLabel,
   IonButton,
 } from '@ionic/angular/standalone';
 import { DatePipe } from '@angular/common';
@@ -27,8 +25,6 @@ import { AuthService } from '../../../../shared/services/auth-service/auth.servi
     IonCardTitle,
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
     IonButton,
     DatePipe,
   ],

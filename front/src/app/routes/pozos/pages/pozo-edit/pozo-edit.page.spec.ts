@@ -27,6 +27,27 @@ describe('PozoEditPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('fallar el reemplazo no confirma la foto ni navega y explica que sigue pendiente', async () => {
+    const confirmar = jasmine.createSpy('confirmarFotoGuardada');
+    component.formulario = { confirmarFotoGuardada: confirmar } as never;
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.rejectWith(new Error('Sin conexión'));
+    const navegar = spyOn(component.router, 'navigate');
+    await component.handleEdit({ pozo: { id_propietario: 1, id_perforador: 1, id_sitio: 1 }, foto: new File(['foto'], 'nueva.jpg'), fotoAccion: 'reemplazar' });
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(navegar).not.toHaveBeenCalled();
+    expect(component.errorMessage()).toContain('pendientes de guardar');
+    expect(component.disabled()).toBeFalse();
+  });
+
+  it('confirma el estado de la foto solo después de guardar correctamente', async () => {
+    const confirmar = jasmine.createSpy('confirmarFotoGuardada');
+    component.formulario = { confirmarFotoGuardada: confirmar } as never;
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({ pozo: { foto_url: '/usuarios/1/pozos/1/foto' } } as never);
+    spyOn(component.router, 'navigate').and.resolveTo(true);
+    await component.handleEdit({ pozo: { id_propietario: 1, id_perforador: 1, id_sitio: 1 }, foto: new File(['foto'], 'nueva.jpg'), fotoAccion: 'reemplazar' });
+    expect(confirmar).toHaveBeenCalledOnceWith('/usuarios/1/pozos/1/foto');
+  });
+
   it('bloquea doble envío y conserva el borrador mientras guarda', async () => {
     let resolver!: (valor: unknown) => void;
     const pendiente = new Promise((resolve) => { resolver = resolve; });

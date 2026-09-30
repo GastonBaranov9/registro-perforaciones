@@ -27,6 +27,7 @@
                 @case ('angular') { <path d="M1 4L5 2L9 5" class="trama" /> }
                 @case ('fractura') { <path d="M1 9L9 1M1 4L5 2L9 5" class="trama fractura" /> }
                 @case ('organica') { <path d="M1 3L4 8L8 2" class="trama organica" /> }
+                @case ('moteado') { <g [attr.opacity]="patronSpec(clave).contraste"><circle cx="3" cy="3" [attr.r]="patronSpec(clave).tamano" class="punto" /><ellipse cx="7" cy="7" [attr.rx]="patronSpec(clave).tamano * 1.6" [attr.ry]="patronSpec(clave).tamano * .75" class="punto" /></g> }
                 @case ('grano') { <circle [attr.cx]="patronSpec(clave).paso / 2" [attr.cy]="patronSpec(clave).paso / 2" [attr.r]="patronSpec(clave).tamano" class="punto" /> }
                 @case ('laminar') { <path d="M0 4H10" class="trama laminar" /> }
                 @case ('hibrido') { <path d="M0 4H10" class="trama laminar" /><circle cx="8" cy="7" [attr.r]="patronSpec(clave).tamano * .65" class="punto" /> }

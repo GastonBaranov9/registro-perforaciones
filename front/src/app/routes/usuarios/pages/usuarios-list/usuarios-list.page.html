@@ -3,48 +3,49 @@
   @for (usuario of this.usuarios(); track usuario.id_usuario) {
     <ion-card>
       <ion-card-header>
-        <ion-card-title>ID: {{ usuario.id_usuario }}</ion-card-title>
+        <ion-card-title>{{ usuario.nombre }}</ion-card-title>
       </ion-card-header>
 
       <ion-card-content>
         <ion-list>
 
-            <ion-item>
-            <ion-label>Nombre</ion-label>
-            <ion-label>{{ usuario.nombre }}</ion-label>
-          </ion-item>
+            <dl class="data-row">
+            <dt>Nombre</dt>
+            <dd>{{ usuario.nombre }}</dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Email</ion-label>
-            <ion-label>{{ usuario.email }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Email</dt>
+            <dd>{{ usuario.email }}</dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Activo</ion-label>
-            <ion-label>{{ usuario.activo }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Estado</dt>
+            <dd><span class="status-badge" [class.active]="usuario.activo">{{ usuario.activo ? 'Activo' : 'Inactivo' }}</span></dd>
+          </dl>
 
-          <ion-item>
-            <ion-label>Fecha de registro</ion-label>
-            <ion-label>{{ usuario.fecha_registro | date:'dd/MM/yyyy' }}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Fecha de registro</dt>
+            <dd>{{ usuario.fecha_registro | date:'dd/MM/yyyy' }}</dd>
+          </dl>
 
           
-          <ion-item>
-            <ion-label>Roles</ion-label>
-            <ion-label>{{this.getRoles(usuario)}}</ion-label>
-          </ion-item>
+          <dl class="data-row">
+            <dt>Roles</dt>
+            <dd>{{this.getRoles(usuario)}}</dd>
+          </dl>
 
         </ion-list>
 
 
-          <ion-button (click)="irAEditar(usuario)">Editar</ion-button>
-          <ion-button  color="danger" (click)="borrarUser(usuario)">
+        <div class="action-row">
+          <ion-button fill="outline" (click)="irAEditar(usuario)">Editar</ion-button>
+          <ion-button fill="outline" color="danger" (click)="borrarUser(usuario)">
             Borrar
           </ion-button>
+        </div>
       </ion-card-content>
     </ion-card>
   }
 
 </ion-content>
-

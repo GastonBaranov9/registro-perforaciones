@@ -43,6 +43,19 @@ describe('App', () => {
     expect(outlet?.closest('ion-content')).toBeNull();
   });
 
+  it('ofrece administración de litologías en el menú sólo a administradores', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const enlace = () => fixture.nativeElement.querySelector('ion-menu [routerLink="/litologias-admin"]');
+    expect(enlace()).toBeNull();
+    fixture.componentInstance.mainStore.setUser({ id_usuario: 8, nombre: 'Perforador', roles: [{ id_rol: 2, nombre: 'perforador', descr: 'Perforador' }] });
+    fixture.detectChanges();
+    expect(enlace()).toBeNull();
+    fixture.componentInstance.mainStore.setUser({ id_usuario: 1, nombre: 'Administrador', roles: [{ id_rol: 1, nombre: 'administracion', descr: 'Administración' }] });
+    fixture.detectChanges();
+    expect(enlace()).not.toBeNull();
+  });
+
   it('should give the routed content the space below the header', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();

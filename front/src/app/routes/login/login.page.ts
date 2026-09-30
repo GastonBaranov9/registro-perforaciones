@@ -1,12 +1,13 @@
 import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
-import { IonInput, IonLabel, IonButton, IonContent } from '@ionic/angular/standalone';
+import { IonInput, IonButton, IonContent, IonIcon } from '@ionic/angular/standalone';
+import { eyeOutline, eyeOffOutline } from 'ionicons/icons';
 import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-login',
-  imports: [IonInput, FormsModule, IonButton, IonContent, IonLabel],
+  imports: [IonInput, FormsModule, IonButton, IonContent, IonIcon],
   templateUrl: './login.page.html',
   styleUrl: './login.page.css',
 })
@@ -15,6 +16,9 @@ export class LoginPage {
   private router = inject(Router);
   public disabled = signal<boolean>(false);
   public error = signal('');
+  public passwordVisible = signal(false);
+  readonly eyeOutline = eyeOutline;
+  readonly eyeOffOutline = eyeOffOutline;
   private ruta = inject(ActivatedRoute);
   public credenciales = {
     email: '',
@@ -28,6 +32,7 @@ export class LoginPage {
     try {
       await this.authService.logged(email, password);
       this.credenciales.password = '';
+      this.passwordVisible.set(false);
       const redirectTo = this.ruta.snapshot.queryParamMap.get('redirectTo');
 
       if (redirectTo) {

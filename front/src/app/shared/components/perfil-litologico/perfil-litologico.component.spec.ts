@@ -81,6 +81,18 @@ describe('PerfilLitologicoComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No hay profundidad ni litología');
   });
 
+  it('dibuja el patrón de concreto gris con agregados finos para Sello sanitario', async () => {
+    fixture.componentRef.setInput('modelo', { ...perfil, tramos: [{ ...perfil.tramos[0], material: 'Sello sanitario', hasta_m: 3.5, estilo: { color: '#999999', gris: .6, patron: 'concrete' } }] });
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('rect.capa')?.getAttribute('fill')).toBe('#999999');
+    const patron = root.querySelector(`pattern#${fixture.componentInstance.patronId('concrete')}`);
+    expect(patron?.querySelector('circle')).not.toBeNull();
+    expect(patron?.querySelector('ellipse')).not.toBeNull();
+    expect(root.querySelector('.trama-capa')?.getAttribute('fill')).toContain('concrete');
+    expect(root.textContent).toContain('Sello sanitario');
+  });
+
   it('muestra error sin conservar un perfil anterior', async () => {
     obtener.and.rejectWith(new Error('fallo'));
     fixture.detectChanges();

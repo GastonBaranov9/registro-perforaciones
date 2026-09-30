@@ -85,33 +85,33 @@
 
     <ion-card-content>
       <ion-list>
-        <ion-item>
-          <ion-label>ID Propietario</ion-label>
-          <ion-label>{{ pozo.id_propietario }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>ID Propietario</dt>
+          <dd>{{ pozo.id_propietario }}</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>ID Sitio</ion-label>
-          <ion-label>{{ pozo.id_sitio }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>ID Sitio</dt>
+          <dd>{{ pozo.id_sitio }}</dd>
+        </dl>
 
         
-        <ion-item>
-          <ion-label>Caudal (lh)</ion-label>
-          <ion-label>{{ pozo.caudal_estimado_lh ?? '-' }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Caudal (lh)</dt>
+          <dd>{{ pozo.caudal_estimado_lh ?? '-' }}</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>Profundidad (m)</ion-label>
-          <ion-label>{{ pozo.profundidad_final_m ?? '-' }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Profundidad (m)</dt>
+          <dd>{{ pozo.profundidad_final_m ?? '-' }}</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>Fecha de creación</ion-label>
-          <ion-label>
+        <dl class="data-row">
+          <dt>Fecha de creación</dt>
+          <dd>
             {{ formatearInstanteComoFecha(pozo.fecha_creado) }}
-          </ion-label>
-        </ion-item>
+          </dd>
+        </dl>
       </ion-list>
       <ion-toolbar>
         <ion-buttons slot="start">
@@ -135,14 +135,14 @@
         </ion-popover>
 
         <ion-buttons slot="end">
-          <ion-button size="large" fill="clear" color="primary" (click)="irADetalle(pozo)">
+          <ion-button aria-label="Ver detalle del pozo" fill="clear" color="secondary" (click)="irADetalle(pozo)">
             <ion-icon slot="icon-only" name="eye"> </ion-icon
           ></ion-button>
           @if (authService.puedeAdministrarPozos()) {
-          <ion-button fill="clear" color="primary" (click)="irAEditar(pozo)"
+          <ion-button aria-label="Editar pozo" fill="clear" color="secondary" (click)="irAEditar(pozo)"
             ><ion-icon slot="icon-only" name="pencil"> </ion-icon
           ></ion-button>
-          <ion-button fill="clear" color="danger" (click)="borrarPozo(pozo)">
+          <ion-button aria-label="Eliminar pozo" fill="clear" color="danger" (click)="borrarPozo(pozo)">
             <ion-icon slot="icon-only" name="trash"> </ion-icon>
           </ion-button>
           }

@@ -1,63 +1,10 @@
-ion-img{
-    display: block;
-  margin: 0 auto;   
-  width: 80%;
-  max-width: 400px;
-  height: auto;
-  border-radius: 10px;
-  object-fit: contain;
-}
-ion-label {
-  font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif !important;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--ion-color-medium);
-  margin-bottom: 4px;
-}
-
-ion-list {
-  background: transparent;
-}
-ion-item {
-  --inner-padding-end: 12px;
-  --inner-padding-start: 12px;
-  margin-bottom: 12px;
-  border-radius: 8px;
-}
-ion-toggle {
-  transform: scale(0.95);
-}
-ion-button[type='submit'] {
-  margin-top: 32px;
-  height: 52px;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-fieldset {
-  margin: 1rem 0;
-  padding: 1rem;
-  border: 1px solid var(--ion-color-medium-tint);
-  border-radius: 10px;
-}
-
-legend {
-  padding: 0 .4rem;
-  color: var(--ion-color-primary);
-  font-weight: 650;
-}
-
-fieldset > p {
-  margin: .5rem .75rem;
-  color: var(--ion-color-medium-shade);
-}
-.dato-estandar ion-input[readonly],
-.dato-estandar ion-textarea[readonly] {
-  opacity: 0.72;
-}
-
-.dato-estandar--editable ion-input,
-.dato-estandar--editable ion-textarea {
-  opacity: 1;
-}
+:host { display: block; min-width: 0; }
+.foto-editor, .ubicacion-actual { margin-block: var(--rsp-space-6); padding: var(--rsp-space-4); border: 1px solid var(--rsp-border); border-radius: var(--rsp-card-radius); background: var(--rsp-surface); }
+.foto-editor h3, .ubicacion-actual h3 { margin-top: 0; }
+.foto-preview { display: block; width: 100%; max-width: 32rem; aspect-ratio: 4 / 3; object-fit: contain; background: var(--rsp-surface-muted); border-radius: var(--rsp-radius); margin: var(--rsp-space-3) auto; }
+.foto-pendiente { border-inline-start: 3px solid var(--ion-color-warning); padding: var(--rsp-space-3); background: var(--rsp-warning-bg); }
+.coordenadas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--rsp-space-3); }
+.coordenadas dt { color: var(--rsp-text-muted); font-size: .875rem; }
+.coordenadas dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dato-estandar ion-input[readonly], .dato-estandar ion-textarea[readonly] { --background: var(--rsp-surface-muted); }
+@media (max-width: 599px) { .dato-estandar::part(native) { display: block; } .dato-estandar ion-button { margin-inline: 0; } }

@@ -10,15 +10,15 @@
     role="combobox" aria-autocomplete="list" [attr.aria-expanded]="filtrados().length > 0"></ion-input>
   <ion-list>
     @for (persona of filtrados(); track persona.id_usuario) {
-      <ion-item>
+      <ion-item><div class="persona-option">
         <ion-label><strong>{{ persona.nombre }}</strong>
           @if (rol() === 'propietario' && persona.documento_rut) { <p>CI/RUT: {{ persona.documento_rut }}</p> }
           @else if (rol() !== 'propietario' && persona.email) { <p>{{ persona.email }}</p> }
         </ion-label>
-        <ion-button type="button" slot="end" [fill]="seleccionado() === persona.id_usuario ? 'solid' : 'outline'"
+        <ion-button type="button" [fill]="seleccionado() === persona.id_usuario ? 'solid' : 'outline'"
           (click)="elegir(persona.id_usuario)" [disabled]="deshabilitado()"
           [attr.aria-label]="'Seleccionar ' + persona.nombre">Seleccionar</ion-button>
-      </ion-item>
-    } @empty { @if (busqueda().trim().length >= 1) { <ion-item><ion-label>No hay coincidencias.</ion-label></ion-item> } }
+      </div></ion-item>
+    } @empty { @if (busqueda().trim().length >= 1) { <dl class="data-row"><dt>No hay coincidencias.</dt></dl> } }
   </ion-list>
 </section>

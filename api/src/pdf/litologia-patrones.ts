@@ -4,11 +4,11 @@
  */
 export const PATRONES_LITOLOGICOS = [
   'basalt', 'basalt_fractured', 'organic', 'sandstone_fine', 'sandstone_medium',
-  'sandstone_coarse', 'clay', 'sandy_clay', 'tosca', 'gravel_fine', 'gravel_coarse', 'granite',
+  'sandstone_coarse', 'clay', 'sandy_clay', 'tosca', 'gravel_fine', 'gravel_coarse', 'granite', 'concrete',
 ] as const;
 
 export type PatronCatalogo = (typeof PATRONES_LITOLOGICOS)[number];
-export type FormaPatron = 'angular' | 'fractura' | 'organica' | 'grano' | 'laminar' | 'hibrido' | 'nodulo' | 'canto' | 'cristalino';
+export type FormaPatron = 'angular' | 'fractura' | 'organica' | 'grano' | 'laminar' | 'hibrido' | 'nodulo' | 'canto' | 'cristalino' | 'moteado';
 
 export interface EspecificacionPatronLitologico {
   forma: FormaPatron;
@@ -30,6 +30,7 @@ export const ESPECIFICACION_PATRON: Readonly<Record<PatronCatalogo, Especificaci
   tosca: { forma: 'nodulo', paso: 18, tamano: 2.4, densidad: 0.5, contraste: 0.46 },
   gravel_fine: { forma: 'canto', paso: 12, tamano: 2.6, densidad: 0.58, contraste: 0.5 },
   gravel_coarse: { forma: 'canto', paso: 21, tamano: 4.2, densidad: 0.4, contraste: 0.55 },
+  concrete: { forma: 'moteado', paso: 10, tamano: 0.8, densidad: 0.72, contraste: 0.35 },
   granite: { forma: 'cristalino', paso: 15, tamano: 2.8, densidad: 0.58, contraste: 0.5 },
 };
 

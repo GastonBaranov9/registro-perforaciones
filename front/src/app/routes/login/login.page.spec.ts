@@ -3,7 +3,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { IonButton } from '@ionic/angular/standalone';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
 import { CAPACITOR_RUNTIME } from '../../core/native/native-plugin.tokens';
 import { NativeBackendConfigService } from '../../core/native/native-backend-config.service';
@@ -50,10 +49,12 @@ describe(`LoginPage ${platform} con AuthService real`, () => {
 
   afterEach(() => http.verify());
 
-  async function completarLogin(): Promise<void> {
+  async function completarLogin(expectedPassword?: string): Promise<void> {
     await settle();
     const user = { id_usuario: 7, nombre: 'Prueba', roles: [] };
-    http.expectOne(loginUrl).flush(platform === 'web' ? { authenticated: true } : {
+    const request = http.expectOne(loginUrl);
+    if (expectedPassword) expect(request.request.body.password).toBe(expectedPassword);
+    request.flush(platform === 'web' ? { authenticated: true } : {
       token_type: 'Bearer', session_token: `rspn1_${'A'.repeat(43)}`,
       expires_at: '2030-01-01T00:00:00.000Z', user,
     });
@@ -67,7 +68,7 @@ describe(`LoginPage ${platform} con AuthService real`, () => {
     component.credenciales = { email: 'test@example.test', password: 'incorrecta' };
     const intento = component.logIn(component.credenciales.email, component.credenciales.password);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.directive(IonButton)).componentInstance.disabled).toBeTrue();
+    expect(fixture.debugElement.query(By.css('.login-button')).componentInstance.disabled).toBeTrue();
     expect(fixture.nativeElement.textContent).toContain('Ingresando…');
     await settle();
     http.expectOne(loginUrl).flush({ message: 'detalle técnico privado' }, { status: 401, statusText: 'Unauthorized' });
@@ -77,7 +78,7 @@ describe(`LoginPage ${platform} con AuthService real`, () => {
     expect(alerta.textContent).toBe('Email o contraseña incorrectas');
     expect(alerta.getAttribute('aria-live')).toBe('assertive');
     expect(component.disabled()).toBeFalse();
-    expect(fixture.debugElement.query(By.directive(IonButton)).componentInstance.disabled).toBeFalse();
+    expect(fixture.debugElement.query(By.css('.login-button')).componentInstance.disabled).toBeFalse();
     expect(component.credenciales.password).toBe('incorrecta');
     await new Promise<void>((resolve) => setTimeout(resolve, 1100));
     fixture.detectChanges();
@@ -99,6 +100,33 @@ describe(`LoginPage ${platform} con AuthService real`, () => {
     fixture.detectChanges();
     expect(component.error()).toBe('');
     expect(fixture.nativeElement.querySelector('.login-error[role="alert"]')).toBeNull();
+  });
+
+  it('el ojo alterna visibilidad sin perder ngModel ni enviar el login y conserva la contraseña enviada', async () => {
+    const password = fixture.debugElement.query(By.css('ion-input[name="password"]'));
+    const toggle = fixture.nativeElement.querySelector('.password-toggle') as HTMLElement;
+    expect(password.componentInstance.type).toBe('password');
+    expect(toggle.getAttribute('aria-label')).toBe('Mostrar contraseña');
+    password.triggerEventHandler('ngModelChange', 'clave de prueba');
+    fixture.detectChanges();
+    toggle.click();
+    fixture.detectChanges();
+    expect(password.componentInstance.type).toBe('text');
+    expect(toggle.getAttribute('aria-label')).toBe('Ocultar contraseña');
+    expect(component.credenciales.password).toBe('clave de prueba');
+    password.triggerEventHandler('ngModelChange', 'clave editada');
+    toggle.click();
+    fixture.detectChanges();
+    expect(password.componentInstance.type).toBe('password');
+    expect(component.credenciales.password).toBe('clave editada');
+    http.expectNone(loginUrl);
+    component.passwordVisible.set(true);
+    const intento = component.logIn('test@example.test', component.credenciales.password);
+    await completarLogin('clave editada');
+    await intento;
+    expect(component.passwordVisible()).toBeFalse();
+    expect(component.credenciales.password).toBe('');
+    expect(router.navigate).toHaveBeenCalledWith(['/home']);
   });
 
   it('login correcto conserva redirectTo y evita solicitudes duplicadas', async () => {

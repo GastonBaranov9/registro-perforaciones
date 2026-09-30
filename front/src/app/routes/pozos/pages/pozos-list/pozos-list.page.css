@@ -1,55 +1,6 @@
-.filters-modal::part(content) {
-  height: 62dvh;
-  width: 90%;
-  max-width: 420px;
-  margin: auto;
-  border-radius: 20px;
-}
-
-.filters-modal ion-content::part(scroll)::-webkit-scrollbar {
-  display: none;
-}
-
-.filters-modal ion-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  border: transparent;
-}
-
-.filters-modal ion-label ion-icon {
-  font-size: 1rem;
-  margin-top: 1px;
-}
-
-.filters-modal ion-item {
-  --inner-border-width: 0;
-}
-
-/* Inputs de rango (mín / máx) */
-.range-inputs {
-  display: flex;
-  gap: 0.75rem;
-}
-
-/* Acciones inferiores del modal */
-.filters-actions {
-  padding: 1rem;
-}
-
-.filters-actions ion-button {
-  height: 44px;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-ion-toolbar {
-  --padding-top: 1rem;
-  --padding-bottom: 1rem;
-
-}
+.filters-modal { --height: min(80dvh, 42rem); --width: min(94vw, 30rem); }
+.range-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rsp-space-2); width: 100%; }
+.filters-modal ion-item::part(native) { display: block; }
+.filters-modal ion-label { margin-block: var(--rsp-space-3); }
+.filters-actions { padding: var(--rsp-space-4); }
+ion-card ion-toolbar { margin-top: var(--rsp-space-3); }

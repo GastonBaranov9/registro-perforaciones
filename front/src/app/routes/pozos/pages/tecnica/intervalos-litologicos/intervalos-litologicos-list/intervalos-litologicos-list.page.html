@@ -20,26 +20,26 @@
 
     <ion-card-content>
       <ion-list>
-        <ion-item>
-          <ion-label>Desde: </ion-label>
-          <ion-label>{{ intervaloLit.desde_m }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Desde: </dt>
+          <dd>{{ intervaloLit.desde_m }}</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>Hasta: </ion-label>
-          <ion-label>{{ intervaloLit.hasta_m }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Hasta: </dt>
+          <dd>{{ intervaloLit.hasta_m }}</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>Material: </ion-label>
-          <ion-label>{{ intervaloLit.material }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Material: </dt>
+          <dd>{{ intervaloLit.material }}</dd>
+        </dl>
       </ion-list>
       @if(!this.id_pozo){
       <p role="alert">Pozo No Encontrado</p>
       }@else{
-      <ion-button (click)="irAEditar(this.id_pozo, intervaloLit)">Editar</ion-button>
-      <ion-button color="danger" (click)="borrarIntervaloLit(intervaloLit)"> Borrar </ion-button>
+      <ion-button fill="outline" (click)="irAEditar(this.id_pozo, intervaloLit)">Editar</ion-button>
+      <ion-button fill="outline" color="danger" (click)="borrarIntervaloLit(intervaloLit)"> Borrar </ion-button>
       }
     </ion-card-content>
   </ion-card>

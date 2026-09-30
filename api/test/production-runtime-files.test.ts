@@ -192,7 +192,7 @@ test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async
   const proxy=await fs.readFile(path.join(repo,"proxy","https.conf.template"),"utf8");
   const background=await fs.readFile(path.join(repo,"front","public","assets","branding","background.jpeg"));
   const logo=await fs.readFile(path.join(repo,"front","public","assets","branding","logo.png"));
-  assert.match(styles,/url\('\/assets\/branding\/background\.jpeg'\)/);
+  assert.match(styles,/--background: var\(--rsp-background\)/);
   assert.match(app,/src="\/assets\/branding\/logo\.png"/);
   assert.doesNotMatch(`${styles}\n${app}`,/imgur\.com/i);
   assert.match(proxy,/img-src 'self' data: blob:/);

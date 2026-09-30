@@ -6,8 +6,6 @@ import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonCardContent,
   IonList,
-  IonItem,
-  IonLabel,
   IonButton,
   IonCardTitle,
   IonCardHeader,
@@ -25,8 +23,6 @@ import {
   imports: [
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
     IonButton,
     IonCardTitle,
     IonCardHeader,

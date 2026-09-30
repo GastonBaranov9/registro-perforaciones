@@ -15,9 +15,7 @@ import {
   IonCardTitle,
   IonCardContent,
   IonList,
-  IonItem,
-  IonLabel,
-} from '@ionic/angular/standalone';
+  } from '@ionic/angular/standalone';
 import { ToastController } from '@ionic/angular';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 @Component({
@@ -30,9 +28,7 @@ import { AuthService } from '../../../../shared/services/auth-service/auth.servi
     IonCardTitle,
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
-  ],
+    ],
   templateUrl: './sitios-list.page.html',
   styleUrl: './sitios-list.page.css',
 })

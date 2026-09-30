@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, ViewChild, inject, output, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, inject, input, output, signal } from '@angular/core';
 import { IonButton, IonText } from '@ionic/angular/standalone';
 import { CameraResultType, CameraSource } from '@capacitor/camera';
 import { CAPACITOR_CAMERA } from '../../../../core/native/native-plugin.tokens';
@@ -19,11 +19,12 @@ export class FotoComponent {
   public fotoTomada = output<FotoSeleccionada>();
   public error = signal('');
   public procesando = signal(false);
+  public deshabilitado = input(false);
 
   tomarFoto(): Promise<void> { return this.seleccionarNativa(CameraSource.Camera); }
 
   async abrirSelector(): Promise<void> {
-    if (this.procesando()) return;
+    if (this.procesando() || this.deshabilitado()) return;
     this.error.set('');
     if (this.esNative) await this.seleccionarNativa(CameraSource.Photos);
     else if (this.runtime.isWeb()) this.selectorFoto?.nativeElement.click();
@@ -31,7 +32,7 @@ export class FotoComponent {
   }
 
   private async seleccionarNativa(source: CameraSource): Promise<void> {
-    if (this.procesando() || !this.esNative) return;
+    if (this.procesando() || this.deshabilitado() || !this.esNative) return;
     this.procesando.set(true);
     this.error.set('');
     try {
@@ -61,7 +62,7 @@ export class FotoComponent {
   }
 
   async archivoCambiado(evento: Event): Promise<void> {
-    if (this.procesando()) return;
+    if (this.procesando() || this.deshabilitado()) return;
     const input = evento.target as HTMLInputElement;
     const archivo = input.files?.item(0) ?? null;
     input.value = '';

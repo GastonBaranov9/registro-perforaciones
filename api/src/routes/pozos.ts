@@ -295,6 +295,16 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       const isPropietario = await isProp(id_usuario);
       const isPerforador = await isPerf(id_usuario);
       const isAdministrador = await isAdmin(id_usuario);
+      if (isAdministrador) {
+        const pozos = await funcPozo.getAllPozo(
+          caudal_min,
+          caudal_max,
+          profundidad_max,
+          profundidad_min,
+          sello_sanitario
+        );
+        return rep.code(200).send(pozos);
+      }
       if (isPropietario) {
         const pozos = await funcPozo.getPozosByPropietario(
           id_usuario,
@@ -310,16 +320,6 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (isPerforador) {
         const pozos = await funcPozo.getPozosByPerforador(
           id_usuario,
-          caudal_min,
-          caudal_max,
-          profundidad_max,
-          profundidad_min,
-          sello_sanitario
-        );
-        return rep.code(200).send(pozos);
-      }
-      if (isAdministrador) {
-        const pozos = await funcPozo.getAllPozo(
           caudal_min,
           caudal_max,
           profundidad_max,

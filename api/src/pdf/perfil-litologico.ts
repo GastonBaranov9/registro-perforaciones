@@ -375,6 +375,9 @@ function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: nu
       } else if (spec.forma === 'organica') {
         page.drawLine({ start:{x:px-s,y:py-s}, end:{x:px+s*.2,y:py+s}, thickness:.7, color });
         page.drawLine({ start:{x:px+s*.2,y:py+s}, end:{x:px+s,y:py}, thickness:.7, color });
+      } else if (spec.forma === 'moteado') {
+        page.drawCircle({ x:px-1.5, y:py+1.5, size:s, color, opacity:spec.contraste });
+        page.drawEllipse({ x:px+2, y:py-2, xScale:s*1.6, yScale:s*.75, color, opacity:spec.contraste });
       } else if (spec.forma === 'grano') {
         page.drawCircle({ x:px, y:py, size:s, color });
       } else if (spec.forma === 'laminar' || spec.forma === 'hibrido') {

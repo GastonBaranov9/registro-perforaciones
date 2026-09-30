@@ -16,7 +16,7 @@ test("la migración define exactamente las 29 litologías válidas y únicas",()
   assert.ok(semillas.every((s)=>/^#[0-9A-F]{6}$/.test(s[4])));
   const rosada=semillas.find((s)=>s[2]==="Tosca rosada");assert.ok(rosada);const rgb=[1,3,5].map((i)=>Number.parseInt(rosada[4].slice(i,i+2),16));assert.ok(rgb[0]>rgb[1]&&rgb[0]>rgb[2]);
   assert.ok(semillas.every((s)=>PATRONES_LITOLOGICOS.includes(s[5] as typeof PATRONES_LITOLOGICOS[number])));
-  assert.equal(Object.keys(ESPECIFICACION_PATRON).length,12);
+  assert.equal(Object.keys(ESPECIFICACION_PATRON).length,13);
   assert.ok(semillas.filter((s)=>s[2].toLocaleLowerCase().includes('rosad')).every((s)=>Number.parseInt(s[4].slice(1,3),16)>Number.parseInt(s[4].slice(3,5),16)));
 });
 
@@ -43,7 +43,7 @@ test("el perfil canónico usa estilo catalogado y conserva fallback histórico",
   assert.equal(estiloDeCatalogo("#202124","basalt").patron,"basalt");
 });
 
-test("las 12 claves tienen modelo compartido y render PDF disponible",async()=>{
+test("las 13 claves tienen modelo compartido y render PDF disponible",async()=>{
   for (const [indice,patron] of PATRONES_LITOLOGICOS.entries()) {
     const perfil=crearPerfilLitologico([{desde_m:0,hasta_m:1,material:`Material ${patron}`,id_litologia:indice+1,litologia_nombre:`Material ${patron}`,litologia_color:"#A98B72",litologia_patron:patron,litologia_activa:false}],1);
     assert.ok(perfil); assert.equal(perfil.tramos[0].estilo.patron,patron); assert.ok(ESPECIFICACION_PATRON[patron].paso>0);

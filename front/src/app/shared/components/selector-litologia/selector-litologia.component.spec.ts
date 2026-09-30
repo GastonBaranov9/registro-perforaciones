@@ -40,7 +40,7 @@ describe('SelectorLitologiaComponent', () => {
     const fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     http.expectOne((r) => r.url.endsWith('/litologias')).flush([
-      { id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#777777', patron: 'granite', activo: true, orden: 30 },
+      { id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#999999', patron: 'concrete', activo: true, orden: 30 },
     ]);
     await fixture.whenStable();
     const selector = fixture.debugElement.query(By.directive(SelectorLitologiaComponent)).componentInstance as SelectorLitologiaComponent;

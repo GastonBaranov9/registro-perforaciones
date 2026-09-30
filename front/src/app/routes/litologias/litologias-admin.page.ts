@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonItem, IonLabel } from '@ionic/angular/standalone';
+import { IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonLabel } from '@ionic/angular/standalone';
 import { familiasLitologia, LitologiaActualizarBody, LitologiaCrearBody, LitologiaPublica, patronesLitologia } from '../../shared/types/schemas';
 import { LitologiasService } from '../../shared/services/litologias.service';
 import { especificacionPatron, type PatronCatalogo } from '../../shared/canonical/litologia-patrones';
@@ -10,7 +10,7 @@ type Formulario = LitologiaCrearBody & { activo?: boolean };
 @Component({
   selector: 'app-litologias-admin',
   standalone: true,
-  imports: [FormsModule, IonContent, IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonItem, IonLabel, IonButton],
+  imports: [FormsModule, IonContent, IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonLabel, IonButton],
   templateUrl: './litologias-admin.page.html',
   styleUrl: './litologias-admin.page.css',
 })

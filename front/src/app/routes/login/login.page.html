@@ -5,8 +5,8 @@
 
       <h1 class="hero-title">Accedé a tu cuenta</h1>
       <div class="form-field">
-        <ion-label position="stacked">Email</ion-label>
         <ion-input
+          label="Email" labelPlacement="stacked" autocomplete="username"
           type="email"
           [(ngModel)]="this.credenciales.email"
           (ngModelChange)="error.set('')"
@@ -20,15 +20,21 @@
       </div>
 
       <div class="form-field">
-        <ion-label position="stacked">Contraseña</ion-label>
         <ion-input
-          type="password"
+          label="Contraseña" labelPlacement="stacked" autocomplete="current-password"
+          [type]="passwordVisible() ? 'text' : 'password'"
+          autocapitalize="off" [spellcheck]="false"
           [(ngModel)]="this.credenciales.password"
           (ngModelChange)="error.set('')"
           name="password"
           placeholder="••••••••"
-  
         >
+          <ion-button slot="end" type="button" fill="clear" class="password-toggle"
+            [attr.aria-label]="passwordVisible() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            (pointerdown)="$event.preventDefault()"
+            (click)="passwordVisible.set(!passwordVisible())">
+            <ion-icon slot="icon-only" [icon]="passwordVisible() ? eyeOffOutline : eyeOutline" aria-hidden="true"></ion-icon>
+          </ion-button>
         </ion-input>
       </div>
 

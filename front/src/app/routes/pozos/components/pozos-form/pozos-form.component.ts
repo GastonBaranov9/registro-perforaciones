@@ -1,7 +1,7 @@
 import { Component, OnDestroy, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
@@ -34,7 +34,6 @@ type PropietarioEdicionEstado = {
     CommonModule,
     FormsModule,
     FotoComponent,
-    IonImg,
     SelectorPersonaPozoComponent,
     ProtectedResourceDirective,
 ],
@@ -181,12 +180,18 @@ export class PozosFormComponent implements OnDestroy {
   }
 
   fotoCapturada(foto: FotoSeleccionada) {
+    if (this.guardando()) { URL.revokeObjectURL(foto.vistaPrevia); return; }
     this.liberarVistaPrevia();
     this.fotoBlob = foto.archivo;
     this.fotoFile = foto.archivo;
     this.fotoVistaPrevia.set(foto.vistaPrevia);
     this.eliminarFotoPendiente.set(false);
     this.errorMessage.set('');
+  }
+
+  confirmarFotoGuardada(fotoUrl?: string | null): void {
+    this.pozo().foto_url = fotoUrl ?? undefined;
+    this.cancelarCambioFoto();
   }
 
   quitarFotoSeleccionada() {

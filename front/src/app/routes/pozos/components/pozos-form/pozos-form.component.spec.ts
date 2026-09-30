@@ -155,6 +155,36 @@ describe('PozosFormComponent', () => {
     expect(component.fotoBlob).toBeNull();
   });
 
+  it('renderiza inmediatamente la última foto pendiente al editar, sin lazy ion-img ni foto obsoleta', async () => {
+    fixture.componentRef.setInput('agregareditar', true);
+    const archivo = new File(['foto'], 'nueva.png', { type: 'image/png' });
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    for (const url of ['blob:primera', 'blob:segunda', 'blob:tercera']) {
+      component.fotoCapturada({ archivo, vistaPrevia: url });
+      fixture.detectChanges();
+      const imagen = fixture.nativeElement.querySelector('.foto-preview') as HTMLImageElement;
+      expect(imagen.tagName).toBe('IMG');
+      expect(imagen.getAttribute('src')).toBe(url);
+      expect(fixture.nativeElement.querySelectorAll('.foto-preview').length).toBe(1);
+      expect(fixture.nativeElement.querySelector('.foto-pendiente').textContent).toContain('pendiente de guardar');
+      expect(fixture.nativeElement.querySelector('app-foto')).not.toBeNull();
+    }
+    expect(revoke).toHaveBeenCalledWith('blob:primera');
+    expect(revoke).toHaveBeenCalledWith('blob:segunda');
+  });
+
+  it('confirmar guardado libera el borrador y adopta la fotografía persistida', () => {
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    component.fotoCapturada({ archivo: new File(['foto'], 'nueva.jpg'), vistaPrevia: 'blob:pendiente' });
+    component.confirmarFotoGuardada('/usuarios/1/pozos/1/foto');
+    expect(revoke).toHaveBeenCalledWith('blob:pendiente');
+    expect(component.fotoFile).toBeNull();
+    expect(component.fotoVistaPrevia()).toBeNull();
+    expect(component.pozo().foto_url).toBe('/usuarios/1/pozos/1/foto');
+    component.confirmarFotoGuardada(null);
+    expect(component.getFoto()).toBeNull();
+  });
+
   it('libera ObjectURLs al reemplazar, quitar y destruir la vista previa', () => {
     const revoke = spyOn(URL, 'revokeObjectURL');
     const archivo = new File(['foto'], 'foto.jpg', { type: 'image/jpeg' });

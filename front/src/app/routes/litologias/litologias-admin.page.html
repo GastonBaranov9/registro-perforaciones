@@ -11,11 +11,11 @@
       <ion-button type="button" (click)="nuevo()">Nueva litología</ion-button>
       @if (cargando()) { <p role="status">Cargando catálogo…</p> } @else if (error()) { <p role="alert">{{ error() }}</p><ion-button type="button" (click)="cargar()">REINTENTAR</ion-button> }
       @for (litologia of filtradas(); track litologia.id_litologia) {
-        <ion-item>
+        <div class="catalog-entry">
           <span class="muestra" [style.background-color]="litologia.color"></span>
           <ion-label><strong>{{ litologia.nombre }}</strong> · {{ litologia.familia }} · {{ litologia.patron }} · orden {{ litologia.orden }}<br><small>{{ litologia.activo ? 'Activa' : 'Inactiva — uso histórico' }}</small></ion-label>
-          <ion-button (click)="editar(litologia)">Editar</ion-button><ion-button [color]="litologia.activo ? 'danger' : 'success'" (click)="cambiarEstado(litologia)">{{ litologia.activo ? 'Desactivar' : 'Activar' }}</ion-button>
-        </ion-item>
+          <ion-button fill="outline" (click)="editar(litologia)">Editar</ion-button><ion-button fill="outline" [color]="litologia.activo ? 'danger' : 'success'" (click)="cambiarEstado(litologia)">{{ litologia.activo ? 'Desactivar' : 'Activar' }}</ion-button>
+        </div>
       }
     </ion-card-content>
   </ion-card>
@@ -35,6 +35,7 @@
         <svg viewBox="0 0 180 42" role="img" [attr.aria-label]="'Muestra del patrón ' + formulario().patron">
           <rect width="180" height="42" [attr.fill]="formulario().color" />
           @switch (patronForma(formulario().patron)) {
+            @case ('moteado') { @for (x of [3,13,23,33,43,53,63,73,83,93,103,113,123,133,143,153,163,173]; track x) { @for (y of [3,13,23,33]; track y) { <g [attr.opacity]="patronSpec(formulario().patron).contraste"><circle [attr.cx]="x" [attr.cy]="y" r=".8" class="punto-admin" /><ellipse [attr.cx]="x + 4" [attr.cy]="y + 4" rx="1.28" ry=".6" class="punto-admin" /></g> } } }
             @case ('angular') { <path d="M0 20L18 10L36 23L54 12L72 22L90 10L108 23L126 12L144 22L162 10L180 20" class="trama-admin" /> }
             @case ('fractura') { <path d="M0 38L32 4M45 38L77 4M90 38L122 4M135 38L167 4" class="fractura-admin" /> }
             @case ('organica') { <path d="M8 12L22 31L38 9M56 12L70 31L86 9M104 12L118 31L134 9M152 12L166 31" class="trama-admin" /> }

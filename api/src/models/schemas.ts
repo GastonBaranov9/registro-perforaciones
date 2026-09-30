@@ -250,7 +250,7 @@ export const bodyIntervaloLitologico = Type.Object({
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
 
 export const FamiliasLitologia = ["basalto", "suelo", "arenisca", "arcilla_arena", "tosca", "gravilla", "granito", "otro"] as const;
-export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite"] as const;
+export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite", "concrete"] as const;
 export const FamiliaLitologia = Type.Union(FamiliasLitologia.map((valor) => Type.Literal(valor)));
 export type FamiliaLitologia = Static<typeof FamiliaLitologia>;
 export const PatronCatalogoLitologia = Type.Union(PatronesLitologia.map((valor) => Type.Literal(valor)));

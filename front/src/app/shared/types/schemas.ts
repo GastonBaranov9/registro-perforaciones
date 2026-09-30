@@ -158,7 +158,7 @@ export type IntervaloLitologicoBody = {
 };
 
 export const familiasLitologia = ['basalto','suelo','arenisca','arcilla_arena','tosca','gravilla','granito','otro'] as const;
-export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite'] as const;
+export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite','concrete'] as const;
 export type FamiliaLitologia = (typeof familiasLitologia)[number];
 export type PatronCatalogoLitologia = (typeof patronesLitologia)[number];
 export type LitologiaPublica = { id_litologia:number;codigo:string;nombre:string;familia:FamiliaLitologia;color:string;patron:PatronCatalogoLitologia;activo:boolean;orden:number };

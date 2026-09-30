@@ -62,12 +62,14 @@
     @if (errorMessage()) { <ion-text color="danger"><p role="alert">{{ errorMessage() }}</p></ion-text> }
 
     @if (agregareditar()) {
-    <ion-item>
-      <ion-label position="stacked">Ubicación actual</ion-label>
-      @if (sitioActual(); as sitio) { <ion-text><p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }} @if (sitio.latitud && sitio.longitud) { — {{ sitio.latitud }}, {{ sitio.longitud }} }</p></ion-text> }
-      @else { <ion-text color="danger"><p>No se encontró la información humana del sitio seleccionado.</p></ion-text> }
-      <ion-button slot="end" size="small" type="button" (click)="onEditarSitioClick()">Editar sitio</ion-button>
-    </ion-item>
+    <section class="ubicacion-actual" aria-label="Ubicación actual">
+      <h3>Ubicación actual</h3>
+      @if (sitioActual(); as sitio) {
+        <p>{{ sitio.localidad || 'Sin localidad' }}, {{ sitio.departamento }}</p>
+        <dl class="coordenadas"><div><dt>Latitud</dt><dd>{{ sitio.latitud || 'No especificada' }}</dd></div><div><dt>Longitud</dt><dd>{{ sitio.longitud || 'No especificada' }}</dd></div></dl>
+      } @else { <p role="alert">No se encontró la información del sitio seleccionado.</p> }
+      <ion-button fill="outline" type="button" (click)="onEditarSitioClick()" [disabled]="guardando()">Editar sitio</ion-button>
+    </section>
     } @else if (sitioNuevo(); as sitio) {
       <fieldset class="ubicacion-nueva">
         <legend>Ubicación del nuevo pozo</legend>
@@ -183,44 +185,27 @@
       <ion-button type="button" slot="end" fill="clear" aria-label="Editar desarrollo" (click)="editarDatoTecnico('desarrollo')">Editar</ion-button>
     </ion-item>
 
-    @if(this.agregareditar()===true){
-    <ion-item>
-      <ion-label position="stacked">Cambiar foto al pozo</ion-label><br>
-      @if (!getFoto() || eliminarFotoPendiente()) {
-      <ion-label>{{ eliminarFotoPendiente() ? 'La foto actual se eliminará al guardar.' : 'No hay foto' }}</ion-label>
-      }@else {
-      <ion-img [protectedSrc]="getFoto()" alt="Imagen del pozo"></ion-img>
-      <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">
-        Eliminar fotografía
-      </ion-button>
+    <section class="foto-editor" aria-label="Fotografía del pozo">
+      <h3>{{ agregareditar() ? 'Fotografía del pozo' : 'Agregar foto al pozo' }}</h3>
+      <p>JPEG o PNG · hasta 5 MB</p>
+      @if (fotoVistaPrevia(); as previa) {
+        <img class="foto-preview" [src]="previa" alt="Vista previa de la nueva fotografía" />
+        <p class="foto-pendiente" role="status">Fotografía pendiente de guardar: {{ fotoFile?.name }}</p>
+      } @else if (eliminarFotoPendiente()) {
+        <p class="foto-pendiente" role="status">La foto actual se eliminará al guardar. Podés cancelar el cambio.</p>
+      } @else if (getFoto(); as persistida) {
+        <img class="foto-preview" [protectedSrc]="persistida" alt="Fotografía guardada del pozo" />
+        <p>Fotografía guardada</p>
+        <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">Eliminar fotografía</ion-button>
+      } @else { <p>No hay fotografía seleccionada.</p> }
+      <app-foto [deshabilitado]="guardando()" (fotoTomada)="fotoCapturada($event)" />
+      @if (eliminarFotoPendiente() || fotoVistaPrevia()) {
+        <ion-button type="button" fill="clear" (click)="cancelarCambioFoto()" [disabled]="guardando()">Cancelar cambio de foto</ion-button>
       }
-      @if (!fotoFile) {
-      <app-foto (fotoTomada)="fotoCapturada($event)"></app-foto>
-      } @else {
-        <ion-img [src]="fotoVistaPrevia()" alt="Vista previa de la nueva fotografía"></ion-img>
-        <ion-label>Fotografía nueva seleccionada: {{ fotoFile.name }}</ion-label>
-        <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar selección</ion-button>
-      }
-      @if (eliminarFotoPendiente() || fotoFile) {
-        <ion-button type="button" fill="clear" (click)="cancelarCambioFoto()">Cancelar cambio</ion-button>
-      }
-    </ion-item>
-    }@else{
-    <ion-item>
-      <ion-label position="stacked">Agregar foto al pozo</ion-label><br>
-
-      @if (!fotoFile) {
-        <app-foto slot="end" (fotoTomada)="fotoCapturada($event)"></app-foto>
-      } @else {
-        <ion-img [src]="fotoVistaPrevia()" alt="Vista previa de la fotografía seleccionada"></ion-img>
-        <ion-label>Fotografía seleccionada: {{ fotoFile.name }}</ion-label>
-        <ion-button type="button" color="danger" fill="outline" (click)="quitarFotoSeleccionada()">Quitar fotografía</ion-button>
-      }
-    </ion-item
-    >}
+    </section>
   </ion-list>
   <ng-content />
   <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled() || !catalogosDisponibles() || !personasValidas()">
-    GUARDAR POZO
+    {{ guardando() ? 'Guardando pozo…' : 'Guardar pozo' }}
   </ion-button>
 </form>
