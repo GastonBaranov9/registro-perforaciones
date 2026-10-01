@@ -66,7 +66,7 @@ try{
 
   [pscustomobject]@{
     postgres='16.14'
-    migrations='000..009'
+    migrations='000..010'
     canonical_lock_order='usuario->sesion_nativa'
     arbitrary_sleeps=$false
     real_concurrency=$true

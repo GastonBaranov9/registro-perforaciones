@@ -2,6 +2,8 @@
 
 30/09/2026. Rama `feature/rsp-10-pilot-apk`, HEAD `2f7c80e85d23`. Se conservaron los cambios locales de la renovación anterior.
 
+Actualización 01/10/2026: según el operador, `009` ya está aplicada y registrada en el piloto. Su alta dejó 30 entradas iniciales y provocó un fallo de verificación final. La [corrección forward-only 010](RSP10_CORRECCION_FORWARD_ONLY.md) deja Sello sanitario activo y `es_inicial=false`, conservando las 29 iniciales históricas. `009` permanece intacta. Los resultados y cambios de `009` descritos a continuación son históricos.
+
 ## Cambios y archivos
 
 | Archivos de este ajuste | Resultado |
@@ -17,7 +19,7 @@ También se agregaron este reporte y las capturas/mediciones de `docs/evidence/r
 
 ## Migración 009
 
-**Lista para revisión y posterior aplicación controlada. No aplicada al piloto.**
+**Estado al 01/10/2026: 009 aplicada y registrada según el operador; 010 preparada para aplicación posterior autorizada. En esta corrección no se accedió al piloto.**
 
 La migración histórica `003` ya declara `catalogo_litologia_nombre_normalizado_uq UNIQUE (nombre_normalizado)`. La normalización contempla mayúsculas, acentos y espacios repetidos. No se reescribió `003` ni ninguna otra migración aplicada.
 
@@ -34,7 +36,7 @@ Resultado en PostgreSQL aislado:
 
 El contenedor de prueba usó PostgreSQL 16 con `--network none`, sin puertos, sin volúmenes ni bind mounts y con datos en tmpfs. No se leyó configuración de conexión del piloto. El script verifica estas condiciones antes de escribir.
 
-Para el despliegue futuro rige el [procedimiento controlado del informe principal](RSP10_DISENO_Y_VALIDACION.md#e-sello-sanitario-y-despliegue-controlado): backup, revisión de colisiones y ledger, ventana de mantenimiento, backend/frontend compatibles y runner transaccional `db:migrate`. Una colisión requiere decisión humana; no se borran ni renombran datos automáticamente.
+Para aplicar posteriormente `010` rige el [procedimiento controlado actualizado del informe principal](RSP10_DISENO_Y_VALIDACION.md#e-sello-sanitario-y-despliegue-controlado). El runner conserva el ledger `000..009` y aplica únicamente la corrección pendiente. Las expectativas vigentes son once migraciones hasta `010`; el fallo artificial de pruebas pasó a `011_control_failure.sql`.
 
 ## Validaciones de esta revisión
 

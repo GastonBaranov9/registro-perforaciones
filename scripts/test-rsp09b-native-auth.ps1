@@ -88,11 +88,11 @@ try{
   if($LASTEXITCODE-ne 0){throw "PostgreSQL RSP-09B no quedó listo."}
 
   Migrate fresh (Join-Path $api "db/migrations")|Out-Null
-  if((Psql fresh "SELECT count(*)=10 AND max(version)='009' FROM schema_migrations")-ne 't'){
-    throw "Fresh DB no aplicó exactamente 000..009."
+  if((Psql fresh "SELECT count(*)=11 AND max(version)='010' FROM schema_migrations")-ne 't'){
+    throw "Fresh DB no aplicó exactamente 000..010."
   }
   $noop=Migrate fresh (Join-Path $api "db/migrations")
-  if($noop-notmatch 'no hay cambios pendientes'){throw "Rerun 000..009 no fue no-op."}
+  if($noop-notmatch 'no hay cambios pendientes'){throw "Rerun 000..010 no fue no-op."}
   if((Psql fresh "SELECT to_regclass('sesion_nativa') IS NOT NULL AND to_regclass('ticket_ws_nativo') IS NOT NULL")-ne 't'){
     throw "008 no creó ambas tablas native."
   }
@@ -108,8 +108,8 @@ try{
   }
   Psql upgrade "INSERT INTO usuario(email,nombre,password,activo,cuenta_acceso) VALUES(NULL,'Propietario histórico',NULL,TRUE,FALSE)"|Out-Null
   Migrate upgrade (Join-Path $api "db/migrations")|Out-Null
-  if((Psql upgrade "SELECT count(*)=10 AND max(version)='009' FROM schema_migrations")-ne 't'){
-    throw "Upgrade 007 a 009 no aplicó exactamente 008 y 009."
+  if((Psql upgrade "SELECT count(*)=11 AND max(version)='010' FROM schema_migrations")-ne 't'){
+    throw "Upgrade 007 a 010 no aplicó exactamente 008, 009 y 010."
   }
   $prefixAfter=Psql upgrade "SELECT string_agg(version||':'||nombre||':'||btrim(checksum_sha256),',' ORDER BY version) FROM schema_migrations WHERE version<='007'"
   if($prefixAfter-ne $prefix){throw "008 alteró checksums/ledger 000..007."}
@@ -125,9 +125,9 @@ try{
   }
 
   [pscustomobject]@{
-    fresh_migrations=10
+    fresh_migrations=11
     upgrade_from='007'
-    applied='008,009'
+    applied='008,009,010'
     rerun_noop=$true
     prior_checksums_unchanged=$true
     postgres_native_auth=$true

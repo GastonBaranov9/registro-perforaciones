@@ -2,7 +2,7 @@
 
 Fecha: 30/09/2026. Cambios locales preparados para revisión humana.
 
-Actualización posterior: [ajustes finales de Home, login y migración 009](RSP10_AJUSTES_FINALES.md). Ese reporte contiene los resultados y assets más recientes (362 tests frontend y 215 assets); las cifras/capturas siguientes documentan la renovación inicial.
+Actualización posterior: [ajustes finales de Home, login y migración 009](RSP10_AJUSTES_FINALES.md). Corrección de migraciones del 01/10/2026: [010 forward-only y validación aislada](RSP10_CORRECCION_FORWARD_ONLY.md). El estado final correcto es Sello sanitario activo y `es_inicial=false`, con las 29 litologías históricas iniciales intactas. Las cifras/capturas siguientes documentan la renovación inicial.
 
 ## A. Diagnóstico inicial
 
@@ -80,7 +80,7 @@ Para nuevas pantallas: usar estos tokens, controles Ionic y patrones compartidos
 
 El header conserva acceso a cuenta con nombre accesible completo y texto visual compacto. El perfil conserva el nombre completo. Las tarjetas de menú son enlaces reales, accesibles con teclado. Ubicación presenta localidad/departamento y coordenadas separadas. Las filas de correo pueden usar todo el ancho móvil y romper cadenas largas.
 
-Se actualizaron las expectativas de los scripts históricos de integración a diez migraciones (`000`–`009`); la migración artificial de fallo pasó a `010` para evitar colisión. No se alteró el migrador de producción ni las migraciones históricas.
+Las expectativas vigentes de los scripts de integración son once migraciones (`000`–`010`); la migración artificial de fallo es `011_control_failure.sql`, sólo en fixtures temporales. `010` es la corrección real de Sello sanitario. No se alteró el migrador de producción ni las migraciones históricas para esta corrección.
 
 Lista completa para revisión y futuro commit: [estado Git](evidence/rsp10/git-review.txt). No se agregaron dependencias.
 
@@ -106,27 +106,28 @@ Chrome seleccionó un archivo real local y verificó `img.complete`, `naturalWid
 
 ## E. Sello sanitario y despliegue controlado
 
-Nueva migración: [009_sello_sanitario.sql](../api/db/migrations/009_sello_sanitario.sql).
+Alta original: [009_sello_sanitario.sql](../api/db/migrations/009_sello_sanitario.sql), ya aplicada y registrada en el piloto según el operador. Corrección pendiente: [010_sello_sanitario_no_inicial.sql](../api/db/migrations/010_sello_sanitario_no_inicial.sql). No reescribir ni volver a registrar 009.
 
 - Código `sello_sanitario`, nombre `Sello sanitario`, familia `otro`, color `#999999`, patrón nuevo `concrete`, orden 30.
+- Tras `010`: `activo=true`, `es_inicial=false`. El baseline conserva exactamente sus 29 litologías iniciales; el catálogo semilla completo contiene 30. La selección depende de `activo`, por lo que el material continúa disponible normalmente.
 - Extiende el CHECK con `concrete` conservando los doce patrones anteriores. Inserción `ON CONFLICT (codigo) DO NOTHING`: no sobreescribe una entrada preexistente con el mismo código.
 - Una colisión de nombre con otro código falla y debe revisarse; no se elimina ni renombra automáticamente un registro administrativo.
 - No modifica intervalos, profundidades, reglas de solapamiento ni el booleano `pozo.sello_sanitario`.
 - Textura gris con moteado fino y pequeños agregados. SVG y PDF comparten parámetros; contrato frontend/backend comprobado byte a byte.
-- El selector ya obtiene el catálogo desde la API: la opción aparece cuando se despliega y aplica la migración. No aparecerá en la base del piloto hasta entonces.
+- El selector obtiene el catálogo desde la API. `010` conserva la entrada existente y sólo corrige su clasificación; no cambia nombre, color, patrón, activo, orden ni intervalos.
 - [PDF sintético de cuatro páginas](evidence/rsp10/sello-sanitario.pdf), con intervalo editable de ejemplo 0–3,5 m.
 
-Prueba PostgreSQL real: contenedor exclusivo `rsp10-catalog-audit`, sin red, sin puertos, sin volúmenes ni bind mounts, almacenamiento tmpfs. Se aplicaron `000`–`008`, se crearon datos sintéticos, se ejecutó `009` dos veces y se comprobaron 30 materiales, 29 históricos idénticos, intervalos conservados, CHECK de color/patrón y booleano independiente. Script: [sello-sanitario-postgres.local.ts](../api/test/sello-sanitario-postgres.local.ts). No usa configuración DB del entorno.
+La prueba histórica de `009` comprobó las colisiones y conservación de datos en un contenedor aislado, pero no comprobó la verificación final del runner. La prueba actual [sello-sanitario-postgres.local.ts](../api/test/sello-sanitario-postgres.local.ts) crea un clúster PostgreSQL nativo temporal, sin contenedores ni configuración DB del entorno. Comprueba instalación limpia `000..010` y estado equivalente al piloto `000..009` seguido de sólo `010`, usando el runner real. Resultados y versión PostgreSQL en el [reporte de corrección](RSP10_CORRECCION_FORWARD_ONLY.md).
 
 Procedimiento para el operador, después de aprobación humana; **no ejecutado sobre el piloto**:
 
 1. Revisar y respaldar el despliegue vigente mediante el procedimiento operativo existente, incluyendo DB/fotografías y manifiesto de backup. Verificar el respaldo en un entorno de restauración autorizado.
-2. En una ventana de mantenimiento, detener escrituras. Confirmar en el destino correcto que el ledger llega a `008`, que los checksums históricos coinciden y que no hay otras migraciones pendientes inesperadas.
+2. En una ventana de mantenimiento, detener escrituras. El estado informado del piloto es ledger `000..009`, con Sello sanitario aún `es_inicial=true` y fallo de verificación final. Antes de una futura ejecución autorizada, confirmar ese estado y los checksums históricos; la única pendiente debe ser `010`.
 3. Consultar posibles colisiones antes de aplicar:
 
    ```sql
    SELECT version, nombre FROM schema_migrations ORDER BY version;
-   SELECT id_litologia, codigo, nombre, color, patron
+   SELECT id_litologia, codigo, nombre, color, patron, activo, es_inicial
    FROM catalogo_litologia
    WHERE codigo = 'sello_sanitario'
       OR nombre_normalizado = litologia_normalizar('Sello sanitario');
@@ -143,9 +144,9 @@ Procedimiento para el operador, después de aprobación humana; **no ejecutado s
 
    El runner aplica las pendientes con lock, transacción y registro de checksum. No usar `--adopt-current-schema` para una base que ya tiene ledger. No ejecutar el SQL suelto en el piloto, porque omitiría el registro del runner.
 
-5. Verificar ledger `009`, una sola entrada del material y ausencia de cambios en intervalos históricos. En una instalación semilla sin entradas administrativas extra habrá 30 materiales; no exigir ese total en una base personalizada.
+5. Verificar ledger `010`, verificación final PASS, una sola entrada del material con `es_inicial=false` y ausencia de cambios en intervalos históricos. Deben conservarse las 29 litologías históricas iniciales. En una instalación semilla sin entradas administrativas extra habrá 30 materiales; no exigir ese total en una base personalizada.
 6. Iniciar el conjunto compatible, seleccionar el material, guardar un intervalo de profundidad elegida y comparar vista previa/PDF. Una segunda ejecución del runner debe informar que no hay cambios pendientes.
-7. Ante fallo, mantener mantenimiento y revisar el error. El DDL/INSERT de `009` se revierte transaccionalmente. Tras crear intervalos `concrete`, no retirar el patrón ni retroceder sólo el binario a una versión incompatible; usar el procedimiento de restauración aprobado.
+7. Ante fallo, mantener mantenimiento y revisar el error. El runner confirma cada migración por separado: un fallo de verificación final no revierte migraciones ya registradas, como ocurrió con `009`. `010` corrige ese estado hacia adelante, con UPDATE y ledger en la misma transacción. No retirar el patrón `concrete` ni reescribir migraciones aplicadas.
 
 ## F. Verificación
 
@@ -215,7 +216,7 @@ Después de revisión humana y distribución autorizada de un APK compatible:
 - [ ] Cortar Internet al guardar foto: error visible y selección pendiente; recuperar red y reintentar. Probar JPEG/PNG y rechazo de archivo mayor de 5 MB.
 - [ ] Selectores: buscar propietario/perforador con nombres y correos largos; selección y teclado sin superposición.
 - [ ] Datos técnicos: litologías, diámetros y aportes sin columnas estrechas; validaciones de intervalos intactas.
-- [ ] Tras aplicar `009` autorizadamente: Sello sanitario disponible, profundidad editable distinta de 2 m, gris moteado visible en perfil y PDF; booleano sanitario independiente.
+- [ ] Tras aplicar `010` autorizadamente: ledger hasta `010`, verificación final PASS, Sello sanitario activo/no inicial disponible; las 29 litologías iniciales e intervalos históricos conservados.
 - [ ] PDF: generar, descargar/compartir, abrir y comprobar portada, sitio, técnica, foto y perfil. Verificar error/reintento sin red.
 - [ ] WebSocket y recuperación al volver Internet; navegación por menús, filtros y retorno a formularios.
 - [ ] Repetir controles principales en otro Android de distinto ancho, además del Redmi A2.
