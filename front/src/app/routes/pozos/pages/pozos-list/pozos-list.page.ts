@@ -1,4 +1,4 @@
-import { effect, inject, input, OnInit, signal } from '@angular/core';
+import { computed, effect, inject, OnInit, signal } from '@angular/core';
 import { Component } from '@angular/core';
 import { IonButton, ViewWillEnter, IonCard, IonCardHeader, IonCardTitle, IonContent, IonCardSubtitle, IonCardContent, IonList, IonItem, IonLabel, IonPopover, IonToolbar, IonButtons, IonInput, IonIcon, IonModal, IonHeader, IonTitle, IonFooter } from '@ionic/angular/standalone';
 import { Router } from '@angular/router';
@@ -53,12 +53,21 @@ export class PozosListPage implements OnInit, ViewWillEnter {
 
   private router = inject(Router);
   public pozos = signal<Pozo[]>([]);
+  public propietarioBusqueda = signal('');
+  public pozosVisibles = computed(() => {
+    const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
+    const consulta = normalizar(this.propietarioBusqueda());
+    return consulta
+      ? this.pozos().filter(pozo => normalizar(pozo.propietario_nombre ?? '').includes(consulta))
+      : this.pozos();
+  });
 
   public caudal_min: number | undefined = undefined;
   public caudal_max: number | undefined = undefined;
 
   public profundidad_max: number | undefined = undefined;
   public profundidad_min: number | undefined = undefined;
+  private filtrosAplicados: Parameters<PozosListService['getListaPozos']> = [];
 
 
   async ngOnInit(): Promise<void> {
@@ -92,29 +101,19 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   
   
   public async filtrar() {
-    const caudalMin = this.caudal_min ?? undefined;
-    const caudalMax = this.caudal_max ?? undefined;
-    const profMax = this.profundidad_max ?? undefined;
-    const profMin = this.profundidad_min ?? undefined;
-    this.pozos.set([]);
-    try {
-      const pozos = await this.pozosListService.getListaPozos(
-        caudalMin,
-        caudalMax,
-        profMax,
-        profMin,
-      );
-      this.pozos.set(pozos);
-    } catch (error) {
-      this.pozos.set([]);
-      throw error;
-    }
+    this.filtrosAplicados = [
+      this.caudal_min ?? undefined,
+      this.caudal_max ?? undefined,
+      this.profundidad_max ?? undefined,
+      this.profundidad_min ?? undefined,
+    ];
+    await this.cargarPozos();
   }
 
   public async cargarPozos() {
     this.pozos.set([]);
     try {
-      const pozos = await this.pozosListService.getListaPozos();
+      const pozos = await this.pozosListService.getListaPozos(...this.filtrosAplicados);
       this.pozos.set(pozos);
     } catch (error) {
       this.pozos.set([]);

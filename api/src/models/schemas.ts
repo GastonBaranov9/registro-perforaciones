@@ -438,6 +438,12 @@ export const PozoDetalle = Type.Intersect([
 ]);
 export type PozoDetalle = Static<typeof PozoDetalle>;
 
+export const PozoListado = Type.Intersect([
+  Pozo,
+  Type.Object({ propietario_nombre: Type.String(), sitio_nombre: Type.String() }),
+]);
+export type PozoListado = Static<typeof PozoListado>;
+
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",
   "creado_por",

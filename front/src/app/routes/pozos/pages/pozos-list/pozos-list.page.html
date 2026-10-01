@@ -1,4 +1,9 @@
 <ion-content>
+  <ion-input class="owner-search" name="propietario" type="search" label="Buscar por propietario"
+    labelPlacement="stacked" placeholder="Nombre del propietario" fill="outline"
+    [clearInput]="true" [value]="propietarioBusqueda()"
+    (ionInput)="propietarioBusqueda.set($event.detail.value ?? '')">
+  </ion-input>
   <ion-toolbar>
         
     <ion-buttons slot="start">
@@ -76,7 +81,10 @@
     </ng-template>
   </ion-modal>
 
-  @for (pozo of this.pozos(); track pozo.id_pozo) {
+  @if (propietarioBusqueda().trim() && pozosVisibles().length === 0) {
+    <p role="status">No hay pozos que coincidan con ese propietario y los filtros actuales.</p>
+  }
+  @for (pozo of pozosVisibles(); track pozo.id_pozo) {
   <ion-card>
     <ion-card-header>
       <ion-card-title>Pozo: {{ pozo.id_pozo }}</ion-card-title>
@@ -84,35 +92,24 @@
     </ion-card-header>
 
     <ion-card-content>
-      <ion-list>
+      <div class="pozo-summary">
         <dl class="data-row">
-          <dt>ID Propietario</dt>
-          <dd>{{ pozo.id_propietario }}</dd>
+          <dt>Propietario</dt>
+          <dd>{{ pozo.propietario_nombre || 'No disponible' }}</dd>
         </dl>
 
         <dl class="data-row">
-          <dt>ID Sitio</dt>
-          <dd>{{ pozo.id_sitio }}</dd>
+          <dt>Sitio</dt>
+          <dd>{{ pozo.sitio_nombre || 'No disponible' }}</dd>
         </dl>
 
-        
-        <dl class="data-row">
-          <dt>Caudal (lh)</dt>
-          <dd>{{ pozo.caudal_estimado_lh ?? '-' }}</dd>
-        </dl>
-
-        <dl class="data-row">
-          <dt>Profundidad (m)</dt>
-          <dd>{{ pozo.profundidad_final_m ?? '-' }}</dd>
-        </dl>
-
-        <dl class="data-row">
+        <dl class="data-row pozo-date">
           <dt>Fecha de creación</dt>
           <dd>
             {{ formatearInstanteComoFecha(pozo.fecha_creado) }}
           </dd>
         </dl>
-      </ion-list>
+      </div>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-button id="popover-{{ pozo.id_pozo }}" color="primary"> Técnica </ion-button>

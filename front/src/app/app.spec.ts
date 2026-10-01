@@ -54,6 +54,7 @@ describe('App', () => {
     fixture.componentInstance.mainStore.setUser({ id_usuario: 1, nombre: 'Administrador', roles: [{ id_rol: 1, nombre: 'administracion', descr: 'Administración' }] });
     fixture.detectChanges();
     expect(enlace()).not.toBeNull();
+    expect(enlace().textContent.trim()).toBe('ADMINISTRAR LITOLOGÍAS');
   });
 
   it('should give the routed content the space below the header', () => {

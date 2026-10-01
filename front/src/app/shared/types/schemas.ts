@@ -61,6 +61,7 @@ export type Pozo = {
   fecha_creado: string;
   foto_url?: string;
   propietario_nombre?: string;
+  sitio_nombre?: string;
   propietario_email?: string | null;
   propietario_documento_rut?: string | null;
   propietario_telefono?: string | null;

@@ -36,6 +36,8 @@ const user = { id_usuario: 1, nombre: 'Gaston Baranov Apellido Extenso', email: 
 const sitio = { id_sitio: 1, departamento: 'Río Negro', localidad: 'Paso de los Mellizos', padron: '001-A', latitud: '-32.7345678', longitud: '-57.1234567' };
 const pozo = { id_pozo: 1, id_propietario: 1, id_perforador: 1, id_sitio: 1, empresa: 'Raúl Silva Perforaciones', fecha_creado: '2026-09-01', fecha_inicio: '2026-09-01', fecha_fin: '2026-09-02', profundidad_final_m: 30, caudal_estimado_lh: 1200, sitio, propietario_nombre: user.nombre, propietario_email: user.email, perforador_nombre: user.nombre, metodo_sedimentario: 'Rotación con circulación de lodo', metodo_rocoso: 'Rotopercusión', cementacion: 'Sellado de espacio anular', desarrollo: 'Limpieza y ensayo de bombeo' };
 const persona = { ...user, roles: ['propietario', 'perforador'] };
+pozo.sitio_nombre = `${sitio.localidad}, ${sitio.departamento}`;
+const pozoBusqueda = { ...pozo, id_pozo: 2, propietario_nombre: 'José Pérez', sitio_nombre: 'Padrón 45, Salto', caudal_estimado_lh: 3000 };
 const catalogo = [{ id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#999999', patron: 'concrete', activo: true, orden: 30 }];
 const intervalo = { id_intervalo_litologico: 1, id_pozo: 1, desde_m: 0, hasta_m: 2, material: 'Sello sanitario', id_litologia: 30, litologia_nombre: 'Sello sanitario', litologia_color: '#999999', litologia_patron: 'concrete', litologia_activa: true };
 const perfil = crearPerfilLitologico([intervalo], 30);
@@ -48,7 +50,7 @@ function fixture(path) {
   if (path.endsWith('/intervalo_litologico')) return [intervalo];
   if (path.endsWith('/mapa-config')) return { configurado: false };
   if (/\/usuarios\/\d+\/pozos\/\d+$/.test(path)) return pozo;
-  if (path.endsWith('/pozos')) return [pozo];
+  if (path.endsWith('/pozos')) return [pozo, pozoBusqueda];
   if (/\/sitios\/\d+$/.test(path)) return sitio;
   if (path.endsWith('/sitios')) return [sitio];
   if (/\/usuarios\/\d+$/.test(path)) return user;
@@ -90,6 +92,12 @@ try {
     for (const route of routes) {
       await send('Page.navigate', { url: `http://127.0.0.1:4206/${route}` });
       await delay(1500);
+      // The first navigation can still be compiling Ionic's lazy components.
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (await evaluate(`!!document.querySelector('ion-router-outlet ion-content.hydrated')`)) break;
+        await delay(250);
+      }
+      assert.ok(await evaluate(`!!document.querySelector('ion-router-outlet ion-content.hydrated')`), 'Route must render before measuring');
       if (phase === 'after' && ['pozo-edit/1', 'pozos-detail/1'].includes(route)) {
         assert.ok(await evaluate(`!!document.querySelector('app-perfil-litologico svg')`), 'Profile fixture must render, not an error placeholder');
       }
@@ -163,6 +171,22 @@ try {
         results[results.length - 1].photo = preview;
       }
       if (phase === 'after' && route === 'pozos-list') {
+        const buscar = async value => {
+          await evaluate(`(async () => { const host=document.querySelector('ion-input[name=propietario]'); const input=await host.getInputElement(); input.focus(); input.value=${JSON.stringify(value)}; input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+          await delay(150);
+          return evaluate(`document.querySelectorAll('app-pozos-list ion-card').length`);
+        };
+        assert.equal(await buscar('  JOSE pe  '), 1, 'Partial owner search must ignore accents and case');
+        assert.ok(await evaluate(`document.querySelector('app-pozos-list ion-card').textContent.includes('José Pérez')`));
+        if (width <= 430) {
+          const filteredShot = await send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(new URL(`owner-search-${width}.png`, out), Buffer.from(filteredShot.data, 'base64'));
+        }
+        assert.equal(await buscar('sin coincidencia'), 0);
+        assert.ok(await evaluate(`document.querySelector('app-pozos-list [role=status]').textContent.includes('No hay pozos')`));
+        assert.equal(await buscar(''), 2);
+        assert.equal(await evaluate(`document.querySelector('app-pozos-list').textContent.includes('ID Propietario') || document.querySelector('app-pozos-list').textContent.includes('ID Sitio')`), false);
+        results[results.length - 1].ownerSearch = { partial: true, accentInsensitive: true, emptyState: true, clear: true };
         await evaluate(`document.querySelector('#open-filters').click()`);
         await delay(400);
         const modal = await evaluate(`(() => { const el=document.querySelector('ion-modal'); const r=el?.shadowRoot?.querySelector('[part=content]')?.getBoundingClientRect(); return r ? {left:r.left,right:r.right,top:r.top,bottom:r.bottom,inputs:el.querySelectorAll('ion-input').length} : null; })()`);
@@ -179,6 +203,21 @@ try {
           return {imageLoaded:img.naturalWidth>0,background:getComputedStyle(content).getPropertyValue('--background'),homeAdmin:!!content.querySelector('ion-button'),menuAdmin:!!document.querySelector('ion-menu [routerlink="/litologias-admin"]')};
         })()`);
         assert.ok(home.imageLoaded && home.background.includes('background.jpeg') && !home.homeAdmin && home.menuAdmin);
+        const composition = await evaluate(`(() => {
+          const card=document.querySelector('.hero-card'); const content=document.querySelector('app-home ion-content');
+          const a=card.getBoundingClientRect(), b=content.getBoundingClientRect();
+          const animation=card.getAnimations()[0];
+          if (!animation) return { animated:false };
+          animation.pause(); const offsets=[0,4000,8000].map(time => { animation.currentTime=time; return new DOMMatrix(getComputedStyle(card).transform).m42; }); animation.play();
+          return { animated:true, horizontalOffset:(a.left+a.right-b.left-b.right)/2, verticalOffset:(a.top+a.bottom-b.top-b.bottom)/2, offsets, duration:animation.effect.getTiming().duration };
+        })()`);
+        assert.ok(composition.animated && Math.abs(composition.horizontalOffset) <= 1 && Math.abs(composition.verticalOffset) <= 12, 'Home card must be centered');
+        assert.deepEqual(composition.offsets, [0, -4, 0]);
+        assert.equal(composition.duration, 8000);
+        await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+        assert.equal(await evaluate(`document.querySelector('.hero-card').getAnimations().length`), 0, 'Reduced motion must disable floating');
+        await send('Emulation.setEmulatedMedia', { features: [] });
+        results[results.length - 1].composition = { ...composition, reducedMotion: true };
         results[results.length - 1].home = home;
         // Exercise the fallback variables emitted by Capacitor on older WebViews.
         const insets = await evaluate(`(() => {
@@ -196,6 +235,7 @@ try {
         results[results.length - 1].insets = insets;
         await evaluate(`document.querySelector('ion-menu').open()`);
         await delay(350);
+        assert.equal(await evaluate(`document.querySelector('ion-menu [routerlink="/litologias-admin"]').textContent.trim()`), 'ADMINISTRAR LITOLOGÍAS');
         const shot = await send('Page.captureScreenshot', { format: 'png' });
         await writeFile(new URL(`menu-${width}.png`, out), Buffer.from(shot.data, 'base64'));
       }

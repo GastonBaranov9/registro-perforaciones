@@ -1,5 +1,5 @@
 import { myPool } from "../db/pool.ts";
-import type { Pozo, PozoDetalle, Estado, NuevoPozo } from "../models/schemas.ts";
+import type { Pozo, PozoDetalle, PozoListado, Estado, NuevoPozo } from "../models/schemas.ts";
 import { datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 import * as err from "../models/errors.ts";
 
@@ -178,6 +178,18 @@ export async function updatePozoFoto(
   const { rows } = await db.query(sql, vals);
   return (rows[0] as Pozo) ?? null;
 }
+// Identificación de la lista en una sola consulta, conservando su alcance por rol.
+const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+    p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
+    p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
+    p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
+    CASE WHEN p.foto_url IS NULL THEN NULL ELSE '/usuarios/' || p.id_propietario || '/pozos/' || p.id_pozo || '/foto' END AS foto_url,
+    p.fecha_creado, COALESCE(prop.nombre, '') AS propietario_nombre,
+    concat_ws(', ', COALESCE(NULLIF(trim(s.localidad), ''), 'Padrón ' || NULLIF(trim(s.padron), '')), s.departamento) AS sitio_nombre
+    FROM public.pozo p
+    LEFT JOIN public.usuario prop ON prop.id_usuario = p.id_propietario
+    LEFT JOIN public.sitio s ON s.id_sitio = p.id_sitio`;
+
 export async function getAllPozo(
   caudal_min: number,
   caudal_max: number,
@@ -185,13 +197,7 @@ export async function getAllPozo(
   profundidad_min: number,
   sello_sanitario: boolean
 ) {
-  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-    metodo_rocoso, cementacion, desarrollo, revestimiento,
-    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
-    fecha_creado
-    FROM public.pozo WHERE 1=1 `;
+  let query = `${POZOS_LISTADO_SELECT} WHERE 1=1 `;
   const params = [];
   if (caudal_min !== undefined) {
     params.push(caudal_min);
@@ -221,7 +227,7 @@ export async function getAllPozo(
   query += " ORDER BY id_pozo";
 
   const { rows } = await myPool.query(query, params);
-  return rows as Pozo[];
+  return rows as PozoListado[];
 }
 
 export async function getPozosByPropietario(
@@ -231,14 +237,8 @@ export async function getPozosByPropietario(
   profundidad_max: number,
   profundidad_min: number,
   sello_sanitario: boolean
-): Promise<Pozo[]> {
-  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-    metodo_rocoso, cementacion, desarrollo, revestimiento,
-    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
-    fecha_creado
-    FROM public.pozo WHERE id_propietario = $1 `;
+): Promise<PozoListado[]> {
+  let query = `${POZOS_LISTADO_SELECT} WHERE id_propietario = $1 `;
 
   const params: Array<number | boolean> = [id_propietario];
 
@@ -270,7 +270,7 @@ export async function getPozosByPropietario(
   query += " ORDER BY id_pozo ";
 
   const { rows } = await myPool.query(query, params);
-  return rows as Pozo[];
+  return rows as PozoListado[];
 }
 
 export async function getPozosByPerforador(
@@ -280,14 +280,8 @@ export async function getPozosByPerforador(
   profundidad_max: number,
   profundidad_min: number,
   sello_sanitario: boolean
-): Promise<Pozo[]> {
-  let query = `SELECT id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-    metodo_rocoso, cementacion, desarrollo, revestimiento,
-    CASE WHEN foto_url IS NULL THEN NULL ELSE '/usuarios/' || id_propietario || '/pozos/' || id_pozo || '/foto' END AS foto_url,
-    fecha_creado
-    FROM public.pozo WHERE id_perforador = $1 `;
+): Promise<PozoListado[]> {
+  let query = `${POZOS_LISTADO_SELECT} WHERE id_perforador = $1 `;
 
   const params: Array<number | boolean> = [id_perforador];
   if (caudal_min !== undefined) {
@@ -317,5 +311,5 @@ export async function getPozosByPerforador(
 
   query += " ORDER BY id_pozo";
   const { rows } = await myPool.query(query, params);
-  return rows as Pozo[];
+  return rows as PozoListado[];
 }

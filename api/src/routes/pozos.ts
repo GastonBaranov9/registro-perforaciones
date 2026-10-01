@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { PozoListado } from "../models/schemas.ts";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoUpdateBody, PozoDetalle, PropietarioOperativo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
@@ -260,12 +261,12 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         querystring: Type.Object({
           caudal_min: Type.Optional(Type.Number()),
           caudal_max: Type.Optional(Type.Number()),
-          profunidad_min: Type.Optional(Type.Number()),
-          profunidad_max: Type.Optional(Type.Number()),
+          profundidad_min: Type.Optional(Type.Number()),
+          profundidad_max: Type.Optional(Type.Number()),
           sello_sanitario: Type.Optional(Type.Boolean()),
         }),
         response: {
-          200: Type.Array(Pozo),
+          200: Type.Array(PozoListado),
           501: err.ErrorSchema,
         },
         security: [{ BearerAuth: [] }],
