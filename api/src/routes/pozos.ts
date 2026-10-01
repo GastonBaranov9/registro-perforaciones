@@ -1,3 +1,4 @@
+import { validarNumeroPerforacion } from "../services/numeracion-perforacion-service.ts";
 import type { FastifyInstance } from "fastify";
 import { PozoListado } from "../models/schemas.ts";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
@@ -82,6 +83,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     "/usuarios/:id_usuario/pozos/completo",
     {
       bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,
+      preValidation: async (req) => {
+        const numero = (req.body as PozoCompletoBody | undefined)?.pozo?.numero_perforacion;
+        if (numero != null) validarNumeroPerforacion(numero);
+      },
       schema: {
         summary: "Crear un pozo con sus datos técnicos",
         description: "Crea atómicamente el pozo, litología, diámetros, aportes y fotografía opcional",
@@ -114,6 +119,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     "/usuarios/:id_usuario/pozos/:id_pozo/completo",
     {
       bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,
+      preValidation: async (req) => {
+        const numero = (req.body as PozoCompletoUpdateBody | undefined)?.pozo?.numero_perforacion;
+        if (numero != null) validarNumeroPerforacion(numero);
+      },
       schema: {
         summary: "Actualizar un pozo y todos sus datos técnicos",
         params: Type.Object({ id_usuario: Type.Integer(), id_pozo: Type.Integer() }),

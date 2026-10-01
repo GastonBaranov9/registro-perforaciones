@@ -1,3 +1,5 @@
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { AsignarNumeroPendienteComponent } from '../../../../shared/components/numero-perforacion/asignar-numero-pendiente.component';
 import { Component, inject, signal } from '@angular/core';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -32,6 +34,7 @@ import { ProtectedResourceDirective } from '../../../../core/resources/protected
 @Component({
   selector: 'app-pozos-detail',
   imports: [
+    AsignarNumeroPendienteComponent,
     IonContent,
     IonCard,
     IonCardHeader,
@@ -52,6 +55,8 @@ import { ProtectedResourceDirective } from '../../../../core/resources/protected
   styleUrl: './pozos-detail.page.css',
 })
 export class PozosDetailPage implements ViewWillEnter {
+  readonly authService = inject(AuthService);
+  numeroAsignado(numero: number) { this.pozo.update((p) => p ? { ...p, numero_perforacion: numero } : p); }
   readonly formatearFechaCalendario = formatearFechaCalendario;
   readonly representarSitio = representarSitio;
   public informeService: PdfGenerate = inject(PdfGenerate);

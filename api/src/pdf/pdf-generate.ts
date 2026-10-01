@@ -308,8 +308,9 @@ function dibujarPortada(f:FlujoPDF,r:ReportePozo,id:number,image:PDFImage|null){
   const interlineado=tamanoPropietario+3;
   lineasPropietario.forEach((linea,indice)=>p.drawText(linea,{x:48,y:716-indice*interlineado,size:tamanoPropietario,font:f.bold,color:AZUL}));
   const yPozo=716-lineasPropietario.length*interlineado-4;
-  p.drawText(`Pozo Nº ${id}`,{x:48,y:yPozo,size:14,font:f.bold,color:GRIS});
-  if(image){const superior=Math.min(640,yPozo-18),caja={x:48,y:235,w:499,h:superior-235};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
+  p.drawText(r.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación Nº " + r.numero_perforacion,{x:48,y:yPozo,size:14,font:f.bold,color:GRIS});
+  p.drawText("ID interno: " + id,{x:48,y:yPozo-16,size:9,font:f.font,color:GRIS});
+  if(image){const superior=Math.min(640,yPozo-32),caja={x:48,y:235,w:499,h:superior-235};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
   else {p.drawRectangle({x:48,y:330,width:499,height:240,color:rgb(.97,.98,.99),borderColor:rgb(.78,.81,.84),borderWidth:.8});p.drawText("Fotografía no registrada",{x:205,y:445,size:14,font:f.font,color:GRIS});}
   if(r.empresa)p.drawText(r.empresa,{x:48,y:154,size:12,font:f.font,color:GRIS});}
 

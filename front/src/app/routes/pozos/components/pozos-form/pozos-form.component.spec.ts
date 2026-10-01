@@ -27,6 +27,19 @@ describe('PozosFormComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+  it('solo administración ve el campo manual al crear y edición conserva el número', () => {
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('asignará automáticamente');
+    fixture.componentRef.setInput('administrarNumeracion', true); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).not.toBeNull();
+    fixture.componentRef.setInput('agregareditar', true);
+    fixture.componentRef.setInput('id_pozo', 12);
+    fixture.componentRef.setInput('pozo', { id_propietario: 1, id_sitio: 1, id_perforador: 1, numero_perforacion: 2047 });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('2047');
+    expect(fixture.nativeElement.textContent).toContain('ID interno: 12');
+  });
 
   it('retira sello sanitario y pre-filtro del formulario moderno', () => {
     const texto = fixture.nativeElement.textContent as string;

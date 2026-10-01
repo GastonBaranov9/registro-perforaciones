@@ -24,7 +24,7 @@ describe('PozosEditService', () => {
     spyOn(TestBed.inject(AuthService), 'userId').and.returnValue(9);
     const pozoHistoricoHidratado = {
       id_propietario: 2, id_perforador: 9, id_sitio: 3,
-      sello_sanitario: true, pre_filtro: 'Prefiltro histórico',
+      numero_perforacion: 2047, sello_sanitario: true, pre_filtro: 'Prefiltro histórico',
     } as Parameters<PozosEditService['editPozoCompleto']>[1] & {
       sello_sanitario: boolean; pre_filtro: string;
     };
@@ -38,6 +38,7 @@ describe('PozosEditService', () => {
     expect(req.request.body.foto_accion).toBe('eliminar');
     expect(req.request.body.pozo.sello_sanitario).toBeUndefined();
     expect(req.request.body.pozo.pre_filtro).toBeUndefined();
+    expect(req.request.body.pozo.numero_perforacion).toBeUndefined();
     req.flush({ pozo: { id_pozo: 5 }, intervalos_litologicos: [], intervalos_diametro: [], niveles_aporte: [] });
     await promesa; http.verify();
   });

@@ -34,6 +34,15 @@ describe('PozosListPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+  it('identifica y busca por número empresarial sin reemplazar el ID de navegación', () => {
+    component.pozos.set([{ ...pozos[0], numero_perforacion: 2047 }, pozos[1]]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Perforación N.º 2047');
+    expect(fixture.nativeElement.textContent).toContain('Perforación sin número asignado');
+    expect(fixture.nativeElement.textContent).toContain('ID interno: 8');
+    component.propietarioBusqueda.set('2047');
+    expect(component.pozosVisibles().map(p => p.id_pozo)).toEqual([8]);
+  });
 
   it('muestra nombres en lugar de IDs y limita el resumen a identificación y fecha', () => {
     fixture.detectChanges();

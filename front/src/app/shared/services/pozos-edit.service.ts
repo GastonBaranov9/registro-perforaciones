@@ -71,6 +71,7 @@ function sinCamposHistoricos(pozo: NuevoPozo): NuevoPozo {
   const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
   delete copia.sello_sanitario;
   delete copia.pre_filtro;
+  delete copia.numero_perforacion;
   return copia;
 }
 

@@ -144,3 +144,5 @@ export const T05RolNoEncontrado = createError(
   404
 );
 
+
+export const T05ConflictoNumeracion = createError("ERR_NUMERACION_T05", "Conflicto de numeración de perforaciones", 409, Error);

@@ -9,7 +9,11 @@
   }@else {
   <ion-card>
     <ion-card-header>
-      <ion-card-title>Pozo N.º {{ id_pozo }}</ion-card-title>
+      <ion-card-title>{{ pozo()?.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación N.º " + pozo()?.numero_perforacion }}</ion-card-title>
+      <p>ID interno: {{ id_pozo }}</p>
+      @if (authService.tieneRol('administracion') && pozo()?.numero_perforacion == null) {
+        <app-asignar-numero-pendiente [idPozo]="id_pozo" (asignado)="numeroAsignado($event)" />
+      }
     </ion-card-header>
 
     <ion-card-content>

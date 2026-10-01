@@ -1,4 +1,4 @@
-import { Component, effect, input, output, signal } from '@angular/core';
+import { afterNextRender, Component, ElementRef, effect, inject, Injector, input, output, signal, viewChildren } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
@@ -19,6 +19,8 @@ export class DatosTecnicosBorradorComponent {
   readonly estadoSucio = output<boolean>();
   readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   private siguienteId = 1;
+  private readonly injector = inject(Injector);
+  readonly filasLitologicas = viewChildren<ElementRef<HTMLElement>>('filaLitologica');
   readonly dirty = signal(false);
   private ultimoInicial: DatosTecnicosBorrador | null = null;
   private ultimaVersionDescartar = 0;
@@ -46,7 +48,14 @@ export class DatosTecnicosBorradorComponent {
     const sugerencia = sugerirIntervaloLitologico(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' })] });
+    const nueva = this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' });
+    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, nueva] });
+    afterNextRender(() => {
+      const fila = this.filasLitologicas().find((ref) => ref.nativeElement.dataset['capa'] === nueva.idLocal)?.nativeElement;
+      if (!fila || this.guardando()) return;
+      fila.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus({ preventScroll: true });
+      fila.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }, { injector: this.injector });
   }
   seleccionarLitologia(item: IntervaloLitologicoBody, id: number | null, nombre: string) {
     item.id_litologia = id ?? undefined;
@@ -78,5 +87,5 @@ export class DatosTecnicosBorradorComponent {
   }
 
   private local<T>(dato: T): ElementoBorrador<T> { return { idLocal: `local-${this.siguienteId++}`, dato }; }
-  private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }
+  private actualizar(datos: DatosTecnicosBorrador) { const ordenados = { ...ordenarDatosTecnicos(datos), intervalosLitologicos: [...datos.intervalosLitologicos] }; this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }
 }

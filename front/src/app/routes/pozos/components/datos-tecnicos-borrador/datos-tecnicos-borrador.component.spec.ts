@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { DatosTecnicosBorradorComponent } from './datos-tecnicos-borrador.component';
 
 describe('DatosTecnicosBorradorComponent', () => {
@@ -124,9 +124,9 @@ describe('DatosTecnicosBorradorComponent', () => {
     component.agregarLitologia();
 
     const intervalos = component.datos().intervalosLitologicos;
-    expect(intervalos.map((item) => [item.dato.desde_m, item.dato.hasta_m])).toEqual([[0, 5], [5, 10], [10, 40], [40, 100]]);
+    expect(intervalos.map((item) => [item.dato.desde_m, item.dato.hasta_m])).toEqual([[0, 5], [10, 40], [40, 100], [5, 10]]);
     expect(intervalos[0].dato.id_intervalo_litologico).toBe(30);
-    expect(intervalos[1].dato.id_intervalo_litologico).toBeUndefined();
+    expect(intervalos[3].dato.id_intervalo_litologico).toBeUndefined();
     expect(new Set(intervalos.map((item) => item.dato.id_intervalo_litologico).filter((id) => id != null)).size).toBe(3);
     expect(component.errorAgregar()).toBe('');
   });
@@ -142,4 +142,28 @@ describe('DatosTecnicosBorradorComponent', () => {
     expect(component.datos().intervalosLitologicos.length).toBe(2);
     expect(component.errorAgregar()).toBe('El perfil litológico cubre toda la profundidad.');
   });
+
+  for (const reduced of [false, true]) {
+    it('agrega al final, conserva capas, enfoca y desplaza con movimiento reducido=' + reduced, async () => {
+      const anterior = { idLocal: 'guardada', dato: { desde_m: 10, hasta_m: 30, material: 'Basalto', id_litologia: 1 } };
+      component.datos.set({ intervalosLitologicos: [anterior], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
+      fixture.detectChanges();
+      const oldRow = fixture.nativeElement.querySelector('[data-capa="guardada"]');
+      const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
+      const focus = spyOn(HTMLInputElement.prototype, 'focus');
+      spyOn(window, 'matchMedia').and.returnValue({ matches: reduced } as MediaQueryList);
+      component.agregarLitologia(); fixture.detectChanges();
+      TestBed.inject(HttpTestingController).match(() => true).forEach(req => req.flush([{ id_litologia: 1, nombre: "Basalto", familia: "basalto", activo: true }]));
+      await fixture.whenStable(); fixture.detectChanges();
+      const rows = fixture.nativeElement.querySelectorAll('[data-capa]') as NodeListOf<HTMLElement>;
+      const button = fixture.nativeElement.querySelector('.agregar-litologia') as HTMLElement;
+      expect(rows.length).toBe(2); expect(rows[0]).toBe(oldRow);
+      expect(component.datos().intervalosLitologicos[0]).toBe(anterior);
+      expect(anterior.dato).toEqual({ desde_m: 10, hasta_m: 30, material: 'Basalto', id_litologia: 1 });
+      expect(rows[1].compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(scroll).toHaveBeenCalledWith({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      expect(scroll.calls.mostRecent().object).toBe(rows[1]);
+      expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+  }
 });

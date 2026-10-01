@@ -1,5 +1,12 @@
 <form #sitioForm="ngForm" (ngSubmit)="handlePozo()">
   <ion-list class="ion-padding">
+    @if (agregareditar()) {
+      <p>Perforación: <strong>{{ pozo().numero_perforacion ?? "Sin número asignado" }}</strong> · ID interno: {{ id_pozo() }}</p>
+    } @else if (administrarNumeracion()) {
+      <app-numero-perforacion [numero]="pozo().numero_perforacion" (numeroChange)="pozo().numero_perforacion=$event; notificarCambio()" [deshabilitado]="guardando()" />
+    } @else {
+      <p>El número de perforación se asignará automáticamente al guardar.</p>
+    }
     <ion-item>
       <ion-label position="stacked">Empresa</ion-label>
       <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>

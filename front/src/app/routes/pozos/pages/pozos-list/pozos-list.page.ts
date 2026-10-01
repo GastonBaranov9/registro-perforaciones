@@ -58,7 +58,7 @@ export class PozosListPage implements OnInit, ViewWillEnter {
     const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
     const consulta = normalizar(this.propietarioBusqueda());
     return consulta
-      ? this.pozos().filter(pozo => normalizar(pozo.propietario_nombre ?? '').includes(consulta))
+      ? this.pozos().filter(pozo => (normalizar(pozo.propietario_nombre ?? '').includes(consulta) || (pozo.numero_perforacion != null && String(pozo.numero_perforacion).includes(consulta))))
       : this.pozos();
   });
 

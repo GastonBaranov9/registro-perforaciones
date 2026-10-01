@@ -5,6 +5,7 @@ import { provideHttpClientTesting, HttpTestingController } from '@angular/common
 import { By } from '@angular/platform-browser';
 import { SelectorLitologiaComponent } from './selector-litologia.component';
 import { LitologiasService } from '../../services/litologias.service';
+import { LitologiaPublica } from '../../types/schemas';
 
 @Component({ standalone: true, imports: [SelectorLitologiaComponent], template: '<app-selector-litologia />' })
 class HostComponent {}
@@ -71,5 +72,64 @@ describe('SelectorLitologiaComponent', () => {
     const selectors = historical.debugElement.queryAll(By.directive(SelectorLitologiaComponent));
     expect(selectors.length).toBe(2);
     expect((selectors[0].componentInstance as SelectorLitologiaComponent).opciones().map((item) => item.id_litologia)).toEqual([7]);
+  });
+});
+
+describe('Autocompletado litológico', () => {
+  const catalogo: LitologiaPublica[] = [
+    { id_litologia: 1, codigo: 'basalto_marron', nombre: 'Basalto marrón', familia: 'basalto', color: '#795548', patron: 'basalt', activo: true, orden: 1 },
+    { id_litologia: 4, codigo: 'basalto_negro', nombre: 'Basalto negro', familia: 'basalto', color: '#202124', patron: 'basalt', activo: true, orden: 4 },
+    { id_litologia: 6, codigo: 'suelo_organico', nombre: 'Suelo orgánico', familia: 'suelo', color: '#4E342E', patron: 'organic', activo: true, orden: 6 },
+  ];
+  beforeEach(() => TestBed.configureTestingModule({
+    imports: [SelectorLitologiaComponent],
+    providers: [{ provide: LitologiasService, useValue: { listar: async () => catalogo } }],
+  }));
+  async function fixture() {
+    const f = TestBed.createComponent(SelectorLitologiaComponent);
+    f.detectChanges(); await f.whenStable(); f.detectChanges(); return f;
+  }
+  it('sugiere desde ba y normaliza mayúsculas y tildes tanto en nombre como familia', async () => {
+    const f = await fixture(), c = f.componentInstance;
+    c.buscar('ba'); expect(c.opcionesFiltradas().map(x => x.id_litologia)).toEqual([1, 4]);
+    c.buscar('MARRON'); expect(c.opcionesFiltradas().map(x => x.id_litologia)).toEqual([1]);
+    c.buscar('BÁSALTO'); expect(c.opcionesFiltradas().map(x => x.id_litologia)).toEqual([1, 4]);
+    c.buscar('organico'); expect(c.opcionesFiltradas().map(x => x.id_litologia)).toEqual([6]);
+    c.buscar('inexistente'); f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('No hay coincidencias');
+  });
+  it('permite elegir con flechas y Enter sin enviar el formulario ni alterar el catálogo', async () => {
+    const f = await fixture(), c = f.componentInstance, original = structuredClone(catalogo);
+    const selected = spyOn(c.seleccionadoChange, 'emit'), name = spyOn(c.nombreChange, 'emit');
+    c.buscar('ba');
+    const down = new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true });
+    c.teclado(down); f.detectChanges();
+    expect(down.defaultPrevented).toBeTrue();
+    expect(f.nativeElement.querySelector('[role="combobox"]').getAttribute('aria-activedescendant')).toBe(c.listaId + '-0');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    c.teclado(enter);
+    expect(enter.defaultPrevented).toBeTrue();
+    expect(selected).toHaveBeenCalledOnceWith(1); expect(name).toHaveBeenCalledOnceWith('Basalto marrón');
+    expect(c.abierto()).toBeFalse(); expect(catalogo).toEqual(original);
+  });
+  it('ofrece objetivos táctiles de 48px y selecciona el ID real a 320px de ancho', async () => {
+    const f = await fixture(), c = f.componentInstance;
+    f.nativeElement.style.width = '320px';
+    c.buscar('ba'); f.detectChanges();
+    const options = f.nativeElement.querySelectorAll('[role="option"]') as NodeListOf<HTMLButtonElement>;
+    expect(options.length).toBe(2);
+    for (const option of Array.from(options)) {
+      expect(option.getBoundingClientRect().height).toBeGreaterThanOrEqual(48);
+      expect(option.getBoundingClientRect().width).toBeLessThanOrEqual(320);
+    }
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    options[1].click(); expect(selected).toHaveBeenCalledOnceWith(4);
+  });
+  it('Escape cierra las sugerencias conservando la selección', async () => {
+    const f = await fixture(), c = f.componentInstance;
+    f.componentRef.setInput('seleccionado', 1);
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    c.buscar('suelo'); c.teclado(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(c.abierto()).toBeFalse(); expect(selected).not.toHaveBeenCalled();
   });
 });

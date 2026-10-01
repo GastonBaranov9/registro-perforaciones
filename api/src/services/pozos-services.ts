@@ -12,6 +12,7 @@ export async function createPozo(
   id_usuario: number,
   data: NuevoPozo
 ): Promise<Pozo> {
+  if (data.numero_perforacion != null) throw new err.T05DatosIncorrectos("Use la creación completa para asignar un número manual.");
   let estandar: ReturnType<typeof datosTecnicosParaCreacion>;
   try { estandar = datosTecnicosParaCreacion(data); }
   catch (error) { throw new err.T05DatosIncorrectos(error instanceof Error ? error.message : "Los datos técnicos no son válidos."); }
@@ -25,7 +26,7 @@ export async function createPozo(
     VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
     )
-    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por,
       fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
       nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
       metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
@@ -61,6 +62,11 @@ export async function updatePozo(
   data: PozoUpdate,
   db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<Pozo | void> {
+  if (Object.hasOwn(data, "numero_perforacion")) {
+    const actual = await db.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1", [id_pozo]);
+    if (actual.rows[0] && data.numero_perforacion !== actual.rows[0].numero_perforacion)
+      throw new err.T05DatosIncorrectos("La numeración no se puede modificar desde la edición habitual.");
+  }
   const sql = `    UPDATE public.pozo
   SET
     id_propietario      = COALESCE($2::integer,  id_propietario),
@@ -81,7 +87,7 @@ export async function updatePozo(
     desarrollo          = COALESCE($16::text,    desarrollo),
     revestimiento       = COALESCE($17::text,    revestimiento)
   WHERE id_pozo = $1
-  RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+  RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por,
     fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
     nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
     metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
@@ -114,7 +120,7 @@ export async function updatePozo(
 // Obtener un pozo específico
 export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> {
   const { rows } = await myPool.query<PozoDetalle>(
-    `SELECT p.id_pozo, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+    `SELECT p.id_pozo, p.numero_perforacion, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
       p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
       p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
       p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
@@ -167,7 +173,7 @@ export async function updatePozoFoto(
     UPDATE public.pozo
     SET foto_url = $2
     WHERE id_pozo = $1
-    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+    RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por,
       fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
       nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
       metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
@@ -179,7 +185,7 @@ export async function updatePozoFoto(
   return (rows[0] as Pozo) ?? null;
 }
 // Identificación de la lista en una sola consulta, conservando su alcance por rol.
-const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.numero_perforacion, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
     p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
     p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
     p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,

@@ -49,12 +49,16 @@ const actualData = sql('SHOW data_directory', 'postgres');
 assert.equal(path.resolve(actualData).toLowerCase(), path.resolve(data).toLowerCase());
 console.log('PASS aislamiento: clúster temporal propio, loopback, credenciales aleatorias; sin Docker ni configuración del piloto.');
 
-const migrations = await leerMigraciones();
+// Esta regresión prueba deliberadamente 000..010; la numeración 011 tiene su runner propio.
+const migrations = (await leerMigraciones()).filter(m => m.version <= "010");
+const through010 = path.join(root, "through010");
+mkdirSync(through010);
 const through009 = path.join(root, 'through009');
 const failing011 = path.join(root, 'failing011');
 mkdirSync(through009);
 mkdirSync(failing011);
 for (const m of migrations) {
+  copyFileSync(new URL(m.archivo, dir), path.join(through010, m.archivo));
   if (m.version <= '009') copyFileSync(new URL(m.archivo, dir), path.join(through009, m.archivo));
   copyFileSync(new URL(m.archivo, dir), path.join(failing011, m.archivo));
 }
@@ -88,7 +92,7 @@ for (const scenario of ['fresh', 'pilot_equivalent'] as const) {
       originalSeal = JSON.parse(run("SELECT row_to_json(c)::text FROM catalogo_litologia c WHERE codigo='sello_sanitario'"));
       prefix = run(ledgerSnapshot);
     }
-    const result = await ejecutarMigraciones(pool, { logger });
+    const result = await ejecutarMigraciones(pool, { directorio: through010, logger });
     assert.deepEqual(result.aplicadas, scenario === 'fresh' ? migrations.map(m => m.archivo) : ['010_sello_sanitario_no_inicial.sql']);
     assert.equal(result.pendientes, 0);
     assert.equal(run("SELECT count(*)=11 AND max(version)='010' FROM schema_migrations"), 't');
@@ -110,7 +114,7 @@ for (const scenario of ['fresh', 'pilot_equivalent'] as const) {
     assert.equal(run('SELECT sello_sanitario FROM pozo WHERE id_pozo=1'), 'f');
     const catalog = run(catalogSnapshot);
     const ledger = run(ledgerSnapshot);
-    const rerun = await ejecutarMigraciones(pool, { logger });
+    const rerun = await ejecutarMigraciones(pool, { directorio: through010, logger });
     assert.deepEqual(rerun.aplicadas, []);
     assert.match(logs.at(-1)!, /no hay cambios pendientes/);
     // SQL idempotence is independent of the ledger's no-op behavior.

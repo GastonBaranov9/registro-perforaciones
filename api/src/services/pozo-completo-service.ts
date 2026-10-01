@@ -1,3 +1,4 @@
+import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -102,6 +103,10 @@ export async function crearPozoCompleto(
   let archivoTemporal: string | null = null;
   try {
     await client.query("BEGIN");
+    if (data.pozo.numero_perforacion != null) {
+      validarNumeroPerforacion(data.pozo.numero_perforacion);
+      await exigirAdministracionNumeracion(creadoPor, client);
+    }
     await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
     const sitio = await insertarSitio(client, data.sitio_nuevo);
@@ -156,7 +161,7 @@ export async function crearPozoCompleto(
     await client.query("ROLLBACK");
     if (archivoTemporal) await fs.rm(archivoTemporal, { force: true });
     if (archivoFinal) await fs.rm(archivoFinal, { force: true });
-    throw error;
+    throw traducirErrorNumeracion(error);
   } finally {
     client.release();
   }
@@ -182,9 +187,11 @@ export async function actualizarPozoCompleto(
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
-    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number }>(
-      "SELECT id_pozo,id_sitio FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; numero_perforacion: number | null }>(
+      "SELECT id_pozo,id_sitio,numero_perforacion FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
     if (!bloqueado[0]) throw new err.T05PozoNoEncontrado();
+    if (Object.hasOwn(data.pozo, "numero_perforacion") && data.pozo.numero_perforacion !== bloqueado[0].numero_perforacion)
+      throw new err.T05DatosIncorrectos("La numeración se administra por separado; no se puede cambiar desde la edición habitual.");
     await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
 
@@ -216,7 +223,7 @@ export async function actualizarPozoCompleto(
        metodo_sedimentario=COALESCE($12::text,metodo_sedimentario), metodo_rocoso=COALESCE($13::text,metodo_rocoso),
        cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16
        WHERE id_pozo=$1
-       RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+       RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
         fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
         caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
         foto_url, fecha_creado`,
@@ -428,9 +435,9 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
     `INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio, fecha_fin,
       profundidad_final_m, nivel_estatico_m, nivel_dinamico_m,
-      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento, numero_perforacion
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+    RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
       fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
       caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
       foto_url, fecha_creado`,
@@ -438,7 +445,7 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
       p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.nivel_estatico_m ?? null,
       p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
       estandar.metodo_sedimentario, estandar.metodo_rocoso, estandar.cementacion,
-      estandar.desarrollo, p.revestimiento ?? null],
+      estandar.desarrollo, p.revestimiento ?? null, p.numero_perforacion ?? null],
   );
   return numerizarPozo(rows[0]);
 }

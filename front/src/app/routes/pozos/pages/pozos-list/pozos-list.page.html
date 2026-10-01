@@ -1,6 +1,6 @@
 <ion-content>
-  <ion-input class="owner-search" name="propietario" type="search" label="Buscar por propietario"
-    labelPlacement="stacked" placeholder="Nombre del propietario" fill="outline"
+  <ion-input class="owner-search" name="propietario" type="search" label="Buscar por propietario o número"
+    labelPlacement="stacked" placeholder="Nombre del propietario o número real" fill="outline"
     [clearInput]="true" [value]="propietarioBusqueda()"
     (ionInput)="propietarioBusqueda.set($event.detail.value ?? '')">
   </ion-input>
@@ -82,12 +82,13 @@
   </ion-modal>
 
   @if (propietarioBusqueda().trim() && pozosVisibles().length === 0) {
-    <p role="status">No hay pozos que coincidan con ese propietario y los filtros actuales.</p>
+    <p role="status">No hay pozos que coincidan con esa búsqueda y los filtros actuales.</p>
   }
   @for (pozo of pozosVisibles(); track pozo.id_pozo) {
   <ion-card>
     <ion-card-header>
-      <ion-card-title>Pozo: {{ pozo.id_pozo }}</ion-card-title>
+      <ion-card-title>{{ pozo.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación N.º " + pozo.numero_perforacion }}</ion-card-title>
+      <p>ID interno: {{ pozo.id_pozo }}</p>
       <ion-card-subtitle>Empresa: {{ pozo.empresa || '-' }}</ion-card-subtitle>
     </ion-card-header>
 

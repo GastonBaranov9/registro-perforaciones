@@ -1,3 +1,5 @@
+import { NumeroPerforacionComponent } from '../../../../shared/components/numero-perforacion/numero-perforacion.component';
+import { numeroPerforacionValido } from '../../../../shared/services/numeracion-perforacion.service';
 import { Component, OnDestroy, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
@@ -22,6 +24,7 @@ type PropietarioEdicionEstado = {
   templateUrl: './pozos-form.component.html',
   styleUrls: ['./pozos-form.component.scss'],
   imports: [
+    NumeroPerforacionComponent,
     IonItem,
     IonLabel,
     IonInput,
@@ -49,6 +52,7 @@ export class PozosFormComponent implements OnDestroy {
   public buscarPerforadores = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public catalogosDisponibles = input(false);
   public perforadorBloqueado = input(false);
+  public administrarNumeracion = input(false);
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearPropietario = output<PropietarioOperativoCrearBody>();
@@ -82,6 +86,9 @@ export class PozosFormComponent implements OnDestroy {
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
+    if (!this.agregareditar() && this.pozo().numero_perforacion != null && !numeroPerforacionValido(this.pozo().numero_perforacion)) {
+      this.errorMessage.set("El número de perforación debe ser un entero entre 1 y 2147483647."); return;
+    }
     const sitio=this.sitioNuevo();
     if(sitio){
       const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');

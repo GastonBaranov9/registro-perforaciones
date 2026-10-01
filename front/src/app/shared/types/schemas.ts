@@ -39,6 +39,7 @@ export type UsuarioFormulario = {
 };
 
 export type Pozo = {
+  numero_perforacion?: number | null;
   id_pozo: number;
   id_propietario: number;
   id_sitio: number;
@@ -75,6 +76,7 @@ export type Pozo = {
 };
 
 export type NuevoPozo = {
+  numero_perforacion?: number | null;
   id_propietario: number;
   id_sitio: number;
   empresa?: string;

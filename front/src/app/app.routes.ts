@@ -3,6 +3,11 @@ import { HomePage } from './routes/home/home.page';
 import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
+  {
+    path: 'pozos-numeracion', canActivate: [isloggedGuard, isAdminGuard],
+    loadComponent: async () => (await import('./routes/pozos/pages/numeracion/numeracion.page')).NumeracionPage,
+    title: 'Numeración de perforaciones',
+  },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
   { path: 'home', canActivate: [nativeSessionGuard], component: HomePage, title: 'Home' },
 

@@ -3,6 +3,7 @@ import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 export interface ReportePozo {
   id_pozo: number;
+  numero_perforacion?: number | null;
   propietario: string;
   propietario_documento_rut?: string | null;
   propietario_telefono?: string | null;
@@ -46,7 +47,7 @@ export async function getReportePozo(
 ): Promise<ReportePozo | null> {
   const sql = `
     SELECT
-      p.id_pozo,
+      p.id_pozo, p.numero_perforacion,
       prop.nombre AS propietario,
       prop.documento_rut AS propietario_documento_rut,
       prop.telefono AS propietario_telefono,
@@ -114,6 +115,7 @@ export async function getReportePozo(
   return {
     ...pozo,
     id_pozo: Number(pozo.id_pozo),
+    numero_perforacion: numeroNullable(pozo.numero_perforacion),
     profundidad_final_m: numeroNullable(pozo.profundidad_final_m),
     nivel_estatico_m: numeroNullable(pozo.nivel_estatico_m),
     nivel_dinamico_m: numeroNullable(pozo.nivel_dinamico_m),

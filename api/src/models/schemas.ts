@@ -125,7 +125,10 @@ export const Sitio = Type.Object({
 
 export type Sitio = Static<typeof Sitio>;
 
+export const NumeroPerforacion = Type.Integer({ minimum: 1, maximum: 2147483647 });
+
 export const Pozo = Type.Object({
+  numero_perforacion: Type.Optional(Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1, maximum: 2147483647 })),
   id_pozo: Type.Integer(),
   id_propietario: Type.Integer(),
   id_sitio: Type.Integer(),

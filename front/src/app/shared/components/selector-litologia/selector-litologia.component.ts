@@ -11,6 +11,10 @@ import { LitologiasService } from '../../services/litologias.service';
   styleUrl: './selector-litologia.component.css',
 })
 export class SelectorLitologiaComponent {
+  private static siguienteId = 0;
+  readonly listaId = 'litologias-' + (++SelectorLitologiaComponent.siguienteId);
+  readonly abierto = signal(false);
+  readonly indiceActivo = signal(-1);
   readonly seleccionado = input<number | null | undefined>(null);
   readonly materialHistorico = input('');
   readonly deshabilitado = input(false);
@@ -34,17 +38,40 @@ export class SelectorLitologiaComponent {
   }
 
   opcionesFiltradas(): LitologiaPublica[] {
-    const texto = this.busqueda().trim().toLocaleLowerCase();
-    return this.opciones().filter((x) => !texto || `${x.nombre} ${x.familia}`.toLocaleLowerCase().includes(texto));
+    const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').replace(/_/g, ' ').trim();
+    const texto = normalizar(this.busqueda());
+    return this.opciones().filter((x) => (x.activo || x.id_litologia === this.seleccionado()) && (!texto || normalizar(x.nombre + ' ' + x.familia).includes(texto)));
   }
 
   async reintentar() { await this.cargar(this.seleccionado()); }
 
+  buscar(texto: string) { this.busqueda.set(texto); this.abierto.set(true); this.indiceActivo.set(-1); }
+  cerrar(event: FocusEvent) {
+    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) this.abierto.set(false);
+  }
+  teclado(event: KeyboardEvent) {
+    const opciones = this.opcionesFiltradas();
+    if (event.key === 'Escape') { this.abierto.set(false); event.preventDefault(); }
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault(); this.abierto.set(true);
+      const paso = event.key === 'ArrowDown' ? 1 : -1;
+      this.indiceActivo.set(opciones.length ? (this.indiceActivo() < 0 ? (paso > 0 ? 0 : opciones.length - 1) : (this.indiceActivo() + paso + opciones.length) % opciones.length) : -1);
+      requestAnimationFrame(() => document.getElementById(this.listaId + '-' + this.indiceActivo())?.scrollIntoView({ block: 'nearest' }));
+    } else if (event.key === 'Enter' && this.abierto()) {
+      event.preventDefault();
+      const opcion = opciones[this.indiceActivo()] ?? (opciones.length === 1 ? opciones[0] : undefined);
+      if (opcion) this.seleccionar(String(opcion.id_litologia));
+    }
+  }
+
   seleccionar(valor: string) {
+    if (this.deshabilitado()) return;
     const id = valor ? Number(valor) : null;
-    this.seleccionadoChange.emit(id);
     const opcion = this.opciones().find((x) => x.id_litologia === id);
+    if (id != null && (!opcion || (!opcion.activo && id !== this.seleccionado()))) return;
+    this.seleccionadoChange.emit(id);
     if (opcion) this.nombreChange.emit(opcion.nombre);
+    this.busqueda.set(''); this.abierto.set(false); this.indiceActivo.set(-1);
   }
 
   private async cargar(id: number | null | undefined) {

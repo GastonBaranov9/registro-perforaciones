@@ -13,8 +13,8 @@ import type { ReportePozo } from '../src/services/generar-informe-consultas.ts';
 export const sello = { desde_m: 0, hasta_m: 3.5, material: 'Sello sanitario', id_litologia: 30, litologia_nombre: 'Sello sanitario', litologia_color: '#999999', litologia_patron: 'concrete' as const, litologia_activa: true };
 test('010 es descubierta después de 009 y corrige sólo la clasificación de Sello sanitario', async () => {
   const migraciones = await leerMigraciones();
-  assert.deepEqual(migraciones.map(m => m.version), Array.from({ length: 11 }, (_, i) => String(i).padStart(3, '0')));
-  const correccion = migraciones.at(-1)!;
+  assert.deepEqual(migraciones.filter(m => m.version <= "010").map(m => m.version), Array.from({ length: 11 }, (_, i) => String(i).padStart(3, '0')));
+  const correccion = migraciones.find(m => m.version === "010")!;
   assert.equal(correccion.archivo, '010_sello_sanitario_no_inicial.sql');
   assert.match(correccion.sql.replace(/--[^\n]*/g, '').trim(), /^UPDATE catalogo_litologia\s+SET es_inicial = FALSE\s+WHERE codigo = 'sello_sanitario'\s+AND es_inicial = TRUE;$/);
 });
