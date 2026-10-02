@@ -10,7 +10,7 @@ for (const [path, expected] of Object.entries(hashes)) {
   if (bytes.toString('hex', 0, 8) !== '89504e470d0a1a0a') throw new Error(`PNG inválido: ${path}`);
 }
 const styles = await readFile(new URL('android/app/src/main/res/values/styles.xml', root), 'utf8');
-if (!styles.includes('@mipmap/ic_launcher_foreground') || !styles.includes('@drawable/splash')) throw new Error('Tema de arranque sin branding.');
+if (!styles.includes('@mipmap/ic_launcher_foreground') || !styles.includes('<item name="android:windowBackground">@drawable/splash</item>')) throw new Error('Tema de arranque sin branding.');
 for (const icon of ['ic_launcher', 'ic_launcher_round']) {
   const xml = await readFile(new URL(`android/app/src/main/res/mipmap-anydpi-v26/${icon}.xml`, root), 'utf8');
   if (!xml.includes('@mipmap/ic_launcher_foreground')) throw new Error(`Ícono adaptativo incorrecto: ${icon}`);

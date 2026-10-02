@@ -22,7 +22,7 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
   const app = Fastify();
   try {
     const migraciones = (await fs.readdir(new URL('../db/migrations/', import.meta.url))).filter(x => x.endsWith('.sql')).sort();
-    for (const nombre of migraciones.filter(x => !x.startsWith('012_'))) {
+    for (const nombre of migraciones.filter(x => x.slice(0, 3) <= '011')) {
       await pool.query('BEGIN');
       await pool.query(await fs.readFile(new URL('../db/migrations/' + nombre, import.meta.url), 'utf8'));
       await pool.query('COMMIT');
@@ -46,6 +46,7 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
     await t.test('012 conserva usuarios, IDs, FK y números históricos', async () => {
       await pool.query('BEGIN');
       await pool.query(await fs.readFile(new URL('../db/migrations/012_propietario_provisional.sql', import.meta.url), 'utf8'));
+      await pool.query(await fs.readFile(new URL('../db/migrations/013_busqueda_personas_admin.sql', import.meta.url), 'utf8'));
       await pool.query('COMMIT');
       assert.deepEqual((await pool.query('SELECT * FROM usuario ORDER BY id_usuario')).rows, usuariosAntes);
       assert.deepEqual((await pool.query('SELECT * FROM pozo')).rows[0], { ...antiguo, propietario_provisional: null });
@@ -58,6 +59,7 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
     app.decorate('notifyClient', () => {});
     app.decorate('notifyAdmin', () => {});
     await app.register((await import('../src/routes/pozos.ts')).default);
+    await app.register((await import('../src/routes/usuarios.ts')).default);
     await app.ready();
     const { SESSION_COOKIE } = await import('../src/plugins/cookies.ts');
     const sesion = (id: number) => ({ [SESSION_COOKIE]: app.jwt.sign({ sub: id, version_sesion: 1 }, { expiresIn: '1h' }) });
@@ -74,10 +76,12 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
     await t.test('rechaza representación ambigua o vacía y permite seleccionar propietario anterior', async () => {
       for (const pozo of [
         {...datos.pozo,propietario_provisional:'   '},
-        {...datos.pozo,id_propietario:3},
         {...datos.pozo,id_propietario:0,propietario_provisional:null},
       ]) assert.equal((await request(2,'POST','/usuarios/2/pozos/completo',{...datos,pozo})).statusCode,400);
-      const anterior=await request(2,'POST','/usuarios/2/pozos/completo',{
+      assert.equal((await request(2,'POST','/usuarios/2/pozos/completo',{
+        ...datos,pozo:{...datos.pozo,id_propietario:3,propietario_provisional:null},
+      })).statusCode,403);
+      const anterior=await request(1,'POST','/usuarios/2/pozos/completo',{
         ...datos,pozo:{...datos.pozo,id_propietario:3,propietario_provisional:null},
       });
       assert.equal(anterior.statusCode,201,anterior.body);
@@ -93,8 +97,17 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
       assert.equal(resultado.pozo.propietario_provisional, 'Marcelo Bellagamba');
       for (const campo of ['intervalos_litologicos','intervalos_diametro','intervalos_filtro','niveles_aporte']) assert.equal(resultado[campo].length, 1);
       assert.deepEqual((await pool.query('SELECT * FROM usuario ORDER BY id_usuario')).rows, usuariosAntes);
+      assert.equal((await request(2, 'GET', '/pozos/candidatos-personas?propietario=Marcelo')).statusCode, 403);
+      assert.equal((await request(2, 'GET', '/pozos/propietarios/3')).statusCode, 403);
       assert.equal((await request(2, 'POST', '/pozos/propietarios', { nombre: 'Intento directo' })).statusCode, 403);
       assert.equal((await request(2, 'PUT', '/pozos/propietarios/3', { nombre: 'Intento edición' })).statusCode, 403);
+    });
+    await t.test('dos pozos con el mismo nombre provisional no duplican identidades', async () => {
+      const segundo = await request(2, 'POST', '/usuarios/2/pozos/completo', { ...datos, foto: undefined });
+      assert.equal(segundo.statusCode, 201, segundo.body);
+      assert.notEqual(segundo.json().pozo.id_pozo, idPozo);
+      assert.equal(segundo.json().pozo.id_propietario, null);
+      assert.deepEqual((await pool.query('SELECT * FROM usuario ORDER BY id_usuario')).rows, usuariosAntes);
     });
     const snapshot = async () => {
       const pozo = (await pool.query('SELECT * FROM pozo WHERE id_pozo=$1', [idPozo])).rows[0];
@@ -122,7 +135,7 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
       assert.match(reporte!.propietario, /Marcelo Bellagamba.*pendiente/);
     });
     await t.test('buscador devuelve una vez cada ID y conserva homónimos con múltiples roles', async () => {
-      const respuesta = await request(2,'GET','/pozos/candidatos-personas?propietario=Marcelo');
+      const respuesta = await request(1,'GET','/pozos/candidatos-personas?propietario=Marcelo');
       assert.equal(respuesta.statusCode,200,respuesta.body);
       assert.deepEqual(respuesta.json().propietarios.map((p:{id_usuario:number})=>p.id_usuario),[3,4]);
     });
@@ -147,13 +160,25 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
       assert.deepEqual(await snapshot(),antes);
     });
     await t.test('administración puede crear identidad real y vincularla sin credenciales automáticas',async()=>{
-      const alta=await request(1,'POST','/pozos/propietarios',{nombre:'Identidad verificada',documento_rut:'PRUEBA-012'});
+      const alta=await request(1,'POST','/pozos/propietarios',{nombre:'Identidad Pérez',documento_rut:'PRUEBA-012'});
       assert.equal(alta.statusCode,201,alta.body);
       const id=alta.json().id_usuario;
       const usuario=(await pool.query('SELECT * FROM usuario WHERE id_usuario=$1',[id])).rows[0];
       assert.equal(usuario.cuenta_acceso,false);assert.equal(usuario.password,null);assert.equal(usuario.email,null);
       const vinculo=await request(1,'PUT',`/pozos/${idPozo}/propietario`,{id_propietario:id,id_propietario_esperado:3});
       assert.equal(vinculo.statusCode,200,vinculo.body);assert.deepEqual(await snapshot(),antes);
+      const personas=await request(1,'GET','/usuarios/personas?buscar=identidad%20perez');
+      assert.equal(personas.statusCode,200,personas.body);
+      assert.equal(personas.json().personas.find((p:{id_usuario:number})=>p.id_usuario===id).cuenta_acceso,false);
+      assert.equal((await request(1,'GET','/usuarios/personas?buscar=prueba-012')).json().total,1);
+      assert.equal((await request(1,'GET',`/usuarios/personas?buscar=${id}`)).json().personas.some((p:{id_usuario:number})=>p.id_usuario===id),true);
+      assert.equal((await request(2,'GET','/usuarios/personas?buscar=Identidad')).statusCode,403);
+      const asociadas=await request(1,'GET',`/usuarios/personas/${id}/perforaciones`);
+      assert.equal(asociadas.statusCode,200,asociadas.body);
+      assert.equal(asociadas.json().total,1);
+      assert.equal(asociadas.json().perforaciones[0].id_pozo,idPozo);
+      assert.equal(asociadas.json().perforaciones[0].numero_perforacion,antes.conservado.numero_perforacion);
+      assert.equal((await request(2,'GET',`/usuarios/personas/${id}/perforaciones`)).statusCode,403);
     });
   } finally {
     await app.close(); await myPool.end(); await pool.end();

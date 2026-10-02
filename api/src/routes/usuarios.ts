@@ -10,12 +10,38 @@ import {
 import * as err from "../models/errors.ts";
 import * as func from "../services/usuarios-service.ts";
 import * as rolfunc from "../services/roles-services.ts";
+import { buscarPersonasAdministradas, perforacionesDePropietario } from "../services/personas-admin-service.ts";
 import { clientConnections } from "../plugins/websocket.ts";
 
 const usuariosRoutes = async function (
   fastify: FastifyInstance,
   options: object
 ) {
+  const pagina = Type.Object({
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  });
+  fastify.get('/usuarios/personas', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: {
+      tags: ['usuarios'], summary: 'Buscar cuentas e identidades de propietarios',
+      querystring: Type.Intersect([pagina, Type.Object({ buscar: Type.Optional(Type.String({ maxLength: 160 })) })]),
+    },
+  }, async (req) => {
+    const q = req.query as { buscar?: string; limite?: number; offset?: number };
+    return buscarPersonasAdministradas(q.buscar, q.limite, q.offset);
+  });
+  fastify.get('/usuarios/personas/:id_usuario/perforaciones', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: {
+      tags: ['usuarios'], summary: 'Perforaciones vinculadas a una identidad real',
+      params: Type.Object({ id_usuario: Type.Integer({ minimum: 1 }) }), querystring: pagina,
+    },
+  }, async (req) => {
+    const { id_usuario } = req.params as { id_usuario: number };
+    const q = req.query as { limite?: number; offset?: number };
+    return perforacionesDePropietario(id_usuario, q.limite, q.offset);
+  });
   //dar de alta un usuario
   fastify.post(
     "/usuarios",

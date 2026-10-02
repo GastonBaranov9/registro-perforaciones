@@ -11,6 +11,16 @@ export type Usuario = {
 
 export type UsuarioPublico = Omit<Usuario, 'password'>;
 
+export type PersonaAdministrada = {
+  id_usuario: number; nombre: string; documento_rut: string | null;
+  email: string | null; cuenta_acceso: boolean; activo: boolean; roles: string[];
+};
+export type PerforacionAsociada = {
+  id_pozo: number; numero_perforacion: number | null; fecha_creado: string; ubicacion: string;
+};
+export type PaginaPersonas = { personas: PersonaAdministrada[]; total: number };
+export type PaginaPerforaciones = { perforaciones: PerforacionAsociada[]; total: number };
+
 export type UsuarioSesion = Omit<Usuario, 'password' | 'email' | 'activo' | 'fecha_registro'> &
   Partial<Pick<Usuario, 'email' | 'activo' | 'fecha_registro'>>;
 

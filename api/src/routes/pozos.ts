@@ -41,7 +41,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         params: Type.Object({ id_propietario: Type.Integer({ minimum: 1 }) }),
         response: { 200: PropietarioOperativo, 404: err.ErrorSchema },
       },
-      onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+      onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
     },
     async (req) => {
       const { id_propietario } = req.params as { id_propietario: number };
@@ -77,7 +77,9 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     },
     async (req) => {
       const q = req.query as { propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
-      return listarCandidatosPozo(req.user.sub, await isAdmin(req.user.sub), undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
+      const admin = await isAdmin(req.user.sub);
+      if (!admin && (q.propietario !== undefined || q.propietario_id !== undefined)) throw new err.T05SinPermiso();
+      return listarCandidatosPozo(req.user.sub, admin, undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
     },
   );
   fastify.post(
@@ -103,8 +105,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     async (req, rep) => {
       const idUsuarioSesion = Number(req.user.sub);
       const data = req.body as PozoCompletoBody;
-      if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion)
-        throw new err.T05SinPermiso();
+      if (!(await isAdmin(idUsuarioSesion))) {
+        if (data.pozo.id_perforador !== idUsuarioSesion || data.pozo.id_propietario !== null)
+          throw new err.T05SinPermiso();
+      }
       if (data.pozo.id_propietario !== null && !(await isProp(data.pozo.id_propietario)))
         throw new err.T05DatosIncorrectos("El ID no es de un propietario");
       if (!(await isPerf(data.pozo.id_perforador)))

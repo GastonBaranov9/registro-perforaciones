@@ -12,22 +12,25 @@
       <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" required></ion-input>
     </ion-item>
 
+    @if (administrarPropietarios()) {
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" (personaSeleccionada)="seleccionarPropietario($event)"
       [deshabilitado]="agregareditar() || guardando() || !catalogosDisponibles()" />
+    }
 
-    @if (propietarioSeleccionado() && !agregareditar()) {
+    @if (administrarPropietarios() && propietarioSeleccionado() && !agregareditar()) {
       <ion-button type="button" fill="clear" (click)="limpiarPropietario()" [disabled]="guardando()">CAMBIAR</ion-button>
       @if (administrarPropietarios()) { <ion-button type="button" fill="clear" (click)="abrirEditorPropietario()" [disabled]="guardando()">EDITAR DATOS DEL PROPIETARIO</ion-button> }
     }
 
     @if (pozo().id_propietario === null) {
-      <p role="status">Propietario pendiente de vinculación: {{ pozo().propietario_provisional || 'indique el nombre' }}</p>
+      <h3>Propietario pendiente de vinculación</h3>
+      @if (agregareditar()) { <p role="status">Nombre provisional: {{ pozo().propietario_provisional }}</p> }
     }
     @if (!agregareditar() && !propietarioSeleccionado()) {
-      <ion-item><ion-input label="Nombre de propietario provisional" labelPlacement="stacked" name="propietario_provisional" maxlength="160"
+      <ion-item><ion-input label="Nombre del propietario provisional *" labelPlacement="stacked" name="propietario_provisional" maxlength="160" required
         [(ngModel)]="pozo().propietario_provisional" (ngModelChange)="pozo().id_propietario=null; notificarCambio()" [disabled]="guardando()" /></ion-item>
-      <p>Se guardará con el pozo. Administración verificará la identidad y lo vinculará a un propietario real.</p>
+      <p>Ingresá el nombre del cliente. Se guardará únicamente con esta perforación. Administración completará sus datos y lo vinculará posteriormente al propietario definitivo.</p>
     }
     @if (administrarPropietarios() && !agregareditar() && !propietarioSeleccionado()) {
       <fieldset class="propietario-nuevo">

@@ -12,6 +12,7 @@
         @let editor = this.pozoResource.value()!;
         @if (authService.tieneRol('administracion')) {
           <app-vincular-propietario [idPozo]="id_pozo()" [propietarioActual]="editor.pozo.id_propietario"
+            [provisional]="editor.pozo.propietario_provisional ?? null"
             [deshabilitado]="disabled()" (ocupacion)="vinculando.set($event)" (vinculado)="propietarioVinculado($event)" />
         }
         @if (!permisos.puedeEditar(editor.pozo)) {

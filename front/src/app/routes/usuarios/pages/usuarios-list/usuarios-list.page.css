@@ -1,1 +1,5 @@
-/* Cards and label/value rows use the shared design system. */
+.buscador { display: grid; gap: .75rem; max-width: 42rem; margin: 1rem 0; }
+.buscador input { width: 100%; min-height: 48px; padding: .65rem; border: 1px solid var(--ion-color-medium); border-radius: .5rem; font: inherit; }
+.buscador ion-button { justify-self: start; }
+.paginacion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 1rem 0; }
+ion-card { max-width: 48rem; margin-inline: 0; }

@@ -91,7 +91,7 @@ export async function obtenerPropietarioOperativo(
      FROM usuario u
      JOIN usuario_rol ur ON ur.id_usuario=u.id_usuario
      JOIN rol r ON r.id_rol=ur.id_rol
-     WHERE u.id_usuario=$1 AND u.activo=TRUE AND r.nombre='propietario'`,
+     WHERE u.id_usuario=$1 AND r.nombre='propietario'`,
     [idUsuario],
   );
   return rows[0] ? propietarioDesdeFila(rows[0] as Record<string, unknown>) : null;

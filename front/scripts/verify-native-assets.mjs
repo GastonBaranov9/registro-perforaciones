@@ -52,7 +52,10 @@ const splashSourceHash = await sha256(join(frontRoot, 'branding', 'rs_splash_pil
 if (await sha256(join(nativeRoot, 'branding', 'rs_splash_piloto.png')) !== splashSourceHash) {
   throw new Error('El splash copiado al arranque nativo no coincide con el original.');
 }
-if (!(await readFile(join(nativeRoot, 'index.html'), 'utf8')).includes('src="branding/rs_splash_piloto.png"')) {
+const nativeIndex = await readFile(join(nativeRoot, 'index.html'), 'utf8');
+if (!nativeIndex.includes('src="branding/rs_splash_piloto.png"') ||
+    !nativeIndex.includes('background-size:cover') && !nativeIndex.includes('center/cover no-repeat') ||
+    !nativeIndex.includes('object-position:center top') || nativeIndex.includes('background:white')) {
   throw new Error('El índice nativo no muestra el splash durante el arranque.');
 }
 if (!distFiles.some((file) => /^main(?:-[^.]+)?\.js$/.test(file))) {

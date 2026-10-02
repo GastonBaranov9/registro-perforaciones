@@ -25,7 +25,7 @@ export function traducirErrorNumeracion(error: unknown): unknown {
   const pg = error as { code?: string; constraint?: string };
   if (pg?.code === "23505" && ["pozo_numero_perforacion_uq", "numero_perforacion_reservado_pkey"].includes(pg.constraint ?? ""))
     return new err.T05ConflictoNumeracion("Ese número de perforación ya está utilizado o reservado.");
-  if (pg?.code === "P1100") return new err.T05ConflictoNumeracion("Administración debe configurar el próximo número de perforación antes de registrar nuevas perforaciones.");
+  if (pg?.code === "P1100") return new err.T05ConflictoNumeracion("Administración todavía debe habilitar la numeración empresarial. No se pueden guardar perforaciones nuevas hasta que lo haga.");
   if (pg?.code === "P1102") return new err.T05ConflictoNumeracion("El número de perforación ya asignado no se puede modificar.");
   if (pg?.code === "P1103") return new err.T05ConflictoNumeracion("Se agotó el rango de numeración de perforaciones.");
   return error;

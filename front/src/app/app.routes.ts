@@ -258,6 +258,13 @@ export const routes: Routes = [
     title: 'usuarios-list',
   },
   {
+    path: 'propietarios-detail/:id_usuario',
+    canActivate: [isloggedGuard, isAdminGuard],
+    loadComponent: async () =>
+      (await import('./routes/usuarios/pages/propietario-detail/propietario-detail.page')).PropietarioDetailPage,
+    title: 'Ficha de propietario',
+  },
+  {
     path: 'litologias-admin',
     canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () => (await import('./routes/litologias/litologias-admin.page')).LitologiasAdminPage,

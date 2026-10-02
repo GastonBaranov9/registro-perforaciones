@@ -71,10 +71,11 @@ describe('PozosFormComponent', () => {
     expect(crear).not.toHaveBeenCalled();
     expect(component.personasValidas()).toBeTrue();
     expect(fixture.nativeElement.textContent).toContain('pendiente de vinculación');
+    expect(fixture.nativeElement.textContent).toContain('Ingresá el nombre del cliente');
+    expect(fixture.nativeElement.querySelector('app-selector-persona-pozo[rol="propietario"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('ion-input[name="propietario_provisional"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('input[name="propietario_nuevo_documento"]')).toBeNull();
-    component.seleccionarPropietario(propietarioA);
-    expect(component.pozo().propietario_provisional).toBeNull();
-    expect(component.pozo().id_propietario).toBe(1);
+    expect(fixture.nativeElement.textContent).not.toContain('Registrar propietario');
   });
 
   it('oculta el alta mientras hay propietario y vuelve a mostrarla al limpiar', () => {

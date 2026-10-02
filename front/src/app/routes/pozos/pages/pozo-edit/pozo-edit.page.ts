@@ -78,7 +78,7 @@ export class PozoEditPage {
         this.aportes.getNivelesAporte(params.idPozo),
       ]);
       const [propietario, perforador] = await Promise.all([
-        pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
+        !this.authService.tieneRol('administracion') || pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
         personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
       ]);
       const personas = {

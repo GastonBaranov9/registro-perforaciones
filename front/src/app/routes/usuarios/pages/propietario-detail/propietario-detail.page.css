@@ -1,0 +1,6 @@
+.datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; max-width: 60rem; }
+.datos label { display: grid; gap: .35rem; }
+.datos input, .datos select, .datos textarea { width: 100%; min-height: 44px; padding: .5rem; border: 1px solid var(--ion-color-medium); border-radius: .4rem; font: inherit; }
+.datos ion-button { align-self: end; }
+article { border-block-start: 1px solid var(--ion-color-medium); padding: 1rem 0; }
+.paginacion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }

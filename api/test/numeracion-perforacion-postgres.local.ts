@@ -188,7 +188,10 @@ try {
         assert.equal(denied.statusCode, 403, denied.body);
         const duplicate = await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", headers: { "x-test-user": "1" }, payload: body(1850) });
         assert.equal(duplicate.statusCode, 409, duplicate.body);
-        const created = await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", payload: body() });
+        const provisional = body();
+        provisional.pozo.id_propietario = null;
+        provisional.pozo.propietario_provisional = 'Cliente en campo';
+        const created = await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", payload: provisional });
         assert.equal(created.statusCode, 201, created.body);
         assert.ok(created.json().pozo.numero_perforacion > 3001);
         const list = await app.inject({ method: "GET", url: "/usuarios/2/pozos" });

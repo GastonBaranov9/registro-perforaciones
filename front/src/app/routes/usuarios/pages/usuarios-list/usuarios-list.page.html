@@ -1,51 +1,31 @@
-<ion-content>
-
-  @for (usuario of this.usuarios(); track usuario.id_usuario) {
+<ion-content class="ion-padding">
+  <h1>Usuarios y propietarios</h1>
+  <form class="buscador" (ngSubmit)="buscar()">
+    <label for="buscar-persona">Buscar por nombre, apellido, documento / RUT o ID</label>
+    <input id="buscar-persona" type="search" name="buscar" [(ngModel)]="busqueda" autocomplete="off" />
+    <ion-button type="submit" [disabled]="cargando()">Buscar</ion-button>
+  </form>
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  @if (cargando()) { <p role="status">Buscando personas…</p> }
+  <p role="status">{{ total() }} personas encontradas</p>
+  @for (persona of personas(); track persona.id_usuario) {
     <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ usuario.nombre }}</ion-card-title>
-      </ion-card-header>
-
       <ion-card-content>
-        <ion-list>
-
-            <dl class="data-row">
-            <dt>Nombre</dt>
-            <dd>{{ usuario.nombre }}</dd>
-          </dl>
-
-          <dl class="data-row">
-            <dt>Email</dt>
-            <dd>{{ usuario.email }}</dd>
-          </dl>
-
-          <dl class="data-row">
-            <dt>Estado</dt>
-            <dd><span class="status-badge" [class.active]="usuario.activo">{{ usuario.activo ? 'Activo' : 'Inactivo' }}</span></dd>
-          </dl>
-
-          <dl class="data-row">
-            <dt>Fecha de registro</dt>
-            <dd>{{ usuario.fecha_registro | date:'dd/MM/yyyy' }}</dd>
-          </dl>
-
-          
-          <dl class="data-row">
-            <dt>Roles</dt>
-            <dd>{{this.getRoles(usuario)}}</dd>
-          </dl>
-
-        </ion-list>
-
-
-        <div class="action-row">
-          <ion-button fill="outline" (click)="irAEditar(usuario)">Editar</ion-button>
-          <ion-button fill="outline" color="danger" (click)="borrarUser(usuario)">
-            Borrar
-          </ion-button>
-        </div>
+        <h2>{{ persona.nombre }}</h2>
+        <p>ID {{ persona.id_usuario }} · {{ persona.cuenta_acceso ? 'Cuenta con acceso' : 'Identidad sin acceso' }} · {{ persona.activo ? 'Activo' : 'Inactivo' }}</p>
+        @if (persona.documento_rut) { <p>Documento / RUT: {{ persona.documento_rut }}</p> }
+        @if (persona.email) { <p>Email: {{ persona.email }}</p> }
+        <p>Roles: {{ persona.roles.join(', ') || 'Sin rol' }}</p>
+        <ion-button fill="outline" (click)="abrir(persona)">{{ persona.roles.includes('propietario') ? 'Ver ficha y perforaciones' : 'Administrar cuenta' }}</ion-button>
+        @if (persona.cuenta_acceso && persona.roles.includes('propietario')) {
+          <ion-button fill="clear" (click)="editarCuenta(persona)">Administrar acceso</ion-button>
+        }
       </ion-card-content>
     </ion-card>
-  }
-
+  } @empty { @if (!cargando()) { <p>No hay personas para esta búsqueda.</p> } }
+  <nav class="paginacion" aria-label="Páginas de personas">
+    <ion-button fill="outline" (click)="pagina(-30)" [disabled]="cargando() || offset() === 0">Anterior</ion-button>
+    <span>{{ offset() + 1 }}–{{ offset() + personas().length }} de {{ total() }}</span>
+    <ion-button fill="outline" (click)="pagina(30)" [disabled]="cargando() || offset() + personas().length >= total()">Siguiente</ion-button>
+  </nav>
 </ion-content>

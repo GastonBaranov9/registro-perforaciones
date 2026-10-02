@@ -1,78 +1,58 @@
-import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
-import { UsuariosListService } from '../../../../shared/services/usuarios-list.service';
-import { UsuarioPublico } from '../../../../shared/types/schemas';
-import {
-  IonCol,
-  IonGrid,
-  IonList,
-  IonPickerColumn,
-  IonRow,
-  IonButton,
-  IonCard,
-  IonCardHeader,
-  IonCardTitle,
-  IonCardSubtitle,
-  IonCardContent,
-  IonContent,
-} from '@ionic/angular/standalone';
+import { Component, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ViewWillEnter } from '@ionic/angular/standalone';
-import { DatePipe, JsonPipe } from '@angular/common';
-import { WebsocketService } from '../../../../shared/services/websocket.service';
+import { IonButton, IonCard, IonCardContent, IonContent } from '@ionic/angular/standalone';
+import { UsuariosListService } from '../../../../shared/services/usuarios-list.service';
+import { PersonaAdministrada } from '../../../../shared/types/schemas';
 
 @Component({
   selector: 'app-usuarios-list',
-  imports: [
-    IonButton,
-    IonCard,
-    IonCardHeader,
-    IonCardTitle,
-    IonCardContent,
-    IonList,
-    DatePipe,
-    IonContent,
-  ],
+  imports: [FormsModule, IonButton, IonCard, IonCardContent, IonContent],
   templateUrl: './usuarios-list.page.html',
   styleUrl: './usuarios-list.page.css',
 })
-export class UsuariosListPage implements OnInit, ViewWillEnter {
-  public usuarioListService = inject(UsuariosListService);
-  private router = inject(Router);
-  public usuarios = signal<UsuarioPublico[]>([]);
-  public webSocketService = inject(WebsocketService);
+export class UsuariosListPage {
+  private readonly servicio = inject(UsuariosListService);
+  private readonly router = inject(Router);
+  personas = signal<PersonaAdministrada[]>([]);
+  total = signal(0);
+  offset = signal(0);
+  cargando = signal(false);
+  error = signal('');
+  busqueda = '';
+  private termino = '';
 
-  async ngOnInit(): Promise<void> {
-    const usuarios = await this.usuarioListService.getListaUsuarios();
-    this.usuarios.set(usuarios);
+  async ionViewWillEnter() { await this.cargar(); }
+
+  async buscar() {
+    this.termino = this.busqueda.trim();
+    this.offset.set(0);
+    await this.cargar();
   }
 
-    async ionViewWillEnter() {
-    const usuarios = await this.usuarioListService.getListaUsuarios();
-    this.usuarios.set(usuarios);
+  async pagina(delta: number) {
+    this.offset.set(Math.max(0, this.offset() + delta));
+    await this.cargar();
   }
 
-
-  public wsCambio = effect(async () => {
-    if (this.webSocketService.msgRecargarEditUser()) {
-      const usuarios = await this.usuarioListService.getListaUsuarios();
-      this.usuarios.set(usuarios);
-      this.webSocketService.msgRecargarEditUser.set(false)
-    }
-  });
-
-
-  public getRoles(usuario: UsuarioPublico) {
-    if (!usuario.roles) return 'Sin Rol';
-
-    return usuario.roles.map((r) => r.nombre).join(', ');
+  private async cargar() {
+    this.cargando.set(true); this.error.set('');
+    try {
+      const respuesta = await this.servicio.buscarPersonas(this.termino, this.offset());
+      this.personas.set(respuesta.personas);
+      this.total.set(respuesta.total);
+    } catch {
+      this.error.set('No se pudo consultar el registro de personas.');
+    } finally { this.cargando.set(false); }
   }
 
-  irAEditar(usuario: UsuarioPublico) {
-    this.router.navigate(['/usuarios-edit', usuario.id_usuario]);
+  abrir(persona: PersonaAdministrada) {
+    this.router.navigate(persona.roles.includes('propietario')
+      ? ['/propietarios-detail', persona.id_usuario]
+      : ['/usuarios-edit', persona.id_usuario]);
   }
 
-  public async borrarUser(usuario: UsuarioPublico) {
-    await this.usuarioListService.deleteUsuario(usuario.id_usuario);
-    this.ionViewWillEnter();
+  editarCuenta(persona: PersonaAdministrada) {
+    this.router.navigate(['/usuarios-edit', persona.id_usuario]);
   }
 }
