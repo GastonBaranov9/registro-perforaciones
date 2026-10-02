@@ -50,7 +50,7 @@ export class PozosCreatePage {
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
 
   public nuevoPozo = signal<NuevoPozo>({
-    id_propietario: 0,
+    id_propietario: null,
     id_sitio: 0,
     id_perforador: 0,
     ...DATOS_TECNICOS_ESTANDAR,
@@ -74,7 +74,7 @@ export class PozosCreatePage {
 
   async guardarPozo(data: { pozo: NuevoPozo; foto: File | null; fotoAccion?: AccionFotoEdicion }) {
     if (this.disabled()) return;
-    const id_usuario = data.pozo.id_propietario;
+    const id_usuario = data.pozo.id_propietario ?? this.authService.userId()!;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
     if (errores.length) {
       this.errorMessage.set(errores.join(' '));
@@ -97,11 +97,12 @@ export class PozosCreatePage {
   }
 
   async crearPropietario(data: PropietarioOperativoCrearBody) {
+    if (!this.authService.tieneRol('administracion') || this.disabled()) return;
     try {
       this.errorMessage.set(''); this.disabled.set(true);
       const creado = await this.propietariosOperativos.crear(data);
       this.catalogos.update((actual) => actual ? { ...actual, propietarios: [creado, ...actual.propietarios] } : actual);
-      this.nuevoPozo.update((pozo) => ({ ...pozo, id_propietario: creado.id_usuario }));
+      this.nuevoPozo.update((pozo) => ({ ...pozo, id_propietario: creado.id_usuario, propietario_provisional: null }));
     } catch (error: unknown) {
       this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo crear el propietario.');
     } finally { this.disabled.set(false); }

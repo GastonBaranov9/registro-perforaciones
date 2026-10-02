@@ -12,6 +12,10 @@
     @for (persona of filtrados(); track persona.id_usuario) {
       <ion-item><div class="persona-option">
         <ion-label><strong>{{ persona.nombre }}</strong>
+          <p>Registro #{{ persona.id_usuario }}</p>
+          @if (persona.telefono) { <p>Teléfono: {{ persona.telefono }}</p> }
+          @if (persona.localidad) { <p>{{ persona.localidad }}</p> }
+          @if (rol() === 'propietario' && persona.email) { <p>{{ persona.email }}</p> }
           @if (rol() === 'propietario' && persona.documento_rut) { <p>CI/RUT: {{ persona.documento_rut }}</p> }
           @else if (rol() !== 'propietario' && persona.email) { <p>{{ persona.email }}</p> }
         </ion-label>

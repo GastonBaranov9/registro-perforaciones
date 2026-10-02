@@ -27,6 +27,28 @@ describe('PozoEditPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('vincular conserva el borrador técnico y la foto pendiente sin recargar', () => {
+    const pozo={id_propietario:null as number|null,propietario_provisional:'Provisional' as string|null,id_perforador:3,id_sitio:4,numero_perforacion:3001};
+    const editor={pozo,personas:{propietarios:[],perforadores:[]},sitios:[],tecnicos:component.datosTecnicos()};
+    spyOn(component.pozoResource,'value').and.returnValue(editor as never);
+    const reload=spyOn(component.pozoResource,'reload');
+    const borrador=component.datosTecnicos();
+    const foto=new File(['foto'],'pendiente.jpg');
+    component.formulario={fotoFile:foto} as NonNullable<PozoEditPage['formulario']>;
+    component.borradorDirty.set(true);
+    component.propietarioVinculado({id_usuario:7,nombre:'Verificado',roles:['propietario']});
+    expect(pozo.id_propietario).toBe(7);expect(pozo.propietario_provisional).toBeNull();
+    expect(pozo.numero_perforacion).toBe(3001);
+    expect(component.datosTecnicos()).toBe(borrador);
+    expect(component.formulario!.fotoFile).toBe(foto);
+    expect(component.borradorDirty()).toBeTrue();expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('bloquea recarga mientras vincula', () => {
+    component.vinculando.set(true);const reload=spyOn(component.pozoResource,'reload');
+    component.recargar();expect(reload).not.toHaveBeenCalled();
+  });
+
   it('fallar el reemplazo no confirma la foto ni navega y explica que sigue pendiente', async () => {
     const confirmar = jasmine.createSpy('confirmarFotoGuardada');
     component.formulario = { confirmarFotoGuardada: confirmar } as never;

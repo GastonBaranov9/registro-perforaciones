@@ -12,7 +12,7 @@ import { CandidatoPozo } from '../../../../shared/types/schemas';
 export class SelectorPersonaPozoComponent {
   etiqueta = input.required<string>();
   candidatos = input.required<CandidatoPozo[]>();
-  seleccionado = model.required<number>();
+  seleccionado = model.required<number | null>();
   deshabilitado = input(false);
   rol = input<'propietario' | 'perforador'>('propietario');
   buscarRemoto = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
@@ -26,7 +26,7 @@ export class SelectorPersonaPozoComponent {
   filtrados = computed(() => {
     const q = this.busqueda().trim().toLocaleLowerCase();
     if (q.length < 1) return [];
-    const origen = this.resultados() ?? [];
+    const origen = [...new Map((this.resultados() ?? []).map((p) => [p.id_usuario, p])).values()];
     return origen.filter((c) => [c.nombre,c.documento_rut,c.telefono,c.email].some((valor) => (valor ?? '').toLocaleLowerCase().includes(q))).slice(0, 20);
   });
   actual = computed(() => [...this.candidatos(), ...(this.resultados() ?? []), ...(this.seleccionRemota() ? [this.seleccionRemota()!] : [])]

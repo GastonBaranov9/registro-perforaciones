@@ -48,7 +48,7 @@ export async function getReportePozo(
   const sql = `
     SELECT
       p.id_pozo, p.numero_perforacion,
-      prop.nombre AS propietario,
+      COALESCE(prop.nombre, p.propietario_provisional || ' (pendiente de vinculación)') AS propietario,
       prop.documento_rut AS propietario_documento_rut,
       prop.telefono AS propietario_telefono,
       prop.propietario_email AS propietario_email,
@@ -75,7 +75,7 @@ export async function getReportePozo(
       doc.nombre_archivo,
       p.foto_url 
     FROM public.pozo p
-      JOIN public.usuario prop ON prop.id_usuario = p.id_propietario
+      LEFT JOIN public.usuario prop ON prop.id_usuario = p.id_propietario
       JOIN public.usuario perf ON perf.id_usuario = p.id_perforador
       JOIN public.sitio s ON s.id_sitio = p.id_sitio
       LEFT JOIN public.documento doc ON doc.id_pozo = p.id_pozo

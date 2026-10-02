@@ -138,7 +138,7 @@ getFoto() {
     }
     this.generandoPdf.set(true);
     try {
-      await this.informeService.exportarInformePozo(pozo.id_propietario, this.id_pozo);
+      await this.informeService.exportarInformePozo(pozo.id_propietario ?? pozo.id_perforador, this.id_pozo);
     } catch {
       this.errorPdf.set('No se pudo generar o abrir el PDF. Verificá la conexión e intentá nuevamente.');
     } finally {

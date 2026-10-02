@@ -66,7 +66,7 @@ function poolCompleto(originales: Array<Record<string, unknown>>) {
     async query(sql: string, params?: unknown[]) {
       consultas.push(sql);
       if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: params?.[1] ?? 2 }] };
-      if (sql.includes("SELECT id_pozo,id_sitio")) return { rows: [{ id_pozo: 55, id_sitio: 4 }] };
+      if (sql.includes("SELECT id_pozo,id_sitio")) return { rows: [{ id_pozo: 55, id_sitio: 4, id_propietario: 2 }] };
       if (sql.includes("SELECT id_intervalo_litologico,desde_m")) return { rows: originales };
       if (sql.startsWith("UPDATE pozo SET")) return { rows: [{ id_pozo: 55, id_sitio: 4, id_propietario: 2, id_perforador: 8, profundidad_final_m: "10" }] };
       if (sql.includes("INSERT INTO intervalo_litologico")) {

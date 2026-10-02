@@ -8,4 +8,4 @@ label { display: grid; gap: var(--rsp-space-1); color: var(--rsp-text-muted); }
 @container (min-width: 56rem) { .fila { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 [data-capa] { scroll-margin-block: 1rem; }
-.agregar-litologia { min-height: 48px; width: 100%; margin-top: .75rem; }
+.seccion > button { min-height: 48px; width: 100%; margin-top: .75rem; }

@@ -139,9 +139,10 @@ async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number
        CASE WHEN $1='propietario' THEN u.propietario_email ELSE u.email::text END AS email,
        u.direccion,u.localidad,u.departamento,u.observaciones,ARRAY[$1::text] AS roles
      FROM usuario u
-     JOIN usuario_rol ur ON ur.id_usuario = u.id_usuario
-     JOIN rol r ON r.id_rol = ur.id_rol
-     WHERE u.activo = true AND r.nombre = $1
+     WHERE u.activo = true AND EXISTS (
+       SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol = ur.id_rol
+       WHERE ur.id_usuario = u.id_usuario AND r.nombre = $1
+     )
        AND ($2::integer IS NULL OR u.id_usuario = $2)
        AND ($3::integer IS NULL OR u.id_usuario = $3)
        AND ($4::text IS NULL OR lower(u.nombre) LIKE '%' || lower($4) || '%'

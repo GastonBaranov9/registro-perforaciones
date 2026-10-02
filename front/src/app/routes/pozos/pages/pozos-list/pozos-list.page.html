@@ -96,7 +96,7 @@
       <div class="pozo-summary">
         <dl class="data-row">
           <dt>Propietario</dt>
-          <dd>{{ pozo.propietario_nombre || 'No disponible' }}</dd>
+          <dd>{{ pozo.propietario_nombre || 'No disponible' }} @if (pozo.id_propietario === null) { <span> · Pendiente de vinculación</span> }</dd>
         </dl>
 
         <dl class="data-row">

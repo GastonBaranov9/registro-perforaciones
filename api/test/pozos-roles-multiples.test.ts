@@ -31,7 +31,7 @@ for (const roles of casos) {
     }) as typeof myPool.query;
     const app = Fastify();
     app.decorate('authenticate', async req => { (req as unknown as { user: { sub: number } }).user = { sub: 7 }; });
-    for (const hook of ['pozoIsFromUser', 'userIsAdminOrPerforador', 'userIsPropietarioOrPerforadorOrAdmin']) app.decorate(hook, async () => {});
+    for (const hook of ['userIsAdmin', 'pozoIsFromUser', 'userIsAdminOrPerforador', 'userIsPropietarioOrPerforadorOrAdmin']) app.decorate(hook, async () => {});
     try {
       await app.register(pozoRoutes);
       // URL deliberately differs: identity must come from authenticated sub.

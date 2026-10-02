@@ -24,7 +24,8 @@
         </dl>
         <dl class="data-row">
           <dt>Propietario</dt>
-          <dd>{{ this.pozo()?.propietario_nombre || 'Identificación no disponible' }}</dd>
+          <dd>{{ this.pozo()?.propietario_nombre || 'Identificación no disponible' }}
+          @if (pozo()?.id_propietario === null) { <span> · Pendiente de vinculación</span> }</dd>
         </dl>
         @if (this.pozo()?.propietario_documento_rut) { <dl class="data-row"><dt>Documento / RUT</dt><dd>{{ this.pozo()?.propietario_documento_rut }}</dd></dl> }
         @if (this.pozo()?.propietario_telefono) { <dl class="data-row"><dt>Teléfono</dt><dd>{{ this.pozo()?.propietario_telefono }}</dd></dl> }
@@ -39,7 +40,7 @@
         </dl>
         @if (this.pozo()?.sitio; as sitioActual) {
           <dl class="data-row"><dt>Padrón</dt><dd>{{ sitioActual.padron || 'No especificado' }}</dd></dl>
-          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario"
+          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario ?? this.pozo()!.id_perforador"
             [latitud]="sitioActual.latitud" [longitud]="sitioActual.longitud" />
         }
 
@@ -103,7 +104,7 @@
         </ion-item>
       </ion-list>
       <app-perfil-litologico
-        [idUsuario]="pozo()!.id_propietario"
+        [idUsuario]="pozo()!.id_propietario ?? pozo()!.id_perforador"
         [idPozo]="id_pozo"
         [versionPerfil]="versionPerfil()"
       />

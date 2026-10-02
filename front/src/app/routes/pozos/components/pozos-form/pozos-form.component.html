@@ -14,14 +14,22 @@
 
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" (personaSeleccionada)="seleccionarPropietario($event)"
-      [deshabilitado]="guardando() || !catalogosDisponibles()" />
+      [deshabilitado]="agregareditar() || guardando() || !catalogosDisponibles()" />
 
-    @if (propietarioSeleccionado()) {
+    @if (propietarioSeleccionado() && !agregareditar()) {
       <ion-button type="button" fill="clear" (click)="limpiarPropietario()" [disabled]="guardando()">CAMBIAR</ion-button>
-      <ion-button type="button" fill="clear" (click)="abrirEditorPropietario()" [disabled]="guardando()">EDITAR DATOS DEL PROPIETARIO</ion-button>
+      @if (administrarPropietarios()) { <ion-button type="button" fill="clear" (click)="abrirEditorPropietario()" [disabled]="guardando()">EDITAR DATOS DEL PROPIETARIO</ion-button> }
     }
 
+    @if (pozo().id_propietario === null) {
+      <p role="status">Propietario pendiente de vinculación: {{ pozo().propietario_provisional || 'indique el nombre' }}</p>
+    }
     @if (!agregareditar() && !propietarioSeleccionado()) {
+      <ion-item><ion-input label="Nombre de propietario provisional" labelPlacement="stacked" name="propietario_provisional" maxlength="160"
+        [(ngModel)]="pozo().propietario_provisional" (ngModelChange)="pozo().id_propietario=null; notificarCambio()" [disabled]="guardando()" /></ion-item>
+      <p>Se guardará con el pozo. Administración verificará la identidad y lo vinculará a un propietario real.</p>
+    }
+    @if (administrarPropietarios() && !agregareditar() && !propietarioSeleccionado()) {
       <fieldset class="propietario-nuevo">
         <legend>Registrar propietario</legend>
         <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" name="propietario_nuevo_nombre" maxlength="160"

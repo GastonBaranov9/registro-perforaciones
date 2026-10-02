@@ -1,3 +1,5 @@
+import { VincularPropietarioComponent } from '../../components/vincular-propietario/vincular-propietario.component';
+import { CandidatoPozo } from '../../../../shared/types/schemas';
 import { Component, ViewChild, inject, input, resource, signal } from '@angular/core';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { Router } from '@angular/router';
@@ -32,6 +34,7 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
 @Component({
   selector: 'app-pozo-edit',
   imports: [
+    VincularPropietarioComponent,
     IonButton,
     IonContent,
     IonSpinner,
@@ -73,7 +76,7 @@ export class PozoEditPage {
         this.aportes.getNivelesAporte(params.idPozo),
       ]);
       const [propietario, perforador] = await Promise.all([
-        personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
+        pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
         personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
       ]);
       const personas = {
@@ -92,6 +95,14 @@ export class PozoEditPage {
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
+  public vinculando = signal(false);
+  propietarioVinculado(persona: CandidatoPozo) {
+    const editor = this.pozoResource.value();
+    if (!editor) return;
+    editor.pozo.id_propietario = persona.id_usuario;
+    editor.pozo.propietario_provisional = null;
+    editor.personas.propietarios = [persona, ...editor.personas.propietarios.filter(p => p.id_usuario !== persona.id_usuario)];
+  }
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   public sitiosActualizados = signal<Sitio[] | null>(null);
   public profundidadBorrador = signal<number | undefined>(undefined);
@@ -111,7 +122,7 @@ export class PozoEditPage {
   }
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
-    if (this.disabled()) return;
+    if (this.disabled() || this.vinculando()) return;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
     if (errores.length) { this.errorMessage.set(errores.join(' ')); return; }
     try {
@@ -125,6 +136,7 @@ export class PozoEditPage {
     finally { this.disabled.set(false); }
   }
   recargar(): void {
+    if (this.disabled() || this.vinculando()) return;
     if ((this.borradorDirty() || this.formulario?.fotoVistaPrevia() || this.formulario?.eliminarFotoPendiente()) && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
     this.formulario?.cancelarCambioFoto();
     this.borradorDirty.set(false);
@@ -137,7 +149,7 @@ export class PozoEditPage {
     try {
       this.disabled.set(true);
       this.errorMessage.set('');
-      await this.fotoPozoService.eliminarFoto(pozo.id_propietario, this.id_pozo());
+      await this.fotoPozoService.eliminarFoto(pozo.id_propietario ?? pozo.id_perforador, this.id_pozo());
       this.pozoResource.reload();
     } catch (error: unknown) {
       this.errorMessage.set(mensajeHumano(error, 'No se pudo eliminar la fotografía.'));
@@ -158,7 +170,7 @@ export class PozoEditPage {
     });
   }
   async actualizarPropietario(evento: { id: number; body: PropietarioOperativoActualizarBody }) {
-    if (this.disabled()) return;
+    if (this.disabled() || this.vinculando()) return;
     try {
       this.disabled.set(true); this.errorMessage.set('');
       const actualizado = await this.propietariosOperativos.actualizar(evento.id, evento.body);

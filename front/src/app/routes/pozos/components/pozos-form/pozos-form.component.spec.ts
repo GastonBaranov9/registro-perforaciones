@@ -19,6 +19,7 @@ describe('PozosFormComponent', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(PozosFormComponent);
+    fixture.componentRef.setInput('administrarPropietarios', true);
     fixture.componentRef.setInput('pozo', { id_propietario: 1, id_sitio: 1, id_perforador: 1 });
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -58,6 +59,22 @@ describe('PozosFormComponent', () => {
     expect(component.datoTecnicoEditable('desarrollo')).toBeTrue();
     expect(component.datoTecnicoEditable('cementacion')).toBeFalse();
     expect(desarrollo.readonly).toBeFalse();
+  });
+
+  it('el perforador guarda solo un nombre provisional y no emite alta de usuario', () => {
+    fixture.componentRef.setInput('administrarPropietarios', false);
+    component.limpiarPropietario();
+    component.pozo().propietario_provisional = 'Nombre de campo';
+    fixture.detectChanges();
+    const crear = spyOn(component.crearPropietario, 'emit');
+    component.propietarioNuevo.nombre = 'Intento'; component.registrarPropietario();
+    expect(crear).not.toHaveBeenCalled();
+    expect(component.personasValidas()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('pendiente de vinculación');
+    expect(fixture.nativeElement.querySelector('input[name="propietario_nuevo_documento"]')).toBeNull();
+    component.seleccionarPropietario(propietarioA);
+    expect(component.pozo().propietario_provisional).toBeNull();
+    expect(component.pozo().id_propietario).toBe(1);
   });
 
   it('oculta el alta mientras hay propietario y vuelve a mostrarla al limpiar', () => {

@@ -53,6 +53,7 @@ export class PozosFormComponent implements OnDestroy {
   public catalogosDisponibles = input(false);
   public perforadorBloqueado = input(false);
   public administrarNumeracion = input(false);
+  public administrarPropietarios = input(false);
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearPropietario = output<PropietarioOperativoCrearBody>();
@@ -125,6 +126,7 @@ export class PozosFormComponent implements OnDestroy {
   }
 
   registrarPropietario() {
+    if (!this.administrarPropietarios() || this.guardando()) return;
     const nombre = this.propietarioNuevo.nombre.trim();
     if (!nombre) return;
     this.propietarioSeleccionadoDatos.set(null);
@@ -135,6 +137,7 @@ export class PozosFormComponent implements OnDestroy {
 
   seleccionarPropietario(persona: CandidatoPozo) {
     this.pozo().id_propietario = persona.id_usuario;
+    this.pozo().propietario_provisional = null;
     this.propietarioSeleccionadoDatos.set(persona);
     this.propietarioEdicion.set(null);
     this.errorMessage.set('');
@@ -175,7 +178,7 @@ export class PozosFormComponent implements OnDestroy {
   cerrarEditorPropietario() { this.propietarioEdicion.set(null); this.errorMessage.set(''); }
 
   limpiarPropietario() {
-    this.pozo().id_propietario = 0;
+    this.pozo().id_propietario = null;
     this.propietarioSeleccionadoDatos.set(null);
     this.propietarioEdicion.set(null);
     this.errorMessage.set('');
@@ -225,7 +228,7 @@ export class PozosFormComponent implements OnDestroy {
     this.quitarFotoSeleccionada();
   }
   personasValidas() {
-    return Number(this.pozo().id_propietario) > 0 && Number(this.pozo().id_perforador) > 0;
+    return (Number(this.pozo().id_propietario) > 0 || (this.pozo().id_propietario === null && !!this.pozo().propietario_provisional?.trim())) && Number(this.pozo().id_perforador) > 0;
   }
 
 getFoto() {

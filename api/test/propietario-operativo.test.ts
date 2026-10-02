@@ -102,7 +102,7 @@ test("candidato propietario busca por nombre documento y contacto y devuelve ema
 test("un usuario sin rol autorizado recibe 403 antes de crear propietario", async () => {
   const app=Fastify();
   const permitir=async()=>{};const denegar=async()=>{throw new err.T05SinPermiso();};
-  app.decorate("authenticate",permitir);app.decorate("userIsAdminOrPerforador",denegar);
+  app.decorate("userIsAdmin",denegar);app.decorate("authenticate",permitir);app.decorate("userIsAdminOrPerforador",denegar);
   app.decorate("pozoIsFromUser",permitir);app.decorate("userIsPropietarioOrPerforadorOrAdmin",permitir);
   await app.register(pozoRoutes);
   const respuesta=await app.inject({method:"POST",url:"/pozos/propietarios",payload:{nombre:"No autorizado",email:"no@example.test",password:"secreto",roles:[]}});

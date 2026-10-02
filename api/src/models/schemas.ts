@@ -130,7 +130,8 @@ export const NumeroPerforacion = Type.Integer({ minimum: 1, maximum: 2147483647 
 export const Pozo = Type.Object({
   numero_perforacion: Type.Optional(Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1, maximum: 2147483647 })),
   id_pozo: Type.Integer(),
-  id_propietario: Type.Integer(),
+  id_propietario: Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1 }),
+  propietario_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160 }), Type.Null()])),
   id_sitio: Type.Integer(),
   empresa: Type.Optional(Type.String()),
   id_perforador: Type.Integer(),

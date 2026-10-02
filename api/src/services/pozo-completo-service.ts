@@ -1,3 +1,4 @@
+import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
 import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -33,6 +34,7 @@ type FiltroOriginal = { id_intervalo_filtro: number; ranura_mm: 0.5 | 0.75 | 1 |
 type FiltroEntrada = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero"; id_intervalo_filtro?: number; ranura_mm?: 0.5 | 0.75 | 1 | null };
 
 export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
+  normalizarPropiedad(data.pozo);
   const errores = validarDatosTecnicosPozo({
     profundidad_final_m: data.pozo.profundidad_final_m,
     intervalos_litologicos: data.intervalos_litologicos,
@@ -107,7 +109,7 @@ export async function crearPozoCompleto(
       validarNumeroPerforacion(data.pozo.numero_perforacion);
       await exigirAdministracionNumeracion(creadoPor, client);
     }
-    await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
+    await validarPropiedad(data.pozo, client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
     const sitio = await insertarSitio(client, data.sitio_nuevo);
     const pozo = await insertarPozo(client, creadoPor, data, sitio.id_sitio);
@@ -151,8 +153,8 @@ export async function crearPozoCompleto(
       await fs.writeFile(archivoTemporal, foto.buffer, { flag: "wx" });
       await fs.rename(archivoTemporal, archivoFinal);
       archivoTemporal = null;
-      await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, `/usuarios/${data.pozo.id_propietario}/pozos/${idPozo}/foto`]);
-      pozo.foto_url = `/usuarios/${data.pozo.id_propietario}/pozos/${idPozo}/foto`;
+      await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`]);
+      pozo.foto_url = `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`;
     }
 
     await client.query("COMMIT");
@@ -187,13 +189,16 @@ export async function actualizarPozoCompleto(
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
-    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; numero_perforacion: number | null }>(
-      "SELECT id_pozo,id_sitio,numero_perforacion FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; id_propietario: number | null; numero_perforacion: number | null }>(
+      "SELECT id_pozo,id_sitio,id_propietario,numero_perforacion FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
     if (!bloqueado[0]) throw new err.T05PozoNoEncontrado();
     if (Object.hasOwn(data.pozo, "numero_perforacion") && data.pozo.numero_perforacion !== bloqueado[0].numero_perforacion)
       throw new err.T05DatosIncorrectos("La numeración se administra por separado; no se puede cambiar desde la edición habitual.");
-    await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
+    const provisional = await validarPropiedad(data.pozo, client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
+
+    if ((bloqueado[0].id_propietario == null ? null : Number(bloqueado[0].id_propietario)) !== data.pozo.id_propietario)
+      throw new err.T05DatosIncorrectos("La vinculación del propietario requiere la operación administrativa específica. Recargue si cambió.");
 
     const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
       "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
@@ -221,15 +226,15 @@ export async function actualizarPozoCompleto(
        fecha_inicio=$6, fecha_fin=$7, profundidad_final_m=$8,
        nivel_estatico_m=$9, nivel_dinamico_m=$10, caudal_estimado_lh=$11,
        metodo_sedimentario=COALESCE($12::text,metodo_sedimentario), metodo_rocoso=COALESCE($13::text,metodo_rocoso),
-       cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16
+       cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16, propietario_provisional=$17
        WHERE id_pozo=$1
-       RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+       RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
         fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
         caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
         foto_url, fecha_creado`,
       [idPozo,p.id_propietario,Number(bloqueado[0].id_sitio),p.empresa??null,p.id_perforador,p.fecha_inicio??null,p.fecha_fin??null,
        p.profundidad_final_m??null,p.nivel_estatico_m??null,p.nivel_dinamico_m??null,p.caudal_estimado_lh??null,
-       p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null],
+       p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null,provisional],
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
 
@@ -249,11 +254,11 @@ export async function actualizarPozoCompleto(
         await fs.writeFile(temporalNuevo, foto.buffer, { flag: "wx" });
         await fs.rename(temporalNuevo, nuevo);
         temporalNuevo = null;
-        pozo.foto_url = `/usuarios/${p.id_propietario}/pozos/${idPozo}/foto`;
+        pozo.foto_url = `/usuarios/${p.id_propietario ?? p.id_perforador}/pozos/${idPozo}/foto`;
       } else pozo.foto_url = undefined;
       await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, pozo.foto_url ?? null]);
     } else if (pozo.foto_url) {
-      pozo.foto_url = `/usuarios/${p.id_propietario}/pozos/${idPozo}/foto`;
+      pozo.foto_url = `/usuarios/${p.id_propietario ?? p.id_perforador}/pozos/${idPozo}/foto`;
       await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, pozo.foto_url]);
     }
     const sitio = await obtenerSitioTransaccional(client, Number(bloqueado[0].id_sitio));
@@ -435,9 +440,9 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
     `INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio, fecha_fin,
       profundidad_final_m, nivel_estatico_m, nivel_dinamico_m,
-      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento, numero_perforacion
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-    RETURNING id_pozo, numero_perforacion, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento, numero_perforacion, propietario_provisional
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+    RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
       fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
       caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
       foto_url, fecha_creado`,
@@ -445,7 +450,7 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
       p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.nivel_estatico_m ?? null,
       p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
       estandar.metodo_sedimentario, estandar.metodo_rocoso, estandar.cementacion,
-      estandar.desarrollo, p.revestimiento ?? null, p.numero_perforacion ?? null],
+      estandar.desarrollo, p.revestimiento ?? null, p.numero_perforacion ?? null, normalizarPropiedad(p)],
   );
   return numerizarPozo(rows[0]);
 }
@@ -457,7 +462,7 @@ function decodificarFoto(foto: NonNullable<PozoCompletoBody["foto"]>) {
 function numeroOpcional(valor: unknown): number | undefined { return valor == null ? undefined : Number(valor); }
 function numerizarPozo(fila: Record<string,unknown>):Pozo{return{
   ...fila,
-  id_pozo:Number(fila.id_pozo),id_propietario:Number(fila.id_propietario),id_sitio:Number(fila.id_sitio),id_perforador:Number(fila.id_perforador),
+  id_pozo:Number(fila.id_pozo),id_propietario:fila.id_propietario == null ? null : Number(fila.id_propietario),id_sitio:Number(fila.id_sitio),id_perforador:Number(fila.id_perforador),
   creado_por:fila.creado_por==null?undefined:Number(fila.creado_por),
   profundidad_final_m:numeroOpcional(fila.profundidad_final_m),nivel_estatico_m:numeroOpcional(fila.nivel_estatico_m),
   nivel_dinamico_m:numeroOpcional(fila.nivel_dinamico_m),caudal_estimado_lh:numeroOpcional(fila.caudal_estimado_lh),

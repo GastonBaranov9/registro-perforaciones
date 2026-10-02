@@ -15,6 +15,43 @@ describe('DatosTecnicosBorradorComponent', () => {
     fixture.detectChanges();
   });
 
+  for (const grupo of ['intervalosDiametro', 'intervalosFiltro', 'nivelesAporte'] as const) {
+    for (const reduced of [false, true]) {
+      it('incorporación sucesiva preserva orden, datos, botón y foco: ' + grupo + ', reduced=' + reduced, async () => {
+        const agregar = () => grupo === 'intervalosDiametro' ? component.agregarDiametro() : grupo === 'intervalosFiltro' ? component.agregarFiltro() : component.agregarAporte();
+        const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
+        const focus = spyOn(HTMLInputElement.prototype, 'focus');
+        spyOn(window, 'matchMedia').and.returnValue({ matches: reduced } as MediaQueryList);
+        agregar();
+        const anterior = component.datos()[grupo][0];
+        if ('hasta_m' in anterior.dato) anterior.dato.hasta_m = 10;
+        else anterior.dato.profundidad_m = 20;
+        component.notificarEdicion(); fixture.detectChanges(); await fixture.whenStable();
+        const copia = structuredClone(anterior.dato);
+        const filaAnterior = fixture.nativeElement.querySelector('[data-capa]');
+        for (let i = 1; i <= 2; i++) {
+          agregar(); fixture.detectChanges(); await fixture.whenStable();
+          const filas = fixture.nativeElement.querySelectorAll('[data-capa]') as NodeListOf<HTMLElement>;
+          expect(filas.length).toBe(i + 1);
+          expect(filas[0]).toBe(filaAnterior);
+          expect(component.datos()[grupo][0]).toBe(anterior);
+          expect(anterior.dato).toEqual(copia);
+          const nueva = filas[i];
+          expect(nueva.nextElementSibling?.tagName).toBe('BUTTON');
+          expect(scroll.calls.mostRecent().object).toBe(nueva);
+          expect(scroll.calls.mostRecent().args[0]).toEqual({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+          expect(focus.calls.mostRecent().object).toBe(nueva.querySelector('input')!);
+          expect(focus.calls.mostRecent().args[0]).toEqual({ preventScroll: true });
+          const dato = component.datos()[grupo][i].dato;
+          if ('hasta_m' in dato) dato.hasta_m = 10 + i * 5;
+          else dato.profundidad_m = i;
+          component.notificarEdicion(); fixture.detectChanges();
+          expect(component.datos()[grupo][0]).toBe(anterior);
+        }
+      });
+    }
+  }
+
   it('muestra las etiquetas técnicas con codificación UTF-8 correcta', () => {
     component.agregarDiametro();
     fixture.detectChanges();

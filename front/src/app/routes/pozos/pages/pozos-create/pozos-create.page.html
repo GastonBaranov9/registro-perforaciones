@@ -11,6 +11,7 @@
         @if (catalogos(); as personas) {
         <app-pozos-form
           [pozo]="nuevoPozo()"
+          [administrarPropietarios]="authService.tieneRol('administracion')"
           [administrarNumeracion]="authService.tieneRol('administracion')"
           [propietarios]="personas.propietarios" [perforadores]="personas.perforadores" [catalogosDisponibles]="true"
           [sitioNuevo]="sitioNuevo()"

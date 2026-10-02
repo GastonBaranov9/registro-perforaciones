@@ -27,7 +27,7 @@ test("valida el ID antes de UPDATE y DELETE", async () => {
     async query(sql: string) {
       consultas.push(sql);
       if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 2 }] };
-      if (sql.includes("SELECT id_pozo,id_sitio")) return { rows: [{ id_pozo: 55, id_sitio: 4 }] };
+      if (sql.includes("SELECT id_pozo,id_sitio")) return { rows: [{ id_pozo: 55, id_sitio: 4, id_propietario: 2 }] };
       if (sql.includes("SELECT id_intervalo_litologico,desde_m")) return { rows: original };
       return { rows: [] };
     },
