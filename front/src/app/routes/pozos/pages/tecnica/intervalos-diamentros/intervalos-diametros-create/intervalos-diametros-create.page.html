@@ -1,4 +1,5 @@
 <ion-content class="ion-padding">
+  @if (!permisosTecnicos.puedeEditar()) { <p role="status">{{ permisosTecnicos.mensaje }}</p> }
     <ion-toolbar>
   <ion-buttons slot="start" color="primary">
      <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
@@ -8,10 +9,12 @@
   <ion-card>
     <ion-card-content>
       <h2>Crear un nuevo diametro de perforación</h2>
-      <app-intervalo-diam-form
+      @if (permisosTecnicos.puedeEditar()) {
+<app-intervalo-diam-form
         [intervaloDiametro]="intervaloDiametro()"
         (saved)="guardarIntDiametro($event)"
       ></app-intervalo-diam-form>
+}
 
       @if (errorMessage()) {
       <p class="error">

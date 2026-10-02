@@ -44,6 +44,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(201).send(nuevoNivelAporte);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );
@@ -89,6 +90,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(200).send(pozoEditado);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );
@@ -131,6 +133,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(204).send(null);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );

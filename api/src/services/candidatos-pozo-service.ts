@@ -1,3 +1,4 @@
+import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import type { CandidatoPozo, PropietarioOperativo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody } from "../models/schemas.ts";
@@ -50,7 +51,7 @@ export async function crearPropietarioOperativo(
   const normalizado = normalizarPropietario(data, true);
   const client = await db.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const { rows: roles } = await client.query<{ id_rol: number }>(
       "SELECT id_rol FROM rol WHERE nombre=$1 FOR SHARE",
       ["propietario"],
@@ -101,36 +102,38 @@ export async function actualizarPropietarioOperativo(
   data: PropietarioOperativoActualizarBody,
   db: Consultable = myPool,
 ): Promise<PropietarioOperativo | null> {
-  const normalizado = normalizarPropietario(data, false);
-  const campos = ["nombre", "documento_rut", "telefono", "email", "direccion", "localidad", "departamento", "observaciones"] as const;
-  const presente = (campo: typeof campos[number]) => Object.prototype.hasOwnProperty.call(data, campo);
-  const { rows } = await db.query(
-    `UPDATE usuario u SET
-       nombre=CASE WHEN $2 THEN $3 ELSE u.nombre END,
-       documento_rut=CASE WHEN $4 THEN $5 ELSE u.documento_rut END,
-       telefono=CASE WHEN $6 THEN $7 ELSE u.telefono END,
-       propietario_email=CASE WHEN $8 THEN $9 ELSE u.propietario_email END,
-       direccion=CASE WHEN $10 THEN $11 ELSE u.direccion END,
-       localidad=CASE WHEN $12 THEN $13 ELSE u.localidad END,
-       departamento=CASE WHEN $14 THEN $15 ELSE u.departamento END,
-       observaciones=CASE WHEN $16 THEN $17 ELSE u.observaciones END
-     WHERE u.id_usuario=$1 AND u.activo=TRUE AND EXISTS (
-       SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol=ur.id_rol
-       WHERE ur.id_usuario=u.id_usuario AND r.nombre='propietario'
-     )
-     RETURNING u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.propietario_email AS email,
-       u.direccion,u.localidad,u.departamento,u.observaciones`,
-    [idUsuario,
-      presente("nombre"), normalizado.nombre,
-      presente("documento_rut"), normalizado.documento_rut,
-      presente("telefono"), normalizado.telefono,
-      presente("email"), normalizado.email,
-      presente("direccion"), normalizado.direccion,
-      presente("localidad"), normalizado.localidad,
-      presente("departamento"), normalizado.departamento,
-      presente("observaciones"), normalizado.observaciones],
-  );
-  return rows[0] ? propietarioDesdeFila(rows[0] as Record<string, unknown>) : null;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const normalizado = normalizarPropietario(data, false);
+    const campos = ["nombre", "documento_rut", "telefono", "email", "direccion", "localidad", "departamento", "observaciones"] as const;
+    const presente = (campo: typeof campos[number]) => Object.prototype.hasOwnProperty.call(data, campo);
+    const { rows } = await dbEscritura.query(
+      `UPDATE usuario u SET
+         nombre=CASE WHEN $2 THEN $3 ELSE u.nombre END,
+         documento_rut=CASE WHEN $4 THEN $5 ELSE u.documento_rut END,
+         telefono=CASE WHEN $6 THEN $7 ELSE u.telefono END,
+         propietario_email=CASE WHEN $8 THEN $9 ELSE u.propietario_email END,
+         direccion=CASE WHEN $10 THEN $11 ELSE u.direccion END,
+         localidad=CASE WHEN $12 THEN $13 ELSE u.localidad END,
+         departamento=CASE WHEN $14 THEN $15 ELSE u.departamento END,
+         observaciones=CASE WHEN $16 THEN $17 ELSE u.observaciones END
+       WHERE u.id_usuario=$1 AND u.activo=TRUE AND EXISTS (
+         SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol=ur.id_rol
+         WHERE ur.id_usuario=u.id_usuario AND r.nombre='propietario'
+       )
+       RETURNING u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.propietario_email AS email,
+         u.direccion,u.localidad,u.departamento,u.observaciones`,
+      [idUsuario,
+        presente("nombre"), normalizado.nombre,
+        presente("documento_rut"), normalizado.documento_rut,
+        presente("telefono"), normalizado.telefono,
+        presente("email"), normalizado.email,
+        presente("direccion"), normalizado.direccion,
+        presente("localidad"), normalizado.localidad,
+        presente("departamento"), normalizado.departamento,
+        presente("observaciones"), normalizado.observaciones],
+    );
+    return rows[0] ? propietarioDesdeFila(rows[0] as Record<string, unknown>) : null;
+  }, db, true);
 }
 
 async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number, busqueda?: string, limite = 20, idExacto?: number): Promise<CandidatoPozo[]> {

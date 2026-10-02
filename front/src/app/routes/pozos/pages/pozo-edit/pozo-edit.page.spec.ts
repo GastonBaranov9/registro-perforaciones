@@ -20,11 +20,24 @@ describe('PozoEditPage', () => {
     fixture = TestBed.createComponent(PozoEditPage);
     fixture.componentRef.setInput('id_pozo', 1);
     component = fixture.componentInstance;
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
     fixture.detectChanges();
   });
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('rechaza un guardado al vencer el plazo sin llamar a la API ni perder borrador', async () => {
+    (component.authService.tieneRol as jasmine.Spy).and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    spyOn(component.pozoResource, 'value').and.returnValue({ pozo: { creado_por: 7, fecha_creado: '2000-01-01T00:00:00Z' } } as never);
+    const editar = spyOn(component.pozoEditService, 'editPozoCompleto');
+    component.borradorDirty.set(true);
+    await component.handleEdit({ pozo: { id_propietario: null, propietario_provisional: 'Provisional', id_perforador: 7, id_sitio: 4 }, foto: null, fotoAccion: 'conservar' });
+    expect(editar).not.toHaveBeenCalled();
+    expect(component.errorMessage()).toContain('Solo lectura');
+    expect(component.borradorDirty()).toBeTrue();
   });
 
   it('vincular conserva el borrador técnico y la foto pendiente sin recargar', () => {

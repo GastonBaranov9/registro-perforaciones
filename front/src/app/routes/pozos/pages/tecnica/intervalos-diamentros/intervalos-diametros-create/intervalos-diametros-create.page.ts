@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, OnInit, signal } from '@angular/core';
 import { IntervaloDiametroCreateService } from '../../../../../../shared/services/intervalo-diametro-service/intervalo-diametro-create/intervalo-diametro-create.service';
 import { Router } from '@angular/router';
@@ -9,12 +10,14 @@ import { PozosEditService } from '../../../../../../shared/services/pozos-edit.s
 import { sugerirInicioSiguienteIntervalo } from '../../../../../../shared/utils/datos-tecnicos-borrador';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-diametros-create',
   imports: [IonContent, IonCard, IonCardContent, IntervaloDiamFormComponent, IonToolbar, IonButtons, IonBackButton],
   templateUrl: './intervalos-diametros-create.page.html',
   styleUrl: './intervalos-diametros-create.page.css',
 })
 export class IntervalosDiametrosCreatePage implements OnInit {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public createIntDiamService: IntervaloDiametroCreateService = inject(
     IntervaloDiametroCreateService
   );
@@ -43,6 +46,7 @@ export class IntervalosDiametrosCreatePage implements OnInit {
   }
 
   async guardarIntDiametro(body: IntervaloDiametroPerforacionBody) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     const id_pozo = this.id_pozo();
 
     try {

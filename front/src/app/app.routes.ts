@@ -1,3 +1,4 @@
+import { edicionPozoGuard } from './core/guards/edicion-pozo.guard';
 import { Routes } from '@angular/router';
 import { HomePage } from './routes/home/home.page';
 import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
@@ -53,7 +54,7 @@ export const routes: Routes = [
   {
     path: 'pozos/:id_pozo/aportes-create',
 
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('./routes/pozos/pages/tecnica/aportes/aportes-create/aportes-create.page'))
         .AportesCreatePage,
@@ -62,7 +63,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/aportes-edit/:id_nivel_aporte',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('./routes/pozos/pages/tecnica/aportes/aportes-edit/aportes-edit.page'))
         .AportesEditPage,
@@ -80,7 +81,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-diametros-create',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -92,7 +93,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-diametros-edit/:id_intervalo_diametro',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -116,7 +117,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-create',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -128,7 +129,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-edit/:id_intervalo_litologico',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -158,7 +159,7 @@ export const routes: Routes = [
   },
   {
     path: 'pozo-edit/:id_pozo',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('../app/routes/pozos/pages/pozo-edit/pozo-edit.page')).PozoEditPage,
     title: 'pozo-edit',

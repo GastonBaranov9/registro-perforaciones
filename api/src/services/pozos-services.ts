@@ -1,3 +1,4 @@
+import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type { Pozo, PozoDetalle, PozoListado, Estado, NuevoPozo } from "../models/schemas.ts";
 import { datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
@@ -12,48 +13,50 @@ export async function createPozo(
   id_usuario: number,
   data: NuevoPozo
 ): Promise<Pozo> {
-  if (data.numero_perforacion != null) throw new err.T05DatosIncorrectos("Use la creación completa para asignar un número manual.");
-  let estandar: ReturnType<typeof datosTecnicosParaCreacion>;
-  try { estandar = datosTecnicosParaCreacion(data); }
-  catch (error) { throw new err.T05DatosIncorrectos(error instanceof Error ? error.message : "Los datos técnicos no son válidos."); }
-  const sql = `
-    INSERT INTO public.pozo (
-      id_propietario, id_sitio, empresa, id_perforador, creado_por,
-      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario,
-      pre_filtro, nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh,
-      metodo_sedimentario, metodo_rocoso, cementacion, desarrollo
-    )
-    VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
-    )
-    RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-      metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
-  `;
+  return conEscrituraSesion(async (dbEscritura) => {
+    if (data.numero_perforacion != null) throw new err.T05DatosIncorrectos("Use la creación completa para asignar un número manual.");
+    let estandar: ReturnType<typeof datosTecnicosParaCreacion>;
+    try { estandar = datosTecnicosParaCreacion(data); }
+    catch (error) { throw new err.T05DatosIncorrectos(error instanceof Error ? error.message : "Los datos técnicos no son válidos."); }
+    const sql = `
+      INSERT INTO public.pozo (
+        id_propietario, id_sitio, empresa, id_perforador, creado_por,
+        fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario,
+        pre_filtro, nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh,
+        metodo_sedimentario, metodo_rocoso, cementacion, desarrollo
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+      )
+      RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+        fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+        nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+        metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
+    `;
 
-  const vals = [
-    data.id_propietario,
-    data.id_sitio,
-    data.empresa,
-    data.id_perforador,
-    id_usuario,
-    data.fecha_inicio ?? null,
-    data.fecha_fin ?? null,
-    data.profundidad_final_m ?? null,
-    data.sello_sanitario ?? null,
-    data.pre_filtro ?? null,
-    data.nivel_estatico_m ?? null,
-    data.nivel_dinamico_m ?? null,
-    data.caudal_estimado_lh ?? null,
-    estandar.metodo_sedimentario,
-    estandar.metodo_rocoso,
-    estandar.cementacion,
-    estandar.desarrollo,
-  ];
+    const vals = [
+      data.id_propietario,
+      data.id_sitio,
+      data.empresa,
+      data.id_perforador,
+      id_usuario,
+      data.fecha_inicio ?? null,
+      data.fecha_fin ?? null,
+      data.profundidad_final_m ?? null,
+      data.sello_sanitario ?? null,
+      data.pre_filtro ?? null,
+      data.nivel_estatico_m ?? null,
+      data.nivel_dinamico_m ?? null,
+      data.caudal_estimado_lh ?? null,
+      estandar.metodo_sedimentario,
+      estandar.metodo_rocoso,
+      estandar.cementacion,
+      estandar.desarrollo,
+    ];
 
-  const { rows } = await myPool.query(sql, vals);
-  return { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo;
+    const { rows } = await dbEscritura.query(sql, vals);
+    return { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo;
+  }, myPool, false);
 }
 
 // Editar pozo
@@ -62,59 +65,61 @@ export async function updatePozo(
   data: PozoUpdate,
   db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<Pozo | void> {
-  if (Object.hasOwn(data, "numero_perforacion")) {
-    const actual = await db.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1", [id_pozo]);
-    if (actual.rows[0] && data.numero_perforacion !== actual.rows[0].numero_perforacion)
-      throw new err.T05DatosIncorrectos("La numeración no se puede modificar desde la edición habitual.");
-  }
-  const sql = `    UPDATE public.pozo
-  SET
-    id_propietario      = COALESCE($2::integer,  id_propietario),
-    id_sitio            = id_sitio,
-    empresa             = COALESCE($3::text,     empresa),
-    id_perforador       = COALESCE($4::integer,  id_perforador),
-    fecha_inicio        = COALESCE($5::date,     fecha_inicio),
-    fecha_fin           = COALESCE($6::date,     fecha_fin),
-    profundidad_final_m = COALESCE($7::numeric,  profundidad_final_m),
-    sello_sanitario     = COALESCE($8::boolean,  sello_sanitario),
-    pre_filtro          = COALESCE($9::text,    pre_filtro),
-    nivel_estatico_m    = COALESCE($10::numeric, nivel_estatico_m),
-    nivel_dinamico_m    = COALESCE($11::numeric, nivel_dinamico_m),
-    caudal_estimado_lh  = COALESCE($12::numeric, caudal_estimado_lh),
-    metodo_sedimentario = COALESCE($13::text,    metodo_sedimentario),
-    metodo_rocoso       = COALESCE($14::text,    metodo_rocoso),
-    cementacion         = COALESCE($15::text,    cementacion),
-    desarrollo          = COALESCE($16::text,    desarrollo),
-    revestimiento       = COALESCE($17::text,    revestimiento)
-  WHERE id_pozo = $1 AND id_propietario IS NOT DISTINCT FROM $2::bigint
-  RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-    fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-    nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-    metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
-  `;
+  return conEscrituraSesion(async (dbEscritura) => {
+    if (Object.hasOwn(data, "numero_perforacion")) {
+      const actual = await dbEscritura.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1", [id_pozo]);
+      if (actual.rows[0] && data.numero_perforacion !== actual.rows[0].numero_perforacion)
+        throw new err.T05DatosIncorrectos("La numeración no se puede modificar desde la edición habitual.");
+    }
+    const sql = `    UPDATE public.pozo
+    SET
+      id_propietario      = COALESCE($2::integer,  id_propietario),
+      id_sitio            = id_sitio,
+      empresa             = COALESCE($3::text,     empresa),
+      id_perforador       = COALESCE($4::integer,  id_perforador),
+      fecha_inicio        = COALESCE($5::date,     fecha_inicio),
+      fecha_fin           = COALESCE($6::date,     fecha_fin),
+      profundidad_final_m = COALESCE($7::numeric,  profundidad_final_m),
+      sello_sanitario     = COALESCE($8::boolean,  sello_sanitario),
+      pre_filtro          = COALESCE($9::text,    pre_filtro),
+      nivel_estatico_m    = COALESCE($10::numeric, nivel_estatico_m),
+      nivel_dinamico_m    = COALESCE($11::numeric, nivel_dinamico_m),
+      caudal_estimado_lh  = COALESCE($12::numeric, caudal_estimado_lh),
+      metodo_sedimentario = COALESCE($13::text,    metodo_sedimentario),
+      metodo_rocoso       = COALESCE($14::text,    metodo_rocoso),
+      cementacion         = COALESCE($15::text,    cementacion),
+      desarrollo          = COALESCE($16::text,    desarrollo),
+      revestimiento       = COALESCE($17::text,    revestimiento)
+    WHERE id_pozo = $1 AND id_propietario IS NOT DISTINCT FROM $2::bigint
+    RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+      metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
+    `;
 
-  const vals = [
-    id_pozo,
-    data.id_propietario ?? null,
-    data.empresa ?? null,
-    data.id_perforador ?? null,
-    data.fecha_inicio ?? null,
-    data.fecha_fin ?? null,
-    data.profundidad_final_m ?? null,
-    data.sello_sanitario ?? null,
-    data.pre_filtro ?? null,
-    data.nivel_estatico_m ?? null,
-    data.nivel_dinamico_m ?? null,
-    data.caudal_estimado_lh ?? null,
-    data.metodo_sedimentario ?? null,
-    data.metodo_rocoso ?? null,
-    data.cementacion ?? null,
-    data.desarrollo ?? null,
-    data.revestimiento ?? null,
-  ];
+    const vals = [
+      id_pozo,
+      data.id_propietario ?? null,
+      data.empresa ?? null,
+      data.id_perforador ?? null,
+      data.fecha_inicio ?? null,
+      data.fecha_fin ?? null,
+      data.profundidad_final_m ?? null,
+      data.sello_sanitario ?? null,
+      data.pre_filtro ?? null,
+      data.nivel_estatico_m ?? null,
+      data.nivel_dinamico_m ?? null,
+      data.caudal_estimado_lh ?? null,
+      data.metodo_sedimentario ?? null,
+      data.metodo_rocoso ?? null,
+      data.cementacion ?? null,
+      data.desarrollo ?? null,
+      data.revestimiento ?? null,
+    ];
 
-  const { rows } = await db.query(sql, vals);
-  return rows[0] ? { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo : undefined;
+    const { rows } = await dbEscritura.query(sql, vals);
+    return rows[0] ? { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo : undefined;
+  }, db, false);
 }
 
 // Obtener un pozo específico
@@ -156,12 +161,14 @@ export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> 
 function numeroOpcional(valor:unknown):number|undefined{return valor==null?undefined:Number(valor);}
 
 export async function deletePozo(id_pozo: number): Promise<boolean> {
-  const result = await myPool.query(
-    "DELETE FROM public.pozo WHERE id_pozo = $1",
-    [id_pozo]
-  );
+  return conEscrituraSesion(async (dbEscritura) => {
+    const result = await dbEscritura.query(
+      "DELETE FROM public.pozo WHERE id_pozo = $1",
+      [id_pozo]
+    );
 
-  return (result.rowCount ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
+  }, myPool, false);
 }
 
 export async function updatePozoFoto(
@@ -169,20 +176,22 @@ export async function updatePozoFoto(
   fotoUrl: string,
   db: Pick<typeof myPool,"query"> = myPool,
 ): Promise<Pozo | null> {
-  const sql = `
-    UPDATE public.pozo
-    SET foto_url = $2
-    WHERE id_pozo = $1
-    RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
-      fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
-      nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
-      metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
-  `;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const sql = `
+      UPDATE public.pozo
+      SET foto_url = $2
+      WHERE id_pozo = $1
+      RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por,
+        fecha_inicio, fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro,
+        nivel_estatico_m, nivel_dinamico_m, caudal_estimado_lh, metodo_sedimentario,
+        metodo_rocoso, cementacion, desarrollo, revestimiento, foto_url, fecha_creado;
+    `;
 
-  const vals = [id_pozo, fotoUrl];
+    const vals = [id_pozo, fotoUrl];
 
-  const { rows } = await db.query(sql, vals);
-  return rows[0] ? { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo : null;
+    const { rows } = await dbEscritura.query(sql, vals);
+    return rows[0] ? { ...rows[0], id_propietario: rows[0].id_propietario == null ? null : Number(rows[0].id_propietario) } as Pozo : null;
+  }, db, false);
 }
 // Identificación de la lista en una sola consulta, conservando su alcance por rol.
 const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.numero_perforacion, p.propietario_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,

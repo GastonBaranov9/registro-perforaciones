@@ -1,8 +1,9 @@
 <ion-content>
+  @if (!permisosTecnicos.puedeEditar()) { <p role="status">{{ permisosTecnicos.mensaje }}</p> }
 
   <ion-toolbar>
   <ion-buttons slot="end" color="primary">
-  <ion-button (click)="irACrear()" color="primary" fill="solid"> Crear Intervalo Diametro </ion-button>
+  <ion-button [disabled]="!permisosTecnicos.puedeEditar()" (click)="irACrear()" color="primary" fill="solid"> Crear Intervalo Diametro </ion-button>
  </ion-buttons>
   <ion-buttons slot="start" color="primary">
     <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
@@ -38,9 +39,9 @@
         <dl class="data-row"><dt>Material de tubería</dt><dd>{{ intervaloDiam.material_tuberia || 'No especificado' }}</dd></dl>
       </ion-list>
 
-      <ion-button fill="outline" (click)="irAEditar(intervaloDiam)"> Editar </ion-button>
+      <ion-button [disabled]="!permisosTecnicos.puedeEditar()" fill="outline" (click)="irAEditar(intervaloDiam)"> Editar </ion-button>
 
-      <ion-button fill="outline" color="danger" (click)="borrarIntervaloDiam(intervaloDiam)"> Borrar </ion-button>
+      <ion-button [disabled]="!permisosTecnicos.puedeEditar()" fill="outline" color="danger" (click)="borrarIntervaloDiam(intervaloDiam)"> Borrar </ion-button>
     </ion-card-content>
   </ion-card>
   }

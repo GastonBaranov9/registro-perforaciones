@@ -1,3 +1,4 @@
+import { exigirEdicionSitio } from "../services/edicion-pozo.ts";
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@fastify/type-provider-typebox";
@@ -156,8 +157,7 @@ const sitiosRoutes= async function (
         id_sitio:number
       }
       const data = req.body as SitioBody;
-      if (!(await isAdmin(req.user.sub)) && !(await sitioEsGestionablePorPerforador(id_sitio,req.user.sub)))
-        throw new err.T05SitioNoEncontrado();
+      if (!(await isAdmin(req.user.sub))) await exigirEdicionSitio(id_sitio, req.user.sub);
       const sitioEditado = await func.updateSitio(id_sitio, data)
       if(!sitioEditado) throw err.T05SitioNoEncontrado
       return rep.code(200).send(sitioEditado)

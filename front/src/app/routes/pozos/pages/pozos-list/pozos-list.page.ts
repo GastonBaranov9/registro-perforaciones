@@ -1,3 +1,4 @@
+import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
 import { computed, effect, inject, OnInit, signal } from '@angular/core';
 import { Component } from '@angular/core';
 import { IonButton, ViewWillEnter, IonCard, IonCardHeader, IonCardTitle, IonContent, IonCardSubtitle, IonCardContent, IonList, IonItem, IonLabel, IonPopover, IonToolbar, IonButtons, IonInput, IonIcon, IonModal, IonHeader, IonTitle, IonFooter } from '@ionic/angular/standalone';
@@ -41,6 +42,7 @@ import { logoIonic } from 'ionicons/icons'
   styleUrl: './pozos-list.page.css',
 })
 export class PozosListPage implements OnInit, ViewWillEnter {
+  readonly permisos = inject(EdicionPozoService);
   readonly formatearInstanteComoFecha = formatearInstanteComoFecha;
 
     constructor() {
@@ -122,6 +124,7 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   }
 
   irAEditar(pozo: Pozo) {
+    if (!this.permisos.puedeEditar(pozo)) return;
     this.router.navigate(['/pozo-edit', pozo.id_pozo]);
   }
 
@@ -142,6 +145,7 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   }
 
   public async borrarPozo(pozo: Pozo) {
+    if (!this.authService.tieneRol('administracion')) return;
     try {
       await this.pozosListService.deletePozo(pozo.id_pozo);
       await this.ionViewWillEnter();

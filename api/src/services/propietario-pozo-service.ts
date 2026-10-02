@@ -1,3 +1,4 @@
+import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
@@ -25,7 +26,7 @@ export async function validarPropiedad(data: Propiedad, db: Pick<PoolClient, "qu
 export async function vincularPropietarioPozo(idPozo: number, idPropietario: number, esperado: number | null, actor: number, pool: Pick<Pool, "connect"> = myPool) {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     const admin = await client.query(
       "SELECT u.id_usuario FROM usuario u WHERE u.id_usuario=$1 AND u.activo AND u.cuenta_acceso AND EXISTS (SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol=ur.id_rol WHERE ur.id_usuario=u.id_usuario AND r.nombre='administracion')", [actor]);
     if (!admin.rows[0]) throw new err.T05SinPermiso();

@@ -1,3 +1,4 @@
+import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
@@ -48,7 +49,7 @@ export async function configurarNumeracion(idUsuario: number, proximo: number, e
     throw new err.T05DatosIncorrectos("El valor anterior del contador no es válido.");
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await exigirAdministracionNumeracion(idUsuario, client);
     const { rows } = await client.query("SELECT proximo, mayor_asignado FROM public.numeracion_perforacion WHERE singleton=TRUE FOR UPDATE");
     const actual = estado(rows[0]);
@@ -75,7 +76,7 @@ export async function asignarNumeroPendiente(idUsuario: number, idPozo: number, 
   validarNumeroPerforacion(numero);
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await exigirAdministracionNumeracion(idUsuario, client);
     const { rows } = await client.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
     if (!rows[0]) throw new err.T05PozoNoEncontrado();

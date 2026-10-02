@@ -1,3 +1,4 @@
+import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 import { AsignarNumeroPendienteComponent } from '../../../../shared/components/numero-perforacion/asignar-numero-pendiente.component';
 import { Component, inject, signal } from '@angular/core';
@@ -55,6 +56,7 @@ import { ProtectedResourceDirective } from '../../../../core/resources/protected
   styleUrl: './pozos-detail.page.css',
 })
 export class PozosDetailPage implements ViewWillEnter {
+  readonly permisos = inject(EdicionPozoService);
   readonly authService = inject(AuthService);
   numeroAsignado(numero: number) { this.pozo.update((p) => p ? { ...p, numero_perforacion: numero } : p); }
   readonly formatearFechaCalendario = formatearFechaCalendario;
@@ -108,6 +110,7 @@ export class PozosDetailPage implements ViewWillEnter {
     }
   }
   public irAEditarPozo() {
+    if (!this.permisos.puedeEditar(this.pozo())) return;
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);
   }
   ubicacionPropietario(): string {

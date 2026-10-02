@@ -1,3 +1,4 @@
+import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type {
   Rol,
@@ -42,7 +43,7 @@ export async function createUsuario(
   const client = await myPool.connect();
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
 
     const passwordHash = await hashPassword(data.password);
 
@@ -115,7 +116,7 @@ export async function updateUsuario(
   const client = await myPool.connect();
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
 
     const { rows: estados } = await client.query<{ activo: boolean }>(
       `SELECT activo FROM usuario
@@ -206,16 +207,19 @@ export async function updateUsuario(
 }
 
 export async function deleteUsuario(id_usuario: number): Promise<Boolean> {
-  const { rowCount } = await myPool.query(
-    `
-    DELETE FROM usuario
-    WHERE id_usuario = $1 AND cuenta_acceso = TRUE
-    `,
-    [id_usuario]
-  );
-  if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
-  cerrarConexionesUsuario(id_usuario);
-  return (rowCount ?? 0) > 0;
+  const resultado = await conEscrituraSesion(async (dbEscritura) => {
+    const { rowCount } = await dbEscritura.query(
+      `
+      DELETE FROM usuario
+      WHERE id_usuario = $1 AND cuenta_acceso = TRUE
+      `,
+      [id_usuario]
+    );
+    if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
+    return (rowCount ?? 0) > 0;
+  }, myPool, true);
+  if (resultado) cerrarConexionesUsuario(id_usuario);
+  return resultado;
 }
 
 export async function getUsuarioById(

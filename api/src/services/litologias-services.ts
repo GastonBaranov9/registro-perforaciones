@@ -1,3 +1,4 @@
+import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
 import type { LitologiaActualizarBody, LitologiaCrearBody, LitologiaCatalogo, LitologiaPublica } from "../models/schemas.ts";
@@ -26,24 +27,30 @@ export async function obtenerMetadatosLitologias(ids: number[]) {
 }
 
 export async function crearLitologia(data: LitologiaCrearBody): Promise<LitologiaCatalogo> {
-  if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
-  try {
-    const { rows } = await myPool.query<LitologiaCatalogo>(`INSERT INTO catalogo_litologia (codigo,nombre,familia,color,patron,orden,es_inicial) VALUES ($1,btrim($2),$3,$4,$5,$6,FALSE) RETURNING ${columnasAdmin}`,[data.codigo,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
-    return rows[0];
-  } catch (error: unknown) { throw traducirErrorCatalogo(error); }
+  return conEscrituraSesion(async (dbEscritura) => {
+    if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
+    try {
+      const { rows } = await dbEscritura.query<LitologiaCatalogo>(`INSERT INTO catalogo_litologia (codigo,nombre,familia,color,patron,orden,es_inicial) VALUES ($1,btrim($2),$3,$4,$5,$6,FALSE) RETURNING ${columnasAdmin}`,[data.codigo,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
+      return rows[0];
+    } catch (error: unknown) { throw traducirErrorCatalogo(error); }
+  }, myPool, false);
 }
 
 export async function actualizarLitologia(id: number, data: LitologiaActualizarBody): Promise<LitologiaCatalogo | null> {
-  if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
-  try {
-    const { rows } = await myPool.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET nombre=btrim($2),familia=$3,color=$4,patron=$5,orden=$6,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
-    return rows[0] ?? null;
-  } catch (error: unknown) { throw traducirErrorCatalogo(error); }
+  return conEscrituraSesion(async (dbEscritura) => {
+    if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
+    try {
+      const { rows } = await dbEscritura.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET nombre=btrim($2),familia=$3,color=$4,patron=$5,orden=$6,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
+      return rows[0] ?? null;
+    } catch (error: unknown) { throw traducirErrorCatalogo(error); }
+  }, myPool, false);
 }
 
 export async function cambiarEstadoLitologia(id: number, activo: boolean): Promise<LitologiaCatalogo | null> {
-  const { rows } = await myPool.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET activo=$2,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,activo]);
-  return rows[0] ?? null;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const { rows } = await dbEscritura.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET activo=$2,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,activo]);
+    return rows[0] ?? null;
+  }, myPool, false);
 }
 
 export function traducirErrorCatalogo(error: unknown): unknown {

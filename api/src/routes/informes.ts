@@ -157,6 +157,7 @@ const informeRoutes = async function (
   fastify.post(
     "/usuarios/:id_usuario/pozos/:id_pozo/perfil-litologico/vista-previa",
     {
+      config: { pozoSoloLectura: true },
       schema: {
         summary: "Generar una vista previa no persistente del perfil",
         description: "Valida un borrador técnico y reutiliza el modelo visual canónico",

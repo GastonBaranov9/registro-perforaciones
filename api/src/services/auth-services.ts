@@ -1,3 +1,4 @@
+import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type { Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
@@ -91,12 +92,15 @@ export async function revocarSesionesUsuario(
   idUsuario: number,
   pool: Pick<typeof myPool, "query"> = myPool,
 ): Promise<boolean> {
-  const { rowCount } = await pool.query(
-    `UPDATE usuario
-     SET version_sesion = version_sesion + 1
-     WHERE id_usuario = $1 AND activo = TRUE`,
-    [idUsuario],
-  );
-  if (rowCount === 1) cerrarConexionesUsuario(idUsuario);
-  return rowCount === 1;
+  const resultado = await conEscrituraSesion(async (dbEscritura) => {
+    const { rowCount } = await dbEscritura.query(
+      `UPDATE usuario
+       SET version_sesion = version_sesion + 1
+       WHERE id_usuario = $1 AND activo = TRUE`,
+      [idUsuario],
+    );
+    return rowCount === 1;
+  }, pool, true);
+  if (resultado) cerrarConexionesUsuario(idUsuario);
+  return resultado;
 }

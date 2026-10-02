@@ -34,6 +34,29 @@ describe('PozosListPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('perforador ve edición solo propia reciente y nunca eliminación', async () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    const reciente = { ...pozos[0], creado_por: 7, fecha_creado: new Date().toISOString(), id_propietario: null, propietario_provisional: 'Provisional', numero_perforacion: 2047 };
+    component.pozos.set([reciente, { ...pozos[1], creado_por: 7 }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('[aria-label="Editar pozo"]').length).toBe(1);
+    expect(fixture.nativeElement.querySelector('[aria-label="Eliminar pozo"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Solo lectura');
+    await component.borrarPozo(reciente);
+    expect(servicio.deletePozo).not.toHaveBeenCalled();
+    component.pozos.set([{ ...reciente, creado_por: 8 }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Editar pozo"]')).toBeNull();
+  });
+
+  it('administración conserva edición y eliminación de pozos antiguos', () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('[aria-label="Editar pozo"]').length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('[aria-label="Eliminar pozo"]').length).toBe(2);
+  });
   it('identifica y busca por número empresarial sin reemplazar el ID de navegación', () => {
     component.pozos.set([{ ...pozos[0], numero_perforacion: 2047 }, pozos[1]]);
     fixture.detectChanges();

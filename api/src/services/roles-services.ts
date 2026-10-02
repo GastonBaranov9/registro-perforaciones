@@ -1,3 +1,4 @@
+import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import { Rol, RolBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
@@ -10,7 +11,7 @@ export async function changeRol(
   let discardClient = false;
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const { rows: cuentas } = await client.query(
       `SELECT id_usuario FROM usuario
        WHERE id_usuario = $1 AND cuenta_acceso = TRUE
@@ -74,18 +75,20 @@ export async function getRoles(id_usuario: number): Promise<Rol[]> {
 }
 
 export async function createRol(data: RolBody): Promise<Rol> {
-  const sql = `
-        INSERT INTO rol
-          (nombre, descr)
-        VALUES ($1, $2)
-        RETURNING id_rol, nombre, descr;
-      `;
-  try {
-    const { rows } = await myPool.query(sql, [data.nombre, data.descr]);
-    return rows[0] as Rol;
-  } catch (e: any) {
-    throw e;
-  }
+  return conEscrituraSesion(async (dbEscritura) => {
+    const sql = `
+          INSERT INTO rol
+            (nombre, descr)
+          VALUES ($1, $2)
+          RETURNING id_rol, nombre, descr;
+        `;
+    try {
+      const { rows } = await dbEscritura.query(sql, [data.nombre, data.descr]);
+      return rows[0] as Rol;
+    } catch (e: any) {
+      throw e;
+    }
+  }, myPool, true);
 }
 
 export async function updateRol(
@@ -94,7 +97,7 @@ export async function updateRol(
 ): Promise<Rol | null> {
   const client = await myPool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const usuariosAfectados: number[] = [];
     const { rows: actuales } = await client.query<{ nombre: string }>(
       `SELECT nombre FROM rol WHERE id_rol = $1 FOR UPDATE`,
@@ -147,7 +150,7 @@ export async function updateRol(
 export async function deleteRol(id_rol: number): Promise<Boolean> {
   const client = await myPool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const usuariosAfectados: number[] = [];
     const { rows } = await client.query(
       `SELECT id_rol FROM rol WHERE id_rol = $1 FOR UPDATE`,

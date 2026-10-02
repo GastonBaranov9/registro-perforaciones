@@ -18,7 +18,7 @@
       <ion-header>
         <ion-toolbar>
           <ion-title size="large">Filtros</ion-title>
-          <ion-buttons slot="end">
+        <ion-buttons slot="end">
             <ion-button (click)="modal.dismiss()" fill="clear"> Cancelar </ion-button>
           </ion-buttons>
         </ion-toolbar>
@@ -136,10 +136,13 @@
           <ion-button aria-label="Ver detalle del pozo" fill="clear" color="secondary" (click)="irADetalle(pozo)">
             <ion-icon slot="icon-only" name="eye"> </ion-icon
           ></ion-button>
-          @if (authService.puedeAdministrarPozos()) {
+          @if (authService.tieneRol('perforador') && !permisos.puedeEditar(pozo)) { <p>Solo lectura</p> }
+          @if (permisos.puedeEditar(pozo)) {
           <ion-button aria-label="Editar pozo" fill="clear" color="secondary" (click)="irAEditar(pozo)"
             ><ion-icon slot="icon-only" name="pencil"> </ion-icon
           ></ion-button>
+          }
+          @if (authService.tieneRol('administracion')) {
           <ion-button aria-label="Eliminar pozo" fill="clear" color="danger" (click)="borrarPozo(pozo)">
             <ion-icon slot="icon-only" name="trash"> </ion-icon>
           </ion-button>

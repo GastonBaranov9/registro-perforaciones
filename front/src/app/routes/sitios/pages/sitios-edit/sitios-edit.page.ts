@@ -1,3 +1,4 @@
+import { PermisosSitioService } from '../../../../shared/services/permisos-sitio.service';
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { SitiosFormComponent } from '../../components/sitios-form/sitios-form.component';
 import { SitiosEditService } from '../../../../shared/services/sitios-edit.service';
@@ -12,12 +13,14 @@ import { mensajeHumano } from '../../../../shared/utils/errores';
 type CoordenadasMapa = { latitud: string; longitud: string };
 
 @Component({
+  providers: [PermisosSitioService],
   selector: 'app-sitios-edit',
   imports: [IonContent, IonCard, IonCardContent, SitiosFormComponent, IonButton, MapaAereoComponent],
   templateUrl: './sitios-edit.page.html',
   styleUrl: './sitios-edit.page.css',
 })
 export class SitiosEditPage {
+  readonly permisosSitio = inject(PermisosSitioService);
   public editSitioService = inject(SitiosEditService);
   public activateRoute = inject(ActivatedRoute);
   public sitioReturn: SitioReturnService = inject(SitioReturnService);
@@ -47,6 +50,7 @@ export class SitiosEditPage {
   }
 
   async handleEdit(sitio: SitioBody) {
+    if (!this.permisosSitio.puedeEditar(this.id_sitio())) return;
     try {
       this.disabled.set(true);
       const editado = await this.editSitioService.editSitio(this.id_sitio(), sitio);

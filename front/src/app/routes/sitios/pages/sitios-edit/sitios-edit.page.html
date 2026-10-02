@@ -6,11 +6,13 @@
       <ion-button type="button" fill="clear" (click)="volver()">VOLVER</ion-button>
 
       @if (this.sitioResource.hasValue()) {
+      @if (!permisosSitio.puedeEditar(id_sitio())) { <p role="status">{{ permisosSitio.mensaje }}</p> } @else {
       <app-sitios-form
         [sitio]="this.sitioResource.value()!"
         (saved)="this.handleEdit($event)"
         (ubicacionChange)="this.actualizarMapa($event)"
       />
+      }
       @if (auth.userId(); as idUsuario) {
         <app-mapa-aereo
           [idSitio]="id_sitio()"

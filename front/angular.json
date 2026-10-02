@@ -115,6 +115,17 @@
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.native.generated.ts"
                 }
+              ],
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "rs_splash_piloto.png",
+                  "input": "branding",
+                  "output": "branding"
+                }
               ]
             },
             "native-production": {
@@ -137,6 +148,17 @@
                 {
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.native.generated.ts"
+                }
+              ],
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "rs_splash_piloto.png",
+                  "input": "branding",
+                  "output": "branding"
                 }
               ]
             }
@@ -164,7 +186,10 @@
         "test": {
           "builder": "@angular/build:karma",
           "options": {
-            "polyfills": ["zone.js", "zone.js/testing"],
+            "polyfills": [
+              "zone.js",
+              "zone.js/testing"
+            ],
             "tsConfig": "tsconfig.spec.json",
             "assets": [
               {
@@ -172,7 +197,9 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.css"]
+            "styles": [
+              "src/styles.css"
+            ]
           }
         },
         "ionic-cordova-serve": {

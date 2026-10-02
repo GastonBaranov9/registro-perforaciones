@@ -1,3 +1,4 @@
+import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
 import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
 import { randomUUID } from "node:crypto";
@@ -101,10 +102,11 @@ export async function crearPozoCompleto(
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
 
   const client = await pool.connect();
+  let descartar = false;
   let archivoFinal: string | null = null;
   let archivoTemporal: string | null = null;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     if (data.pozo.numero_perforacion != null) {
       validarNumeroPerforacion(data.pozo.numero_perforacion);
       await exigirAdministracionNumeracion(creadoPor, client);
@@ -160,12 +162,20 @@ export async function crearPozoCompleto(
     await client.query("COMMIT");
     return { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
   } catch (error) {
-    await client.query("ROLLBACK");
-    if (archivoTemporal) await fs.rm(archivoTemporal, { force: true });
-    if (archivoFinal) await fs.rm(archivoFinal, { force: true });
+    const compensacion = await compensarFalloTransaccionalFotos({
+      idPozo: 0, operacion: "crear_pozo_completo",
+      rollback: async () => { await client.query("ROLLBACK"); },
+      restaurar: async () => {
+        const limpieza = await Promise.allSettled([archivoTemporal, archivoFinal]
+          .filter((ruta): ruta is string => ruta !== null).map(ruta => fs.rm(ruta, { force: true })));
+        if (limpieza.some(resultado => resultado.status === "rejected")) throw new Error("Limpieza de fotografías incompleta");
+      },
+    });
+    descartar = Boolean(compensacion.errorRollback);
+    if (compensacion.errorFilesystem) throw new err.T05ErrorDesconocido("Falló la creación y no se pudo limpiar la fotografía.", { cause: error });
     throw traducirErrorNumeracion(error);
   } finally {
-    client.release();
+    client.release(descartar);
   }
 }
 
@@ -182,12 +192,13 @@ export async function actualizarPozoCompleto(
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
 
   const client = await pool.connect();
+  let descartar = false;
   let fotosAisladas: FotoAislada[] = [];
   let nuevo: string | null = null;
   let temporalNuevo: string | null = null;
   let resultado: PozoCompletoResultado;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
     const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; id_propietario: number | null; numero_perforacion: number | null }>(
       "SELECT id_pozo,id_sitio,id_propietario,numero_perforacion FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
@@ -281,10 +292,11 @@ export async function actualizarPozoCompleto(
         if (errores.length) throw new Error("Compensación de archivos incompleta");
       },
     });
+    descartar = Boolean(compensacion.errorRollback);
     if (compensacion.errorFilesystem)
       throw new err.T05ErrorDesconocido("Falló la actualización y no se pudo restaurar la fotografía anterior.", { cause: error });
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(descartar); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "actualizar_pozo_completo", opciones.logger, opciones.eliminarPostCommit);
   return resultado;
 }

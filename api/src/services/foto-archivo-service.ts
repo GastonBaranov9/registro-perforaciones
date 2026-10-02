@@ -47,17 +47,18 @@ export async function compensarFalloTransaccionalFotos(opciones: {
   logger?: LoggerPurga;
 }): Promise<ResultadoCompensacionFotos> {
   const resultado: ResultadoCompensacionFotos = {};
+  // Restore files while the session/pozo locks are still held.
+  try { await opciones.restaurar(); }
+  catch (error) {
+    resultado.errorFilesystem = error;
+    logCompensacion(opciones.logger, opciones.idPozo, opciones.operacion, "filesystem_restore", error);
+  }
   if (opciones.rollback) {
     try { await opciones.rollback(); }
     catch (error) {
       resultado.errorRollback = error;
       logCompensacion(opciones.logger, opciones.idPozo, opciones.operacion, "rollback_db", error);
     }
-  }
-  try { await opciones.restaurar(); }
-  catch (error) {
-    resultado.errorFilesystem = error;
-    logCompensacion(opciones.logger, opciones.idPozo, opciones.operacion, "filesystem_restore", error);
   }
   return resultado;
 }

@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, OnInit, resource, signal } from '@angular/core';
 import { IntervaloDiametroListService } from '../../../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
 import { IntervaloDiametroPerforacion } from '../../../../../../shared/types/schemas';
@@ -19,6 +20,7 @@ import {
 } from '@ionic/angular/standalone';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-diametros-list',
   imports: [
     IonCardContent,
@@ -36,6 +38,7 @@ import {
   styleUrl: './intervalos-diametros-list.page.css',
 })
 export class IntervalosDiametrosListPage implements OnInit, ViewWillEnter {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public intervaloDiametroListService = inject(IntervaloDiametroListService);
   public intervalosDiametros = signal<IntervaloDiametroPerforacion[]>([]);
   public toastController = inject(ToastController);
@@ -67,6 +70,7 @@ export class IntervalosDiametrosListPage implements OnInit, ViewWillEnter {
   });
 
   public async borrarIntervaloDiam(intervaloDiam: IntervaloDiametroPerforacion) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       const id_pozo = this.id_pozo();
       if (!id_pozo) throw new Error('Pozo no encontrado');

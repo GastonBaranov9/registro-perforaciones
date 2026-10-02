@@ -14,7 +14,11 @@
           <app-vincular-propietario [idPozo]="id_pozo()" [propietarioActual]="editor.pozo.id_propietario"
             [deshabilitado]="disabled()" (ocupacion)="vinculando.set($event)" (vinculado)="propietarioVinculado($event)" />
         }
-        <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
+        @if (!permisos.puedeEditar(editor.pozo)) {
+          <p role="status">{{ permisos.mensaje }}</p>
+          <ion-button fill="outline" (click)="router.navigate(['/pozos-detail', id_pozo()])">Ver detalle</ion-button>
+        }
+        <div class="editor-layout"><div class="editor-formulario" [attr.inert]="!permisos.puedeEditar(editor.pozo) ? '' : null"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           [sitios]="this.sitiosActualizados() ?? editor.sitios"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
@@ -23,13 +27,14 @@
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
           [administrarPropietarios]="authService.tieneRol('administracion')"
-          [guardando]="disabled() || vinculando()"
+          [guardando]="disabled() || vinculando() || !permisos.puedeEditar(editor.pozo)"
+          [soloLectura]="!permisos.puedeEditar(editor.pozo)"
           (editarSitio)="editarSitio()"
           (actualizarPropietario)="actualizarPropietario($event)"
           (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
         >
           <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [versionDescartar]="versionDescartar()" [profundidad]="editor.pozo.profundidad_final_m"
-            [guardando]="disabled() || vinculando()" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
+            [guardando]="disabled() || vinculando() || !permisos.puedeEditar(editor.pozo)" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
         </app-pozos-form></div>
         <aside><app-perfil-litologico-vista-previa [idPozo]="id_pozo()"
           [profundidad]="profundidadBorrador() ?? editor.pozo.profundidad_final_m" [datos]="datosTecnicos()" /></aside></div>

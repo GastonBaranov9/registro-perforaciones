@@ -53,7 +53,7 @@ const indexSource = `<!doctype html>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
-  <app-root></app-root>
+  <app-root><img src="branding/rs_splash_piloto.png" alt="Raúl Silva Perforaciones" style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:white"></app-root>
   <noscript>Debes habilitar JavaScript para usar esta aplicación.</noscript>
 </body>
 </html>

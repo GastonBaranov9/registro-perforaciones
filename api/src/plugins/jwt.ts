@@ -1,3 +1,5 @@
+import { contextoEscritura } from "../services/escritura-sesion.ts";
+import { exigirEdicionPozo } from "../services/edicion-pozo.ts";
 import fastifyJwt from "@fastify/jwt";
 import fastifyPlugin from "fastify-plugin";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -97,6 +99,23 @@ export default fastifyPlugin(async function (fastify) {
     cookie: { cookieName: SESSION_COOKIE, signed: false },
   });
   const authenticatedRequests = new WeakMap<object, { idUsuario: number }>();
+
+  // Carry verified identity only. Transactions remain owned by the services.
+  fastify.addHook("onRoute", (route) => {
+    const handler = route.handler;
+    route.handler = function (req, reply) {
+      if (!authenticatedRequests.has(req)) return handler.call(this, req, reply);
+      const params = req.params as Record<string, string>;
+      const mutacion = !["GET", "HEAD", "OPTIONS"].includes(req.method) && !req.routeOptions.config.pozoSoloLectura;
+      return contextoEscritura.run({
+        idUsuario: Number(req.user.sub), versionSesion: Number(req.user.version_sesion),
+        idSesionNativa: req.nativeAuth?.session.idSesionNativa,
+        expiresAt: req.authMechanism === "web-cookie" ? Number(req.user.exp) * 1000 : undefined,
+        idPozo: mutacion && params?.id_pozo ? Number(params.id_pozo) : undefined,
+        idSitio: mutacion && params?.id_sitio ? Number(params.id_sitio) : undefined,
+      }, () => handler.call(this, req, reply));
+    };
+  });
 
   fastify.decorateRequest("authMechanism", null);
   fastify.decorateRequest("nativeAuth", null);
@@ -230,6 +249,11 @@ export default fastifyPlugin(async function (fastify) {
     const { sub } = req.user as { sub: number };
     const { id_pozo } = req.params as { id_pozo: number };
     if (await rolUser(sub, "administracion")) return;
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !req.routeOptions.config.pozoSoloLectura) {
+      if (!(await rolUser(sub, "perforador"))) throw new err.T05SinPermiso();
+      await exigirEdicionPozo(id_pozo, sub);
+      return;
+    }
     if (await rolUser(sub, "propietario")) {
       if (!(await pozoPerteneceAUsuario(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
       return;
@@ -253,6 +277,9 @@ export default fastifyPlugin(async function (fastify) {
 });
 
 declare module "fastify" {
+  interface FastifyContextConfig {
+    pozoSoloLectura?: boolean;
+  }
   interface FastifyRequest {
     authMechanism: "web-cookie" | "native-bearer" | null;
     nativeAuth: {

@@ -37,7 +37,7 @@
 
 
           <ion-button fill="outline" (click)="irADetalle(sitio)">Ver detalle</ion-button>
-          <ion-button fill="outline" (click)="irAEditar(sitio)">Editar</ion-button>
+          <ion-button fill="outline" [disabled]="!permisosSitio.puedeEditar(sitio.id_sitio)" (click)="irAEditar(sitio)">Editar</ion-button>
           @if (this.authService.tieneRol('administracion')) {
           <ion-button fill="outline"  color="danger" (click)="borrarSitio(sitio)">
             Borrar

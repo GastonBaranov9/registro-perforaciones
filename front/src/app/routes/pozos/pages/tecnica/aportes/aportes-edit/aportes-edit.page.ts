@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { AporteEditService } from '../../../../../../shared/services/aportes-service/aporte-edit-service/aporte-edit.service';
 import { Router } from '@angular/router';
@@ -6,12 +7,14 @@ import { IonContent, IonCard, IonCardContent, IonSpinner, IonButton, IonToolbar,
 import { AportesFormComponent } from "../components/aportes-form/aportes-form.component";
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-aportes-edit',
   imports: [IonContent, IonCard, IonCardContent, AportesFormComponent, IonSpinner, IonButton, IonToolbar, IonButtons, IonBackButton],
   templateUrl: './aportes-edit.page.html',
   styleUrl: './aportes-edit.page.css',
 })
 export class AportesEditPage {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
 public nivelAporteService: AporteEditService = inject(AporteEditService);
 public toastController = inject(ToastController)
   public router: Router = inject(Router);
@@ -27,6 +30,7 @@ public toastController = inject(ToastController)
   });
 
   async handleEdit(nivel: NivelAporteBody) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       const id_pozo = this.id_pozo();
       const id_nivel = this.id_nivel_aporte();

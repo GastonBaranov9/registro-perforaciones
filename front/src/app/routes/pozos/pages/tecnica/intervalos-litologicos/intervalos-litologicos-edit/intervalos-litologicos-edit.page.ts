@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { IntervaloLitologicoEditService } from '../../../../../../shared/services/intervalo-lit-service/intervalo-lit-edit/intervalo-litologico-edit.service';
 import { Router } from '@angular/router';
@@ -6,12 +7,14 @@ import { IonContent, IonCard, IonCardContent, IonSpinner, IonButton, IonToolbar,
 import { IntervaloLitFormComponent } from '../components/intervalo-lit-form/intervalo-lit-form.component';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-litologicos-edit',
   imports: [IonContent, IonCard, IonCardContent, IntervaloLitFormComponent, IonSpinner, IonButton, IonToolbar, IonButtons, IonBackButton],
   templateUrl: './intervalos-litologicos-edit.page.html',
   styleUrl: './intervalos-litologicos-edit.page.css',
 })
 export class IntervalosLitologicosEditPage {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public interevaloEditLito: IntervaloLitologicoEditService = inject(
     IntervaloLitologicoEditService
   );
@@ -28,6 +31,7 @@ export class IntervalosLitologicosEditPage {
   });
 
   async handleEdit(intervalo: IntervaloLitologicoBody) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       const id_pozo = this.id_pozo();
       const id_intervalo_litologico = this.id_intervalo_litologico();

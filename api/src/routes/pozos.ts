@@ -365,7 +365,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     {
       schema: {
         summary: "Borrar un pozo",
-        description: "Rol: Perforador/Propietario",
+        description: "Rol: Administración",
         tags: ["pozos"],
         params: Type.Object({
           id_usuario: Type.Integer(),
@@ -379,7 +379,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.userIsAdmin],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as {

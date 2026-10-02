@@ -65,6 +65,7 @@ export class PozosFormComponent implements OnDestroy {
   public disabled = signal<boolean>(false);
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
+  public soloLectura = input(false);
   public errorMessage = signal<string>('');
   public ubicacionPrecision = signal<number | null>(null);
   public ubicacionError = signal('');

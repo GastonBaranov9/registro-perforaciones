@@ -1,3 +1,4 @@
+import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
 import { VincularPropietarioComponent } from '../../components/vincular-propietario/vincular-propietario.component';
 import { CandidatoPozo } from '../../../../shared/types/schemas';
 import { Component, ViewChild, inject, input, resource, signal } from '@angular/core';
@@ -51,6 +52,7 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
   styleUrl: './pozo-edit.page.css',
 })
 export class PozoEditPage {
+  readonly permisos = inject(EdicionPozoService);
   @ViewChild(PozosFormComponent) public formulario?: PozosFormComponent;
   public pozoEditService: PozosEditService = inject(PozosEditService);
   public router: Router = inject(Router);
@@ -122,6 +124,7 @@ export class PozoEditPage {
   }
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
+    if (!this.permisos.puedeEditar(this.pozoResource.value()?.pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
     if (this.disabled() || this.vinculando()) return;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
     if (errores.length) { this.errorMessage.set(errores.join(' ')); return; }
@@ -145,7 +148,7 @@ export class PozoEditPage {
   }
   async eliminarFotoPersistida() {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo?.foto_url || this.disabled()) return;
+    if (!this.permisos.puedeEditar(pozo) || !pozo?.foto_url || this.disabled()) return;
     try {
       this.disabled.set(true);
       this.errorMessage.set('');
@@ -163,7 +166,7 @@ export class PozoEditPage {
 
   editarSitio() {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo) return;
+    if (!pozo || !this.permisos.puedeEditar(pozo)) return;
 
     this.router.navigate(['/sitios-edit', pozo.id_sitio], {
       state: { returnTo: this.router.url },

@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, OnInit, signal } from '@angular/core';
 import { IntervaloLitologicoCreateService } from '../../../../../../shared/services/intervalo-lit-service/intervalo-lit-create/intervalo-litologico-create.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -9,12 +10,14 @@ import { IntervaloLitologicoListService } from '../../../../../../shared/service
 import { sugerirInicioSiguienteIntervalo } from '../../../../../../shared/utils/datos-tecnicos-borrador';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-litologicos-create',
   imports: [IonContent, IonCard, IonCardContent, IntervaloLitFormComponent, IonToolbar, IonButtons, IonBackButton],
   templateUrl: './intervalos-litologicos-create.page.html',
   styleUrl: './intervalos-litologicos-create.page.css',
 })
 export class IntervalosLitologicosCreatePage implements OnInit {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public createService: IntervaloLitologicoCreateService = inject(IntervaloLitologicoCreateService);
  public toastController = inject(ToastController);
   public router: Router = inject(Router);
@@ -43,6 +46,7 @@ export class IntervalosLitologicosCreatePage implements OnInit {
 
 
   async guardarIntervaloLit(body: IntervaloLitologicoBody) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     const id_pozo = this.id_pozo();
     try {
       this.disabled.set(true);
