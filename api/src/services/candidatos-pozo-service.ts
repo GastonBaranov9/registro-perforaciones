@@ -85,7 +85,7 @@ export async function obtenerPropietarioOperativo(
   db: Consultable = myPool,
 ): Promise<PropietarioOperativo | null> {
   const { rows } = await db.query(
-    `SELECT u.id_usuario,u.nombre,u.documento_rut,u.telefono,
+    `SELECT u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.cuenta_acceso,u.activo,
        u.propietario_email AS email,
        u.direccion,u.localidad,u.departamento,u.observaciones
      FROM usuario u
@@ -120,7 +120,7 @@ export async function actualizarPropietarioOperativo(
          SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol=ur.id_rol
          WHERE ur.id_usuario=u.id_usuario AND r.nombre='propietario'
        )
-       RETURNING u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.propietario_email AS email,
+       RETURNING u.id_usuario,u.nombre,u.documento_rut,u.telefono,u.propietario_email AS email,u.cuenta_acceso,u.activo,
          u.direccion,u.localidad,u.departamento,u.observaciones`,
       [idUsuario,
         presente("nombre"), normalizado.nombre,
@@ -190,6 +190,8 @@ function limpiar(valor: string | null | undefined): string | null {
 
 function propietarioDesdeFila(row: Record<string, unknown>): PropietarioOperativo {
   return {
+    ...(typeof row.cuenta_acceso === 'boolean' ? { cuenta_acceso: row.cuenta_acceso } : {}),
+    ...(typeof row.activo === 'boolean' ? { activo: row.activo } : {}),
     id_usuario: Number(row.id_usuario), nombre: String(row.nombre),
     documento_rut: textoNullable(row.documento_rut), telefono: textoNullable(row.telefono),
     email: textoNullable(row.email), direccion: textoNullable(row.direccion),

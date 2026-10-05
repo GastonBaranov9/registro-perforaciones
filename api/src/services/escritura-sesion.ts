@@ -26,7 +26,11 @@ export async function iniciarEscrituraSesion(client: Pick<PoolClient, "query">, 
   protegidos.delete(client);
   await client.query("BEGIN");
   const sesion = contextoEscritura.getStore();
-  if (!sesion) return; // Trusted internal services/CLI; HTTP identity is set by jwt.
+  if (!sesion) {
+    // Internal administrative callers must serialize with HTTP account mutations too.
+    if (administrativa) await client.query("SELECT pg_advisory_xact_lock(731024, 1)");
+    return;
+  }
   await client.query(administrativa
     ? "SELECT pg_advisory_xact_lock(731024, 1)"
     : "SELECT pg_advisory_xact_lock_shared(731024, 1)");

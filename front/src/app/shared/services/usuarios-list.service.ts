@@ -29,6 +29,9 @@ export class UsuariosListService {
   public async deleteUsuario(id_usuario: number): Promise<void> {
     await firstValueFrom(this.httpClient.delete(`${this.baseURL}/${id_usuario}`));
   }
+  public async eliminarIdentidad(id: number): Promise<void> {
+    await firstValueFrom(this.httpClient.delete(`${this.baseURL}/personas/${id}`));
+  }
 
 
 }

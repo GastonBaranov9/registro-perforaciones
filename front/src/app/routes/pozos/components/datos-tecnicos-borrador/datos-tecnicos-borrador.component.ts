@@ -37,6 +37,8 @@ export class DatosTecnicosBorradorComponent {
         this.ultimoInicial = inicial;
         this.ultimaVersionDescartar = version;
         this.datos.set(ordenarDatosTecnicos(inicial));
+        const ids = Object.values(inicial).flat().map(item => Number(String(item.idLocal).replace(/^local-/, ''))).filter(Number.isFinite);
+        this.siguienteId = Math.max(this.siguienteId, ...ids.map(id => id + 1));
         this.cambiado.emit(this.datos());
         this.dirty.set(false);
         this.estadoSucio.emit(false);

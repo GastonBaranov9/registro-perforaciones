@@ -224,6 +224,6 @@
   </ion-list>
   <ng-content />
   <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled() || !catalogosDisponibles() || !personasValidas()">
-    {{ soloLectura() ? 'Solo lectura' : guardando() ? 'Guardando pozo…' : 'Guardar pozo' }}
+    {{ soloLectura() ? 'Solo lectura' : guardando() ? 'Guardando…' : textoGuardar() }}
   </ion-button>
 </form>

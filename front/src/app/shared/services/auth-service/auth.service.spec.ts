@@ -116,7 +116,7 @@ describe('AuthService native', () => {
     });
     expect(secure.set).toHaveBeenCalledWith(
       'native_session_v1',
-      { token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) },
+      { token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i), offlineUser: user },
       false,
       false,
       KeychainAccess.whenUnlockedThisDeviceOnly,
@@ -231,7 +231,7 @@ describe('AuthService native', () => {
     );
     await bootstrap;
     expect(service.state()).toBe('upgrade-required');
-    expect(secureRecord).toEqual({ token, installationId });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId }));
   });
 
   it('errores de red y 5xx conservan token como offline-unverified', async () => {
@@ -263,7 +263,7 @@ describe('AuthService native', () => {
       );
       await bootstrap;
       expect(service.state()).toBe('offline-unverified');
-      expect(secureRecord).toEqual({ token, installationId });
+      expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId }));
       controller.verify();
     }
   });
@@ -313,10 +313,10 @@ describe('AuthService native', () => {
     controller.expectNone('https://api.example.test/api/auth/native/logout');
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(user.id_usuario);
-    expect(secureRecord).toEqual({
+    expect(secureRecord).toEqual(jasmine.objectContaining({
       token,
       installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i),
-    });
+    }));
     expect(secure.remove.calls.count()).toBe(secureClearCalls);
   });
 
@@ -376,7 +376,7 @@ describe('AuthService native', () => {
     expect(completed).toBeTrue();
     expect(blackholed.cancelled).toBeTrue();
     expect(service.state()).toBe('logout-pending');
-    expect(secureRecord).toEqual({ token, installationId });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId }));
     expect(preferenceValues.get('logout_pending_v1')).toBe(
       JSON.stringify({ pending: true, userId: 7 }),
     );
@@ -442,7 +442,7 @@ describe('AuthService native', () => {
 
     expect(service.state()).toBe('client-error');
     expect(service.userId()).toBeNull();
-    expect(secureRecord).toEqual({ token, installationId });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId }));
     expect(navigation).toHaveBeenCalledOnceWith('/session-unavailable?reason=client-error');
   });
 
@@ -464,7 +464,7 @@ describe('AuthService native', () => {
 
     expect(service.state()).toBe('client-error');
     expect(service.userId()).toBeNull();
-    expect(secureRecord).toEqual({ token, installationId });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId }));
     expect(navigation).not.toHaveBeenCalled();
   });
 
@@ -610,7 +610,7 @@ describe('AuthService native', () => {
     });
     await login;
     expect(service.state()).toBe('authenticated');
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
     expect(preferenceValues.has('logout_pending_v1')).toBeFalse();
   });
 
@@ -712,7 +712,7 @@ describe('AuthService native', () => {
     await resume;
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(userB.id_usuario);
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
   });
 
   it('ignora 401 y errores stale de session sin destruir B', async () => {
@@ -737,7 +737,7 @@ describe('AuthService native', () => {
     await resume;
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(userB.id_usuario);
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
   });
 
   it('ignora network error stale después de login B y mantiene authenticated', async () => {
@@ -762,7 +762,7 @@ describe('AuthService native', () => {
     await resume;
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(userB.id_usuario);
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
   });
 
   it('ignora respuesta stale de session después de logout', async () => {
@@ -801,7 +801,7 @@ describe('AuthService native', () => {
 
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(userB.id_usuario);
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
   });
 
   it('si falla la revocaciÃ³n de A, no envÃ­a login B y conserva A pendiente', async () => {
@@ -817,7 +817,7 @@ describe('AuthService native', () => {
 
     controller.expectNone('https://api.example.test/api/auth/native/login');
     expect(service.state()).toBe('logout-pending');
-    expect(secureRecord).toEqual({ token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
     expect(preferenceValues.get('logout_pending_v1')).toBe(JSON.stringify({ pending: true, userId: 7 }));
   });
 
@@ -890,6 +890,6 @@ describe('AuthService native', () => {
     await invalidation;
     expect(service.state()).toBe('authenticated');
     expect(service.userId()).toBe(userB.id_usuario);
-    expect(secureRecord).toEqual({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) });
+    expect(secureRecord).toEqual(jasmine.objectContaining({ token: replacementToken, installationId: jasmine.stringMatching(/^[0-9a-f-]{36}$/i) }));
   });
 });

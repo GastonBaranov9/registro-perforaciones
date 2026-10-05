@@ -43,7 +43,7 @@ test("editar y borrar no alcanzan una identidad sin cuenta", async () => {
     async query(sql: string) {
       consultas.push(sql);
       if (sql.includes("SELECT activo")) return { rows: [] };
-      return { rows: [] };
+      return { rows: [], rowCount: 0 };
     },
     release() {},
   };
@@ -56,7 +56,7 @@ test("editar y borrar no alcanzan una identidad sin cuenta", async () => {
     assert.equal(await updateUsuario({ email: "cuenta@example.test", nombre: "Cuenta", activo: true, roles: [] }, 91), null);
     await assert.rejects(() => deleteUsuario(91), err.T05UsuarioNoEncontrado);
     assert.match(consultas.find((sql) => sql.includes("SELECT activo")) ?? "", /cuenta_acceso = TRUE/);
-    assert.match(consultas.find((sql) => sql.includes("DELETE FROM usuario")) ?? "", /cuenta_acceso = TRUE/);
+    assert.match(consultas.find((sql) => sql.includes("UPDATE usuario SET activo=FALSE")) ?? "", /cuenta_acceso = TRUE/);
   } finally {
     pool.connect = connectOriginal;
     pool.query = queryOriginal;
@@ -74,7 +74,7 @@ test("el CRUD de roles rechaza identidades operativas antes de mutar", async () 
   pool.connect = async () => client;
   try {
     await assert.rejects(() => changeRol(91, 3), err.T05UsuarioNoEncontrado);
-    assert.match(consultas[1] ?? "", /cuenta_acceso = TRUE/);
+    assert.match(consultas.find(sql => sql.includes("SELECT id_usuario")) ?? "", /cuenta_acceso = TRUE/);
     assert.equal(consultas.some((sql) => sql.includes("INSERT INTO usuario_rol") || sql.includes("DELETE FROM usuario_rol")), false);
   } finally { pool.connect = original; }
 });

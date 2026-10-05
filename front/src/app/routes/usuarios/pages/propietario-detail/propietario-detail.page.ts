@@ -7,11 +7,12 @@ import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamento
 import { PropietariosOperativosService } from '../../../../shared/services/propietarios-operativos.service';
 import { UsuariosListService } from '../../../../shared/services/usuarios-list.service';
 import { PerforacionAsociada, PropietarioOperativo } from '../../../../shared/types/schemas';
+import { AccesoPersonaComponent } from '../../components/acceso-persona.component';
 
 @Component({
   selector: 'app-propietario-detail',
   standalone: true,
-  imports: [DatePipe, FormsModule, IonButton, IonContent],
+  imports: [DatePipe, FormsModule, IonButton, IonContent, AccesoPersonaComponent],
   templateUrl: './propietario-detail.page.html',
   styleUrl: './propietario-detail.page.css',
 })

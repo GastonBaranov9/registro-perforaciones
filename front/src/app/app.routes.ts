@@ -1,9 +1,11 @@
 import { edicionPozoGuard } from './core/guards/edicion-pozo.guard';
 import { Routes } from '@angular/router';
+import { offlineGuard } from './core/guards/offline.guard';
 import { HomePage } from './routes/home/home.page';
 import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
+  { path: 'trabajo-local', canActivate: [offlineGuard], loadComponent: async () => (await import('./routes/offline/offline.page')).OfflinePage, title: 'Trabajo de campo' },
   {
     path: 'pozos-numeracion', canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () => (await import('./routes/pozos/pages/numeracion/numeracion.page')).NumeracionPage,

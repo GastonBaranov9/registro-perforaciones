@@ -1,7 +1,7 @@
 import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
 import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolClient } from "pg";
@@ -97,6 +97,7 @@ export async function crearPozoCompleto(
   data: PozoCompletoBody,
   directorioFotos: string,
   pool: Pick<Pool, "connect"> = myPool,
+  claveOffline?: string,
 ): Promise<PozoCompletoResultado> {
   const errores = validarPozoCompleto(data);
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
@@ -105,8 +106,27 @@ export async function crearPozoCompleto(
   let descartar = false;
   let archivoFinal: string | null = null;
   let archivoTemporal: string | null = null;
+  let commitIntentado = false;
   try {
     await iniciarEscrituraSesion(client, false);
+    if (claveOffline !== undefined) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claveOffline))
+        throw new err.T05DatosIncorrectos("Identificador local inválido.");
+      if (data.pozo.numero_perforacion != null) throw new err.T05SinPermiso("Un borrador local no puede asignar numeración.");
+      // Sesión bloqueada antes de consultar incluso un resultado ya confirmado.
+      await validarPersonaPozo(creadoPor, "perforador", client);
+      if (data.pozo.id_perforador !== creadoPor || data.pozo.id_propietario !== null) throw new err.T05SinPermiso();
+      claveOffline = claveOffline.toLowerCase();
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 714))", [`${creadoPor}:${claveOffline}`]);
+      const previo = await client.query("SELECT huella,resultado FROM creacion_offline WHERE actor=$1 AND clave=$2", [creadoPor, claveOffline]);
+      if (previo.rows[0]) {
+        if (previo.rows[0].huella !== huellaOffline(data)) throw new err.T05DatosIncorrectos("Conflicto: este identificador local ya fue enviado con otros datos. Conserve el borrador y consulte Administración.");
+        await client.query("COMMIT");
+        return previo.rows[0].resultado;
+      }
+      const cerrada = await client.query('SELECT 1 FROM clave_offline_cerrada WHERE actor=$1 AND clave=$2', [creadoPor, claveOffline]);
+      if (cerrada.rows.length) throw new err.T05ClaveOfflineCerrada();
+    }
     if (data.pozo.numero_perforacion != null) {
       validarNumeroPerforacion(data.pozo.numero_perforacion);
       await exigirAdministracionNumeracion(creadoPor, client);
@@ -159,13 +179,19 @@ export async function crearPozoCompleto(
       pozo.foto_url = `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`;
     }
 
+    const resultado = { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado) VALUES($1,$2,$3,$4)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado)]);
+    commitIntentado = true;
     await client.query("COMMIT");
-    return { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    return resultado;
   } catch (error) {
     const compensacion = await compensarFalloTransaccionalFotos({
       idPozo: 0, operacion: "crear_pozo_completo",
       rollback: async () => { await client.query("ROLLBACK"); },
       restaurar: async () => {
+        // Una respuesta COMMIT perdida no prueba rollback: conservar el archivo.
+        // El reconciliador existente puede auditar huérfanos; nunca borrar una foto confirmada.
+        if (commitIntentado) return;
         const limpieza = await Promise.allSettled([archivoTemporal, archivoFinal]
           .filter((ruta): ruta is string => ruta !== null).map(ruta => fs.rm(ruta, { force: true })));
         if (limpieza.some(resultado => resultado.status === "rejected")) throw new Error("Limpieza de fotografías incompleta");
@@ -177,6 +203,12 @@ export async function crearPozoCompleto(
   } finally {
     client.release(descartar);
   }
+}
+
+export function huellaOffline(data: unknown): string {
+  const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical)
+    : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
+  return createHash("sha256").update(JSON.stringify(canonical(data))).digest("hex");
 }
 
 export async function actualizarPozoCompleto(

@@ -25,6 +25,7 @@ export class NativeStorageError extends Error {
 export interface StoredNativeSession {
   token: string;
   installationId: string;
+  offlineUser?: { id_usuario: number; nombre: string; roles: { id_rol: number; nombre: string; descr: string }[] };
 }
 
 export interface NativeLogoutPendingRecord {
@@ -74,7 +75,7 @@ export class NativeSecureSessionStorage {
     try {
       await this.plugin.set(
         SESSION_KEY,
-        { token: session.token, installationId: session.installationId },
+        { token: session.token, installationId: session.installationId, ...(session.offlineUser ? { offlineUser: session.offlineUser } : {}) },
         false,
         false,
         KeychainAccess.whenUnlockedThisDeviceOnly,

@@ -16,7 +16,11 @@
         @if (persona.documento_rut) { <p>Documento / RUT: {{ persona.documento_rut }}</p> }
         @if (persona.email) { <p>Email: {{ persona.email }}</p> }
         <p>Roles: {{ persona.roles.join(', ') || 'Sin rol' }}</p>
-        <ion-button fill="outline" (click)="abrir(persona)">{{ persona.roles.includes('propietario') ? 'Ver ficha y perforaciones' : 'Administrar cuenta' }}</ion-button>
+        @if (persona.cuenta_acceso || persona.roles.includes('propietario')) { <ion-button fill="outline" (click)="abrir(persona)">{{ persona.roles.includes('propietario') ? 'Ver ficha y perforaciones' : 'Administrar cuenta' }}</ion-button> }
+        @if (auth.tieneRol('administracion')) {
+          @if (persona.cuenta_acceso) { <ion-button color="danger" fill="outline" (click)="eliminar(persona)" [disabled]="cargando()">Eliminar acceso</ion-button> }
+          @else { <app-acceso-persona [id]="persona.id_usuario" (creado)="ionViewWillEnter()" /><ion-button color="danger" fill="clear" (click)="eliminarIdentidad(persona)" [disabled]="cargando()">Eliminar identidad sin historial</ion-button> }
+        }
         @if (persona.cuenta_acceso && persona.roles.includes('propietario')) {
           <ion-button fill="clear" (click)="editarCuenta(persona)">Administrar acceso</ion-button>
         }

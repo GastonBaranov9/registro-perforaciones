@@ -3,9 +3,12 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { LitologiaActualizarBody, LitologiaCrearBody, LitologiaPublica } from '../types/schemas';
+import { RuntimePlatformService } from '../../core/native/runtime-platform.service';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 @Injectable({ providedIn: 'root' })
 export class LitologiasService {
+  private readonly runtime = inject(RuntimePlatformService);
   /** El catálogo administrativo cambia poco; se comparte durante 5 minutos. */
   private static readonly ACTIVAS_TTL_MS = 5 * 60 * 1000;
   private readonly http = inject(HttpClient);
@@ -18,9 +21,21 @@ export class LitologiasService {
     const params = incluirInactivas ? new HttpParams().set('incluir_inactivas', 'true') : undefined;
     if (incluirInactivas) return firstValueFrom(this.http.get<LitologiaPublica[]>(this.url, { params }));
     if (!this.activasCache || Date.now() >= this.activasCacheExpiraEn) {
-      this.activasCache = firstValueFrom(this.http.get<LitologiaPublica[]>(this.url)).catch((error: unknown) => {
+      this.activasCache = firstValueFrom(this.http.get<LitologiaPublica[]>(this.url)).then(async rows => {
+        if (this.runtime.isNative()) {
+          try { await Filesystem.writeFile({ directory: Directory.Data, path: 'offline-v1/catalogo.json', data: JSON.stringify({ url: this.url, rows }), encoding: Encoding.UTF8, recursive: true }); } catch { /* Online data remains usable; offline reports a missing catalog if needed. */ }
+        }
+        return rows;
+      }).catch(async (error: unknown) => {
         this.activasCache = null;
         this.activasCacheExpiraEn = 0;
+        if (this.runtime.isNative()) {
+          try {
+            const file = await Filesystem.readFile({ directory: Directory.Data, path: 'offline-v1/catalogo.json', encoding: Encoding.UTF8 });
+            const cached = JSON.parse(String(file.data));
+            if (cached.url === this.url && Array.isArray(cached.rows)) return cached.rows as LitologiaPublica[];
+          } catch { /* Show the original error without inventing catalog IDs. */ }
+        }
         throw error;
       });
       this.activasCacheExpiraEn = Date.now() + LitologiasService.ACTIVAS_TTL_MS;

@@ -60,6 +60,9 @@ export const T05DatosIncorrectos = createError(
   400,
   Error
 );
+export const T05ClaveOfflineCerrada = createError(
+  'OFFLINE_CLAVE_CERRADA', 'Esta operación fue cerrada sin creación. Confirme su cierre antes de corregir el borrador.', 409, Error,
+);
 
 export const T05MetadataNativeInvalida = createError(
   "ERR_NATIVE_METADATA_T05",

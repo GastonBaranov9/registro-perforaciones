@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { MAX_FOTO_BASE64_CHARS } from "../constants/fotos.ts";
 import { DEPARTAMENTOS_URUGUAY } from "../constants/departamentos-uruguay.ts";
+import { PASSWORD_MIN_LENGTH, PASSWORD_NON_BLANK, BCRYPT_MAX_BYTES } from '../constants/password.ts';
 
 export const RevestimientoValores = {
   PVC_6: "PVC: 6",
@@ -23,9 +24,12 @@ export const Rol = Type.Object({
 
 export type Rol = Static<typeof Rol>;
 
+// Login and account creation share validation. No trimming: whitespace is invalid.
+// PostgreSQL CITEXT UNIQUE supplies case-insensitive equality and uniqueness.
+export const EmailLoginSchema = Type.String({ format: 'email' });
 export const Usuario = Type.Object({
   id_usuario: Type.Integer(),
-  email: Type.String({ format: "email" }),
+  email: EmailLoginSchema,
   nombre: Type.String(),
   password: Type.String(),
   activo: Type.Boolean(),
@@ -39,9 +43,10 @@ export type Usuario = Static<typeof Usuario>;
 export const UsuarioPublico = Type.Omit(Usuario, ["password", "version_sesion"]);
 export type UsuarioPublico = Static<typeof UsuarioPublico>;
 
-const PasswordPlanoSchema = Type.String({
-  minLength: 8,
-  pattern: "\\S",
+export const PasswordPlanoSchema = Type.String({
+  minLength: PASSWORD_MIN_LENGTH,
+  maxLength: BCRYPT_MAX_BYTES,
+  pattern: PASSWORD_NON_BLANK,
 });
 
 export const UsuarioCrearBody = Type.Object({
@@ -412,6 +417,8 @@ export const PropietarioOperativoActualizarBody = Type.Partial(PropietarioOperat
 export type PropietarioOperativoActualizarBody = Static<typeof PropietarioOperativoActualizarBody>;
 
 export const PropietarioOperativo = Type.Object({
+  cuenta_acceso: Type.Optional(Type.Boolean()),
+  activo: Type.Optional(Type.Boolean()),
   id_usuario: Type.Integer(),
   nombre: Type.String(),
   documento_rut: Type.Union([Type.String(), Type.Null()]),

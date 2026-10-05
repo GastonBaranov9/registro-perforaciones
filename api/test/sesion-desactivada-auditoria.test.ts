@@ -42,6 +42,8 @@ async function fixture(t: TestContext, pausa?: { entered: () => void; wait: Prom
     const sql = source.replace(/\s+/g, ' ').trim();
     const result = (rows: any[] = []) => ({ rows, rowCount: rows.length });
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return result();
+    // El administrador 99 permanece activo al desactivar al empleado 7.
+    if (sql.includes('last-active-administrator')) return result();
     if (sql.includes('session-write-native-lock')) return result([{ id_sesion_nativa: 11 }]);
     if (sql.includes('session-write-user-lock')) return result([{ activo: values[0] === administrador || state.activo, cuenta_acceso: true, version_sesion: values[0] === administrador ? 1 : state.version }]);
     if (sql.startsWith('SELECT activo, version_sesion')) {

@@ -4,12 +4,24 @@
   @if (mensaje()) { <p role="status">{{ mensaje() }}</p> }
   @if (propietario(); as persona) {
     <h1>Ficha de propietario: {{ persona.nombre }}</h1>
-    <p>Identificador interno: {{ persona.id_usuario }} · Identidad administrativa sin credenciales automáticas</p>
+    <p>Identificador interno: {{ persona.id_usuario }} · Propietario real</p>
+    <section aria-label="Cuenta de acceso y permisos">
+      <h2>Cuenta de acceso / permisos</h2>
+      @if (persona.cuenta_acceso === true) {
+        <p>Con acceso · {{ persona.activo ? 'Activo' : 'Desactivado' }}</p>
+        <ion-button (click)="router.navigate(['/usuarios-edit', persona.id_usuario])">Cambiar contraseña / gestionar roles</ion-button>
+      } @else if (persona.cuenta_acceso === false) {
+        <p>Propietario sin credenciales de acceso.</p>
+        <app-acceso-persona [id]="persona.id_usuario" (creado)="ionViewWillEnter()" />
+      }
+      <ion-button fill="clear" (click)="router.navigate(['/usuarios-list'])">Administrar eliminación de acceso o identidad</ion-button>
+    </section>
+    <h2>Datos de la persona</h2>
     <form class="datos" (ngSubmit)="guardar()">
       <label>Nombre y apellido * <input name="nombre" [(ngModel)]="persona.nombre" maxlength="160" required /></label>
       <label>Documento / RUT <input name="documento" [(ngModel)]="persona.documento_rut" maxlength="80" /></label>
       <label>Teléfono <input name="telefono" [(ngModel)]="persona.telefono" maxlength="80" /></label>
-      <label>Email <input name="email" type="email" [(ngModel)]="persona.email" maxlength="254" /></label>
+      <label>Email de contacto <input name="email" type="email" [(ngModel)]="persona.email" maxlength="254" /></label>
       <label>Dirección <input name="direccion" [(ngModel)]="persona.direccion" maxlength="300" /></label>
       <label>Localidad <input name="localidad" [(ngModel)]="persona.localidad" maxlength="160" /></label>
       <label>Departamento <select name="departamento" [(ngModel)]="persona.departamento">

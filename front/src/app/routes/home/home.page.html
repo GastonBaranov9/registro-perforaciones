@@ -11,6 +11,7 @@
         </h1>
 
         <p class="hero-tagline">El hombre que trata bien a la tierra</p>
+        @if (auth.isNative() && auth.tieneRol('perforador')) { <p><a routerLink="/trabajo-local">Trabajo de campo · borradores y sincronización</a></p> }
       </div>
     </div>
   </div>

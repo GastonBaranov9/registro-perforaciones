@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <exclude domain="file" path="offline-v1/" />
     <exclude domain="sharedpref" path="WSSecureStorageSharedPreferences.xml" />
     <exclude domain="sharedpref" path="RspNativeClient.xml" />
 </full-backup-content>

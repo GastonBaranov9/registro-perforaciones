@@ -9,6 +9,7 @@ import type {
 import * as err from "../models/errors.ts";
 import { hashPassword } from "./password-service.ts";
 import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
+import { exigirAdministradorActivo } from './proteccion-admin-service.ts';
 
 type UsuarioPublicoSinRoles = Omit<UsuarioPublico, "roles">;
 
@@ -191,6 +192,7 @@ export async function updateUsuario(
       [id_usuario]
     );
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     if (debeRevocar) cerrarConexionesUsuario(id_usuario);
 
@@ -207,19 +209,27 @@ export async function updateUsuario(
 }
 
 export async function deleteUsuario(id_usuario: number): Promise<Boolean> {
-  const resultado = await conEscrituraSesion(async (dbEscritura) => {
+  const dbEscritura = await myPool.connect();
+  try {
+    await iniciarEscrituraSesion(dbEscritura, true);
     const { rowCount } = await dbEscritura.query(
       `
-      DELETE FROM usuario
+      UPDATE usuario SET activo=FALSE, cuenta_acceso=FALSE, email=NULL,
+        password=NULL, version_sesion=version_sesion+1
       WHERE id_usuario = $1 AND cuenta_acceso = TRUE
       `,
       [id_usuario]
     );
     if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
-    return (rowCount ?? 0) > 0;
-  }, myPool, true);
-  if (resultado) cerrarConexionesUsuario(id_usuario);
-  return resultado;
+    // Conservar la identidad y sus relaciones, quitando únicamente permisos de acceso.
+    await dbEscritura.query("DELETE FROM usuario_rol WHERE id_usuario=$1 AND id_rol IN (SELECT id_rol FROM rol WHERE nombre <> 'propietario')", [id_usuario]);
+    await dbEscritura.query("UPDATE sesion_nativa SET revoked_at=COALESCE(revoked_at,clock_timestamp()), revocation_reason=COALESCE(revocation_reason,'user_logout') WHERE id_usuario=$1", [id_usuario]);
+    await exigirAdministradorActivo(dbEscritura);
+    await dbEscritura.query('COMMIT');
+    cerrarConexionesUsuario(id_usuario);
+    return true;
+  } catch (error) { await dbEscritura.query('ROLLBACK'); throw error; }
+  finally { dbEscritura.release(); }
 }
 
 export async function getUsuarioById(

@@ -3,6 +3,7 @@ import { myPool } from "../db/pool.ts";
 import { Rol, RolBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
+import { exigirAdministradorActivo } from './proteccion-admin-service.ts';
 export async function changeRol(
   id_usuario: number,
   id_rol: number
@@ -46,6 +47,7 @@ export async function changeRol(
       [id_usuario]
     );
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     cerrarConexionesUsuario(id_usuario);
   } catch (error) {
@@ -136,6 +138,7 @@ export async function updateRol(
       );
     }
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return rows[0] ?? null;
@@ -175,6 +178,7 @@ export async function deleteRol(id_rol: number): Promise<Boolean> {
       [id_rol]
     );
     await client.query(`DELETE FROM rol WHERE id_rol = $1`, [id_rol]);
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return true;

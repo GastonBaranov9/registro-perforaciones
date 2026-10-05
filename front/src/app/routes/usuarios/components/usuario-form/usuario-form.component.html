@@ -1,13 +1,16 @@
 <form #usuarioForm="ngForm" (ngSubmit)="handleSubmit()">
   <ion-list>
+    <h3>Datos de la persona</h3>
     
     <ion-item>
       <ion-label position="stacked">Nombre</ion-label>
       <ion-input type="text" name="nombre" [(ngModel)]="this.user().nombre" required></ion-input>
     </ion-item>
 
+    <h3>Cuenta de acceso / permisos</h3>
+    <p>El email de acceso identifica la cuenta. Cambiar la contraseña, desactivar la cuenta o modificar sus roles revoca las sesiones existentes.</p>
     <ion-item>
-      <ion-label position="stacked">Email</ion-label>
+      <ion-label position="stacked">Email de acceso</ion-label>
       <ion-input type="email" name="email" [(ngModel)]="this.user().email" required></ion-input>
     </ion-item>
 

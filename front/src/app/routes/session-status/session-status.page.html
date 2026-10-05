@@ -21,6 +21,7 @@
         <h1>Sin conexión</h1>
         <p>Sin conexión. No fue posible validar la sesión.</p>
         <ion-button (click)="retry()">Reintentar</ion-button>
+        @if (auth.state() === 'offline-unverified') { <ion-button routerLink="/trabajo-local">Abrir trabajo local del perforador</ion-button> }
       }
     }
   </section>

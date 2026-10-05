@@ -26,6 +26,7 @@ export default fastifyPlugin(async function (fastify) {
           ? [
               "Authorization",
               "Content-Type",
+              "Idempotency-Key",
               "X-Native-Platform",
               "X-Native-App-Build",
               "X-Native-App-Version",

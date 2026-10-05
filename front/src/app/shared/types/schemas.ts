@@ -265,6 +265,7 @@ export type PropietarioOperativoCrearBody = {
 };
 export type PropietarioOperativoActualizarBody = Partial<PropietarioOperativoCrearBody>;
 export type PropietarioOperativo = {
+  cuenta_acceso?: boolean; activo?: boolean;
   id_usuario: number; nombre: string; documento_rut: string | null; telefono: string | null; email: string | null;
   direccion: string | null; localidad: string | null;
   departamento: import('../constants/departamentos-uruguay').DepartamentoUruguay | null;
