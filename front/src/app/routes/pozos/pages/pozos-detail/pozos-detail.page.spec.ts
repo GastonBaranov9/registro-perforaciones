@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PozosDetailPage } from './pozos-detail.page';
 import { environment } from '../../../../../environments/environment';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 
 describe('PozosDetailPage', () => {
   let component: PozosDetailPage;
@@ -27,6 +28,7 @@ describe('PozosDetailPage', () => {
   });
 
   it('error HTTP de PDF muestra alerta persistente y permite un segundo intento', async () => {
+    spyOn(TestBed.inject(AuthService), 'userId').and.returnValue(1);
     component.id_pozo = 8;
     component.pozo.set({ id_pozo: 8, id_propietario: 1, id_sitio: 2, id_perforador: 3, fecha_creado: '2026-08-12' });
     const pendiente = component.generarPdf();

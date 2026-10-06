@@ -133,13 +133,14 @@ export type Sitio = Static<typeof Sitio>;
 export const NumeroPerforacion = Type.Integer({ minimum: 1, maximum: 2147483647 });
 
 export const Pozo = Type.Object({
+  origen: Type.Optional(Type.Union([Type.Literal('normal'), Type.Literal('historico')])),
   numero_perforacion: Type.Optional(Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1, maximum: 2147483647 })),
   id_pozo: Type.Integer(),
   id_propietario: Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1 }),
   propietario_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160 }), Type.Null()])),
-  id_sitio: Type.Integer(),
+  id_sitio: Type.Unsafe<number | null>({ type: ['integer', 'null'], minimum: 1 }),
   empresa: Type.Optional(Type.String()),
-  id_perforador: Type.Integer(),
+  id_perforador: Type.Unsafe<number | null>({ type: ['integer', 'null'], minimum: 1 }),
   fecha_inicio: Type.Optional(Type.String({ format: "date" })),
   fecha_fin: Type.Optional(Type.String({ format: "date" })),
   profundidad_final_m: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
@@ -338,7 +339,8 @@ export const SitioNuevoPozoBody = Type.Object({
 });
 export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
 
-export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
+export const NuevoPozo = Type.Object({ ...Type.Omit(Pozo, ['id_pozo', 'fecha_creado', 'origen', 'id_sitio', 'id_perforador']).properties,
+  id_sitio: Type.Integer({ minimum: 1 }), id_perforador: Type.Integer({ minimum: 1 }) });
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
 export const PozoModerno = Type.Omit(NuevoPozo, ["sello_sanitario", "pre_filtro"]);
@@ -434,7 +436,7 @@ export type PropietarioOperativo = Static<typeof PropietarioOperativo>;
 export const PozoDetalle = Type.Intersect([
   Pozo,
   Type.Object({
-    propietario_nombre: Type.String(),
+    propietario_nombre: Type.Union([Type.String(), Type.Null()]),
     propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
     propietario_documento_rut: Type.Union([Type.String(), Type.Null()]),
     propietario_telefono: Type.Union([Type.String(), Type.Null()]),
@@ -442,9 +444,9 @@ export const PozoDetalle = Type.Intersect([
     propietario_localidad: Type.Union([Type.String(), Type.Null()]),
     propietario_departamento: Type.Union([...DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)), Type.Null()]),
     propietario_observaciones: Type.Union([Type.String(), Type.Null()]),
-    perforador_nombre: Type.String(),
-    perforador_email: Type.String({ format: "email" }),
-    sitio: Sitio,
+    perforador_nombre: Type.Union([Type.String(), Type.Null()]),
+    perforador_email: Type.Union([Type.String({ format: "email" }), Type.Null()]),
+    sitio: Type.Optional(Sitio),
   }),
 ]);
 export type PozoDetalle = Static<typeof PozoDetalle>;

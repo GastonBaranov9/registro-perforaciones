@@ -32,7 +32,7 @@ export default fastifyPlugin(async function (fastify) {
               "X-Native-App-Build",
               "X-Native-App-Version",
             ]
-          : ["Content-Type", "X-CSRF-Token"],
+          : ["Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Epoca-Datos"],
         exposedHeaders: native
           ? ["Content-Disposition", "X-Request-Id"]
           : undefined,

@@ -11,6 +11,7 @@
     <ion-card-header>
       <ion-card-title>{{ pozo()?.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación N.º " + pozo()?.numero_perforacion }}</ion-card-title>
       @if (authService.tieneRol('perforador') && !permisos.puedeEditar(pozo())) { <p role="status">{{ permisos.mensaje }}</p> }
+      @if (pozo()?.origen === 'historico') { <p>Carga histórica: los datos no registrados se mantienen desconocidos.</p> }
       <p>ID interno: {{ id_pozo }}</p>
       @if (authService.tieneRol('administracion') && pozo()?.numero_perforacion == null) {
         <app-asignar-numero-pendiente [idPozo]="id_pozo" (asignado)="numeroAsignado($event)" />
@@ -41,7 +42,7 @@
         </dl>
         @if (this.pozo()?.sitio; as sitioActual) {
           <dl class="data-row"><dt>Padrón</dt><dd>{{ sitioActual.padron || 'No especificado' }}</dd></dl>
-          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="this.pozo()!.id_propietario ?? this.pozo()!.id_perforador"
+          <app-mapa-aereo [idSitio]="sitioActual.id_sitio" [idUsuario]="authService.userId()!"
             [latitud]="sitioActual.latitud" [longitud]="sitioActual.longitud" />
         }
 
@@ -105,7 +106,7 @@
         </ion-item>
       </ion-list>
       <app-perfil-litologico
-        [idUsuario]="pozo()!.id_propietario ?? pozo()!.id_perforador"
+        [idUsuario]="authService.userId()!"
         [idPozo]="id_pozo"
         [versionPerfil]="versionPerfil()"
       />
@@ -122,7 +123,7 @@
       </section>
       <ion-toolbar>
         <ion-buttons slot="start">
-          @if (permisos.puedeEditar(pozo())) { <ion-button fill="outline" color="primary" (click)="irAEditarPozo()"> Editar </ion-button> }
+          @if (permisos.puedeEditar(pozo()) && pozo()?.origen !== 'historico') { <ion-button fill="outline" color="primary" (click)="irAEditarPozo()"> Editar </ion-button> }
         </ion-buttons>
         <ion-buttons slot="end">
           <ion-button color="primary" (click)="generarPdf()" [disabled]="generandoPdf()" [attr.aria-busy]="generandoPdf()">

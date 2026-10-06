@@ -76,8 +76,8 @@ export async function getReportePozo(
       p.foto_url 
     FROM public.pozo p
       LEFT JOIN public.usuario prop ON prop.id_usuario = p.id_propietario
-      JOIN public.usuario perf ON perf.id_usuario = p.id_perforador
-      JOIN public.sitio s ON s.id_sitio = p.id_sitio
+      LEFT JOIN public.usuario perf ON perf.id_usuario = p.id_perforador
+      LEFT JOIN public.sitio s ON s.id_sitio = p.id_sitio
       LEFT JOIN public.documento doc ON doc.id_pozo = p.id_pozo
     WHERE p.id_pozo = $1;
   `;

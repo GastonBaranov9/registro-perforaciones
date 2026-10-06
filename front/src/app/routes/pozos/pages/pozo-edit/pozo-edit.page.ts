@@ -86,9 +86,10 @@ export class PozoEditPage {
         this.litologia.getIntervalosLitologicos(params.idPozo), this.diametros.getIntervalosDiametros(params.idPozo), this.filtros.listar(params.idPozo),
         this.aportes.getNivelesAporte(params.idPozo),
       ]);
+      if (pozo.origen === 'historico' || pozo.id_sitio == null || pozo.id_perforador == null) throw new Error('Este registro histórico no se edita con el formulario de alta normal.');
       const [propietario, perforador] = await Promise.all([
         !this.authService.tieneRol('administracion') || pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
-        personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
+        pozo.id_perforador == null || personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
       ]);
       const personas = {
         propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
@@ -100,7 +101,7 @@ export class PozoEditPage {
         intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, ranuraOriginal: x.ranura_mm, dato: { id_intervalo_filtro:x.id_intervalo_filtro,desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia,ranura_mm:x.ranura_mm } })),
         nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
       };
-      return { pozo: { ...pozo, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
+      return { pozo: { ...pozo, id_sitio: pozo.id_sitio, id_perforador: pozo.id_perforador, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
   });
 
@@ -161,7 +162,7 @@ export class PozoEditPage {
     try {
       this.disabled.set(true);
       this.errorMessage.set('');
-      await this.fotoPozoService.eliminarFoto(pozo.id_propietario ?? pozo.id_perforador, this.id_pozo());
+      await this.fotoPozoService.eliminarFoto(this.authService.userId()!, this.id_pozo());
       this.pozoResource.reload();
     } catch (error: unknown) {
       this.errorMessage.set(mensajeHumano(error, 'No se pudo eliminar la fotografía.'));
@@ -194,7 +195,7 @@ export class PozoEditPage {
   }
   async guardarUbicacion(sitio: SitioBody) {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo || !this.sitioEnEdicion() || this.disabled() || this.vinculando()) return;
+    if (!pozo || pozo.id_sitio == null || !this.sitioEnEdicion() || this.disabled() || this.vinculando()) return;
     if (!this.permisos.puedeEditar(pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
     try {
       this.disabled.set(true); this.errorMessage.set('');

@@ -2,8 +2,6 @@
   <ion-list class="ion-padding">
     @if (agregareditar()) {
       <p>Perforación: <strong>{{ pozo().numero_perforacion ?? "Sin número asignado" }}</strong> · ID interno: {{ id_pozo() }}</p>
-    } @else if (administrarNumeracion()) {
-      <app-numero-perforacion [numero]="pozo().numero_perforacion" (numeroChange)="pozo().numero_perforacion=$event; notificarCambio()" [deshabilitado]="guardando()" />
     } @else if (borradorLocal()) {
       <p>El servidor asignará el número al sincronizar.</p>
     } @else {

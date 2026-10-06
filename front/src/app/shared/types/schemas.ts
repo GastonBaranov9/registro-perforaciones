@@ -49,13 +49,14 @@ export type UsuarioFormulario = {
 };
 
 export type Pozo = {
+  origen?: 'normal' | 'historico';
   numero_perforacion?: number | null;
   id_pozo: number;
   id_propietario: number | null;
   propietario_provisional?: string | null;
-  id_sitio: number;
+  id_sitio: number | null;
   empresa?: string;
-  id_perforador: number;
+  id_perforador: number | null;
   fecha_inicio?: string;
   fecha_fin?: string;
   profundidad_final_m?: number;

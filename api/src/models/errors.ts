@@ -66,6 +66,9 @@ export const T05ClaveOfflineCerrada = createError(
 export const T05EpocaRetirada = createError(
   'EPOCA_DATOS_RETIRADA', 'Esta operación pertenece a una etapa de datos retirada o no identificada. No puede sincronizarse ni convertirse a la etapa actual. Sus archivos locales se conservan.', 410, Error,
 );
+export const T05HistoricoNumeroOcupado = createError(
+  'HISTORICO_NUMERO_OCUPADO', 'Ese número histórico ya está utilizado o reservado. Esta carga no se guardó.', 409, Error,
+);
 
 export const T05MetadataNativeInvalida = createError(
   "ERR_NATIVE_METADATA_T05",

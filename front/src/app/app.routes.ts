@@ -5,6 +5,7 @@ import { HomePage } from './routes/home/home.page';
 import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
+  { path: 'pozos-historicos', canActivate: [isloggedGuard, isAdminGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Carga histórica' },
   { path: 'trabajo-local', canActivate: [offlineGuard], loadComponent: async () => (await import('./routes/offline/offline.page')).OfflinePage, title: 'Trabajo de campo' },
   {
     path: 'pozos-numeracion', canActivate: [isloggedGuard, isAdminGuard],

@@ -1,7 +1,7 @@
 import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { exigirEpoca } from './epoca-datos-service.ts';
 import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
-import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
+import { traducirErrorNumeracion } from "./numeracion-perforacion-service.ts";
 import { randomUUID, createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -58,7 +58,7 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   return errores;
 }
 
-export function validarDatosTecnicosPozo(data: PerfilLitologicoVistaPreviaBody): string[] {
+export function validarDatosTecnicosPozo(data: Omit<PerfilLitologicoVistaPreviaBody, 'profundidad_final_m'> & { profundidad_final_m?: number }): string[] {
   const errores: string[] = [];
   const profundidad = data.profundidad_final_m;
   validarIntervalos(data.intervalos_litologicos, "litológico", profundidad, errores);
@@ -132,8 +132,7 @@ export async function crearPozoCompleto(
       if (cerrada.rows.length) throw new err.T05ClaveOfflineCerrada();
     }
     if (data.pozo.numero_perforacion != null) {
-      validarNumeroPerforacion(data.pozo.numero_perforacion);
-      await exigirAdministracionNumeracion(creadoPor, client);
+      throw new err.T05DatosIncorrectos('Use Carga histórica para un número explícito. El alta normal siempre es automática.');
     }
     await validarPropiedad(data.pozo, client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
@@ -337,7 +336,7 @@ export async function actualizarPozoCompleto(
   return resultado;
 }
 
-async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {
+export async function insertarHijos(client: PoolClient, idPozo: number, data: Pick<DatosCompletosPozo, 'intervalos_litologicos' | 'intervalos_diametro' | 'intervalos_filtro' | 'niveles_aporte'>, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {
   const intervalos_litologicos: PozoCompletoResultado["intervalos_litologicos"] = [];
   const intervalos_diametro: PozoCompletoResultado["intervalos_diametro"] = [];
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];

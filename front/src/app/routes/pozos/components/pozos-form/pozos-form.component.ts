@@ -1,5 +1,4 @@
 import { RuntimePlatformService } from '../../../../core/native/runtime-platform.service';
-import { NumeroPerforacionComponent } from '../../../../shared/components/numero-perforacion/numero-perforacion.component';
 import { numeroPerforacionValido } from '../../../../shared/services/numeracion-perforacion.service';
 import { Component, OnDestroy, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -25,7 +24,6 @@ type PropietarioEdicionEstado = {
   templateUrl: './pozos-form.component.html',
   styleUrls: ['./pozos-form.component.scss'],
   imports: [
-    NumeroPerforacionComponent,
     IonItem,
     IonLabel,
     IonInput,

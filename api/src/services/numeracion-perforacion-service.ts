@@ -74,6 +74,7 @@ export async function consultarNumero(idUsuario: number, numero: number, db: Db 
 
 export async function asignarNumeroPendiente(idUsuario: number, idPozo: number, numero: number, pool: ConnectionPool = myPool): Promise<{ numero_perforacion: number }> {
   validarNumeroPerforacion(numero);
+  if (numero > 3281) throw new err.T05DatosIncorrectos('La asignación manual está limitada a históricos hasta 3281.');
   const client = await pool.connect();
   try {
     await iniciarEscrituraSesion(client, false);

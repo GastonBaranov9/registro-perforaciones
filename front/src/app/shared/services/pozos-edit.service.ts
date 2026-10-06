@@ -23,7 +23,7 @@ export class PozosEditService {
     return id;
   }
 
-  public async editPozo(id_pozo: number, body: NuevoPozo): Promise<NuevoPozo> {
+  public async editPozo(id_pozo: number, body: NuevoPozo): Promise<Pozo> {
     const id_usuario = this.getUserIdOrThrow();
     try {
       return await firstValueFrom(

@@ -2,7 +2,7 @@
 // node --experimental-strip-types test/numeracion-perforacion-postgres.local.ts [directorio-bin]
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,6 +14,7 @@ import { crearPozoCompleto, actualizarPozoCompleto } from "../src/services/pozo-
 import { asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../src/services/numeracion-perforacion-service.ts";
 import { getReportePozo } from "../src/services/generar-informe-consultas.ts";
 import type { PozoCompletoBody } from "../src/models/schemas.ts";
+import { crearHistorico } from '../src/services/historicos-service.ts';
 import { myPool } from "../src/db/pool.ts";
 import numeracionRoutes from "../src/routes/numeracion-perforacion.ts";
 import pozoRoutes from "../src/routes/pozos.ts";
@@ -84,6 +85,8 @@ try {
         previo = (await pool.query("SELECT row_to_json(p) AS pozo FROM pozo p")).rows[0].pozo;
       }
       const resultado = await ejecutarMigraciones(pool, { logger });
+      const epoca = (await pool.query('SELECT epoca FROM epoca_datos')).rows[0].epoca;
+      const historico = async (numero: number) => ({ pozo: await crearHistorico(1, { numero_perforacion: numero }, randomUUID(), epoca, pool) });
       assert.equal(resultado.pendientes, 0);
       assert.ok(resultado.aplicadas.includes("011_numero_perforacion.sql"));
       assert.deepEqual((await ejecutarMigraciones(pool, { logger })).aplicadas, []);
@@ -91,18 +94,18 @@ try {
       assert.equal((await pool.query("SELECT contype FROM pg_constraint WHERE conrelid='pozo'::regclass AND conname='pozo_numero_perforacion_positivo'")).rows[0].contype, "c");
       if (previo) {
         const after = (await pool.query("SELECT row_to_json(p) AS pozo FROM pozo p")).rows[0].pozo;
-        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null, propietario_provisional_original: null });
+        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null, propietario_provisional_original: null, origen: "normal" });
         assert.equal((await pool.query("SELECT id_pozo FROM intervalo_litologico")).rows[0].id_pozo, "1");
       } else await pool.query(seed);
       assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 1, agotado: false });
       await assert.rejects(crearPozoCompleto(2, body(), root, pool), status(409));
-      await assert.rejects(configurarNumeracion(2, 2047, null, pool), status(403));
-      await assert.rejects(crearPozoCompleto(2, body(1850), root, pool), status(403));
-      for (const invalid of [0, -1, 1.5, NaN, Infinity, 2147483648, "2047", true]) {
+      await assert.rejects(configurarNumeracion(2, 3282, null, pool), status(403));
+      await assert.rejects(crearPozoCompleto(2, body(1850), root, pool), status(400));
+      for (const invalid of [0, -1, 1.5, NaN, Infinity, 2147483648, "3282", true]) {
         await assert.rejects(configurarNumeracion(1, invalid as number, null, pool), status(400));
         await assert.rejects(crearPozoCompleto(1, body(invalid as number), root, pool), status(400));
       }
-      await configurarNumeracion(1, 2047, null, pool);
+      await configurarNumeracion(1, 3282, null, pool);
       // Hold the real counter lock so both creates are pending together.
       const lock = await pool.connect();
       await lock.query("BEGIN");
@@ -117,13 +120,13 @@ try {
         assert.equal(esperando, 2, "Dos conexiones reales deben estar esperando simultáneamente el contador");
       } finally { await lock.query("COMMIT"); lock.release(); }
       const primeros = await concurrentes;
-      assert.deepEqual(primeros.map(p => p.pozo.numero_perforacion).sort(), [2047, 2048]);
+      assert.deepEqual(primeros.map(p => p.pozo.numero_perforacion).sort(), [3282, 3283]);
       assert.notEqual(primeros[0].pozo.id_pozo, primeros[1].pozo.id_pozo);
-      assert.equal((await crearPozoCompleto(1, body(1850), root, pool)).pozo.numero_perforacion, 1850);
-      assert.equal((await crearPozoCompleto(2, body(null), root, pool)).pozo.numero_perforacion, 2049);
-      assert.equal((await crearPozoCompleto(1, body(1990), root, pool)).pozo.numero_perforacion, 1990);
-      assert.equal((await crearPozoCompleto(2, body(), root, pool)).pozo.numero_perforacion, 2050);
-      await assert.rejects(crearPozoCompleto(1, body(1850), root, pool), status(409));
+      assert.equal((await historico(1850)).pozo.numero_perforacion, 1850);
+      assert.equal((await crearPozoCompleto(2, body(null), root, pool)).pozo.numero_perforacion, 3284);
+      assert.equal((await historico(1990)).pozo.numero_perforacion, 1990);
+      assert.equal((await crearPozoCompleto(2, body(), root, pool)).pozo.numero_perforacion, 3285);
+      await assert.rejects(historico(1850), status(409));
       const beforeRollback = await obtenerNumeracion(1, pool);
       const invalidChild = body(); invalidChild.intervalos_litologicos[0].id_litologia = 999999;
       await assert.rejects(crearPozoCompleto(2, invalidChild, root, pool), status(400));
@@ -132,22 +135,22 @@ try {
       await assert.rejects(crearPozoCompleto(1, fallido, root, pool), status(400));
       assert.deepEqual(await consultarNumero(1, 5000, pool), { utilizado: false });
       assert.deepEqual(await obtenerNumeracion(1, pool), beforeRollback);
-      const alto = await crearPozoCompleto(1, body(3000), root, pool);
-      assert.equal((await obtenerNumeracion(1, pool)).proximo, 3001);
+      const alto = await historico(3000);
+      assert.equal((await obtenerNumeracion(1, pool)).proximo, 3286);
       await assert.rejects(pool.query("UPDATE pozo SET numero_perforacion=NULL WHERE id_pozo=$1", [alto.pozo.id_pozo]), { code: "P1102" });
       await assert.rejects(pool.query("UPDATE pozo SET numero_perforacion=3002 WHERE id_pozo=$1", [alto.pozo.id_pozo]), { code: "P1102" });
       await pool.query("DELETE FROM pozo WHERE id_pozo=$1", [alto.pozo.id_pozo]);
       assert.deepEqual(await consultarNumero(1, 3000, pool), { utilizado: true });
-      await assert.rejects(crearPozoCompleto(1, body(3000), root, pool), status(409));
+      await assert.rejects(historico(3000), status(409));
       await assert.rejects(configurarNumeracion(1, 2000, 3001, pool), status(409));
-      await assert.rejects(configurarNumeracion(1, 4000, 2051, pool), status(409));
-      // Manual and auto competing for the next number: either order is valid.
-      const race = await Promise.allSettled([crearPozoCompleto(1, body(3001), root, pool), crearPozoCompleto(2, body(), root, pool)]);
+      await assert.rejects(configurarNumeracion(1, 4000, 3285, pool), status(409));
+      // Hist?rico y alta autom?tica concurrentes ocupan rangos separados.
+      const race = await Promise.allSettled([historico(3001), crearPozoCompleto(2, body(), root, pool)]);
       assert.equal(race[1].status, "fulfilled");
       const numeros = race.filter(r => r.status === "fulfilled").map(r => r.value.pozo.numero_perforacion);
       assert.equal(new Set(numeros).size, numeros.length);
       if (race[0].status === "rejected") assert.ok(status(409)(race[0].reason));
-      const sameHistory = await Promise.allSettled([crearPozoCompleto(1, body(1700), root, pool), crearPozoCompleto(1, body(1700), root, pool)]);
+      const sameHistory = await Promise.allSettled([historico(1700), historico(1700)]);
       assert.equal(sameHistory.filter(r => r.status === "fulfilled").length, 1);
       assert.ok(sameHistory.some(r => r.status === "rejected" && status(409)(r.reason)));
       const reporte = await getReportePozo(primeros[0].pozo.id_pozo, pool);
@@ -181,13 +184,13 @@ try {
       try {
         await app.register(numeracionRoutes); await app.register(pozoRoutes);
         assert.equal((await app.inject({ method: "PUT", url: "/pozos/numeracion", payload: { proximo: 8000, esperado: null } })).statusCode, 403);
-        for (const numero of [0, -1, 1.5, 2147483648, true, false, "", "2047"]) {
+        for (const numero of [0, -1, 1.5, 2147483648, true, false, "", "3282"]) {
           assert.equal((await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", headers: { "x-test-user": "1" }, payload: body(numero as number) })).statusCode, 400, "Número inválido: " + numero);
         }
         const denied = await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", payload: body(1000) });
         assert.equal(denied.statusCode, 403, denied.body);
         const duplicate = await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", headers: { "x-test-user": "1" }, payload: body(1850) });
-        assert.equal(duplicate.statusCode, 409, duplicate.body);
+        assert.equal(duplicate.statusCode, 400, duplicate.body);
         const provisional = body();
         provisional.pozo.id_propietario = null;
         provisional.pozo.propietario_provisional = 'Cliente en campo';
