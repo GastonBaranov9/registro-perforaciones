@@ -171,6 +171,34 @@ services:
     networks:
       - backend
 
+  reset-piloto:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    # Backup 0700 y cuarentena hermana de fotos: sólo esta operación manual.
+    user: "0:0"
+    restart: "no"
+    healthcheck:
+      disable: true
+    command: ["node", "./dist/scripts/reset-piloto.js"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+      RESET_CONFIRM: ${RESET_CONFIRM:-}
+      RESET_BACKUP_DIR: ${RESET_BACKUP_DIR:-}
+      RESET_PHOTO_SHA256: ${RESET_PHOTO_SHA256:-}
+    volumes:
+      - raul_silva_fotos:/var/lib/registro-perforaciones
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+        read_only: true
+    networks:
+      - backend
+
   reconcile-fotos:
     profiles: ["ops"]
     image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
