@@ -19,7 +19,20 @@
           <p role="status">{{ permisos.mensaje }}</p>
           <ion-button fill="outline" (click)="router.navigate(['/pozos-detail', id_pozo()])">Ver detalle</ion-button>
         }
-        <div class="editor-layout"><div class="editor-formulario" [attr.inert]="!permisos.puedeEditar(editor.pozo) ? '' : null"><app-pozos-form
+        @if (sitioEnEdicion(); as ubicacion) {
+          <section aria-label="Ubicación de la perforación">
+            <h3>Editar ubicación de la perforación</h3>
+            <p>La ubicación se guarda por separado. Los demás cambios del pozo siguen pendientes.</p>
+            <div [attr.inert]="disabled() || !permisos.puedeEditar(editor.pozo) ? '' : null">
+              <app-sitios-form [sitio]="ubicacion" (saved)="guardarUbicacion($event)" (ubicacionChange)="coordenadasPendientes.set($event)" />
+            </div>
+            <app-mapa-aereo [idSitio]="ubicacion.id_sitio" [idUsuario]="authService.userId() || 0"
+              [preview]="!!coordenadasPendientes()" [latitud]="coordenadasPendientes()?.latitud ?? ubicacion.latitud"
+              [longitud]="coordenadasPendientes()?.longitud ?? ubicacion.longitud" />
+            <ion-button fill="clear" [disabled]="disabled()" (click)="sitioEnEdicion.set(null)">Volver al pozo sin guardar ubicación</ion-button>
+          </section>
+        }
+        <div class="editor-layout" [style.display]="sitioEnEdicion() ? 'none' : null"><div class="editor-formulario" [attr.inert]="!permisos.puedeEditar(editor.pozo) ? '' : null"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           [sitios]="this.sitiosActualizados() ?? editor.sitios"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
@@ -49,7 +62,7 @@
           fill="outline"
           expand="block"
           (click)="recargar()"
-          [disabled]="this.disabled() || vinculando()"
+          [disabled]="this.disabled() || vinculando() || !!sitioEnEdicion()"
         >
           RECARGAR
         </ion-button>

@@ -24,6 +24,15 @@ describe('SitioPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+  for (const rol of ['propietario', 'perforador', 'administracion']) {
+    it(`${rol}: el menú de Sitios sólo ofrece acciones a administración`, () => {
+      component.mainStore.setUser({ id_usuario: 7, nombre: 'Usuario', roles: [{ id_rol: 1, nombre: rol, descr: rol }] });
+      fixture.detectChanges();
+      const texto = fixture.nativeElement.textContent;
+      expect(texto.includes('LISTA DE SITIOS')).toBe(rol === 'administracion');
+      expect(texto.includes('CREAR UN SITIO')).toBe(rol === 'administracion');
+    });
+  }
 
   it('no muestra crear sitio standalone a un perforador', () => {
     component.mainStore.user.set({

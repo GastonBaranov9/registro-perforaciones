@@ -25,11 +25,12 @@ import { Router } from '@angular/router';
       <h2 #inicioFormulario tabindex="-1">Editar borrador sin número comercial</h2>
       <p>Guarde antes de salir. Puede guardar datos incompletos y completarlos antes de sincronizar.</p>
       <app-pozos-form [pozo]="draft.pozo" [sitioNuevo]="draft.sitio" [perforadores]="perforadores()"
-        [borradorLocal]="true" [fotoLocalUri]="fotoLocalUri()" [catalogosDisponibles]="true" [perforadorBloqueado]="true" [guardando]="busy()" textoGuardar="Guardar en este dispositivo"
+        [borradorLocal]="true" [fotoLocalUri]="fotoLocalUri()" [catalogosDisponibles]="true" [perforadorBloqueado]="true" [guardando]="busy()" textoGuardar="Guardar borrador"
         (saved)="guardar()">
         <app-datos-tecnicos-borrador [inicial]="inicial" [profundidad]="draft.pozo.profundidad_final_m" [guardando]="busy()" (cambiado)="draft.tecnicos = $event" />
       </app-pozos-form>
-      <ion-button (click)="guardar()" [disabled]="busy()">Guardar borrador aunque esté incompleto</ion-button>
+      <p id="ayuda-borrador-incompleto">Si faltan campos obligatorios, puede guardar el borrador incompleto en este dispositivo y completarlo antes de sincronizar.</p>
+      <ion-button fill="outline" aria-describedby="ayuda-borrador-incompleto" (click)="guardar()" [disabled]="busy()">Guardar borrador incompleto</ion-button>
     }
     @for (draft of offline.borradores(); track draft.id) {
       <section class="registro">

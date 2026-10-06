@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PozoEditPage } from './pozo-edit.page';
 import { Sitio } from '../../../../shared/types/schemas';
+import { SitiosEditService } from '../../../../shared/services/sitios-edit.service';
 
 describe('PozoEditPage', () => {
   let component: PozoEditPage;
@@ -26,6 +27,52 @@ describe('PozoEditPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+  it('perforador edita ubicación dentro del pozo y conserva cambios técnicos y foto', async () => {
+    (component.authService.tieneRol as jasmine.Spy).and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    const sitio: Sitio = { id_sitio: 4, departamento: 'Salto', latitud: '-31', longitud: '-57' };
+    const pozo = { id_sitio: 4, creado_por: 7, fecha_creado: new Date().toISOString() };
+    spyOn(component.pozoResource, 'value').and.returnValue({ pozo, sitios: [sitio] } as never);
+    const navegar = spyOn(component.router, 'navigate');
+    const reload = spyOn(component.pozoResource, 'reload');
+    const tecnicos = component.datosTecnicos();
+    const foto = new File(['foto'], 'pendiente.jpg');
+    component.formulario = { fotoFile: foto } as NonNullable<PozoEditPage['formulario']>;
+    component.editarSitio();
+    expect(component.sitioEnEdicion()).toEqual(sitio);
+    expect(component.sitioEnEdicion()).not.toBe(sitio);
+    expect(navegar).not.toHaveBeenCalled();
+    const nuevo = { ...sitio, latitud: '-32' };
+    const guardar = spyOn(TestBed.inject(SitiosEditService), 'editSitio').and.resolveTo(nuevo);
+    await component.guardarUbicacion(nuevo);
+    expect(guardar).toHaveBeenCalledOnceWith(4, nuevo);
+    expect(component.sitiosActualizados()).toEqual([nuevo]);
+    expect(component.sitioEnEdicion()).toBeNull();
+    expect(component.datosTecnicos()).toBe(tecnicos);
+    expect(component.formulario!.fotoFile).toBe(foto);
+    expect(reload).not.toHaveBeenCalled();
+  });
+  it('ubicación denegada conserva edición y revalida el plazo al guardar', async () => {
+    const sitio: Sitio = { id_sitio: 4, departamento: 'Salto' };
+    spyOn(component.pozoResource, 'value').and.returnValue({ pozo: { id_sitio: 4 }, sitios: [sitio] } as never);
+    const permiso = spyOn(component.permisos, 'puedeEditar').and.returnValue(true);
+    component.sitioEnEdicion.set(sitio);
+    const guardar = spyOn(TestBed.inject(SitiosEditService), 'editSitio').and.rejectWith(new Error('Sitio compartido: sin permiso'));
+    await component.guardarUbicacion(sitio);
+    expect(component.errorMessage()).toContain('sin permiso');
+    expect(component.sitioEnEdicion()).toBe(sitio);
+    expect(component.disabled()).toBeFalse();
+    permiso.and.returnValue(false); guardar.calls.reset();
+    await component.guardarUbicacion(sitio);
+    expect(guardar).not.toHaveBeenCalled();
+  });
+  it('administración conserva el editor standalone de Sitios', () => {
+    spyOn(component.pozoResource, 'value').and.returnValue({ pozo: { id_sitio: 4 } } as never);
+    const navegar = spyOn(component.router, 'navigate');
+    component.editarSitio();
+    expect(navegar).toHaveBeenCalledWith(['/sitios-edit', 4], { state: { returnTo: component.router.url } });
+    expect(component.sitioEnEdicion()).toBeNull();
   });
 
   it('rechaza un guardado al vencer el plazo sin llamar a la API ni perder borrador', async () => {

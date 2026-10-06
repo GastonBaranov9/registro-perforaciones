@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
@@ -45,6 +46,33 @@ describe('OfflinePage edición, foto persistida y eliminación explícita', () =
     await page.editar(d);
     expect(page.editando()!.foto).toEqual(d.foto); expect(page.error()).toContain('No se pudo abrir');
   });
+  for (const accion of ['normal', 'incompleto']) {
+    it(`Guardar borrador (${accion}) conserva UUID, datos incompletos y foto sin sincronizar`, async () => {
+      d.foto = { ruta: 'stored-photo', tipo: 'image/jpeg' };
+      await page.editar(d); fixture.detectChanges(); await fixture.whenStable();
+      const borrador = page.editando()!;
+      const foto = new File(['foto'], 'pendiente.jpg', { type: 'image/jpeg' });
+      page.form!.fotoFile = foto;
+      const normal = fixture.debugElement.query(By.css('app-pozos-form ion-button[type="submit"]'));
+      const alternativa = fixture.debugElement.queryAll(By.css('ion-button'))
+        .find(boton => boton.nativeElement.textContent.trim() === 'Guardar borrador incompleto')!;
+      expect(normal.nativeElement.textContent.trim()).toBe('Guardar borrador');
+      expect(alternativa.nativeElement.textContent.trim()).toBe('Guardar borrador incompleto');
+      expect(fixture.nativeElement.querySelector('#ayuda-borrador-incompleto').textContent).toContain('Si faltan campos obligatorios');
+      expect(normal.componentInstance.disabled).toBeFalse();
+      if (accion === 'normal') {
+        fixture.debugElement.query(By.css('app-pozos-form form')).triggerEventHandler('ngSubmit', {});
+      } else { alternativa.triggerEventHandler('click', {}); }
+      await fixture.whenStable();
+      expect(offline.guardar).toHaveBeenCalledOnceWith(borrador, foto);
+      expect(borrador.id).toBe(d.id);
+      expect(borrador.estado).toBe('pendiente');
+      expect(borrador.sitio).toEqual(d.sitio);
+      expect(borrador.foto).toEqual(d.foto);
+      expect(page.editando()).toBeNull();
+      expect(offline.sincronizar).not.toHaveBeenCalled();
+    });
+  }
   it('fallo de escritura conserva formulario y File para reintentar antes de salir', async () => {
     await page.editar(d); fixture.detectChanges(); await fixture.whenStable();
     const file = new File(['new'], 'new.png', { type: 'image/png' }); page.form!.fotoFile = file;

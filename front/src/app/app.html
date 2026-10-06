@@ -14,11 +14,13 @@
           </ion-item>
         </ion-menu-toggle>
 
+        @if (mainStore.isAdmin()) {
         <ion-menu-toggle auto-hide="true">
           <ion-item routerLink="/sitio">
             <ion-label>IR A SITIOS</ion-label>
           </ion-item>
         </ion-menu-toggle>
+        }
 
         @if (mainStore.isAdmin()) {
           <ion-menu-toggle auto-hide="true">

@@ -242,7 +242,7 @@ const sitiosRoutes= async function (
     {
       schema: {
         summary: "Obtener la lista de sitios",
-        description: "Rol: Administrador/Perforador",
+        description: "Rol: Administrador. Listado del módulo independiente de Sitios.",
         params: Type.Object({
           id_usuario: Type.Integer(),
         }),
@@ -258,11 +258,8 @@ const sitiosRoutes= async function (
     },
     async function (req, rep) {
       const { sub } = req.user;
-      const listaSitios = await isAdmin(sub)
-        ? await func.getAllSitios()
-        : await rolUser(sub, "propietario")
-          ? await func.getSitiosByPropietario(sub)
-          : await func.getSitiosByPerforador(sub)
+      if (!(await isAdmin(sub))) throw new err.T05SinPermiso();
+      const listaSitios = await func.getAllSitios();
       return rep.code(200).send(listaSitios)
     }
   );

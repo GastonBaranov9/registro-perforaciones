@@ -1,5 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { By } from '@angular/platform-browser';
+import { PozosFormComponent } from '../../components/pozos-form/pozos-form.component';
+import { environment } from '../../../../../environments/environment';
 import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -23,6 +26,27 @@ describe('PozosCreatePage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+  it('perforador toma GPS y crea con sitio_nuevo sin usar APIs standalone de Sitios', async () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    spyOn(component.authService, 'isNative').and.returnValue(false);
+    spyOn(component.candidatosService, 'obtener').and.resolveTo({ propietarios: [], perforadores: [{ id_usuario: 7, nombre: 'Perforador', roles: ['perforador'] }] });
+    spyOn(component.router, 'navigate').and.resolveTo(true);
+    await component.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
+    const form = fixture.debugElement.query(By.directive(PozosFormComponent)).componentInstance as PozosFormComponent;
+    component.nuevoPozo().propietario_provisional = 'Cliente'; component.sitioNuevo().departamento = 'Salto';
+    spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake(ok => ok({ coords: { latitude: -31, longitude: -57, accuracy: 5 } } as GeolocationPosition));
+    await form.tomarUbicacionNueva();
+    expect(component.sitioNuevo()).toEqual(jasmine.objectContaining({ latitud: '-31.000000', longitud: '-57.000000' }));
+    form.handlePozo();
+    const http = TestBed.inject(HttpTestingController);
+    const request = http.expectOne(`${environment.apiURL}usuarios/7/pozos/completo`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body.sitio_nuevo).toEqual(component.sitioNuevo());
+    expect(request.request.body.pozo.id_perforador).toBe(7);
+    request.flush({ pozo: { id_pozo: 44 } });
+    await fixture.whenStable(); http.verify();
   });
 
   it('inicia pozos nuevos con los cuatro datos técnicos estándar', () => {

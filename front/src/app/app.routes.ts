@@ -41,7 +41,7 @@ export const routes: Routes = [
   },
   {
     path: 'sitio',
-    canActivate: [nativeSessionGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () => (await import('../app/routes/sitios/sitio/sitio.page')).SitioPage,
     title: 'sitio',
   },
@@ -193,7 +193,7 @@ export const routes: Routes = [
 
   {
     path: 'sitio-detail/:id_sitio',
-    canActivate: [isloggedGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitio-detail/sitio-detail.page')).SitioDetailPage,
     title: 'sitio-detail',
@@ -202,7 +202,7 @@ export const routes: Routes = [
   {
     path: 'sitios-edit/:id_sitio',
 
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitios-edit/sitios-edit.page')).SitiosEditPage,
     title: 'sitios-edit',
@@ -221,7 +221,7 @@ export const routes: Routes = [
   {
     path: 'sitios-list',
 
-    canActivate: [isloggedGuard],
+    canActivate: [isloggedGuard, isAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/sitios/pages/sitios-list/sitios-list.page')).SitiosListPage,
     title: 'sitios-list',

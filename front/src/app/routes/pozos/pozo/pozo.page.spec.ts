@@ -24,4 +24,13 @@ describe('PozoPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+  for (const rol of ['propietario', 'perforador', 'administracion']) {
+    it(`${rol}: muestra creación sólo a perforador/administración y conserva consulta`, () => {
+      spyOn(component.authService, 'tieneRol').and.callFake(nombre => nombre === rol);
+      fixture.detectChanges();
+      const texto = fixture.nativeElement.textContent;
+      expect(texto.includes('CREAR POZOS')).toBe(rol !== 'propietario');
+      expect(texto).toContain('LISTA DE POZOS');
+    });
+  }
 });

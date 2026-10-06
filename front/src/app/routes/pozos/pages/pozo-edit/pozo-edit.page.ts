@@ -32,9 +32,15 @@ import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas'
 import { mensajeHumano } from '../../../../shared/utils/errores';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 import { PropietariosOperativosService } from '../../../../shared/services/propietarios-operativos.service';
+import { SitiosFormComponent } from '../../../sitios/components/sitios-form/sitios-form.component';
+import { SitiosEditService } from '../../../../shared/services/sitios-edit.service';
+import { SitioBody } from '../../../../shared/types/schemas';
+import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
 @Component({
   selector: 'app-pozo-edit',
   imports: [
+    SitiosFormComponent,
+    MapaAereoComponent,
     VincularPropietarioComponent,
     IonButton,
     IonContent,
@@ -52,6 +58,9 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
   styleUrl: './pozo-edit.page.css',
 })
 export class PozoEditPage {
+  private readonly editarUbicacionService = inject(SitiosEditService);
+  readonly sitioEnEdicion = signal<Sitio | null>(null);
+  readonly coordenadasPendientes = signal<{ latitud: string; longitud: string } | null>(null);
   readonly permisos = inject(EdicionPozoService);
   @ViewChild(PozosFormComponent) public formulario?: PozosFormComponent;
   public pozoEditService: PozosEditService = inject(PozosEditService);
@@ -125,7 +134,7 @@ export class PozoEditPage {
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
     if (!this.permisos.puedeEditar(this.pozoResource.value()?.pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
-    if (this.disabled() || this.vinculando()) return;
+    if (this.disabled() || this.vinculando() || this.sitioEnEdicion()) return;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
     if (errores.length) { this.errorMessage.set(errores.join(' ')); return; }
     try {
@@ -139,7 +148,7 @@ export class PozoEditPage {
     finally { this.disabled.set(false); }
   }
   recargar(): void {
-    if (this.disabled() || this.vinculando()) return;
+    if (this.disabled() || this.vinculando() || this.sitioEnEdicion()) return;
     if ((this.borradorDirty() || this.formulario?.fotoVistaPrevia() || this.formulario?.eliminarFotoPendiente()) && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
     this.formulario?.cancelarCambioFoto();
     this.borradorDirty.set(false);
@@ -166,11 +175,37 @@ export class PozoEditPage {
 
   editarSitio() {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo || !this.permisos.puedeEditar(pozo)) return;
+    if (!pozo || !this.permisos.puedeEditar(pozo) || this.disabled() || this.vinculando()) return;
+
+    if (!this.authService.tieneRol('administracion')) {
+      const sitio = (this.sitiosActualizados() ?? this.pozoResource.value()?.sitios ?? [])
+        .find(sitio => sitio.id_sitio === pozo.id_sitio);
+      if (sitio) {
+        this.coordenadasPendientes.set(null);
+        this.sitioEnEdicion.set(structuredClone(sitio));
+        this.errorMessage.set('');
+      }
+      return;
+    }
 
     this.router.navigate(['/sitios-edit', pozo.id_sitio], {
       state: { returnTo: this.router.url },
     });
+  }
+  async guardarUbicacion(sitio: SitioBody) {
+    const pozo = this.pozoResource.value()?.pozo;
+    if (!pozo || !this.sitioEnEdicion() || this.disabled() || this.vinculando()) return;
+    if (!this.permisos.puedeEditar(pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
+    try {
+      this.disabled.set(true); this.errorMessage.set('');
+      // La API comprueba todos los pozos del sitio y su ventana de edición.
+      const actualizado = await this.editarUbicacionService.editSitio(pozo.id_sitio, sitio);
+      this.sitiosActualizados.set((this.sitiosActualizados() ?? this.pozoResource.value()!.sitios)
+        .map(actual => actual.id_sitio === actualizado.id_sitio ? actualizado : actual));
+      this.sitioEnEdicion.set(null);
+    } catch (error: unknown) {
+      this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la ubicación.'));
+    } finally { this.disabled.set(false); }
   }
   async actualizarPropietario(evento: { id: number; body: PropietarioOperativoActualizarBody }) {
     if (this.disabled() || this.vinculando()) return;
