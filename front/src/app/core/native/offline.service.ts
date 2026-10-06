@@ -6,7 +6,7 @@ import { AuthService } from '../../shared/services/auth-service/auth.service';
 import { NativeSecureSessionStorage, NativeLogoutPendingStorage, NativeInstallationStorage } from './native-storage.service';
 import { NativeBackendConfigService } from './native-backend-config.service';
 import { RuntimePlatformService } from './runtime-platform.service';
-import { OfflineRepository, BorradorLocal, OfflineFiles } from './offline-repository';
+import { OfflineRepository, BorradorLocal, OfflineFiles, eliminacionLocal } from './offline-repository';
 import { PozoCompletoBody, PozoCompletoResultado } from '../../shared/types/schemas';
 import { environment } from '../../../environments/environment';
 import { validarDatosTecnicos } from '../../shared/utils/datos-tecnicos-borrador';
@@ -77,18 +77,53 @@ export class OfflineService {
       const repo = await this.repository();
       if (draft.usuario !== (await this.owner()).id_usuario) throw new Error('La cuenta cambió; el borrador no se guardó.');
       const actual = (await repo.list()).find(d => d.id === draft.id);
-      if (actual?.enviado) throw new Error('Este borrador ya fue enviado. Reintente para confirmar su recepción antes de editar el pozo en línea.');
+      this.mensaje.set('');
+      if (actual && eliminacionLocal(actual) !== 'borrador') throw new Error('Este borrador ya fue enviado. Reintente para confirmar su recepción antes de editar el pozo en línea.');
       const copy = structuredClone(draft);
       delete copy.pozo.numero_perforacion;
       copy.estado = 'pendiente';
       copy.error = undefined;
       copy.claveOperacion = actual?.claveOperacion ?? copy.claveOperacion;
       copy.requiereCorreccion = false;
-      if (foto) copy.foto = await repo.photo(copy.id, foto);
-      await repo.write(copy);
+      copy.foto = actual?.foto ?? copy.foto;
+      copy.fotoPendiente = actual?.fotoPendiente ?? false;
+      try {
+        if (foto) { copy.foto = await repo.photo(copy.id, foto); copy.fotoPendiente = false; }
+        else if (copy.fotoPendiente) throw new Error('Fotografía pendiente');
+        else if (copy.foto) await repo.photoUri(copy);
+      } catch {
+        copy.foto = actual?.foto;
+        copy.fotoPendiente = true;
+        copy.error = foto
+          ? 'La fotografía nueva no quedó guardada. Los datos se conservaron y la foto anterior, si existía, no se reemplazó. Reintente guardar; si cerró la app, vuelva a seleccionar o tomar la foto.'
+          : 'No se pudo confirmar la fotografía pendiente o guardada. Los datos y la referencia anterior se conservan. Vuelva a seleccionar o tomar la foto y reintente guardar.';
+        try { await repo.write(copy); }
+        catch { throw new Error('No se pudieron guardar los datos ni la fotografía. El formulario conserva los cambios en esta pantalla. Libere espacio y reintente antes de salir.'); }
+        if ((await this.owner()).id_usuario === draft.usuario) this.borradores.set(await repo.list());
+        throw new Error(copy.error);
+      }
+      try { await repo.write(copy); }
+      catch { throw new Error('No se pudo confirmar el guardado del borrador. El formulario conserva los cambios; reintente antes de salir.'); }
       if ((await this.owner()).id_usuario !== draft.usuario) return;
       this.borradores.set(await repo.list());
       this.mensaje.set('Guardado en este dispositivo. Todavía no está guardado en el servidor.');
+    });
+  }
+  async fotoUri(draft: BorradorLocal): Promise<string | null> {
+    const repo = await this.repository();
+    return repo.photoUri(await repo.read(draft.id));
+  }
+  async eliminar(id: string): Promise<void> {
+    return this.serialize(async () => {
+      if (this.editando()) throw new Error('Guarde el borrador abierto antes de eliminar.');
+      const owner = await this.owner();
+      const repo = await this.repository();
+      this.mensaje.set('');
+      try { await repo.remove(id); }
+      finally {
+        if ((await this.owner()).id_usuario === owner.id_usuario) this.borradores.set(await repo.list());
+      }
+      this.mensaje.set('Se eliminó la copia de este dispositivo. No se modificó ningún pozo del servidor.');
     });
   }
   async foto(draft: BorradorLocal): Promise<File | null> {
@@ -110,7 +145,7 @@ export class OfflineService {
       if (this.auth.state() !== 'authenticated' || this.auth.userId() !== owner.id_usuario || !this.auth.tieneRol('perforador')) throw new Error('Vuelva a iniciar sesión como el mismo perforador para sincronizar. Sus borradores se conservan.');
       const repo = await this.repository();
       for (const draft of await repo.list()) {
-        if (draft.estado === 'sincronizado' || draft.requiereCorreccion) continue;
+        if (draft.estado === 'sincronizado' || draft.requiereCorreccion || draft.fotoPendiente) continue;
         if (this.auth.userId() !== owner.id_usuario || this.auth.state() !== 'authenticated') break;
         const clave = draft.claveOperacion ?? draft.id;
         try {

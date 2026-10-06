@@ -1,3 +1,4 @@
+import { CAPACITOR_RUNTIME } from '../../../../core/native/native-plugin.tokens';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
@@ -14,7 +15,7 @@ describe('PozosFormComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: CAPACITOR_RUNTIME, useValue: { getPlatform: () => 'android', isNativePlatform: () => true } }, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
       imports: [PozosFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
@@ -25,6 +26,32 @@ describe('PozosFormComponent', () => {
     fixture.detectChanges();
   }));
 
+  it('muestra la URI local guardada sin marcarla como foto nueva pendiente', () => {
+    fixture.componentRef.setInput('borradorLocal', true);
+    fixture.componentRef.setInput('fotoLocalUri', 'https://localhost/_capacitor_file_/data/photo-test'); fixture.detectChanges();
+    const image = fixture.nativeElement.querySelector('img.foto-preview') as HTMLImageElement;
+    expect(image.getAttribute('src')).toBe('https://localhost/_capacitor_file_/data/photo-test');
+    expect(image.alt).toContain('guardada en este dispositivo');
+    expect(component.fotoFile).toBeNull(); expect(component.fotoVistaPrevia()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Fotografía pendiente de guardar');
+    component.fotoCapturada({ archivo: new File(['new'], 'new.png', { type: 'image/png' }), vistaPrevia: 'blob:new' });
+    component.cancelarCambioFoto(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('img').getAttribute('src')).toContain('/data/photo-test');
+  });
+  it('GPS Android espera 30 segundos sin caché; timeout conserva datos y permite guardar sin ubicación', async () => {
+    const sitio = { departamento: '', localidad: '', latitud: '', longitud: '' };
+    fixture.componentRef.setInput('sitioNuevo', sitio); fixture.componentRef.setInput('borradorLocal', true);
+    const gps = spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((_ok, fail) => fail!({ code: 3 } as GeolocationPositionError));
+    const saved = spyOn(component.saved, 'emit');
+    await component.tomarUbicacionNueva(); fixture.detectChanges();
+    expect(gps).toHaveBeenCalledWith(jasmine.any(Function), jasmine.any(Function), { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 });
+    expect(component.ubicacionError()).toContain('tiempo'); expect(component.capturandoUbicacion()).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Reintentar ubicación');
+    expect(sitio.latitud).toBe(''); expect(sitio.longitud).toBe('');
+    component.handlePozo(); expect(saved).toHaveBeenCalled();
+    sitio.latitud = '-31'; sitio.longitud = '-57'; await component.tomarUbicacionNueva();
+    expect(sitio.latitud).toBe('-31'); expect(sitio.longitud).toBe('-57'); expect(component.ubicacionPrecision()).toBeNull();
+  });
   it('should create', () => {
     expect(component).toBeTruthy();
   });

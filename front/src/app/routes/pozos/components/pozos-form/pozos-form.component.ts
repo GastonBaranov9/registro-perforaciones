@@ -1,6 +1,7 @@
+import { RuntimePlatformService } from '../../../../core/native/runtime-platform.service';
 import { NumeroPerforacionComponent } from '../../../../shared/components/numero-perforacion/numero-perforacion.component';
 import { numeroPerforacionValido } from '../../../../shared/services/numeracion-perforacion.service';
-import { Component, OnDestroy, input, output, signal } from '@angular/core';
+import { Component, OnDestroy, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
@@ -42,6 +43,9 @@ type PropietarioEdicionEstado = {
 ],
 })
 export class PozosFormComponent implements OnDestroy {
+  private readonly runtime = inject(RuntimePlatformService);
+  public borradorLocal = input(false);
+  public fotoLocalUri = input<string | null>(null);
   public pozo = input.required<NuevoPozo>();
   public id_pozo = input<number | null>(null);
   public propietarios = input<CandidatoPozo[]>([]);
@@ -93,7 +97,7 @@ export class PozosFormComponent implements OnDestroy {
       this.errorMessage.set("El número de perforación debe ser un entero entre 1 y 2147483647."); return;
     }
     const sitio=this.sitioNuevo();
-    if(sitio){
+    if(sitio && !this.borradorLocal()){
       const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');
       if(!latitud||!longitud){this.ubicacionError.set('Las coordenadas no son válidas.');return;}
       sitio.latitud=latitud;sitio.longitud=longitud;
@@ -112,10 +116,11 @@ export class PozosFormComponent implements OnDestroy {
     if (!sitio || this.capturandoUbicacion()) return;
     try {
       this.capturandoUbicacion.set(true); this.ubicacionError.set('');
-      const ubicacion = await capturarUbicacionActual();
+      const ubicacion = await capturarUbicacionActual(undefined, this.runtime.platform() === 'android' ? 30_000 : 10_000);
       sitio.latitud = ubicacion.latitud; sitio.longitud = ubicacion.longitud;
       this.ubicacionPrecision.set(ubicacion.precision ?? null);
     } catch (error: unknown) {
+      this.ubicacionPrecision.set(null);
       this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
     } finally { this.capturandoUbicacion.set(false); }
   }

@@ -4,6 +4,8 @@
       <p>Perforación: <strong>{{ pozo().numero_perforacion ?? "Sin número asignado" }}</strong> · ID interno: {{ id_pozo() }}</p>
     } @else if (administrarNumeracion()) {
       <app-numero-perforacion [numero]="pozo().numero_perforacion" (numeroChange)="pozo().numero_perforacion=$event; notificarCambio()" [deshabilitado]="guardando()" />
+    } @else if (borradorLocal()) {
+      <p>El servidor asignará el número al sincronizar.</p>
     } @else {
       <p>El número de perforación se asignará automáticamente al guardar.</p>
     }
@@ -105,8 +107,9 @@
         @if (ubicacionPrecision() !== null) { <p>Precisión aproximada: {{ ubicacionPrecision() | number:'1.0-0' }} m</p> }
         @if (ubicacionError()) { <ion-text color="danger"><p role="alert">{{ ubicacionError() }}</p></ion-text> }
         <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="capturandoUbicacion()">
-          {{ capturandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : 'TOMAR UBICACIÓN' }}
+          {{ capturandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : ubicacionError() ? 'Reintentar ubicación' : 'TOMAR UBICACIÓN' }}
         </ion-button>
+        @if (borradorLocal()) { <p>Puede guardar sin ubicación. Si el intento falla, las coordenadas anteriores, si las hay, se conservan sin actualizar.</p> }
       </fieldset>
     }
 
@@ -211,6 +214,9 @@
         <p class="foto-pendiente" role="status">Fotografía pendiente de guardar: {{ fotoFile?.name }}</p>
       } @else if (eliminarFotoPendiente()) {
         <p class="foto-pendiente" role="status">La foto actual se eliminará al guardar. Podés cancelar el cambio.</p>
+      } @else if (fotoLocalUri(); as local) {
+        <img class="foto-preview" [src]="local" alt="Fotografía guardada en este dispositivo" />
+        <p>Fotografía guardada en este dispositivo</p>
       } @else if (getFoto(); as persistida) {
         <img class="foto-preview" [protectedSrc]="persistida" alt="Fotografía guardada del pozo" />
         <p>Fotografía guardada</p>
@@ -223,7 +229,7 @@
     </section>
   </ion-list>
   <ng-content />
-  <ion-button type="submit" expand="block" [disabled]="sitioForm.invalid || guardando() || disabled() || !catalogosDisponibles() || !personasValidas()">
+  <ion-button type="submit" expand="block" [disabled]="guardando() || disabled() || (!borradorLocal() && (sitioForm.invalid || !catalogosDisponibles() || !personasValidas()))">
     {{ soloLectura() ? 'Solo lectura' : guardando() ? 'Guardando…' : textoGuardar() }}
   </ion-button>
 </form>

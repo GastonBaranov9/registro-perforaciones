@@ -55,7 +55,7 @@ export class FotoComponent {
       if (!/^(User cancelled photos app|User cancelled camera|User canceled photos app)\.?$/i.test(mensaje)) {
         this.error.set(error instanceof FotoInvalidaError ? error.message
           : /denied|permission/i.test(mensaje)
-            ? 'No se permitió acceder a la cámara o las fotos. Revisá los permisos de la app en Ajustes.'
+            ? 'No se permitió acceder a la cámara o las fotos. Podés continuar sin foto y volver a intentar después de habilitar los permisos de la app en Ajustes.'
             : 'No se pudo obtener la fotografía. Intentá nuevamente.');
       }
     } finally { this.procesando.set(false); }

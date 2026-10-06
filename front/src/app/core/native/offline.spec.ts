@@ -1,8 +1,12 @@
+import { FotoComponent, FotoSeleccionada } from '../../routes/fotos/components/foto/foto.component';
+import { CAPACITOR_CAMERA, CAPACITOR_RUNTIME } from './native-plugin.tokens';
+import { Capacitor } from '@capacitor/core';
+import { Directory, Encoding } from '@capacitor/filesystem';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { OfflineRepository, BorradorLocal, OfflineFiles } from './offline-repository';
+import { OfflineRepository, BorradorLocal, OfflineFiles, eliminacionLocal } from './offline-repository';
 import { OFFLINE_FILES, OfflineService } from './offline.service';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
 import { RuntimePlatformService } from './runtime-platform.service';
@@ -10,26 +14,61 @@ import { NativeBackendConfigService } from './native-backend-config.service';
 import { NativeSecureSessionStorage, NativeInstallationStorage, NativeLogoutPendingStorage } from './native-storage.service';
 import { environment } from '../../../environments/environment';
 
+// A simulated disk stores UTF8 metadata separately from binary bytes. A new
+// adapter can reload it without retaining the Camera URI or JavaScript File.
 class Files {
-  data = new Map<string, string>(); dirs = new Set<string>(); failRename = false;
+  data = new Map<string, string>(); binary = new Map<string, Uint8Array>();
+  dirs = new Set<string>(); failRename = false; failPhoto = false; failRemove = false;
+  diskSnapshot() { return JSON.stringify({ data: [...this.data], binary: [...this.binary].map(([p,b]) => [p, [...b]]), dirs: [...this.dirs] }); }
+  static restart(snapshot: string) {
+    const stored = JSON.parse(snapshot), disk = new Files();
+    disk.data = new Map(stored.data); disk.binary = new Map(stored.binary.map(([p,b]: [string, number[]]) => [p, Uint8Array.from(b)])); disk.dirs = new Set(stored.dirs);
+    return disk;
+  }
   plugin = {
     mkdir: async ({ path }: any) => { this.dirs.add(path); },
-    writeFile: async ({ path, data }: any) => {
-      this.data.set(path, data);
+    writeFile: async ({ path, data, encoding, directory }: any) => {
+      expect(directory).toBe(Directory.Data);
+      if (encoding === Encoding.UTF8) this.data.set(path, data);
+      else {
+        if (this.failPhoto) throw new Error('Disk full');
+        this.binary.set(path, Uint8Array.from(atob(data), c => c.charCodeAt(0)));
+      }
       let dir = path.slice(0, path.lastIndexOf('/'));
       while (dir) { this.dirs.add(dir); dir = dir.slice(0, dir.lastIndexOf('/')); }
       return { uri: path };
     },
-    readFile: async ({ path }: any) => {
-      if (!this.data.has(path)) throw new Error('Missing file');
-      return { data: this.data.get(path)! };
+    readFile: async ({ path, encoding, directory }: any) => {
+      expect(directory).toBe(Directory.Data);
+      if (encoding === Encoding.UTF8 && this.data.has(path)) return { data: this.data.get(path)! };
+      const bytes = this.binary.get(path);
+      if (!encoding && bytes) return { data: btoa(Array.from(bytes, b => String.fromCharCode(b)).join('')) };
+      throw new Error('Missing file');
+    },
+    stat: async ({ path, directory }: any) => {
+      expect(directory).toBe(Directory.Data);
+      if (!this.binary.has(path)) throw new Error('Missing file');
+      return { type: 'file', size: this.binary.get(path)!.length, uri: 'file:///data/user/0/app/files/' + path };
+    },
+    getUri: async ({ path, directory }: any) => {
+      expect(directory).toBe(Directory.Data);
+      return { uri: 'file:///data/user/0/app/files/' + path };
     },
     rename: async ({ from, to }: any) => {
       if (this.failRename) throw new Error('Interrupted write');
-      this.data.set(to, this.data.get(from)!); this.data.delete(from);
+      for (const map of [this.data, this.binary] as Map<string, any>[]) {
+        for (const [key, value] of [...map]) if (key === from || key.startsWith(from + '/')) { map.set(to + key.slice(from.length), value); map.delete(key); }
+      }
+      for (const key of [...this.dirs]) if (key === from || key.startsWith(from + '/')) { this.dirs.add(to + key.slice(from.length)); this.dirs.delete(key); }
     },
-    deleteFile: async ({ path }: any) => { this.data.delete(path); },
-    readdir: async ({ path }: any) => ({ files: [...new Set([...this.dirs, ...this.data.keys()])]
+    rmdir: async ({ path, directory }: any) => {
+      expect(directory).toBe(Directory.Data);
+      if (this.failRemove) throw new Error('Interrupted removal');
+      for (const map of [this.data, this.binary]) for (const key of [...map.keys()]) if (key.startsWith(path + '/')) map.delete(key);
+      for (const key of [...this.dirs]) if (key === path || key.startsWith(path + '/')) this.dirs.delete(key);
+    },
+    deleteFile: async ({ path }: any) => { this.data.delete(path); this.binary.delete(path); },
+    readdir: async ({ path }: any) => ({ files: [...new Set([...this.dirs, ...this.data.keys(), ...this.binary.keys()])]
       .filter(p => p.startsWith(path + '/') && !p.slice(path.length + 1).includes('/'))
       .map(p => ({ name: p.slice(path.length + 1), type: this.dirs.has(p) ? 'directory' : 'file', size: 1, mtime: 0 })) }),
   } as unknown as OfflineFiles;
@@ -43,6 +82,82 @@ function draft(): BorradorLocal {
 }
 
 describe('Repositorio offline persistente', () => {
+  it('recarga JSON y binario en una nueva instancia tras desaparecer el temporal de Camera', async () => {
+    let disk = new Files();
+    const original = draft();
+    let repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    const temporaryUri = 'https://localhost/_capacitor_file_/cache/camera.jpg';
+    const temporaryFiles = new Map([[temporaryUri, Uint8Array.from([255,216,255,217])]]);
+    const camera = { getPhoto: jasmine.createSpy().and.resolveTo({ path: 'file:///cache/camera.jpg', webPath: temporaryUri, format: 'jpeg', saved: false }) };
+    spyOn(window, 'fetch').and.callFake(async input => {
+      const bytes = temporaryFiles.get(String(input));
+      return bytes ? new Response(new Blob([bytes], { type: 'image/jpeg' })) : new Response(null, { status: 404 });
+    });
+    TestBed.configureTestingModule({ imports: [FotoComponent], providers: [
+      { provide: CAPACITOR_CAMERA, useValue: camera },
+      { provide: CAPACITOR_RUNTIME, useValue: { getPlatform: () => 'android', isNativePlatform: () => true } },
+    ] });
+    const capture = TestBed.createComponent(FotoComponent);
+    let selected: FotoSeleccionada | undefined;
+    capture.componentInstance.fotoTomada.subscribe(photo => selected = photo);
+    await capture.componentInstance.tomarFoto();
+    original.foto = await repo.photo(original.id, selected!.archivo);
+    await repo.write(original);
+    URL.revokeObjectURL(selected!.vistaPrevia); selected = undefined; capture.destroy();
+    temporaryFiles.clear();
+    expect((await fetch(temporaryUri)).status).toBe(404);
+    disk = Files.restart(disk.diskSnapshot());
+    repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    const loaded = (await repo.list())[0];
+    const convert = spyOn(Capacitor, 'convertFileSrc').and.callFake(uri => uri.replace('file://', 'https://localhost/_capacitor_file_'));
+    expect(loaded).not.toBe(original); expect(loaded.foto!.ruta).toMatch(/\.jpg$/);
+    expect(await repo.photoBase64(loaded)).toBe('/9j/2Q==');
+    expect(await repo.photoUri(loaded)).toContain('https://localhost/_capacitor_file_/data/user/0/app/files/offline-v1/server/7/');
+    expect(convert).toHaveBeenCalled();
+    expect([...disk.data.values()].join()).not.toMatch(/camera.jpg|blob:|base64|file:\/\//);
+    disk.binary.clear();
+    await expectAsync(repo.photoUri(loaded)).toBeRejected();
+    expect((await repo.read(loaded.id)).foto).toEqual(loaded.foto);
+  });
+  it('reemplazo interrumpido conserva foto anterior; limpia sólo fotos de revisiones obsoletas', async () => {
+    const disk = new Files(), d = draft(), repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    d.foto = await repo.photo(d.id, new File(['old'], 'a.png', { type: 'image/png' })); await repo.write(d);
+    const oldPath = d.foto.ruta;
+    const pending = await repo.photo(d.id, new File(['pending'], 'b.png', { type: 'image/png' }));
+    const changed = { ...d, foto: pending };
+    disk.failRename = true; await expectAsync(repo.write(changed)).toBeRejected();
+    expect(await repo.photoBase64(await repo.read(d.id))).toBe(btoa('old'));
+    expect(disk.binary.has(oldPath)).toBeTrue();
+    disk.failRename = false; await repo.write(changed);
+    expect(disk.binary.has(oldPath)).toBeTrue(); // previous revision still references it
+    const orphan = await repo.photo(d.id, new File(['unsaved'], 'c.png', { type: 'image/png' }));
+    await repo.write(changed);
+    expect(disk.binary.has(oldPath)).toBeFalse();
+    expect(disk.binary.has(pending.ruta)).toBeTrue(); expect(disk.binary.has(orphan.ruta)).toBeTrue();
+  });
+  it('elimina únicamente el directorio propio, incluidas revisiones, binarios y temporales', async () => {
+    const disk = new Files(), a = draft(), b = draft(), repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    a.foto = await repo.photo(a.id, new File(['a'], 'a.png', { type: 'image/png' }));
+    await repo.write(a); await repo.write(a); await repo.write(b);
+    disk.data.set('offline-v1/server/7/' + a.id + '/pending.tmp', 'temporary');
+    await repo.remove(a.id);
+    expect(await repo.list()).toEqual([b]);
+    expect([...disk.data.keys(), ...disk.binary.keys(), ...disk.dirs].some(p => p.includes(a.id))).toBeFalse();
+  });
+  it('interrupción de limpieza no resucita revisiones ni permite reenviar', async () => {
+    const disk = new Files(), d = draft(), repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    await repo.write(d); d.enviado = true; d.estado = 'sincronizado'; d.resultado = { pozo: { id_pozo: 40, numero_perforacion: 8500 } } as any; await repo.write(d);
+    disk.failRemove = true; await expectAsync(repo.remove(d.id)).toBeRejectedWithError(/retirado/);
+    expect(await repo.list()).toEqual([]);
+    const restarted = Files.restart(disk.diskSnapshot());
+    expect(await new OfflineRepository(restarted.plugin, 'offline-v1/server/7', 7).list()).toEqual([]);
+    expect(restarted.data.size).toBe(0);
+  });
+  for (const estado of ['pendiente', 'sincronizando', 'error', 'conflicto'] as const) it('rechaza borrar una clave enviada en estado ' + estado, async () => {
+    const disk = new Files(), d = { ...draft(), estado, enviado: true }, repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    await repo.write(d); await expectAsync(repo.remove(d.id)).toBeRejectedWithError(/incierto/);
+    expect(await repo.read(d.id)).toEqual(d); expect(eliminacionLocal(d)).toBeNull();
+  });
   it('crea sin red, reinicia, recupera datos y fotografía binaria separada', async () => {
     const files = new Files(); const d = draft(); const repo = new OfflineRepository(files.plugin, 'offline-v1/server/7', 7);
     d.foto = await repo.photo(d.id, new File(['photo bytes'], 'campo.png', { type: 'image/png' }));
@@ -51,6 +166,13 @@ describe('Repositorio offline persistente', () => {
     expect(await restarted.list()).toEqual([d]);
     expect(atob((await restarted.photoBase64(d))!)).toBe('photo bytes');
     expect([...files.data].find(([name]) => name.endsWith('.json'))![1]).not.toContain(btoa('photo bytes'));
+  });
+  it('conserva compatibilidad con fotos anteriores sin extensión', async () => {
+    const disk = new Files(), d = draft(), repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    const ruta = 'offline-v1/server/7/' + d.id + '/photo-' + crypto.randomUUID();
+    disk.binary.set(ruta, Uint8Array.from([255,216,255,217])); d.foto = { ruta, tipo: 'image/jpeg' }; await repo.write(d);
+    expect(await repo.photoUri(await repo.read(d.id))).toContain(ruta);
+    expect(await repo.photoBase64(await repo.read(d.id))).toBe('/9j/2Q==');
   });
   it('cierre durante reemplazo conserva la última versión confirmada', async () => {
     const files = new Files(), d = draft(), repo = new OfflineRepository(files.plugin, 'offline-v1/server/7', 7);
@@ -96,6 +218,70 @@ describe('Cola offline del perforador', () => {
     service = TestBed.inject(OfflineService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('fallo de foto persiste datos recuperables, bloquea upload y permite reintentar', async () => {
+    const d = draft(); await service.guardar(d, new File(['old'], 'old.png', { type: 'image/png' }));
+    const old = service.borradores()[0].foto;
+    d.pozo.propietario_provisional = 'Datos recuperables'; files.failPhoto = true;
+    await expectAsync(service.guardar(d, new File(['new'], 'new.png', { type: 'image/png' }))).toBeRejectedWithError(/fotografía nueva no quedó guardada/);
+    await service.cargar();
+    expect(service.borradores()[0].foto).toEqual(old); expect(service.borradores()[0].fotoPendiente).toBeTrue();
+    expect(service.borradores()[0].pozo.propietario_provisional).toBe('Datos recuperables');
+    expect(service.mensaje()).not.toContain('Guardado'); await service.sincronizar(); http.expectNone(endpoint);
+    files.failPhoto = false; await service.guardar(service.borradores()[0], new File(['new'], 'new.png', { type: 'image/png' }));
+    expect(service.borradores()[0].fotoPendiente).toBeFalse();
+    expect(await (await service.foto(service.borradores()[0]))!.text()).toBe('new');
+  });
+  it('una copia binaria truncada no se confirma y el nuevo borrador recupera sus datos', async () => {
+    const d = draft(), read = files.plugin.readFile;
+    spyOn(files.plugin, 'readFile').and.callFake(async options => options.encoding ? read(options) : { data: btoa('truncated') });
+    await expectAsync(service.guardar(d, new File(['complete'], 'foto.png', { type: 'image/png' }))).toBeRejectedWithError(/no quedó guardada/);
+    expect(service.borradores()[0].foto).toBeUndefined(); expect(service.borradores()[0].fotoPendiente).toBeTrue();
+    await service.sincronizar(); http.expectNone(endpoint);
+  });
+  it('borrador local permite guardar sin coordenadas ni foto', async () => {
+    const d = draft(); d.sitio.latitud = ''; d.sitio.longitud = '';
+    await service.guardar(d); expect(service.borradores()[0].sitio.latitud).toBe(''); expect(service.borradores()[0].foto).toBeUndefined();
+  });
+  it('no publica metadata antes de terminar la escritura y verificación de la foto', async () => {
+    const d = draft(); const write = files.plugin.writeFile;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => release = resolve);
+    spyOn(files.plugin, 'writeFile').and.callFake(async options => { if (!options.encoding) await gate; return write(options); });
+    const saving = service.guardar(d, new File(['abc'], 'foto.png', { type: 'image/png' }));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(files.data.size).toBe(0); expect(service.mensaje()).toBe('');
+    release(); await saving; expect(service.borradores()[0].foto).toBeDefined();
+  });
+  it('borrar relee estado persistido y no acepta un objeto obsoleto nunca enviado', async () => {
+    const d = draft(); await service.guardar(d); const run = service.sincronizar();
+    (await request()).error(new ProgressEvent('error')); await run;
+    await expectAsync(service.eliminar(d.id)).toBeRejectedWithError(/incierto/);
+    expect(service.borradores()[0].enviado).toBeTrue();
+  });
+  it('borrar se serializa detrás del envío y conserva UUID si la respuesta se pierde', async () => {
+    const d = draft(); await service.guardar(d); const sync = service.sincronizar(); const req = await request();
+    const removal = expectAsync(service.eliminar(d.id)).toBeRejectedWithError(/incierto/);
+    req.error(new ProgressEvent('error')); await sync; await removal;
+    expect(service.borradores()[0].id).toBe(d.id);
+  });
+  it('cierre autoritativo sin creación permite eliminar; no hay DELETE remoto', async () => {
+    const d = draft(); await service.guardar(d); const run = service.sincronizar();
+    (await request()).flush({}, { status: 400, statusText: 'Bad Request' });
+    (await request(environment.apiURL + 'pozos/offline/' + d.id + '/cerrar')).flush({ estado: 'cerrado_sin_creacion', clave: d.id }); await run;
+    await service.eliminar(d.id); expect(service.borradores()).toEqual([]); expect(files.data.size).toBe(0);
+  });
+  it('elimina copia confirmada y nunca llama al servidor para borrar el pozo', async () => {
+    const d = draft(); await service.guardar(d); const run = service.sincronizar();
+    (await request()).flush({ pozo: { id_pozo: 40, numero_perforacion: 8500 } }); await run;
+    expect(eliminacionLocal(service.borradores()[0])).toBe('copia');
+    await service.eliminar(d.id); expect(service.borradores()).toEqual([]); http.expectNone(r => r.method === 'DELETE');
+  });
+  it('otra cuenta no puede borrar ni leer foto del borrador original', async () => {
+    const d = draft(); await service.guardar(d, new File(['a'], 'a.png', { type: 'image/png' }));
+    const saved = service.borradores()[0]; account = 8; session.offlineUser.id_usuario = 8;
+    await expectAsync(service.eliminar(d.id)).toBeRejected(); await expectAsync(service.fotoUri(saved)).toBeRejected();
+    expect(files.binary.size).toBe(1);
+  });
   it('guarda y edita sin red; conserva propiedad, ubicación y foto al volver a cargar', async () => {
     state.set('offline-unverified'); const d = draft();
     await service.guardar(d, new File(['abc'], 'foto.png', { type: 'image/png' }));

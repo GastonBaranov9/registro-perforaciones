@@ -1,7 +1,7 @@
-import { Component, inject, signal, ViewChild } from '@angular/core';
-import { IonContent, IonButton } from '@ionic/angular/standalone';
+import { afterNextRender, Component, ElementRef, inject, Injector, signal, ViewChild } from '@angular/core';
+import { AlertController, IonContent, IonButton } from '@ionic/angular/standalone';
 import { OfflineService } from '../../core/native/offline.service';
-import { BorradorLocal } from '../../core/native/offline-repository';
+import { BorradorLocal, eliminacionLocal } from '../../core/native/offline-repository';
 import { PozosFormComponent } from '../pozos/components/pozos-form/pozos-form.component';
 import { DatosTecnicosBorradorComponent } from '../pozos/components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
 import { DATOS_TECNICOS_ESTANDAR } from '../../shared/constants/datos-tecnicos-estandar';
@@ -22,10 +22,10 @@ import { Router } from '@angular/router';
     <ion-button (click)="sincronizar()" [disabled]="busy() || offline.ocupado() || !!editando()">{{ offline.ocupado() ? 'Sincronizando…' : 'Sincronizar / reintentar' }}</ion-button>
     <ion-button fill="clear" (click)="router.navigateByUrl('/login')">Iniciar sesión</ion-button>
     @if (editando(); as draft) {
-      <h2>Borrador sin número comercial</h2>
+      <h2 #inicioFormulario tabindex="-1">Editar borrador sin número comercial</h2>
       <p>Guarde antes de salir. Puede guardar datos incompletos y completarlos antes de sincronizar.</p>
       <app-pozos-form [pozo]="draft.pozo" [sitioNuevo]="draft.sitio" [perforadores]="perforadores()"
-        [catalogosDisponibles]="true" [perforadorBloqueado]="true" [guardando]="busy()" textoGuardar="Guardar en este dispositivo"
+        [borradorLocal]="true" [fotoLocalUri]="fotoLocalUri()" [catalogosDisponibles]="true" [perforadorBloqueado]="true" [guardando]="busy()" textoGuardar="Guardar en este dispositivo"
         (saved)="guardar()">
         <app-datos-tecnicos-borrador [inicial]="inicial" [profundidad]="draft.pozo.profundidad_final_m" [guardando]="busy()" (cambiado)="draft.tecnicos = $event" />
       </app-pozos-form>
@@ -38,9 +38,12 @@ import { Router } from '@angular/router';
         @if (draft.error) { <p role="alert">{{ draft.error }}</p> }
         @if (draft.resultado; as result) { <p>Confirmado por el servidor: perforación {{ result.pozo.numero_perforacion }}</p>
           <ion-button fill="outline" (click)="router.navigate(['/pozos-detail', result.pozo.id_pozo])">Ver en servidor</ion-button>
-        } @else if (!draft.enviado) {
+        } @else if (tipoEliminacion(draft) === 'borrador') {
           <ion-button (click)="editar(draft)" [disabled]="busy() || offline.ocupado() || !!editando()">Editar borrador</ion-button>
         } @else { <p>Enviado: reintente con los mismos datos para confirmar la recepción. El borrador y su fotografía siguen conservados.</p> }
+        @if (tipoEliminacion(draft); as tipo) {
+          <ion-button color="danger" fill="outline" (click)="eliminar(draft)" [disabled]="busy() || offline.ocupado() || !!editando()">{{ tipo === 'copia' ? 'Eliminar copia local' : 'Eliminar borrador' }}</ion-button>
+        }
       </section>
     }
   </ion-content>`,
@@ -49,6 +52,12 @@ import { Router } from '@angular/router';
 export class OfflinePage {
   readonly offline = inject(OfflineService);
   readonly router = inject(Router);
+  private readonly alerts = inject(AlertController);
+  private readonly injector = inject(Injector);
+  @ViewChild(IonContent) content?: IonContent;
+  @ViewChild('inicioFormulario') inicioFormulario?: ElementRef<HTMLElement>;
+  readonly tipoEliminacion = eliminacionLocal;
+  readonly fotoLocalUri = signal<string | null>(null);
   @ViewChild(PozosFormComponent) form?: PozosFormComponent;
   editando = signal<BorradorLocal | null>(null);
   perforadores = signal<CandidatoPozo[]>([]);
@@ -56,7 +65,7 @@ export class OfflinePage {
   inicial: DatosTecnicosBorrador | null = null;
   pendientes() { return this.offline.borradores().filter(d => d.estado !== 'sincronizado').length; }
   async ionViewWillEnter() {
-    this.editando.set(null); this.offline.editando.set(false); this.error.set('');
+    this.editando.set(null); this.fotoLocalUri.set(null); this.offline.editando.set(false); this.error.set('');
     try {
       await this.offline.cargar();
       if (this.offline.auth.state() === 'authenticated' && navigator.onLine) void this.offline.sincronizar();
@@ -64,10 +73,13 @@ export class OfflinePage {
   }
   async ionViewWillLeave() {
     if (this.editando() && !this.busy()) await this.guardar();
-    this.editando.set(null); this.offline.editando.set(false);
+    // Never keep another account's editor or preview in Ionic's cached page.
+    this.editando.set(null); this.fotoLocalUri.set(null); this.offline.editando.set(false);
   }
   async nuevo() {
+    if (this.busy() || this.offline.ocupado()) return;
     if (this.editando()) { this.error.set('Guarde el borrador abierto antes de iniciar otro.'); return; }
+    this.busy.set(true); this.offline.editando.set(true); this.fotoLocalUri.set(null);
     try {
       const user = await this.offline.owner();
       this.perforadores.set([{ ...user, roles: ['perforador'] }]);
@@ -77,20 +89,57 @@ export class OfflinePage {
         sitio: { departamento: '', localidad: '', latitud: '', longitud: '' }, tecnicos: structuredClone(this.inicial) });
       this.error.set('');
       this.offline.editando.set(true);
-    } catch (error) { this.error.set(String(error)); }
+      this.mostrarFormulario();
+    } catch (error) { this.error.set(String(error)); this.offline.editando.set(false); }
+    finally { this.busy.set(false); }
   }
   async editar(draft: BorradorLocal) {
+    if (this.busy() || this.offline.ocupado() || this.editando() || eliminacionLocal(draft) !== 'borrador') return;
+    this.busy.set(true); this.error.set(''); this.fotoLocalUri.set(null);
+    // Freeze auto-sync before awaiting storage and rendering the editor.
+    this.offline.editando.set(true);
     try {
       const owner = await this.offline.owner();
       if (owner.id_usuario !== draft.usuario) throw new Error('Debe iniciar sesión con la cuenta propietaria del borrador.');
       this.perforadores.set([{ ...owner, roles: ['perforador'] }]);
-      const foto = await this.offline.foto(draft);
+      try { this.fotoLocalUri.set(await this.offline.fotoUri(draft)); }
+      catch { this.error.set('No se pudo abrir la fotografía guardada. Los datos y la referencia se conservan; vuelva a abrir o reemplace la foto.'); }
       this.inicial = structuredClone(draft.tecnicos);
       this.editando.set(structuredClone(draft));
       this.offline.editando.set(true);
-      // ViewChild is created by the next render; the durable photo is retained even without preview.
-      if (foto) this.offline.mensaje.set('Este borrador conserva una fotografía local. Puede reemplazarla al guardar.');
+      this.mostrarFormulario();
+    } catch (error) { this.error.set(String(error)); this.offline.editando.set(false); }
+    finally { this.busy.set(false); }
+  }
+  private mostrarFormulario() {
+    afterNextRender(() => { void this.enfocarFormulario(); }, { injector: this.injector });
+  }
+  private async enfocarFormulario() {
+    const heading = this.inicioFormulario?.nativeElement;
+    const content = this.content;
+    if (!heading || !content || !this.editando()) return;
+    const scroll = await content.getScrollElement();
+    if (!heading.isConnected || !this.editando()) return;
+    const top = heading.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+    await content.scrollToPoint(0, Math.max(0, top - 12), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250);
+    if (heading.isConnected && this.editando()) heading.focus({ preventScroll: true });
+  }
+  async eliminar(draft: BorradorLocal) {
+    const tipo = eliminacionLocal(draft);
+    if (!tipo || this.busy() || this.offline.ocupado() || this.editando()) return;
+    this.busy.set(true); this.error.set('');
+    try {
+      const alert = await this.alerts.create({
+        header: tipo === 'copia' ? 'Eliminar copia local' : 'Eliminar borrador',
+        message: tipo === 'copia'
+          ? 'Se eliminarán los datos y la fotografía de este dispositivo. La perforación confirmada seguirá en el servidor.'
+          : 'Se eliminarán este borrador y su fotografía de este dispositivo. Esta acción no se puede deshacer.',
+        buttons: [{ text: 'Cancelar', role: 'cancel' }, { text: 'Eliminar', role: 'confirm' }],
+      });
+      await alert.present();
+      if ((await alert.onDidDismiss()).role === 'confirm') await this.offline.eliminar(draft.id);
     } catch (error) { this.error.set(String(error)); }
+    finally { this.busy.set(false); }
   }
   async guardar() {
     const draft = this.editando(); if (!draft || this.busy()) return;

@@ -77,6 +77,16 @@ describe(`FotoComponent ${platform}`, () => {
       expect(component.error()).toBe('No se pudo obtener la fotografía. Intentá nuevamente.');
     });
 
+    it('denegar permiso no emite cambios; concederlo después permite capturar', async () => {
+      const emitir = spyOn(component.fotoTomada, 'emit');
+      camera.getPhoto.and.rejectWith(new Error('User denied access to camera'));
+      await component.tomarFoto();
+      expect(emitir).not.toHaveBeenCalled(); expect(component.error()).toContain('permisos');
+      expect(component.procesando()).toBeFalse();
+      camera.getPhoto.and.resolveTo({ webPath: 'https://localhost/_capacitor_file_/retry.jpg', format: 'jpeg', saved: false });
+      await component.tomarFoto();
+      expect(emitir).toHaveBeenCalledTimes(1); expect(component.error()).toBe('');
+    });
     it('valida firma y límite 5 MB también en resultados nativos', async () => {
       const emitir = spyOn(component.fotoTomada, 'emit');
       fetchSpy.and.callFake(async () => new Response(new Blob(['falso'])));
