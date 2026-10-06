@@ -39,9 +39,9 @@ import { Router } from '@angular/router';
         @if (draft.error) { <p role="alert">{{ draft.error }}</p> }
         @if (draft.resultado; as result) { <p>Confirmado por el servidor: perforación {{ result.pozo.numero_perforacion }}</p>
           <ion-button fill="outline" (click)="router.navigate(['/pozos-detail', result.pozo.id_pozo])">Ver en servidor</ion-button>
-        } @else if (tipoEliminacion(draft) === 'borrador') {
+        } @else if (tipoEliminacion(draft) === 'borrador' && !draft.epocaRetirada) {
           <ion-button (click)="editar(draft)" [disabled]="busy() || offline.ocupado() || !!editando()">Editar borrador</ion-button>
-        } @else { <p>Enviado: reintente con los mismos datos para confirmar la recepción. El borrador y su fotografía siguen conservados.</p> }
+        } @else if (!draft.epocaRetirada) { <p>Enviado: reintente con los mismos datos para confirmar la recepción. El borrador y su fotografía siguen conservados.</p> }
         @if (tipoEliminacion(draft); as tipo) {
           <ion-button color="danger" fill="outline" (click)="eliminar(draft)" [disabled]="busy() || offline.ocupado() || !!editando()">{{ tipo === 'copia' ? 'Eliminar copia local' : 'Eliminar borrador' }}</ion-button>
         }
@@ -83,9 +83,10 @@ export class OfflinePage {
     this.busy.set(true); this.offline.editando.set(true); this.fotoLocalUri.set(null);
     try {
       const user = await this.offline.owner();
+      const epoca = await this.offline.epocaParaNuevo();
       this.perforadores.set([{ ...user, roles: ['perforador'] }]);
       this.inicial = { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] };
-      this.editando.set({ id: crypto.randomUUID(), usuario: user.id_usuario, estado: 'pendiente',
+      this.editando.set({ id: crypto.randomUUID(), usuario: user.id_usuario, epoca, estado: 'pendiente',
         pozo: { id_sitio: 0, id_propietario: null, propietario_provisional: '', id_perforador: user.id_usuario, ...DATOS_TECNICOS_ESTANDAR },
         sitio: { departamento: '', localidad: '', latitud: '', longitud: '' }, tecnicos: structuredClone(this.inicial) });
       this.error.set('');

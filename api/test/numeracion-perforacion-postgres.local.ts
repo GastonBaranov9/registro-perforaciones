@@ -91,7 +91,7 @@ try {
       assert.equal((await pool.query("SELECT contype FROM pg_constraint WHERE conrelid='pozo'::regclass AND conname='pozo_numero_perforacion_positivo'")).rows[0].contype, "c");
       if (previo) {
         const after = (await pool.query("SELECT row_to_json(p) AS pozo FROM pozo p")).rows[0].pozo;
-        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null });
+        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null, propietario_provisional_original: null });
         assert.equal((await pool.query("SELECT id_pozo FROM intervalo_litologico")).rows[0].id_pozo, "1");
       } else await pool.query(seed);
       assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 1, agotado: false });

@@ -1,5 +1,6 @@
 import { vincularPropietarioPozo } from "../services/propietario-pozo-service.ts";
 import { cerrarOperacionOffline } from '../services/offline-cierre-service.ts';
+import { obtenerEpoca } from '../services/epoca-datos-service.ts';
 import { validarNumeroPerforacion } from "../services/numeracion-perforacion-service.ts";
 import type { FastifyInstance } from "fastify";
 import { PozoListado } from "../models/schemas.ts";
@@ -20,10 +21,13 @@ import { cargarConfiguracionRuntime } from "../config/runtime.ts";
 
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   const { fotosDir } = cargarConfiguracionRuntime();
+  fastify.get('/pozos/epoca-datos', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+  }, async (_req, rep) => rep.header('Cache-Control', 'no-store').send({ epoca: await obtenerEpoca() }));
   fastify.post('/pozos/offline/:clave/cerrar', {
     onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
     schema: { params: Type.Object({ clave: Type.String({ format: 'uuid' }) }), response: { 200: Type.Any() } },
-  }, async req => cerrarOperacionOffline(Number(req.user.sub), (req.params as { clave: string }).clave));
+  }, async req => cerrarOperacionOffline(Number(req.user.sub), (req.params as { clave: string }).clave, req.headers['x-epoca-datos']));
   fastify.post(
     "/pozos/propietarios",
     {
@@ -121,7 +125,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
 
       const claveOffline = req.headers['idempotency-key'];
       if (claveOffline !== undefined && typeof claveOffline !== 'string') throw new err.T05DatosIncorrectos();
-      const resultado = await crearPozoCompleto(idUsuarioSesion, data, fotosDir, undefined, typeof claveOffline === 'string' ? claveOffline : undefined);
+      const resultado = await crearPozoCompleto(idUsuarioSesion, data, fotosDir, undefined, typeof claveOffline === 'string' ? claveOffline : undefined, req.headers['x-epoca-datos']);
       if (data.pozo.id_propietario !== null) fastify.notifyClient(data.pozo.id_propietario, { type: "pozo" });
       return rep.code(201).send(resultado);
     },

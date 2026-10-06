@@ -3,6 +3,8 @@ import { Directory, Encoding, type FilesystemPlugin } from '@capacitor/filesyste
 import type { DatosTecnicosBorrador, NuevoPozo, PozoCompletoResultado, SitioBody } from '../../shared/types/schemas';
 
 export interface BorradorLocal {
+  epoca?: string;
+  epocaRetirada?: boolean;
   id: string; usuario: number; estado: 'pendiente' | 'sincronizando' | 'sincronizado' | 'error' | 'conflicto';
   pozo: NuevoPozo; sitio: SitioBody; tecnicos: DatosTecnicosBorrador;
   foto?: { ruta: string; tipo: 'image/jpeg' | 'image/png' };
@@ -19,6 +21,7 @@ const revision = /^revision-\d{12}\.json$/;
 
 /** A display state alone never authorizes forgetting an uncertain operation. */
 export function eliminacionLocal(draft: BorradorLocal): 'borrador' | 'copia' | null {
+  if (draft.epocaRetirada) return 'borrador';
   if (draft.estado === 'sincronizado' && draft.resultado?.pozo?.id_pozo && draft.resultado.pozo.numero_perforacion) return 'copia';
   if (draft.enviado || draft.estado === 'sincronizando' || draft.estado === 'sincronizado' || draft.resultado) return null;
   return 'borrador';
@@ -34,6 +37,19 @@ export class OfflineRepository {
   async init() {
     try { await this.fs.mkdir({ directory: Directory.Data, path: this.root, recursive: true }); }
     catch { await this.fs.readdir({ directory: Directory.Data, path: this.root }); }
+  }
+  async epoca(): Promise<string | undefined> {
+    try {
+      const file = await this.fs.readFile({ directory: Directory.Data, path: `${this.root}/epoca.json`, encoding: Encoding.UTF8 });
+      const value = JSON.parse(String(file.data)).epoca;
+      return typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value) ? value : undefined;
+    } catch { return undefined; }
+  }
+  async guardarEpoca(epoca: string): Promise<void> {
+    await this.init();
+    const temp = `${this.root}/epoca.tmp`;
+    await this.fs.writeFile({ directory: Directory.Data, path: temp, data: JSON.stringify({ epoca }), encoding: Encoding.UTF8 });
+    await this.fs.rename({ directory: Directory.Data, from: temp, to: `${this.root}/epoca.json` });
   }
   async list(): Promise<BorradorLocal[]> {
     await this.init();
@@ -66,6 +82,8 @@ export class OfflineRepository {
     catch { await this.fs.readdir({ directory: Directory.Data, path: dir }); }
     const temp = `${dir}/${crypto.randomUUID()}.tmp`;
     const versions = await this.revisions(draft.id);
+    if (versions.length && (await this.read(draft.id)).epoca !== draft.epoca)
+      throw new Error('La etapa del borrador es inmutable. No se puede convertir un borrador antiguo.');
     const next = versions.length ? Number(versions.at(-1)!.slice(9, 21)) + 1 : 1;
     const committed = `${dir}/revision-${String(next).padStart(12, '0')}.json`;
     await this.fs.writeFile({ directory: Directory.Data, path: temp, data: JSON.stringify(draft), encoding: Encoding.UTF8 });

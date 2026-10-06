@@ -52,9 +52,10 @@ test('014: flujo offline e identidad con PostgreSQL 16 aislado', async t => {
     await app.register((await import('../src/routes/native-auth.ts')).default);
     await app.ready();
     const { SESSION_COOKIE } = await import('../src/plugins/cookies.ts');
+    const epoca = (await pool.query('SELECT epoca FROM epoca_datos')).rows[0].epoca;
     const call = (id: number, method: 'POST'|'GET'|'PUT'|'DELETE', url: string, payload?: object, key?: string, version = 1) => app.inject({ method, url,
       cookies: { [SESSION_COOKIE]: app.jwt.sign({ sub: id, version_sesion: version }, { expiresIn: '1h' }) },
-      headers: key ? { 'idempotency-key': key } : {}, ...(payload ? { payload } : {}) });
+      headers: { 'x-epoca-datos': epoca, ...(key ? { 'idempotency-key': key } : {}) }, ...(payload ? { payload } : {}) });
     const datos = {
       pozo: { id_propietario: null, propietario_provisional: 'Persona de campo', id_perforador: 2, profundidad_final_m: 30 },
       sitio_nuevo: { departamento: 'Salto', localidad: 'Campo', latitud: '-31', longitud: '-57' },
@@ -212,7 +213,7 @@ test('014: flujo offline e identidad con PostgreSQL 16 aislado', async t => {
     await t.test('revocación nativa rechaza incluso replay confirmado; múltiples teléfonos', async () => {
       const session = await crearSesionNative({ email: 'perf@test.local', password: 'isolated-test-password', installationId: randomUUID(), platform: 'android', appBuild: 999 });
       const another = await crearSesionNative({ email: 'perf@test.local', password: 'isolated-test-password', installationId: randomUUID(), platform: 'android', appBuild: 999 });
-      const send = (token: string) => app.inject({ method: 'POST', url: '/usuarios/2/pozos/completo', payload: datos, headers: { authorization: `Bearer ${token}`, 'x-native-platform': 'android', 'x-native-app-build': '999', 'idempotency-key': key } });
+      const send = (token: string) => app.inject({ method: 'POST', url: '/usuarios/2/pozos/completo', payload: datos, headers: { authorization: `Bearer ${token}`, 'x-native-platform': 'android', 'x-native-app-build': '999', 'idempotency-key': key, 'x-epoca-datos': epoca } });
       assert.equal((await send(session.token)).statusCode, 201);
       await revocarSesionNativePorToken(session.token);
       assert.equal((await send(session.token)).statusCode, 401);

@@ -1,4 +1,5 @@
 import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
+import { exigirEpoca } from './epoca-datos-service.ts';
 import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
 import { exigirAdministracionNumeracion, traducirErrorNumeracion, validarNumeroPerforacion } from "./numeracion-perforacion-service.ts";
 import { randomUUID, createHash } from "node:crypto";
@@ -98,6 +99,7 @@ export async function crearPozoCompleto(
   directorioFotos: string,
   pool: Pick<Pool, "connect"> = myPool,
   claveOffline?: string,
+  epoca?: unknown,
 ): Promise<PozoCompletoResultado> {
   const errores = validarPozoCompleto(data);
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
@@ -115,11 +117,13 @@ export async function crearPozoCompleto(
       if (data.pozo.numero_perforacion != null) throw new err.T05SinPermiso("Un borrador local no puede asignar numeración.");
       // Sesión bloqueada antes de consultar incluso un resultado ya confirmado.
       await validarPersonaPozo(creadoPor, "perforador", client);
+      await exigirEpoca(client, epoca);
       if (data.pozo.id_perforador !== creadoPor || data.pozo.id_propietario !== null) throw new err.T05SinPermiso();
       claveOffline = claveOffline.toLowerCase();
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 714))", [`${creadoPor}:${claveOffline}`]);
-      const previo = await client.query("SELECT huella,resultado FROM creacion_offline WHERE actor=$1 AND clave=$2", [creadoPor, claveOffline]);
+      const previo = await client.query("SELECT epoca,huella,resultado FROM creacion_offline WHERE actor=$1 AND clave=$2", [creadoPor, claveOffline]);
       if (previo.rows[0]) {
+        if (previo.rows[0].epoca !== String(epoca).toLowerCase()) throw new err.T05EpocaRetirada();
         if (previo.rows[0].huella !== huellaOffline(data)) throw new err.T05DatosIncorrectos("Conflicto: este identificador local ya fue enviado con otros datos. Conserve el borrador y consulte Administración.");
         await client.query("COMMIT");
         return previo.rows[0].resultado;
@@ -180,7 +184,7 @@ export async function crearPozoCompleto(
     }
 
     const resultado = { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
-    if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado) VALUES($1,$2,$3,$4)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado)]);
+    if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado,epoca) VALUES($1,$2,$3,$4,$5)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado), epoca]);
     commitIntentado = true;
     await client.query("COMMIT");
     return resultado;

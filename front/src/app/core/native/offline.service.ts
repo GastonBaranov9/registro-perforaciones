@@ -65,6 +65,20 @@ export class OfflineService {
     this.mutations = result.catch(() => undefined);
     return result;
   }
+  async epocaParaNuevo(): Promise<string> {
+    const owner = await this.owner();
+    const repo = await this.repository();
+    if (navigator.onLine && this.auth.state() === 'authenticated') {
+      const response = await firstValueFrom(this.http.get<{ epoca: string }>(`${environment.apiURL}pozos/epoca-datos`).pipe(timeout(15000)));
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(response.epoca)) throw new Error('Etapa del servidor inválida.');
+      if ((await this.owner()).id_usuario !== owner.id_usuario) throw new Error('La cuenta cambió.');
+      await repo.guardarEpoca(response.epoca);
+      return response.epoca;
+    }
+    const epoca = await repo.epoca();
+    if (!epoca) throw new Error('Conéctese una vez para habilitar nuevos borradores en esta etapa. Los antiguos se conservan.');
+    return epoca;
+  }
   async cargar() {
     const repo = await this.repository();
     const drafts = await repo.list();
@@ -80,6 +94,9 @@ export class OfflineService {
       this.mensaje.set('');
       if (actual && eliminacionLocal(actual) !== 'borrador') throw new Error('Este borrador ya fue enviado. Reintente para confirmar su recepción antes de editar el pozo en línea.');
       const copy = structuredClone(draft);
+      if (!actual && !copy.epoca) throw new Error('El borrador nuevo necesita una etapa obtenida del servidor.');
+      if (actual?.epocaRetirada) throw new Error('Este borrador pertenece a una etapa retirada.');
+      if (actual && actual.epoca !== copy.epoca) throw new Error('No se puede cambiar la etapa de un borrador.');
       delete copy.pozo.numero_perforacion;
       copy.estado = 'pendiente';
       copy.error = undefined;
@@ -145,6 +162,12 @@ export class OfflineService {
       if (this.auth.state() !== 'authenticated' || this.auth.userId() !== owner.id_usuario || !this.auth.tieneRol('perforador')) throw new Error('Vuelva a iniciar sesión como el mismo perforador para sincronizar. Sus borradores se conservan.');
       const repo = await this.repository();
       for (const draft of await repo.list()) {
+        if (!draft.epoca) {
+          draft.epocaRetirada = true; draft.estado = 'conflicto';
+          draft.error = 'Borrador anterior sin etapa: no puede enviarse ni convertirse. Los datos y la fotografía se conservan; puede retirar la copia local.';
+          await repo.write(draft); continue;
+        }
+        if (draft.epocaRetirada) continue;
         if (draft.estado === 'sincronizado' || draft.requiereCorreccion || draft.fotoPendiente) continue;
         if (this.auth.userId() !== owner.id_usuario || this.auth.state() !== 'authenticated') break;
         const clave = draft.claveOperacion ?? draft.id;
@@ -168,13 +191,14 @@ export class OfflineService {
           const visibles = await repo.list();
           if (this.auth.state() !== 'authenticated' || this.auth.userId() !== owner.id_usuario) throw new Error('La sesión cambió antes de enviar. Los datos se conservan para la cuenta original.');
           this.borradores.set(visibles);
-          const result = await firstValueFrom(this.http.post<PozoCompletoResultado>(`${environment.apiURL}usuarios/${owner.id_usuario}/pozos/completo`, body, { headers: { 'Idempotency-Key': clave } }).pipe(timeout(90000)));
+          const result = await firstValueFrom(this.http.post<PozoCompletoResultado>(`${environment.apiURL}usuarios/${owner.id_usuario}/pozos/completo`, body, { headers: { 'Idempotency-Key': clave, 'X-Epoca-Datos': draft.epoca } }).pipe(timeout(90000)));
           if (!result?.pozo?.id_pozo || !result.pozo.numero_perforacion) throw new Error('El servidor no confirmó la creación completa. Reintente con el mismo borrador.');
           draft.resultado = result; draft.estado = 'sincronizado';
           await repo.write(draft);
         } catch (error) {
           const status = error instanceof HttpErrorResponse ? error.status : 0;
-          draft.estado = [400, 403, 409].includes(status) ? 'conflicto' : 'error';
+          draft.estado = [400, 403, 409, 410].includes(status) ? 'conflicto' : 'error';
+          if (status === 410 && error instanceof HttpErrorResponse && error.error?.code === 'EPOCA_DATOS_RETIRADA') draft.epocaRetirada = true;
           draft.error = status === 401 ? 'Sesión vencida o revocada. Inicie sesión con esta misma cuenta; los datos locales se conservan.'
             : error instanceof HttpErrorResponse ? error.error?.message || 'No se pudo confirmar la recepción. Reintente cuando tenga conexión.'
             : error instanceof Error ? error.message : 'No se pudo sincronizar. Los datos se conservan.';
@@ -183,7 +207,7 @@ export class OfflineService {
           if ([400, 403, 409].includes(status) && this.auth.state() === 'authenticated' && this.auth.userId() === owner.id_usuario) {
             try {
               const cierre = await firstValueFrom(this.http.post<{ estado: string; clave: string; resultado?: PozoCompletoResultado }>(
-                `${environment.apiURL}pozos/offline/${clave}/cerrar`, {},
+                `${environment.apiURL}pozos/offline/${clave}/cerrar`, {}, { headers: { 'X-Epoca-Datos': draft.epoca } },
               ).pipe(timeout(30000)));
               if (cierre.clave !== clave) throw new Error('Recibo de cierre inválido.');
               if (cierre.estado === 'confirmado' && cierre.resultado?.pozo?.id_pozo && cierre.resultado.pozo.numero_perforacion) {
@@ -194,7 +218,12 @@ export class OfflineService {
                 draft.claveOperacion = crypto.randomUUID();
                 draft.error += ' El servidor confirmó que no hubo creación y cerró la operación anterior. Puede editar y guardar la corrección.';
               }
-            } catch { /* Any ambiguity retains the original operation and frozen payload. */ }
+            } catch (closeError) {
+              if (closeError instanceof HttpErrorResponse && closeError.status === 410 && closeError.error?.code === 'EPOCA_DATOS_RETIRADA') {
+                draft.epocaRetirada = true; draft.error = closeError.error.message;
+              }
+              // Any ambiguity retains the original operation and frozen payload.
+            }
           }
           await repo.write(draft);
           if (status === 401 || status === 0) break;

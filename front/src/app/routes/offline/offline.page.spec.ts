@@ -18,7 +18,7 @@ describe('OfflinePage edición, foto persistida y eliminación explícita', () =
     d = { id: crypto.randomUUID(), usuario: 7, estado: 'pendiente', pozo: { id_propietario: null, propietario_provisional: 'Cliente', id_perforador: 7, id_sitio: 0 },
       sitio: { departamento: '', localidad: '', latitud: '', longitud: '' }, tecnicos: { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] } };
     offline = { auth: { state: () => 'offline-unverified' }, sinRed: signal(true), ocupado: signal(false), editando: signal(false), mensaje: signal(''), borradores: signal([d]),
-      owner: jasmine.createSpy().and.resolveTo({ id_usuario: 7, nombre: 'Perforador' }), cargar: jasmine.createSpy().and.resolveTo(),
+      epocaParaNuevo: jasmine.createSpy().and.resolveTo('11111111-1111-4111-8111-111111111111'), owner: jasmine.createSpy().and.resolveTo({ id_usuario: 7, nombre: 'Perforador' }), cargar: jasmine.createSpy().and.resolveTo(),
       fotoUri: jasmine.createSpy().and.resolveTo('https://localhost/_capacitor_file_/data/photo'),
       guardar: jasmine.createSpy().and.resolveTo(), eliminar: jasmine.createSpy().and.resolveTo(), sincronizar: jasmine.createSpy().and.resolveTo() };
     alert = { present: jasmine.createSpy().and.resolveTo(), onDidDismiss: jasmine.createSpy().and.resolveTo({ role: 'cancel' }) };

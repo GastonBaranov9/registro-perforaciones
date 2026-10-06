@@ -75,13 +75,25 @@ class Files {
 }
 
 function draft(): BorradorLocal {
-  return { id: crypto.randomUUID(), usuario: 7, estado: 'pendiente',
+  return { id: crypto.randomUUID(), usuario: 7, epoca: '11111111-1111-4111-8111-111111111111', estado: 'pendiente',
     pozo: { id_propietario: null, propietario_provisional: 'Persona provisional', id_perforador: 7, id_sitio: 0 },
     sitio: { departamento: 'Salto', localidad: 'Campo', latitud: '-31', longitud: '-57' },
     tecnicos: { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] } };
 }
 
 describe('Repositorio offline persistente', () => {
+  it('una APK nueva no añade ni cambia la época de revisiones antiguas y conserva la foto', async () => {
+    const disk = new Files(); const repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+    const legacy = draft(); delete legacy.epoca;
+    legacy.foto = await repo.photo(legacy.id, new File(['legacy-photo'], 'foto.png', { type: 'image/png' }));
+    await repo.write(legacy);
+    await repo.guardarEpoca('22222222-2222-4222-8222-222222222222');
+    const next = new OfflineRepository(Files.restart(disk.diskSnapshot()).plugin, 'offline-v1/server/7', 7);
+    const saved = await next.read(legacy.id);
+    expect(saved.epoca).toBeUndefined(); expect(await next.epoca()).toBe('22222222-2222-4222-8222-222222222222');
+    await expectAsync(next.write({ ...saved, epoca: await next.epoca() })).toBeRejectedWithError(/inmutable/);
+    expect(await next.photoBase64(saved)).toBe(btoa('legacy-photo'));
+  });
   it('recarga JSON y binario en una nueva instancia tras desaparecer el temporal de Camera', async () => {
     let disk = new Files();
     const original = draft();
@@ -218,6 +230,28 @@ describe('Cola offline del perforador', () => {
     service = TestBed.inject(OfflineService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('HTTP 410 retira definitivamente sin cerrar ni cambiar UUID y conserva binario', async () => {
+    const d = draft(); await service.guardar(d, new File(['photo'], 'foto.png', { type: 'image/png' }));
+    const run = service.sincronizar(); const req = await request();
+    expect(req.request.headers.get('X-Epoca-Datos')).toBe(d.epoca!);
+    req.flush({ code: 'EPOCA_DATOS_RETIRADA', message: 'Etapa retirada' }, { status: 410, statusText: 'Gone' }); await run;
+    const saved = service.borradores()[0];
+    expect(saved.epocaRetirada).toBeTrue(); expect(saved.id).toBe(d.id); expect(saved.epoca).toBe(d.epoca);
+    expect(await (await service.foto(saved))!.text()).toBe('photo');
+    await service.sincronizar(); http.expectNone(endpoint);
+    http.expectNone(environment.apiURL + 'pozos/offline/' + d.id + '/cerrar');
+  });
+  it('una época nueva obtenida del servidor se usa sólo al crear, nunca en borradores guardados', async () => {
+    const d = draft(); await service.guardar(d);
+    spyOnProperty(navigator, 'onLine').and.returnValue(true);
+    const epoch = service.epocaParaNuevo();
+    const req = await request(environment.apiURL + 'pozos/epoca-datos');
+    req.flush({ epoca: '22222222-2222-4222-8222-222222222222' });
+    expect(await epoch).toBe('22222222-2222-4222-8222-222222222222');
+    await service.cargar(); expect(service.borradores()[0].epoca).toBe(d.epoca);
+    state.set('offline-unverified');
+    expect(await service.epocaParaNuevo()).toBe('22222222-2222-4222-8222-222222222222');
+  });
   it('fallo de foto persiste datos recuperables, bloquea upload y permite reintentar', async () => {
     const d = draft(); await service.guardar(d, new File(['old'], 'old.png', { type: 'image/png' }));
     const old = service.borradores()[0].foto;
@@ -412,6 +446,19 @@ describe('Cola offline del perforador', () => {
     expect(req.request.headers.get('Idempotency-Key')).toBe(d.id);
     req.flush({ pozo: { id_pozo: 42, numero_perforacion: 8501 } }); await run;
     expect(service.borradores()[0].estado).toBe('sincronizado');
+  });
+  it('borrador anterior sin época no se envía, conserva UUID/foto y no toma la época nueva', async () => {
+    const d = draft(); await service.guardar(d, new File(['abc'], 'foto.png', { type: 'image/png' }));
+    for (const [path, raw] of files.data) {
+      if (!path.endsWith('.json')) continue;
+      const stored = JSON.parse(raw);
+      if (stored.id === d.id) { delete stored.epoca; files.data.set(path, JSON.stringify(stored)); }
+    }
+    await service.cargar(); await service.sincronizar(); http.expectNone(endpoint);
+    const saved = service.borradores()[0];
+    expect(saved.epoca).toBeUndefined(); expect(saved.epocaRetirada).toBeTrue(); expect(saved.id).toBe(d.id);
+    expect(await (await service.foto(saved))!.text()).toBe('abc');
+    await expectAsync(service.guardar({ ...saved, epoca: d.epoca })).toBeRejected();
   });
   it('sin identidad autenticada previamente no permite abrir espacio', async () => {
     session.offlineUser = undefined;
