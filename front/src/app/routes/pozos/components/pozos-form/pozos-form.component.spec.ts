@@ -13,6 +13,25 @@ describe('PozosFormComponent', () => {
   const propietarioA = { id_usuario: 1, nombre: 'Propietario A', documento_rut: 'A-1', telefono: '091 A', email: 'a@example.test', roles: ['propietario'] };
   const propietarioB = { id_usuario: 2, nombre: 'Propietario B', documento_rut: null, telefono: null, email: null, roles: ['propietario'] };
 
+  it('histórico reutiliza campos/foto, permite desconocidos y bloquea número en edición',async()=>{
+    fixture.componentRef.setInput('historico',true);
+    fixture.componentRef.setInput('pozo',{id_propietario:null,id_perforador:0,id_sitio:0,numero_perforacion:3281});
+    fixture.componentRef.setInput('sitioNuevo',{departamento:'',localidad:'',latitud:'',longitud:''});
+    fixture.componentRef.setInput('catalogosDisponibles',true);
+    fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(component.personasValidas()).toBeTrue();
+    expect(fixture.nativeElement.querySelector('[name="numero_historico"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[name="empresa"]').required).toBeFalse();
+    expect(fixture.nativeElement.querySelector('[name="profundidad_final_m"]').required).toBeFalse();
+    expect(fixture.nativeElement.querySelector('app-foto')).not.toBeNull();
+    const saved=spyOn(component.saved,'emit');component.handlePozo();expect(saved).toHaveBeenCalled();
+    expect(component.datoTecnicoEditable('cementacion')).toBeTrue();
+    fixture.componentRef.setInput('agregareditar',true);fixture.componentRef.setInput('id_pozo',18);fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[name="numero_historico"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('3281');
+    expect(fixture.nativeElement.querySelector('[name="latitud"]')).not.toBeNull();
+  });
+
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       providers: [{ provide: CAPACITOR_RUNTIME, useValue: { getPlatform: () => 'android', isNativePlatform: () => true } }, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],

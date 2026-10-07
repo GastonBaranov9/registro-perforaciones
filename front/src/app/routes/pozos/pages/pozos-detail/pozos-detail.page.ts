@@ -109,6 +109,9 @@ export class PozosDetailPage implements ViewWillEnter {
       this.errorMessage.set('No se pudieron cargar todos los datos técnicos.');
     }
   }
+  public irAEditarHistorico() {
+    if(this.authService.tieneRol('administracion') && this.pozo()?.origen==='historico')void this.router.navigate(['/pozos-historicos',this.id_pozo,'editar']);
+  }
   public irAEditarPozo() {
     if (!this.permisos.puedeEditar(this.pozo())) return;
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);

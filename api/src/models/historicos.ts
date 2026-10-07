@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { T05DatosIncorrectos } from './errors.ts';
-import { bodyIntervaloLitologico, IntervaloDiametroPerforacionBody, IntervaloFiltroCreateBody, NivelAporteBody } from './schemas.ts';
+import { bodyIntervaloLitologico, IntervaloDiametroPerforacionBody, IntervaloFiltroCreateBody, IntervaloFiltroBody, NivelAporteBody, FotoNuevaPozo } from './schemas.ts';
 
 const texto = () => Type.String({ minLength: 1, maxLength: 2000, pattern: '\\S' });
 const id = () => Type.Integer({ minimum: 1 });
@@ -27,13 +27,39 @@ export const HistoricoBody = Type.Object({
   intervalos_diametro: Type.Optional(Type.Array(IntervaloDiametroPerforacionBody)),
   intervalos_filtro: Type.Optional(Type.Array(IntervaloFiltroCreateBody)),
   niveles_aporte: Type.Optional(Type.Array(NivelAporteBody)),
+  foto: Type.Optional(FotoNuevaPozo),
 }, { additionalProperties: false });
 export type HistoricoBody = Static<typeof HistoricoBody>;
+export const CAMPOS_HISTORICOS = ['id_propietario','propietario_provisional','id_perforador','empresa','fecha_inicio','fecha_fin','profundidad_final_m','caudal_estimado_lh','nivel_estatico_m','nivel_dinamico_m','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const;
+const editables = Type.Pick(HistoricoBody, [...CAMPOS_HISTORICOS]);
+export const HistoricoUpdateBody = Type.Object({
+  ...Object.fromEntries(Object.entries(editables.properties).map(([k,v]) => [k, Type.Optional(Type.Union([v, Type.Null()]))])),
+  sitio: HistoricoBody.properties.sitio,
+  intervalos_litologicos: Type.Optional(Type.Array(bodyIntervaloLitologico)),
+  intervalos_diametro: HistoricoBody.properties.intervalos_diametro,
+  intervalos_filtro: Type.Optional(Type.Array(IntervaloFiltroBody)),
+  niveles_aporte: HistoricoBody.properties.niveles_aporte,
+  foto_accion: Type.Optional(Type.Union([Type.Literal('conservar'),Type.Literal('eliminar'),Type.Literal('reemplazar')])),
+  foto: Type.Optional(FotoNuevaPozo),
+}, { additionalProperties:false, minProperties:1 });
+export type HistoricoUpdateBody = Partial<{ [K in typeof CAMPOS_HISTORICOS[number]]: HistoricoBody[K] | null }> & {
+  sitio?: HistoricoBody['sitio']; intervalos_litologicos?: Static<typeof bodyIntervaloLitologico>[];
+  intervalos_diametro?: HistoricoBody['intervalos_diametro']; intervalos_filtro?: Static<typeof IntervaloFiltroBody>[];
+  niveles_aporte?: HistoricoBody['niveles_aporte']; foto_accion?: 'conservar'|'eliminar'|'reemplazar'; foto?: HistoricoBody['foto'];
+};
+export function validarEdicionHistorica(data: unknown): asserts data is HistoricoUpdateBody {
+  if (!Value.Check(HistoricoUpdateBody,data)) throw new T05DatosIncorrectos('Edición histórica inválida. Número, origen e identidad no son editables.');
+  const d=data as HistoricoUpdateBody;
+  if ((d.foto_accion==='reemplazar') !== !!d.foto) throw new T05DatosIncorrectos('Adjunte foto únicamente para reemplazar.');
+}
 // Se ejecuta antes de AJV: no convertir strings/booleanos a números ni descartar
 // propiedades desconocidas. También protege llamadas internas al servicio.
 export function validarHistorico(data: unknown): asserts data is HistoricoBody {
   if (!Value.Check(HistoricoBody, data)) throw new T05DatosIncorrectos('Histórico inválido: número entero entre 1 y 3281 y sólo datos conocidos.');
   if (data.id_propietario && data.propietario_provisional) throw new T05DatosIncorrectos('Seleccione propietario o nombre provisional, no ambos.');
+  validarFechasHistoricas(data);
+}
+export function validarFechasHistoricas(data: {fecha_inicio?:string|null;fecha_fin?:string|null}) {
   for (const value of [data.fecha_inicio, data.fecha_fin]) {
     if (value && (!Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) throw new T05DatosIncorrectos('Fecha histórica inválida.');
   }

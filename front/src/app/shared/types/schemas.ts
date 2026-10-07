@@ -69,7 +69,7 @@ export type Pozo = {
   metodo_rocoso?: string;
   cementacion?: string; //Es lo mismo siempre
   desarrollo?: string; //Es lo mismo siempre
-  revestimiento?: Revestimiento | null;
+  revestimiento?: string | null;
   creado_por?: number;
   fecha_creado: string;
   foto_url?: string;
@@ -104,7 +104,7 @@ export type NuevoPozo = {
   metodo_rocoso?: string;
   cementacion?: string; //Es lo mismo siempre
   desarrollo?: string; //Es lo mismo siempre
-  revestimiento?: Revestimiento | null;
+  revestimiento?: string | null;
   creado_por?: number;
   foto_url?: string;
 };

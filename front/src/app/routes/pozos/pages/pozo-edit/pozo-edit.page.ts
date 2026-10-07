@@ -1,3 +1,4 @@
+import { tecnicosPersistidos } from '../../../../shared/utils/tecnicos-persistidos';
 import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
 import { VincularPropietarioComponent } from '../../components/vincular-propietario/vincular-propietario.component';
 import { CandidatoPozo } from '../../../../shared/types/schemas';
@@ -95,12 +96,7 @@ export class PozoEditPage {
         propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
         perforadores: perforador ? [perforador, ...personasBase.perforadores] : personasBase.perforadores,
       };
-      const tecnicos: DatosTecnicosBorrador = {
-        intervalosLitologicos: litologia.map((x) => ({ idLocal: `persistido-lit-${x.id_intervalo_litologico}`, dato: { id_intervalo_litologico: x.id_intervalo_litologico, desde_m: x.desde_m, hasta_m: x.hasta_m, material: x.material, id_litologia: x.id_litologia ?? undefined } })),
-        intervalosDiametro: diametros.map((x) => ({ idLocal: `persistido-dia-${x.id_intervalo_diametro_perforacion}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, diametro_pulg: x.diametro_pulg, material_tuberia: x.material_tuberia ?? '' } })),
-        intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, ranuraOriginal: x.ranura_mm, dato: { id_intervalo_filtro:x.id_intervalo_filtro,desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia,ranura_mm:x.ranura_mm } })),
-        nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
-      };
+      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes);
       return { pozo: { ...pozo, id_sitio: pozo.id_sitio, id_perforador: pozo.id_perforador, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
   });

@@ -65,7 +65,7 @@ function sinCamposHistoricos(pozo: NuevoPozo): Omit<NuevoPozo, 'id_sitio'> {
   return moderno;
 }
 
-async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {
+export async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {
   if (foto.type !== 'image/jpeg' && foto.type !== 'image/png') throw new Error('La fotografía debe ser JPEG o PNG.');
   const bytes = new Uint8Array(await foto.arrayBuffer());
   let binario = '';

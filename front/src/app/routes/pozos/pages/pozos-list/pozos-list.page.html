@@ -87,6 +87,7 @@
   @for (pozo of pozosVisibles(); track pozo.id_pozo) {
   <ion-card>
     <ion-card-header>
+      @if (pozo.origen === 'historico') { <p>Perforación histórica</p> }
       <ion-card-title>{{ pozo.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación N.º " + pozo.numero_perforacion }}</ion-card-title>
       <p>ID interno: {{ pozo.id_pozo }}</p>
       <ion-card-subtitle>Empresa: {{ pozo.empresa || '-' }}</ion-card-subtitle>

@@ -60,7 +60,7 @@ test('carga historica en PostgreSQL aislada', async t=>{
     await app.register((await import('../src/routes/pozos.ts')).default);
     await app.register((await import('../src/routes/historicos.ts')).default); await app.ready();
     const {SESSION_COOKIE}=await import('../src/plugins/cookies.ts');
-    const call=(actor:number,method:'POST'|'GET',url:string,payload?:unknown,version=1)=>app.inject({method,url,...(payload?{payload}:{}),cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:actor,version_sesion:version},{expiresIn:'1h'})},headers:{'idempotency-key':randomUUID(),'x-epoca-datos':epoca}});
+    const call=(actor:number,method:'POST'|'GET'|'PATCH',url:string,payload?:unknown,version=1)=>app.inject({method,url,...(payload?{payload}:{}),cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:actor,version_sesion:version},{expiresIn:'1h'})},headers:{'idempotency-key':randomUUID(),'x-epoca-datos':epoca}});
     await t.test('HTTP: sólo admin, validación estricta y sesión revocada',async()=>{
       assert.equal((await call(3,'POST','/pozos/historicos',{numero_perforacion:3279})).statusCode,403);
       assert.equal((await call(2,'POST','/pozos/historicos',{numero_perforacion:3279})).statusCode,403);
@@ -74,6 +74,89 @@ test('carga historica en PostgreSQL aislada', async t=>{
       const normal=await call(1,'POST','/usuarios/1/pozos/completo',{...body,pozo:{...body.pozo,numero_perforacion:3279}}); assert.notEqual(normal.statusCode,201);
       await pool.query('UPDATE usuario SET version_sesion=2 WHERE id_usuario=1');
       assert.equal((await call(1,'POST','/pozos/historicos',{numero_perforacion:3279})).statusCode,401);
+    });
+    const completo={
+      id_propietario:2,id_perforador:3,empresa:'Empresa documentada',fecha_inicio:'1998-03-01',fecha_fin:'1998-03-04',
+      profundidad_final_m:40,nivel_estatico_m:3.5,nivel_dinamico_m:7.25,caudal_estimado_lh:1200,
+      metodo_sedimentario:'Rotación',metodo_rocoso:'Percusión',cementacion:'Documentada',desarrollo:'Aire',revestimiento:'PVC',
+      sitio:{departamento:'Salto',localidad:'Campo',padron:'182',latitud:'-31',longitud:'-57'},
+      intervalos_litologicos:[{desde_m:0,hasta_m:40,material:'Documentado',id_litologia:1}],
+      intervalos_diametro:[{desde_m:0,hasta_m:40,diametro_pulg:6,material_tuberia:'PVC' as const}],
+      intervalos_filtro:[{desde_m:20,hasta_m:30,diametro_pulg:4,material_tuberia:'PVC' as const,ranura_mm:0.75 as const}],
+      niveles_aporte:[{profundidad_m:25}],foto:body.foto,
+    };
+    await t.test('histórico completo con foto: concurrencia/reintento no duplican hijos ni reservas',async()=>{
+      const key=randomUUID(),data={numero_perforacion:3279,...completo};
+      const [a,b]=await Promise.all([crearHistorico(1,data,key,epoca,pool),crearHistorico(1,data,key,epoca,pool)]);
+      assert.deepEqual(a,b);
+      const row=(await pool.query('SELECT * FROM pozo WHERE id_pozo=$1',[a.id_pozo])).rows[0];
+      for(const k of ['empresa','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const)assert.equal(row[k],completo[k]);
+      for(const k of ['profundidad_final_m','nivel_estatico_m','nivel_dinamico_m','caudal_estimado_lh'] as const)assert.equal(Number(row[k]),completo[k]);
+      assert.equal(new Date(row.fecha_inicio).toISOString().slice(0,10),completo.fecha_inicio);
+      const site=(await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[row.id_sitio])).rows[0];
+      assert.equal(site.padron,'182');assert.equal(Number(site.latitud),-31);assert.equal(Number(site.longitud),-57);
+      assert.deepEqual(await fs.readFile(path.join(fotos,`pozo-${a.id_pozo}.png`)),Buffer.from(body.foto.base64,'base64'));
+      for(const table of ['intervalo_litologico','intervalo_diametro_perforacion','intervalo_filtro','nivel_aporte'])assert.equal((await pool.query(`SELECT count(*) FROM ${table} WHERE id_pozo=$1`,[a.id_pozo])).rows[0].count,'1');
+      assert.equal((await pool.query('SELECT count(*) FROM numero_perforacion_reservado WHERE numero_perforacion=3279')).rows[0].count,'1');
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3282');
+      const before=(await pool.query('SELECT count(*) FROM sitio')).rows[0].count;
+      await assert.rejects(crearHistorico(1,{...data,numero_perforacion:3278,foto:{...body.foto,base64:'invalida'}},randomUUID(),epoca,pool));
+      assert.equal((await pool.query('SELECT count(*) FROM sitio')).rows[0].count,before);
+      assert.equal((await pool.query('SELECT count(*) FROM numero_perforacion_reservado WHERE numero_perforacion=3278')).rows[0].count,'0');
+      const filesBefore=(await fs.readdir(fotos)).sort();
+      // Falla después de promover la foto y antes de COMMIT: compensar DB y FS.
+      const failingPool={connect:async()=>{
+        const client=await pool.connect();
+        return {query:async(sql:string,params?:unknown[])=>{
+          if(sql.startsWith('INSERT INTO creacion_historica'))throw Error('fallo posterior a foto');
+          return client.query(sql,params);
+        },release:(discard?:boolean)=>client.release(discard)};
+      }};
+      await assert.rejects(crearHistorico(1,{...data,numero_perforacion:3278},randomUUID(),epoca,failingPool as never),/fallo posterior a foto/);
+      assert.deepEqual((await fs.readdir(fotos)).sort(),filesBefore);
+      assert.equal((await pool.query('SELECT count(*) FROM numero_perforacion_reservado WHERE numero_perforacion=3278')).rows[0].count,'0');
+    });
+    await t.test('P-3281 parcial existente se completa desde API sin recrear ni cambiar numeración/reserva',async()=>{
+      const reservation=(await pool.query('SELECT * FROM numero_perforacion_reservado WHERE numero_perforacion=3281')).rows[0];
+      const url=`/pozos/historicos/${historicoId}`;
+      const result=await call(1,'PATCH',url,{...completo,foto_accion:'reemplazar'},2);
+      assert.equal(result.statusCode,200,result.body);assert.equal(result.json().id_pozo,historicoId);
+      const normalEdit=await app.inject({method:'PUT',url:`/usuarios/1/pozos/${historicoId}/completo`,cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:1,version_sesion:2},{expiresIn:'1h'})},payload:{pozo:{id_propietario:2,id_perforador:3,id_sitio:1},intervalos_litologicos:[],intervalos_diametro:[],intervalos_filtro:[],niveles_aporte:[],foto_accion:'conservar'}});
+      assert.equal(normalEdit.statusCode,400,normalEdit.body);
+      assert.deepEqual((await pool.query('SELECT * FROM numero_perforacion_reservado WHERE numero_perforacion=3281')).rows[0],reservation);
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3282');
+      const row=(await pool.query('SELECT * FROM pozo WHERE id_pozo=$1',[historicoId])).rows[0];
+      assert.equal(row.numero_perforacion,3281);assert.equal(row.origen,'historico');assert.equal(row.id_propietario,'2');assert.equal(row.id_perforador,'3');assert.ok(row.id_sitio);
+      const childBefore=(await pool.query('SELECT * FROM intervalo_litologico WHERE id_pozo=$1',[historicoId])).rows;
+      const photoBefore=await fs.readFile(path.join(fotos,`pozo-${historicoId}.png`));
+      const concurrent=await Promise.all([call(1,'PATCH',url,{empresa:'Corregida'},2),call(1,'PATCH',url,{nivel_estatico_m:0},2)]);
+      assert(concurrent.every(r=>r.statusCode===200));
+      assert.deepEqual((await pool.query('SELECT * FROM intervalo_litologico WHERE id_pozo=$1',[historicoId])).rows,childBefore);
+      assert.deepEqual(await fs.readFile(path.join(fotos,`pozo-${historicoId}.png`)),photoBefore);
+      for(const immutable of [{numero_perforacion:3280},{numero_perforacion:3281},{origen:'normal'},{origen:'historico'},{id_pozo:99}])assert.equal((await call(1,'PATCH',url,immutable,2)).statusCode,400);
+      for(const actor of [2,3])assert.equal((await call(actor,'PATCH',url,{empresa:'No autorizado'})).statusCode,403);
+      assert.equal((await call(1,'PATCH',url,{empresa:'Sesión revocada'},1)).statusCode,401);
+      const invalid=await call(1,'PATCH',url,{empresa:'No debe persistir',foto_accion:'reemplazar',foto:{...body.foto,base64:'invalida'}},2);
+      assert.equal(invalid.statusCode,400,invalid.body);
+      assert.equal((await pool.query('SELECT empresa FROM pozo WHERE id_pozo=$1',[historicoId])).rows[0].empresa,'Corregida');
+      assert.deepEqual(await fs.readFile(path.join(fotos,`pozo-${historicoId}.png`)),photoBefore);
+      assert.equal((await call(1,'PATCH',url,{profundidad_final_m:10},2)).statusCode,400,'no reducir profundidad bajo los hijos existentes');
+      const hijos=await call(1,'PATCH',url,{intervalos_diametro:[{desde_m:0,hasta_m:40,diametro_pulg:8,material_tuberia:'Acero'}]},2);
+      assert.equal(hijos.statusCode,200,hijos.body);
+      assert.equal((await pool.query('SELECT count(*) FROM intervalo_filtro WHERE id_pozo=$1',[historicoId])).rows[0].count,'1');
+      assert.equal((await call(1,'PATCH',url,{foto_accion:'eliminar'},2)).statusCode,200);
+      await assert.rejects(fs.stat(path.join(fotos,`pozo-${historicoId}.png`)),{code:'ENOENT'});
+      assert.equal((await call(1,'PATCH',url,{foto_accion:'reemplazar',foto:body.foto},2)).statusCode,200);
+      assert.deepEqual((await pool.query('SELECT * FROM numero_perforacion_reservado WHERE numero_perforacion=3281')).rows[0],reservation);
+    });
+    await t.test('alta normal sigue automática y obtiene 3282 exclusivamente en este fixture',async()=>{
+      const cookies={[SESSION_COOKIE]:app.jwt.sign({sub:1,version_sesion:2},{expiresIn:'1h'})};
+      const send=(payload:unknown)=>app.inject({method:'POST',url:'/usuarios/1/pozos/completo',cookies,payload});
+      for(const n of [3280,3282])assert.equal((await send({...body,pozo:{...body.pozo,numero_perforacion:n}})).statusCode,400);
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3282');
+      const result=await send(body);assert.equal(result.statusCode,201,result.body);assert.equal(result.json().pozo.numero_perforacion,3282);
+      assert.equal((await call(1,'PATCH',`/pozos/historicos/${result.json().pozo.id_pozo}`,{empresa:'No'},2)).statusCode,400);
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3283');
     });
   } finally {
     await app.close(); await pool.end(); await control.query(`DROP DATABASE ${db} WITH (FORCE)`); await control.end();

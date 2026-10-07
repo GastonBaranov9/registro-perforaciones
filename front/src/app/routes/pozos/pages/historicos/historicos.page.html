@@ -1,0 +1,24 @@
+<ion-content class="ion-padding">
+  <h1>{{ id_pozo() ? 'Editar perforación histórica' : 'Nueva perforación histórica' }}</h1>
+  <p>Para perforaciones anteriores. Administración registra el número real hasta P-3281; no consume el próximo número automático.</p>
+  <p>Complete toda la información disponible. Los datos desconocidos pueden quedar vacíos.</p>
+  @if (error()) { <p role="alert" class="error">{{ error() }}</p> }
+  @if (cargado()) {
+    <fieldset [disabled]="ocupado() || !!envio || !!resultado()">
+      <app-pozos-form [historico]="true" [pozo]="pozo()" [id_pozo]="id_pozo() ? +id_pozo()! : null" [agregareditar]="!!id_pozo()"
+        [propietarios]="propietarios()" [perforadores]="perforadores()" [catalogosDisponibles]="true"
+        [administrarPropietarios]="true" [sitioNuevo]="sitio()" [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
+        [guardando]="ocupado() || !!envio || !!resultado()" [textoGuardar]="id_pozo() ? 'Guardar cambios históricos' : 'Guardar perforación histórica'"
+        (saved)="guardar($event)" (crearPropietario)="crearPropietario($event)" (actualizarPropietario)="actualizarPropietario($event)">
+        <app-datos-tecnicos-borrador [profundidad]="pozo().profundidad_final_m" [inicial]="inicial()"
+          [guardando]="ocupado() || !!envio || !!resultado()" (cambiado)="tecnicos.set($event)" />
+      </app-pozos-form>
+    </fieldset>
+  } @else { <p>Cargando formulario…</p><ion-button (click)="ionViewWillEnter()">Reintentar carga</ion-button> }
+  @if (envio && !resultado()) {
+    <p>Solicitud P-{{ envio.body['numero_perforacion'] }} conservada con sus datos y foto para reintentar la misma operación.</p>
+    @if (!retirada()) { <ion-button [disabled]="ocupado()" (click)="guardar()">Reintentar la misma carga</ion-button> }
+    @if (envio.rechazada) { <ion-button [disabled]="ocupado()" (click)="otra()">Descartar intento rechazado</ion-button> }
+  }
+  @if (resultado(); as r) { <p role="status">P-{{ r.numero_perforacion }} guardada.</p><ion-button (click)="ver(r.id_pozo)">Ver perforación</ion-button><ion-button (click)="otra()">Cargar otra perforación</ion-button> }
+</ion-content>

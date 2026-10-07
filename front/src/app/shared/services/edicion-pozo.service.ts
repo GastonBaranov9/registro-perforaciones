@@ -4,7 +4,7 @@ import { interval } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 
 export const MENSAJE_SOLO_LECTURA = 'Solo lectura. El perforador solo puede editar perforaciones propias durante las primeras 24 horas desde su creación.';
-export type CreacionPozo = { creado_por?: number; fecha_creado?: string };
+export type CreacionPozo = { creado_por?: number; fecha_creado?: string; origen?:'normal'|'historico' };
 
 export function dentroDeVentana(pozo: CreacionPozo | null | undefined, usuario: number | null, ahora: number): boolean {
   const creado = Date.parse(pozo?.fecha_creado ?? '');
@@ -20,7 +20,7 @@ export class EdicionPozoService {
   readonly mensaje = MENSAJE_SOLO_LECTURA;
   puedeEditar(pozo: CreacionPozo | null | undefined): boolean {
     this.pulso();
-    return this.auth.tieneRol('administracion') || (this.auth.tieneRol('perforador')
+    return this.auth.tieneRol('administracion') || (pozo?.origen!=='historico' && this.auth.tieneRol('perforador')
       && dentroDeVentana(pozo, this.auth.userId(), Date.now()));
   }
 }

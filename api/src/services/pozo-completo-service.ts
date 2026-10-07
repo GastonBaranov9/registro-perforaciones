@@ -235,9 +235,10 @@ export async function actualizarPozoCompleto(
   try {
     await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
-    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; id_propietario: number | null; numero_perforacion: number | null }>(
-      "SELECT id_pozo,id_sitio,id_propietario,numero_perforacion FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; id_propietario: number | null; numero_perforacion: number | null; origen:string }>(
+      "SELECT id_pozo,id_sitio,id_propietario,numero_perforacion,origen FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
     if (!bloqueado[0]) throw new err.T05PozoNoEncontrado();
+    if(bloqueado[0].origen==='historico')throw new err.T05DatosIncorrectos('Use la edición histórica para esta perforación.');
     if (Object.hasOwn(data.pozo, "numero_perforacion") && data.pozo.numero_perforacion !== bloqueado[0].numero_perforacion)
       throw new err.T05DatosIncorrectos("La numeración se administra por separado; no se puede cambiar desde la edición habitual.");
     const provisional = await validarPropiedad(data.pozo, client);
@@ -246,26 +247,7 @@ export async function actualizarPozoCompleto(
     if ((bloqueado[0].id_propietario == null ? null : Number(bloqueado[0].id_propietario)) !== data.pozo.id_propietario)
       throw new err.T05DatosIncorrectos("La vinculación del propietario requiere la operación administrativa específica. Recargue si cambió.");
 
-    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
-      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
-    const originales = litologiasOriginales.map((fila) => ({
-      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
-      desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),
-      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
-    }));
-    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
-    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
-    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
-    let ranurasFiltros = new Map<number, 0.5 | 0.75 | 1 | null>();
-    if (idsFiltros.length) {
-      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number;ranura_mm:number|null}>(
-        "SELECT id_intervalo_filtro,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
-        [idPozo, idsFiltros],
-      );
-      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
-      ranurasFiltros = resolverRanurasFiltros(data.intervalos_filtro, filtrosOriginales.map((filtro) => ({ id_intervalo_filtro: Number(filtro.id_intervalo_filtro), ranura_mm: filtro.ranura_mm == null ? null : Number(filtro.ranura_mm) as 0.5 | 0.75 | 1 })));
-    }
-
+    const hijos = await reemplazarHijosPozo(client, idPozo, data);
     const p = data.pozo;
     const { rows } = await client.query(
       `UPDATE pozo SET id_propietario=$2, id_sitio=$3, empresa=$4, id_perforador=$5,
@@ -283,12 +265,6 @@ export async function actualizarPozoCompleto(
        p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null,provisional],
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
-
-    await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
-    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones, ranurasFiltros);
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
@@ -334,6 +310,36 @@ export async function actualizarPozoCompleto(
   } finally { client.release(descartar); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "actualizar_pozo_completo", opciones.logger, opciones.eliminarPostCommit);
   return resultado;
+}
+
+
+export async function reemplazarHijosPozo(client: PoolClient, idPozo: number, data: Pick<PozoCompletoUpdateBody, "intervalos_litologicos"|"intervalos_diametro"|"intervalos_filtro"|"niveles_aporte">) {
+    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
+      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const originales = litologiasOriginales.map((fila) => ({
+      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
+      desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),
+      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
+    }));
+    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
+    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
+    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
+    let ranurasFiltros = new Map<number, 0.5 | 0.75 | 1 | null>();
+    if (idsFiltros.length) {
+      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number;ranura_mm:number|null}>(
+        "SELECT id_intervalo_filtro,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
+        [idPozo, idsFiltros],
+      );
+      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
+      ranurasFiltros = resolverRanurasFiltros(data.intervalos_filtro, filtrosOriginales.map((filtro) => ({ id_intervalo_filtro: Number(filtro.id_intervalo_filtro), ranura_mm: filtro.ranura_mm == null ? null : Number(filtro.ranura_mm) as 0.5 | 0.75 | 1 })));
+    }
+
+    await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
+    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones, ranurasFiltros);
+    return hijos;
 }
 
 export async function insertarHijos(client: PoolClient, idPozo: number, data: Pick<DatosCompletosPozo, 'intervalos_litologicos' | 'intervalos_diametro' | 'intervalos_filtro' | 'niveles_aporte'>, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {

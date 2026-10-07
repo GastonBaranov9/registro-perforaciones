@@ -43,6 +43,7 @@ type PropietarioEdicionEstado = {
 export class PozosFormComponent implements OnDestroy {
   private readonly runtime = inject(RuntimePlatformService);
   public borradorLocal = input(false);
+  public historico = input(false);
   public fotoLocalUri = input<string | null>(null);
   public pozo = input.required<NuevoPozo>();
   public id_pozo = input<number | null>(null);
@@ -78,7 +79,7 @@ export class PozosFormComponent implements OnDestroy {
   public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
   public propietarioEdicion = signal<PropietarioEdicionEstado | null>(null);
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
-  datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
+  datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.historico() || this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
     this.camposTecnicosEditables.update((actual) => new Set(actual).add(campo));
   }
@@ -91,11 +92,12 @@ export class PozosFormComponent implements OnDestroy {
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
+    if(this.guardando() || this.soloLectura())return;
     if (!this.agregareditar() && this.pozo().numero_perforacion != null && !numeroPerforacionValido(this.pozo().numero_perforacion)) {
       this.errorMessage.set("El número de perforación debe ser un entero entre 1 y 2147483647."); return;
     }
     const sitio=this.sitioNuevo();
-    if(sitio && !this.borradorLocal()){
+    if(sitio && !this.borradorLocal() && (!this.historico() || sitio.latitud || sitio.longitud)){
       const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');
       if(!latitud||!longitud){this.ubicacionError.set('Las coordenadas no son válidas.');return;}
       sitio.latitud=latitud;sitio.longitud=longitud;
@@ -125,6 +127,7 @@ export class PozosFormComponent implements OnDestroy {
 
   normalizarCoordenadaNueva(eje:EjeCoordenada) {
     const sitio=this.sitioNuevo();if(!sitio)return;
+    if(this.historico()&&!sitio[eje]){this.ubicacionError.set('');return;}
     const normalizada=normalizarCoordenadaTexto(sitio[eje],eje);
     if(!normalizada){this.ubicacionError.set(`La ${eje} no es válida.`);return;}
     sitio[eje]=normalizada;this.ubicacionError.set('');
@@ -233,6 +236,7 @@ export class PozosFormComponent implements OnDestroy {
     this.quitarFotoSeleccionada();
   }
   personasValidas() {
+    if(this.historico())return true;
     return (Number(this.pozo().id_propietario) > 0 || (this.pozo().id_propietario === null && !!this.pozo().propietario_provisional?.trim())) && Number(this.pozo().id_perforador) > 0;
   }
 

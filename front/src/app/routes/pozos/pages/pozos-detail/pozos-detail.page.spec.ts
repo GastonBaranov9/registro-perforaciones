@@ -27,6 +27,17 @@ describe('PozosDetailPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('ofrece edición histórica sólo al administrador, conservando la ruta separada',()=>{
+    component.id_pozo=18;
+    component.pozo.set({id_pozo:18,numero_perforacion:3281,origen:'historico',id_propietario:null,id_perforador:null,id_sitio:null,fecha_creado:'2026-10-06'});
+    const role=spyOn(TestBed.inject(AuthService),'tieneRol').and.callFake(r=>r==='administracion');
+    const nav=spyOn(component.router,'navigate').and.resolveTo(true);
+    fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('Editar perforación histórica');
+    component.irAEditarHistorico();expect(nav).toHaveBeenCalledWith(['/pozos-historicos',18,'editar']);
+    role.and.returnValue(false);nav.calls.reset();fixture.detectChanges();component.irAEditarHistorico();
+    expect(nav).not.toHaveBeenCalled();expect(fixture.nativeElement.textContent).not.toContain('Editar perforación histórica');
+  });
+
   it('error HTTP de PDF muestra alerta persistente y permite un segundo intento', async () => {
     spyOn(TestBed.inject(AuthService), 'userId').and.returnValue(1);
     component.id_pozo = 8;
