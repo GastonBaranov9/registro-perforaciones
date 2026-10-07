@@ -125,7 +125,9 @@ export class PozosListPage implements OnInit, ViewWillEnter {
 
   irAEditar(pozo: Pozo) {
     if (!this.permisos.puedeEditar(pozo)) return;
-    this.router.navigate(['/pozo-edit', pozo.id_pozo]);
+    this.router.navigate(pozo.origen === 'historico'
+      ? ['/pozos-historicos', pozo.id_pozo, 'editar']
+      : ['/pozo-edit', pozo.id_pozo]);
   }
 
   irAIntervaloLit(pozo: Pozo) {

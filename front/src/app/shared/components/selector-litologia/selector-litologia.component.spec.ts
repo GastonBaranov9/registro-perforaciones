@@ -81,10 +81,13 @@ describe('Autocompletado litológico', () => {
     { id_litologia: 4, codigo: 'basalto_negro', nombre: 'Basalto negro', familia: 'basalto', color: '#202124', patron: 'basalt', activo: true, orden: 4 },
     { id_litologia: 6, codigo: 'suelo_organico', nombre: 'Suelo orgánico', familia: 'suelo', color: '#4E342E', patron: 'organic', activo: true, orden: 6 },
   ];
-  beforeEach(() => TestBed.configureTestingModule({
-    imports: [SelectorLitologiaComponent],
-    providers: [{ provide: LitologiasService, useValue: { listar: async () => catalogo } }],
-  }));
+  beforeEach(() => {
+    spyOn(window, 'matchMedia').and.returnValue(Object.assign(new EventTarget(), { matches: false }) as MediaQueryList);
+    TestBed.configureTestingModule({
+      imports: [SelectorLitologiaComponent],
+      providers: [{ provide: LitologiasService, useValue: { listar: async () => catalogo } }],
+    });
+  });
   async function fixture() {
     const f = TestBed.createComponent(SelectorLitologiaComponent);
     f.detectChanges(); await f.whenStable(); f.detectChanges(); return f;
@@ -131,5 +134,116 @@ describe('Autocompletado litológico', () => {
     const selected = spyOn(c.seleccionadoChange, 'emit');
     c.buscar('suelo'); c.teclado(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(c.abierto()).toBeFalse(); expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('en desktop mantiene la lista al ocultar el teclado y cierra al enfocar o pulsar fuera', async () => {
+    const f = await fixture(), c = f.componentInstance;
+    c.buscar('ba'); f.detectChanges();
+    const input = f.nativeElement.querySelector('input') as HTMLInputElement;
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    expect(c.abierto()).toBeTrue();
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+    expect(c.abierto()).toBeFalse();
+    c.buscar('ba');
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(c.abierto()).toBeFalse();
+  });
+
+  function simularMovil() {
+    (window.matchMedia as jasmine.Spy).and.returnValue(Object.assign(new EventTarget(), { matches: true }) as MediaQueryList);
+    const viewport = Object.assign(new EventTarget(), { width: 320, height: 600, offsetTop: 0, offsetLeft: 0 });
+    spyOnProperty(window, 'visualViewport', 'get').and.returnValue(viewport as VisualViewport);
+    return viewport;
+  }
+
+  it('en móvil ajusta búsqueda y opciones al viewport con teclado abierto, permite scroll y no cierra al ocultarlo', async () => {
+    const viewport = simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    c.opciones.set(Array.from({ length: 30 }, (_, i) => ({ ...catalogo[0], id_litologia: i + 10 })));
+    (f.nativeElement.querySelector('.abrir-selector') as HTMLButtonElement).click();
+    f.detectChanges();
+    const dialogo = f.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    const input = dialogo.querySelector('input')!;
+    expect(dialogo.open).toBeTrue();
+    expect(document.activeElement).toBe(input);
+    Object.assign(viewport, { height: 320, offsetTop: 24 });
+    viewport.dispatchEvent(new Event('resize'));
+    f.detectChanges();
+    const lista = dialogo.querySelector('[role="listbox"]') as HTMLElement;
+    const limites = lista.getBoundingClientRect();
+    expect(dialogo.getBoundingClientRect().width).toBe(304);
+    expect(input.getBoundingClientRect().top).toBeGreaterThanOrEqual(viewport.offsetTop);
+    expect(limites.height).toBeGreaterThanOrEqual(48);
+    expect(limites.bottom).toBeLessThanOrEqual(viewport.offsetTop + viewport.height);
+    expect(lista.scrollHeight).toBeGreaterThan(lista.clientHeight);
+    lista.scrollTop = 100;
+    expect(lista.scrollTop).toBe(100);
+    input.blur();
+    Object.assign(viewport, { height: 600, offsetTop: 0 });
+    viewport.dispatchEvent(new Event('resize'));
+    f.detectChanges();
+    expect(c.abierto()).toBeTrue();
+    expect(dialogo.open).toBeTrue();
+    expect(lista.getBoundingClientRect().height).toBeGreaterThan(limites.height);
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    (lista.querySelectorAll('button')[5] as HTMLButtonElement).click();
+    expect(selected).toHaveBeenCalledOnceWith(15);
+    expect(dialogo.open).toBeFalse();
+  });
+
+  it('en móvil busca por texto, conserva resultados tras focusout y selecciona con el teclado abierto', async () => {
+    const viewport = simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    c.abrirMovil();
+    const dialogo = f.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    const input = dialogo.querySelector('input')!;
+    input.value = 'MARRON';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    Object.assign(viewport, { height: 320 });
+    viewport.dispatchEvent(new Event('resize'));
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    f.detectChanges();
+    const opciones = dialogo.querySelectorAll<HTMLButtonElement>('[role="option"]');
+    expect(opciones.length).toBe(1);
+    expect(opciones[0].textContent).toContain('Basalto marrón');
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    opciones[0].click();
+    expect(selected).toHaveBeenCalledOnceWith(1);
+    expect(dialogo.open).toBeFalse();
+  });
+
+  it('en móvil Escape oculta el teclado; Cerrar cancela sin modificar la selección y permite reabrir', async () => {
+    simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    c.abrirMovil();
+    const dialogo = f.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    const input = dialogo.querySelector('input')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.activeElement).not.toBe(input);
+    expect(dialogo.open).toBeTrue();
+    (dialogo.querySelector('header button') as HTMLButtonElement).click();
+    expect(dialogo.open).toBeFalse();
+    expect(c.abierto()).toBeFalse();
+    expect(selected).not.toHaveBeenCalled();
+    await f.whenStable();
+    c.abrirMovil();
+    expect(dialogo.open).toBeTrue();
+    dialogo.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(c.abierto()).toBeFalse();
+    expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('en móvil no abre deshabilitado y libera los listeners del viewport al destruirse', async () => {
+    const viewport = simularMovil();
+    const eliminarListener = spyOn(viewport, 'removeEventListener').and.callThrough();
+    const f = await fixture(), c = f.componentInstance;
+    f.componentRef.setInput('deshabilitado', true); f.detectChanges();
+    c.abrirMovil();
+    expect(c.abierto()).toBeFalse();
+    expect(f.nativeElement.querySelector('dialog').open).toBeFalse();
+    f.destroy();
+    expect(eliminarListener).toHaveBeenCalledWith('resize', jasmine.any(Function));
+    expect(eliminarListener).toHaveBeenCalledWith('scroll', jasmine.any(Function));
   });
 });

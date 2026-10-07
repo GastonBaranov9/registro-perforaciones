@@ -7,6 +7,12 @@ describe('DatosTecnicosBorradorComponent', () => {
   let fixture: ComponentFixture<DatosTecnicosBorradorComponent>;
   let component: DatosTecnicosBorradorComponent;
 
+  function simularMovimientoReducido(reduced: boolean) {
+    const matchMedia = window.matchMedia.bind(window);
+    spyOn(window, 'matchMedia').and.callFake(query => query === '(prefers-reduced-motion: reduce)'
+      ? { matches: reduced } as MediaQueryList : matchMedia(query));
+  }
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [DatosTecnicosBorradorComponent], providers: [provideHttpClient(), provideHttpClientTesting()] }).compileComponents();
     fixture = TestBed.createComponent(DatosTecnicosBorradorComponent);
@@ -21,7 +27,7 @@ describe('DatosTecnicosBorradorComponent', () => {
         const agregar = () => grupo === 'intervalosDiametro' ? component.agregarDiametro() : grupo === 'intervalosFiltro' ? component.agregarFiltro() : component.agregarAporte();
         const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
         const focus = spyOn(HTMLInputElement.prototype, 'focus');
-        spyOn(window, 'matchMedia').and.returnValue({ matches: reduced } as MediaQueryList);
+        simularMovimientoReducido(reduced);
         agregar();
         const anterior = component.datos()[grupo][0];
         if ('hasta_m' in anterior.dato) anterior.dato.hasta_m = 10;
@@ -156,7 +162,7 @@ describe('DatosTecnicosBorradorComponent', () => {
     component.datos().intervalosLitologicos[0].dato.hasta_m = 5;
     component.notificarEdicion();
     fixture.detectChanges();
-    expect((fixture.nativeElement.querySelector('.seccion button') as HTMLButtonElement).disabled).toBeFalse();
+    expect((fixture.nativeElement.querySelector('.agregar-litologia') as HTMLButtonElement).disabled).toBeFalse();
 
     component.agregarLitologia();
 
@@ -188,7 +194,7 @@ describe('DatosTecnicosBorradorComponent', () => {
       const oldRow = fixture.nativeElement.querySelector('[data-capa="guardada"]');
       const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
       const focus = spyOn(HTMLInputElement.prototype, 'focus');
-      spyOn(window, 'matchMedia').and.returnValue({ matches: reduced } as MediaQueryList);
+      simularMovimientoReducido(reduced);
       component.agregarLitologia(); fixture.detectChanges();
       TestBed.inject(HttpTestingController).match(() => true).forEach(req => req.flush([{ id_litologia: 1, nombre: "Basalto", familia: "basalto", activo: true }]));
       await fixture.whenStable(); fixture.detectChanges();

@@ -1,16 +1,42 @@
 <div class="selector-litologia" (focusout)="cerrar($event)">
+  @if (movil()) {
+    <button class="abrir-selector" type="button" aria-haspopup="dialog" [attr.aria-expanded]="abierto()"
+      [disabled]="deshabilitado() || cargando() || !!error()" (click)="abrirMovil()">
+      Buscar litología por nombre o familia
+    </button>
+    <dialog #dialogo class="dialogo-movil" [attr.aria-labelledby]="listaId + '-titulo'"
+      (cancel)="cerrarLista()" (close)="abierto.set(false)">
+      <header>
+        <strong [id]="listaId + '-titulo'">Seleccionar litología</strong>
+        <button type="button" (click)="cerrarLista()">Cerrar</button>
+      </header>
+      <ng-container *ngTemplateOutlet="buscador" />
+    </dialog>
+  } @else {
+    <ng-container *ngTemplateOutlet="buscador" />
+  }
+  @if (cargando()) { <p role="status">Cargando litologías…</p> }
+  @else if (error()) { <p role="alert">{{ error() }}</p><button type="button" (click)="reintentar()">REINTENTAR</button> }
+  @else {
+    @if (seleccionada(); as opcion) {
+      <p class="seleccion"><span class="muestra" [style.background-color]="opcion.color"></span> Seleccionada: <strong>{{ opcion.nombre }}</strong> — {{ opcion.familia }}</p>
+    }
+    @if (!seleccionado() && materialHistorico()) { <p class="historico">Material histórico sin vínculo: {{ materialHistorico() }}</p> }
+    @if (seleccionada()?.activo === false) { <p class="historico">Inactiva — uso histórico. Seleccione una activa para reemplazarla.</p> }
+    @if (requerirSeleccion() && !seleccionado()) { <p class="error" role="alert">Selecciona una litologia para el intervalo.</p> }
+  }
+</div>
+
+<ng-template #buscador>
   <label>Buscar litología por nombre o familia
     <input type="search" role="combobox" aria-autocomplete="list" autocomplete="off"
       [attr.aria-expanded]="abierto() && !cargando() && !error()" [attr.aria-controls]="listaId"
       [attr.aria-activedescendant]="abierto() && indiceActivo() >= 0 ? listaId + '-' + indiceActivo() : null"
       [ngModel]="busqueda()" [ngModelOptions]="{standalone: true}" (ngModelChange)="buscar($event)"
-      (focus)="abierto.set(true)" (keydown)="teclado($event)"
+      (focus)="abierto.set(true)" (click)="abierto.set(true)" (keydown)="teclado($event)"
       placeholder="Nombre o familia" [disabled]="deshabilitado() || cargando()" />
   </label>
-  @if (cargando()) { <p role="status">Cargando litologías…</p> }
-  @else if (error()) { <p role="alert">{{ error() }}</p><button type="button" (click)="reintentar()">REINTENTAR</button> }
-  @else {
-    @if (abierto()) {
+    @if (abierto() && !cargando() && !error()) {
       <div class="sugerencias" role="listbox" [id]="listaId" aria-label="Litologías del catálogo">
         @for (opcion of opcionesFiltradas(); track opcion.id_litologia; let indice = $index) {
           <button type="button" role="option" tabindex="-1" [id]="listaId + '-' + indice"
@@ -21,11 +47,4 @@
         } @empty { <p role="status">No hay coincidencias en el catálogo.</p> }
       </div>
     }
-    @if (seleccionada(); as opcion) {
-      <p class="seleccion"><span class="muestra" [style.background-color]="opcion.color"></span> Seleccionada: <strong>{{ opcion.nombre }}</strong> — {{ opcion.familia }}</p>
-    }
-    @if (!seleccionado() && materialHistorico()) { <p class="historico">Material histórico sin vínculo: {{ materialHistorico() }}</p> }
-    @if (seleccionada()?.activo === false) { <p class="historico">Inactiva — uso histórico. Seleccione una activa para reemplazarla.</p> }
-    @if (requerirSeleccion() && !seleccionado()) { <p class="error" role="alert">Selecciona una litologia para el intervalo.</p> }
-  }
-</div>
+</ng-template>

@@ -1,4 +1,5 @@
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, DestroyRef, effect, ElementRef, HostListener, inject, input, output, signal, viewChild } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LitologiaPublica } from '../../types/schemas';
 import { LitologiasService } from '../../services/litologias.service';
@@ -6,7 +7,7 @@ import { LitologiasService } from '../../services/litologias.service';
 @Component({
   selector: 'app-selector-litologia',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, NgTemplateOutlet],
   templateUrl: './selector-litologia.component.html',
   styleUrl: './selector-litologia.component.css',
 })
@@ -27,10 +28,32 @@ export class SelectorLitologiaComponent {
   readonly error = signal('');
   readonly seleccionada = computed(() => this.opciones().find((x) => x.id_litologia === this.seleccionado()) ?? null);
   private readonly service = inject(LitologiasService);
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly mediaMovil = window.matchMedia('(max-width: 767px), (pointer: coarse)');
+  readonly movil = signal(this.mediaMovil.matches);
+  private readonly dialogo = viewChild<ElementRef<HTMLDialogElement>>('dialogo');
   private ultimoId: number | null | undefined;
   private yaCargo = false;
 
   constructor() {
+    const viewport = window.visualViewport;
+    const ajustar = () => this.ajustarDialogo();
+    const cambiarModo = () => {
+      this.cerrarLista();
+      this.movil.set(this.mediaMovil.matches);
+    };
+    this.mediaMovil.addEventListener('change', cambiarModo);
+    viewport?.addEventListener('resize', ajustar);
+    viewport?.addEventListener('scroll', ajustar);
+    window.addEventListener('resize', ajustar);
+    inject(DestroyRef).onDestroy(() => {
+      this.dialogo()?.nativeElement.close();
+      this.mediaMovil.removeEventListener('change', cambiarModo);
+      viewport?.removeEventListener('resize', ajustar);
+      viewport?.removeEventListener('scroll', ajustar);
+      window.removeEventListener('resize', ajustar);
+    });
     effect(() => {
       const id = this.seleccionado();
       if (!this.yaCargo || id !== this.ultimoId) { this.ultimoId = id; this.yaCargo = true; void this.cargar(id); }
@@ -46,12 +69,54 @@ export class SelectorLitologiaComponent {
   async reintentar() { await this.cargar(this.seleccionado()); }
 
   buscar(texto: string) { this.busqueda.set(texto); this.abierto.set(true); this.indiceActivo.set(-1); }
+
+  abrirMovil() {
+    if (this.deshabilitado() || this.cargando()) return;
+    this.abierto.set(true);
+    this.changeDetector.detectChanges();
+    const dialogo = this.dialogo()!.nativeElement;
+    // La capa superior evita que ion-content o las tarjetas recorten las opciones.
+    this.ajustarDialogo();
+    dialogo.showModal();
+    dialogo.querySelector('input')?.focus({ preventScroll: true });
+  }
+
+  cerrarLista() {
+    this.abierto.set(false);
+    this.indiceActivo.set(-1);
+    const dialogo = this.dialogo()?.nativeElement;
+    if (dialogo?.open) dialogo.close();
+  }
+
+  private ajustarDialogo() {
+    const dialogo = this.dialogo()?.nativeElement;
+    if (!this.movil() || !this.abierto() || !dialogo) return;
+    const viewport = window.visualViewport;
+    // El teclado puede reducir sólo el viewport visual, sin cambiar el layout.
+    Object.assign(dialogo.style, {
+      top: `${(viewport?.offsetTop ?? 0) + 8}px`,
+      left: `${(viewport?.offsetLeft ?? 0) + 8}px`,
+      width: `${(viewport?.width ?? window.innerWidth) - 16}px`,
+      height: `${(viewport?.height ?? window.innerHeight) - 16}px`,
+    });
+  }
+
   cerrar(event: FocusEvent) {
-    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) this.abierto.set(false);
+    // Ocultar el teclado suele generar focusout sin un nuevo elemento enfocado.
+    if (!this.movil() && event.relatedTarget && !this.host.nativeElement.contains(event.relatedTarget as Node)) this.cerrarLista();
+  }
+
+  @HostListener('document:pointerdown', ['$event'])
+  pulsarFuera(event: PointerEvent) {
+    if (!this.movil() && this.abierto() && !this.host.nativeElement.contains(event.target as Node)) this.cerrarLista();
   }
   teclado(event: KeyboardEvent) {
     const opciones = this.opcionesFiltradas();
-    if (event.key === 'Escape') { this.abierto.set(false); event.preventDefault(); }
+    if (event.key === 'Escape') {
+      if (this.movil()) (event.target as HTMLElement | null)?.blur();
+      else this.cerrarLista();
+      event.preventDefault();
+    }
     else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault(); this.abierto.set(true);
       const paso = event.key === 'ArrowDown' ? 1 : -1;
@@ -71,7 +136,7 @@ export class SelectorLitologiaComponent {
     if (id != null && (!opcion || (!opcion.activo && id !== this.seleccionado()))) return;
     this.seleccionadoChange.emit(id);
     if (opcion) this.nombreChange.emit(opcion.nombre);
-    this.busqueda.set(''); this.abierto.set(false); this.indiceActivo.set(-1);
+    this.busqueda.set(''); this.cerrarLista();
   }
 
   private async cargar(id: number | null | undefined) {

@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PozosListPage } from './pozos-list.page';
@@ -56,6 +56,40 @@ describe('PozosListPage', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('[aria-label="Editar pozo"]').length).toBe(2);
     expect(fixture.nativeElement.querySelectorAll('[aria-label="Eliminar pozo"]').length).toBe(2);
+  });
+
+  it('el lápiz de administración abre directamente el editor correspondiente al origen', () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
+    const navegar = spyOn(TestBed.inject(Router), 'navigate');
+    component.pozos.set([{ ...pozos[0], origen: 'historico' }, { ...pozos[1], origen: 'normal' }]);
+    fixture.detectChanges();
+    const botones = fixture.nativeElement.querySelectorAll('[aria-label="Editar pozo"]');
+    botones[0].click();
+    expect(navegar).toHaveBeenCalledWith(['/pozos-historicos', 8, 'editar']);
+    botones[1].click();
+    expect(navegar).toHaveBeenCalledWith(['/pozo-edit', 9]);
+    expect(navegar.calls.count()).toBe(2);
+  });
+
+  it('conserva el editor normal para el perforador autorizado y registros sin origen explícito', () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    const navegar = spyOn(TestBed.inject(Router), 'navigate');
+    component.irAEditar({ ...pozos[0], creado_por: 7, fecha_creado: new Date().toISOString() });
+    expect(navegar).toHaveBeenCalledOnceWith(['/pozo-edit', 8]);
+  });
+
+  it('no muestra el lápiz ni permite navegar sin permiso, incluidos históricos propios recientes', () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'perforador');
+    spyOn(component.authService, 'userId').and.returnValue(7);
+    const navegar = spyOn(TestBed.inject(Router), 'navigate');
+    const historico: Pozo = { ...pozos[0], origen: 'historico', creado_por: 7, fecha_creado: new Date().toISOString() };
+    component.pozos.set([historico, pozos[1]]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Editar pozo"]')).toBeNull();
+    component.irAEditar(historico);
+    component.irAEditar(pozos[1]);
+    expect(navegar).not.toHaveBeenCalled();
   });
   it('identifica y busca por número empresarial sin reemplazar el ID de navegación', () => {
     component.pozos.set([{ ...pozos[0], numero_perforacion: 2047 }, pozos[1]]);

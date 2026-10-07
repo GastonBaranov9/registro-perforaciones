@@ -9,3 +9,12 @@
 .sugerencias button.activa, .sugerencias button:focus-visible { background: var(--rsp-background, #eef2f8); outline: 2px solid var(--rsp-blue); outline-offset: -2px; }
 .sugerencias span { font-size: .875rem; }
 .seleccion { margin: 0; overflow-wrap: anywhere; }
+.abrir-selector { min-height: 48px; width: 100%; text-align: left; }
+.dialogo-movil { position: fixed; inset: auto; box-sizing: border-box; max-width: none; max-height: none; margin: 0; padding: 12px; border: 1px solid var(--rsp-control-border); border-radius: .5rem; color: var(--rsp-text); background: var(--rsp-surface, white); overflow: hidden; }
+.dialogo-movil[open] { display: flex; flex-direction: column; gap: 8px; }
+.dialogo-movil::backdrop { background: rgb(0 0 0 / 40%); }
+.dialogo-movil header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dialogo-movil header, .dialogo-movil label { flex: 0 0 auto; }
+.dialogo-movil header button { min-height: 48px; }
+.dialogo-movil input { min-height: 48px; font-size: 16px; }
+.dialogo-movil .sugerencias { flex: 1 1 auto; min-height: 0; max-height: none; touch-action: pan-y; }
