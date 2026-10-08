@@ -94,7 +94,7 @@ class FlujoPDF {
       gapAntesTitulo:inicio-tituloTop,gapDespuesTitulo:tituloBottom-contenidoTop,
     });
   }
-  texto(texto:string){const lineas=envolver(texto,this.font,30,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
+  texto(texto:string){const lineas=envolver(texto,this.font,12,A4[0]-this.margen*2);this.reservar(lineas.length*15+8);this.marcar("texto");lineas.forEach((l,i)=>this.page.drawText(l,{x:this.margen,y:this.y-i*15,size:12,font:this.font,color:GRIS}));this.y-=lineas.length*15+8;}
 }
 
 export async function crearPDF(reporte: ReportePozo, pozoId: number, opciones: OpcionesPDF = {}) {
@@ -109,8 +109,14 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
   const mapa=coordenadas ? await obtenerMapaEstatico(coordenadas,opciones.mapa??configuracionMapaDesdeEntorno(),opciones.fetchMapa) : { estado:"no-disponible" as const, motivo:"Sin coordenadas" };
   await dibujarUbicacion(flujo,reporte,coordenadas,mapa);
   dibujarPaginaTecnica(flujo,reporte);
-  const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[]);
-  if(perfil) dibujarPerfilLitologico(doc,perfil,font,bold);
+  if (reporte.profundidad_final_m == null) {
+    flujo.y -= 20;
+    flujo.titulo("Perfil litológico", 45);
+    flujo.texto("No se puede representar el perfil litológico por falta de profundidad final. Se conservan los datos registrados en las tablas.");
+  } else {
+    const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[]);
+    if(perfil) dibujarPerfilLitologico(doc,perfil,font,bold);
+  }
   return { documento:doc, diagnostico:flujo.diagnostico };
 }
 
@@ -145,6 +151,8 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
     ["Caudal estimado",unidad(r.caudal_estimado_lh,"l/h")],["Revestimiento",valorTexto(r.revestimiento)],
     ["Método sedimentario",valorTexto(r.metodo_sedimentario)],["Método rocoso",valorTexto(r.metodo_rocoso)],
     ["Cementación",valorTexto(r.cementacion)],["Desarrollo",valorTexto(r.desarrollo)],
+    ["Sello sanitario",r.sello_sanitario == null ? "No especificado" : r.sello_sanitario ? "Sí" : "No"],
+    ["Prefiltro",valorTexto(r.pre_filtro)],
   ];
   const tablas: Array<{titulo:string;columnas:ColumnaTecnica[];filas:Record<string,unknown>[]}> = [
     { titulo:"Intervalos litológicos", filas:r.litologia, columnas:[
@@ -303,15 +311,22 @@ function dibujarPortada(f:FlujoPDF,r:ReportePozo,id:number,image:PDFImage|null){
   f.pagina("portada");f.marcar("portada");const p=f.page;
   p.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:AZUL});
   p.drawText("Informe de Perforación",{x:48,y:754,size:27,font:f.bold,color:AZUL});
-  let tamanoPropietario=21,lineasPropietario=envolver(r.propietario,f.bold,tamanoPropietario,499);
-  while(lineasPropietario.length>2&&tamanoPropietario>18){tamanoPropietario-=.5;lineasPropietario=envolver(r.propietario,f.bold,tamanoPropietario,499);}
+  const propietario=valorTexto(r.propietario);
+  let tamanoPropietario=21,lineasPropietario=envolver(propietario,f.bold,tamanoPropietario,499);
+  while(lineasPropietario.length>2&&tamanoPropietario>18){tamanoPropietario-=.5;lineasPropietario=envolver(propietario,f.bold,tamanoPropietario,499);}
   const interlineado=tamanoPropietario+3;
   lineasPropietario.forEach((linea,indice)=>p.drawText(linea,{x:48,y:716-indice*interlineado,size:tamanoPropietario,font:f.bold,color:AZUL}));
   const yPozo=716-lineasPropietario.length*interlineado-4;
   p.drawText(r.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación Nº " + r.numero_perforacion,{x:48,y:yPozo,size:14,font:f.bold,color:GRIS});
   p.drawText("ID interno: " + id,{x:48,y:yPozo-16,size:9,font:f.font,color:GRIS});
-  if(image){const superior=Math.min(640,yPozo-32),caja={x:48,y:235,w:499,h:superior-235};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
-  else {p.drawRectangle({x:48,y:330,width:499,height:240,color:rgb(.97,.98,.99),borderColor:rgb(.78,.81,.84),borderWidth:.8});p.drawText("Fotografía no registrada",{x:205,y:445,size:14,font:f.font,color:GRIS});}
+  if(r.origen === "historico")p.drawText("Perforación histórica",{x:48,y:yPozo-32,size:11,font:f.bold,color:AZUL});
+  if(image){const superior=Math.min(640,yPozo-(r.origen === "historico" ? 48 : 32)),caja={x:48,y:235,w:499,h:superior-235};p.drawRectangle({x:caja.x,y:caja.y,width:caja.w,height:caja.h,borderColor:rgb(.65,.69,.73),borderWidth:.8});const e=Math.min((caja.w-12)/image.width,(caja.h-12)/image.height);const w=image.width*e,h=image.height*e;p.drawImage(image,{x:caja.x+(caja.w-w)/2,y:caja.y+(caja.h-h)/2,width:w,height:h});p.drawText("Fotografía de la perforación",{x:48,y:216,size:10.5,font:f.font,color:GRIS});}
+  else {
+    p.drawRectangle({x:48,y:330,width:499,height:240,color:rgb(.97,.98,.99),borderColor:rgb(.78,.81,.84),borderWidth:.8});
+    const mensaje=r.foto_url ? "Fotografía registrada no disponible" : "Fotografía no registrada";
+    p.drawText(mensaje,{x:(A4[0]-f.font.widthOfTextAtSize(mensaje,14))/2,y:445,size:14,font:f.font,color:GRIS});
+    if(r.foto_url)p.drawText("No se pudo leer o cargar el archivo.",{x:48+18,y:420,size:11,font:f.font,color:GRIS});
+  }
   if(r.empresa)p.drawText(r.empresa,{x:48,y:154,size:12,font:f.font,color:GRIS});}
 
 async function dibujarUbicacion(f:FlujoPDF,r:ReportePozo,c:{latitud:number;longitud:number}|null,mapa:Awaited<ReturnType<typeof obtenerMapaEstatico>>){

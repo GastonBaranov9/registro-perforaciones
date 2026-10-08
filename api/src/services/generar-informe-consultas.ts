@@ -4,21 +4,24 @@ import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 export interface ReportePozo {
   id_pozo: number;
   numero_perforacion?: number | null;
-  propietario: string;
+  origen?: "normal" | "historico";
+  propietario: string | null;
   propietario_documento_rut?: string | null;
   propietario_telefono?: string | null;
   propietario_email?: string | null;
-  empresa: string;
-  perforador: string;
-  sitio: string;
-  departamento?: string;
+  empresa: string | null;
+  perforador: string | null;
+  sitio: string | null;
+  departamento?: string | null;
   localidad?: string | null;
   latitud?: string | null;
   longitud?: string | null;
   padron?: string | null;
-  fecha_inicio: string | null;
-  fecha_fin: string | null;
+  fecha_inicio: string | Date | null;
+  fecha_fin: string | Date | null;
   profundidad_final_m: number | null;
+  sello_sanitario?: boolean | null;
+  pre_filtro?: string | null;
   nivel_estatico_m: number | null;
   nivel_dinamico_m: number | null;
   caudal_estimado_lh: number | null;
@@ -41,13 +44,19 @@ export interface ReportePozo {
   niveles_aporte: { profundidad_m: number }[];
 }
 
+type CampoNumericoReporte = "id_pozo" | "numero_perforacion" | "profundidad_final_m"
+  | "nivel_estatico_m" | "nivel_dinamico_m" | "caudal_estimado_lh";
+type FilaReportePozo = Omit<ReportePozo, CampoNumericoReporte | "litologia" | "diametros" | "filtros" | "niveles_aporte">
+  & { id_pozo: number | string }
+  & { [K in Exclude<CampoNumericoReporte, "id_pozo">]: number | string | null };
+
 export async function getReportePozo(
   id_pozo: number,
   db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<ReportePozo | null> {
   const sql = `
     SELECT
-      p.id_pozo, p.numero_perforacion,
+      p.id_pozo, p.numero_perforacion, p.origen,
       COALESCE(prop.nombre, p.propietario_provisional || ' (pendiente de vinculación)') AS propietario,
       prop.documento_rut AS propietario_documento_rut,
       prop.telefono AS propietario_telefono,
@@ -63,6 +72,8 @@ export async function getReportePozo(
       p.fecha_inicio,
       p.fecha_fin,
       p.profundidad_final_m,
+      p.sello_sanitario,
+      p.pre_filtro,
       p.nivel_estatico_m,
       p.nivel_dinamico_m,
       p.caudal_estimado_lh,
@@ -82,10 +93,10 @@ export async function getReportePozo(
     WHERE p.id_pozo = $1;
   `;
 
-  const { rows } = await db.query(sql, [id_pozo]);
+  const { rows } = await db.query<FilaReportePozo>(sql, [id_pozo]);
   if (rows.length === 0) return null;
 
-  const pozo = rows[0] as Record<string, unknown>;
+  const pozo = rows[0];
 
   const litologiaSql = `
     SELECT i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
@@ -123,7 +134,7 @@ export async function getReportePozo(
     litologia: (litRows as Record<string, unknown>[]).map((l) => ({
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
-      material: l.material,
+      material: String(l.material),
       id_litologia:l.id_litologia==null?null:Number(l.id_litologia),litologia_nombre:l.litologia_nombre==null?null:String(l.litologia_nombre),litologia_color:l.litologia_color==null?null:String(l.litologia_color),litologia_patron:l.litologia_patron==null?null:String(l.litologia_patron) as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia|null,litologia_activa:l.litologia_activa==null?null:Boolean(l.litologia_activa),
     })),
     diametros: (diamRows as Record<string, unknown>[]).map((d) => ({
@@ -137,7 +148,7 @@ export async function getReportePozo(
     niveles_aporte: (aporteRows as Record<string, unknown>[]).map((a) => ({
       profundidad_m: Number(a.profundidad_m),
     })),
-  } as ReportePozo;
+  };
 }
 
 function numeroNullable(valor: unknown): number | null {
