@@ -1,3 +1,15 @@
+map $host $is_app_host {
+    default 0;
+    "${APP_HOST}" 1;
+}
+
+# La clave compuesta admite APP_HOST = API_HOST sin claves duplicadas.
+map "$is_app_host:$host" $host_origin {
+    default "";
+    ~^1: "${PUBLIC_ORIGIN}";
+    "0:${API_HOST}" "${API_ORIGIN}";
+}
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -8,16 +20,17 @@ log_format rsp_json escape=json '{"timestamp":"$time_iso8601","request_id":"$req
 access_log /var/log/nginx/access.log rsp_json;
 
 server {
-    listen 80;
-    server_name ${PUBLIC_HOST};
-    return 308 ${PUBLIC_ORIGIN}$request_uri;
+    listen 80 default_server;
+    server_name ${APP_HOST} ${API_HOST};
+    if ($host_origin = "") { return 421; }
+    return 308 $host_origin$request_uri;
 }
 
 server {
-    listen 443 ssl;
-    server_name ${PUBLIC_HOST};
+    listen 443 ssl default_server;
+    server_name ${APP_HOST} ${API_HOST};
 
-    if ($host != "${PUBLIC_HOST}") { return 421; }
+    if ($host_origin = "") { return 421; }
 
     ssl_certificate     /etc/nginx/tls/tls.crt;
     ssl_certificate_key /etc/nginx/tls/tls.key;
@@ -76,6 +89,8 @@ server {
     }
 
     location / {
+        # En modo separado API no publica Angular ni su fallback SPA.
+        if ($is_app_host = 0) { return 404; }
         proxy_pass http://front:80;
         proxy_http_version 1.1;
         proxy_connect_timeout 5s;

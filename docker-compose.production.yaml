@@ -261,6 +261,8 @@ services:
       NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD: ${NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD:-3}
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PGHOST: postgres
       PGPORT: "5432"
@@ -337,6 +339,8 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
       HSTS_ENABLED: ${HSTS_ENABLED:-false}
     depends_on:
       api:
@@ -375,8 +379,13 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      HSTS_ENABLED: ${HSTS_ENABLED:-false}
+    entrypoint: ["/bin/sh", "/opt/rsp/start.sh"]
     volumes:
       - ./proxy/maintenance.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./proxy/start.sh:/opt/rsp/start.sh:ro
       - type: bind
         source: ${TLS_CERT_FILE:?Falta TLS_CERT_FILE}
         target: /etc/nginx/tls/tls.crt

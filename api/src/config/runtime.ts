@@ -14,6 +14,8 @@ export interface RuntimeConfig {
   fastifySecret?: string;
   publicHost?: string;
   publicOrigin?: string;
+  appHost?: string;
+  apiHost?: string;
   trustProxy: false | 1;
   corsOrigins: string[];
   nativeCorsOrigins: string[];
@@ -150,14 +152,21 @@ function booleano(nombre: string, entrada: string | undefined, porDefecto: boole
   throw new Error(`${nombre} debe ser true o false`);
 }
 
-function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { host?: string; origin?: string } {
-  if (!production) return {};
-  const hostIngresado = requerido(env, "PUBLIC_HOST");
+function validarHostname(nombre: string, hostIngresado: string): string {
   const host = hostIngresado.toLowerCase();
   if (
     hostIngresado !== host || host.length > 253 || host.includes("*") || host === "localhost" ||
     !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)
-  ) throw new Error("PUBLIC_HOST debe ser un hostname DNS concreto sin wildcard");
+  ) throw new Error(`${nombre} debe ser un hostname DNS concreto sin wildcard`);
+  return host;
+}
+
+function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { host?: string; origin?: string; appHost?: string; apiHost?: string } {
+  if (!production) return {};
+  const host = validarHostname("PUBLIC_HOST", requerido(env, "PUBLIC_HOST"));
+  const appHost = validarHostname("APP_HOST", valor(env, "APP_HOST") ?? host);
+  const apiHost = validarHostname("API_HOST", valor(env, "API_HOST") ?? host);
+  if (appHost !== host) throw new Error("APP_HOST debe coincidir con PUBLIC_HOST (origen web)");
 
   const entrada = requerido(env, "PUBLIC_ORIGIN").replace(/\/$/, "");
   let url: URL;
@@ -167,7 +176,7 @@ function validarDominioPublico(env: NodeJS.ProcessEnv, production: boolean): { h
     url.protocol !== "https:" || url.origin !== entrada || url.hostname.toLowerCase() !== host ||
     url.username || url.password || url.pathname !== "/" || url.search || url.hash
   ) throw new Error("PUBLIC_ORIGIN debe ser HTTPS y coincidir con PUBLIC_HOST sin ruta");
-  return { host, origin: url.origin };
+  return { host, origin: url.origin, appHost, apiHost };
 }
 
 export function normalizarOriginsPermitidos(entrada: string | undefined, production: boolean, publicOrigin?: string): string[] {
@@ -299,6 +308,8 @@ export function cargarConfiguracionRuntime(env: NodeJS.ProcessEnv = process.env)
     fastifySecret,
     publicHost: publico.host,
     publicOrigin: publico.origin,
+    appHost: publico.appHost,
+    apiHost: publico.apiHost,
     trustProxy: production ? 1 : false,
     corsOrigins: normalizarOriginsPermitidos(valor(env, "CORS_ORIGINS"), production, publico.origin),
     nativeCorsOrigins: normalizarOriginsNative(valor(env, "NATIVE_CORS_ORIGINS")),
