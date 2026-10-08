@@ -11,7 +11,7 @@
           [(ngModel)]="this.credenciales.email"
           (ngModelChange)="error.set('')"
           name="email"
-          placeholder="Ingresa tu correo"
+          placeholder="Ingresá tu email de acceso"
           helperText="Introducir un email válido"
           errorText="Email invalido"
           email
@@ -51,6 +51,7 @@
       >
         {{ disabled() ? 'Ingresando…' : 'Entrar' }}
       </ion-button>
+      <p>¿Olvidaste tu contraseña? Contactá a Administración.</p>
     </div>
   </div>
 </ion-content>

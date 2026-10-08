@@ -49,6 +49,13 @@ describe(`LoginPage ${platform} con AuthService real`, () => {
 
   afterEach(() => http.verify());
 
+  it('explica el acceso y la recuperación manual sin enlaces', () => {
+    const email = fixture.debugElement.query(By.css('ion-input[name="email"]'));
+    expect(email.componentInstance.placeholder).toBe('Ingresá tu email de acceso');
+    expect(fixture.nativeElement.textContent).toContain('¿Olvidaste tu contraseña? Contactá a Administración.');
+    expect(fixture.nativeElement.querySelector('a, ion-router-link')).toBeNull();
+  });
+
   async function completarLogin(expectedPassword?: string): Promise<void> {
     await settle();
     const user = { id_usuario: 7, nombre: 'Prueba', roles: [] };
