@@ -18,9 +18,22 @@ import { actualizarPropietarioOperativo, crearPropietarioOperativo, listarCandid
 import { leerFotoPozo, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 import { FOTO_JSON_BODY_LIMIT_BYTES, MAX_FOTO_BYTES } from "../constants/fotos.ts";
 import { cargarConfiguracionRuntime } from "../config/runtime.ts";
+import { exportarKml, KML_CONTENT_TYPE, KML_FILENAME } from '../services/exportar-kml-service.ts';
 
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   const { fotosDir } = cargarConfiguracionRuntime();
+  fastify.get('/pozos/exportar/kml', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: { summary: 'Administración: exportar perforaciones a Google Earth', tags: ['pozos'] },
+  }, async (_req, rep) => {
+    const { kml, exportadas, omitidas } = await exportarKml();
+    return rep.type(KML_CONTENT_TYPE)
+      .header('Content-Disposition', `attachment; filename="${KML_FILENAME}"`)
+      .header('Cache-Control', 'no-store')
+      .header('X-KML-Exportadas', exportadas)
+      .header('X-KML-Omitidas', omitidas)
+      .send(kml);
+  });
   fastify.get('/pozos/epoca-datos', {
     onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
   }, async (_req, rep) => rep.header('Cache-Control', 'no-store').send({ epoca: await obtenerEpoca() }));

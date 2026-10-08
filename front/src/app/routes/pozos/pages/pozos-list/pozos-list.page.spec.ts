@@ -6,11 +6,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PozosListPage } from './pozos-list.page';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { Pozo } from '../../../../shared/types/schemas';
+import { ExportarKmlService } from '../../../../shared/services/exportar-kml.service';
 
 describe('PozosListPage', () => {
   let component: PozosListPage;
   let fixture: ComponentFixture<PozosListPage>;
   let servicio: jasmine.SpyObj<PozosListService>;
+  let exportador: jasmine.SpyObj<ExportarKmlService>;
   const pozos: Pozo[] = [
     { id_pozo: 8, id_propietario: 1001, id_sitio: 2002, id_perforador: 3, fecha_creado: '2026-08-12T00:00:00Z', empresa: 'Raúl Silva', propietario_nombre: 'José Pérez', sitio_nombre: 'Paso de los Mellizos, Río Negro' },
     { id_pozo: 9, id_propietario: 1002, id_sitio: 2003, id_perforador: 3, fecha_creado: '2026-08-13T00:00:00Z', propietario_nombre: 'Ana Silva', sitio_nombre: 'Padrón 45, Salto' },
@@ -19,8 +21,10 @@ describe('PozosListPage', () => {
   beforeEach(async () => {
     servicio = jasmine.createSpyObj('PozosListService', ['getListaPozos', 'deletePozo']);
     servicio.getListaPozos.and.resolveTo(pozos);
+    exportador = jasmine.createSpyObj('ExportarKmlService', ['descargar']);
+    exportador.descargar.and.resolveTo({ exportadas: 12, omitidas: 3 });
     await TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), { provide: PozosListService, useValue: servicio }],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), { provide: PozosListService, useValue: servicio }, { provide: ExportarKmlService, useValue: exportador }],
       imports: [PozosListPage]
     })
     .compileComponents();
@@ -33,6 +37,66 @@ describe('PozosListPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  for (const rol of ['perforador', 'propietario', '']) {
+    it(`oculta exportación KML y bloquea invocación para ${rol || 'sin rol'}`, async () => {
+      spyOn(component.authService, 'tieneRol').and.callFake(nombre => nombre === rol);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('#exportar-kml')).toBeNull();
+      await component.exportarKml();
+      expect(exportador.descargar).not.toHaveBeenCalled();
+    });
+  }
+
+  it('botón administrativo descarga todas las perforaciones y muestra los contadores', async () => {
+    spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
+    const present = jasmine.createSpy('present').and.resolveTo();
+    const toast = spyOn(component.toastController, 'create').and.resolveTo({ present } as any);
+    component.propietarioBusqueda.set('sin coincidencias');
+    fixture.detectChanges();
+    const boton = fixture.nativeElement.querySelector('#exportar-kml');
+    expect(boton.textContent).toContain('Exportar Google Earth (KML)');
+    boton.click();
+    await fixture.whenStable();
+    expect(exportador.descargar).toHaveBeenCalledOnceWith();
+    expect(toast).toHaveBeenCalledWith(jasmine.objectContaining({
+      message: 'Descarga KML iniciada: 12 exportadas; 3 omitidas por coordenadas o número comercial faltantes o inválidos.', color: 'success',
+    }));
+    expect(present).toHaveBeenCalled();
+    expect(component.exportandoKml()).toBeFalse();
+  });
+
+  it('evita descargas duplicadas y deshabilita el botón mientras espera', async () => {
+    spyOn(component.authService, 'tieneRol').and.returnValue(true);
+    spyOn(component.toastController, 'create').and.resolveTo({ present: async () => {} } as any);
+    let resolver!: (valor: { exportadas: number; omitidas: number }) => void;
+    exportador.descargar.and.returnValue(new Promise(resolve => resolver = resolve));
+    const descarga = component.exportarKml();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#exportar-kml').disabled).toBeTrue();
+    await component.exportarKml();
+    expect(exportador.descargar).toHaveBeenCalledTimes(1);
+    resolver({ exportadas: 0, omitidas: 4 });
+    await descarga;
+    expect(component.exportandoKml()).toBeFalse();
+  });
+
+  it('sin headers informa la descarga sin inventar cantidades', async () => {
+    spyOn(component.authService, 'tieneRol').and.returnValue(true);
+    exportador.descargar.and.resolveTo({ exportadas: null, omitidas: null });
+    const toast = spyOn(component.toastController, 'create').and.resolveTo({ present: async () => {} } as any);
+    await component.exportarKml();
+    expect(toast).toHaveBeenCalledWith(jasmine.objectContaining({ message: 'Descarga KML iniciada.' }));
+  });
+
+  it('informa error de descarga y permite volver a intentar', async () => {
+    spyOn(component.authService, 'tieneRol').and.returnValue(true);
+    exportador.descargar.and.rejectWith(new Error('sin conexión'));
+    const toast = spyOn(component.toastController, 'create').and.resolveTo({ present: async () => {} } as any);
+    await component.exportarKml();
+    expect(toast).toHaveBeenCalledWith(jasmine.objectContaining({ color: 'danger' }));
+    expect(component.exportandoKml()).toBeFalse();
   });
 
   it('perforador ve edición solo propia reciente y nunca eliminación', async () => {

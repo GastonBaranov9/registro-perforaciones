@@ -5,6 +5,7 @@ import { IonButton, ViewWillEnter, IonCard, IonCardHeader, IonCardTitle, IonCont
 import { Router } from '@angular/router';
 import { Pozo } from '../../../../shared/types/schemas';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
+import { ExportarKmlService } from '../../../../shared/services/exportar-kml.service';
 import { formatearInstanteComoFecha } from '../../../../shared/utils/fechas';
 import { ToastController } from '@ionic/angular';
 import { FormsModule } from '@angular/forms';
@@ -52,6 +53,33 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   public toastController = inject(ToastController);
   public webSocketService = inject(WebsocketService);
   public authService = inject(AuthService);
+  private readonly exportarKmlService = inject(ExportarKmlService);
+  readonly exportandoKml = signal(false);
+
+  async exportarKml(): Promise<void> {
+    if (!this.authService.tieneRol('administracion') || this.exportandoKml()) return;
+    this.exportandoKml.set(true);
+    try {
+      const { exportadas, omitidas } = await this.exportarKmlService.descargar();
+      const detalle = [
+        exportadas !== null ? `${exportadas} exportadas` : '',
+        omitidas !== null ? `${omitidas} omitidas por coordenadas o número comercial faltantes o inválidos` : '',
+      ].filter(Boolean).join('; ');
+      const toast = await this.toastController.create({
+        message: detalle ? `Descarga KML iniciada: ${detalle}.` : 'Descarga KML iniciada.',
+        duration: 6000, position: 'bottom', color: 'success',
+      });
+      await toast.present();
+    } catch {
+      const toast = await this.toastController.create({
+        message: 'No se pudo exportar el KML. Verificá la conexión y volvé a intentar.',
+        duration: 5000, position: 'bottom', color: 'danger',
+      });
+      await toast.present();
+    } finally {
+      this.exportandoKml.set(false);
+    }
+  }
 
   private router = inject(Router);
   public pozos = signal<Pozo[]>([]);

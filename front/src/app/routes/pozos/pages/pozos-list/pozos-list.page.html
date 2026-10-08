@@ -1,4 +1,10 @@
 <ion-content>
+  @if (authService.tieneRol('administracion')) {
+    <ion-button id="exportar-kml" expand="block" [disabled]="exportandoKml()" (click)="exportarKml()">
+      {{ exportandoKml() ? 'Exportando…' : 'Exportar Google Earth (KML)' }}
+    </ion-button>
+    <p class="ion-padding-horizontal">Exporta todas las perforaciones con coordenadas y número comercial válidos, sin aplicar los filtros de la lista.</p>
+  }
   <ion-input class="owner-search" name="propietario" type="search" label="Buscar por propietario o número"
     labelPlacement="stacked" placeholder="Nombre del propietario o número real" fill="outline"
     [clearInput]="true" [value]="propietarioBusqueda()"
