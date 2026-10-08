@@ -235,20 +235,6 @@ export const Documento = Type.Object({
 
 export type Documento = Static<typeof Documento>;
 
-export const InformeAntes = Type.Object({
-  id_informe: Type.Integer(),
-  id_pozo: Type.Integer(),
-  titulo: Type.String(),
-  descripcion: Type.Optional(Type.String()),
-  generado_por: Type.Integer(),
-  generado_en: Type.String({ format: "date-time" }),
-});
-
-export type InformeAntes = Static<typeof Informe>;
-
-export const InformeBody = Type.Omit(InformeAntes, ["id_informe", "id_pozo"]);
-export type InformeBody = Static<typeof InformeBody>;
-
 export const bodyIntervaloLitologico = Type.Object({
   id_intervalo_litologico: Type.Optional(Type.Integer({ minimum: 1 })),
   desde_m: Type.Number({ minimum: 0 }),
@@ -464,52 +450,3 @@ export const PozoUpdate = Type.Omit(Pozo, [
 ]);
 
 export type PozoUpdate = Static<typeof PozoUpdate>;
-
-export const Informe = Type.Object({
-  id_perforacion: Type.Integer(),
-  propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
-  propietario_nombre: Type.String(),
-  ubicacion: Type.String(),
-  empresa: Type.Optional(Type.String()),
-  perforador: Type.String(),
-  fecha_inicio: Type.Optional(Type.String({ format: "date" })),
-  fecha_fin: Type.Optional(Type.String({ format: "date" })),
-  profundidad_final_m: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
-  sello_sanitario: Type.Optional(Type.Boolean()),
-  pre_filtro: Type.Optional(Type.String()),
-  nivel_estatico_m: Type.Optional(Type.Number()),
-  nivel_dinamico_m: Type.Optional(Type.Number()),
-  caudal_estimado_lh: Type.Optional(Type.Integer()),
-  metodo_sedimentario: Type.Optional(Type.String()),
-  metodo_rocoso: Type.Optional(Type.String()),
-  cementacion: Type.Optional(Type.String()),
-  desarrollo: Type.Optional(Type.String()),
-  diametro_perforacion: Type.Optional(Type.Number()),
-  nivel_aporte_m: Type.Optional(Type.Number()),
-  filtros: Type.Optional(Type.String()),
-  diametro_tuberia: Type.Optional(Type.Number()),
-  fecha_creado: Type.String({ format: "date-time" }),
-});
-
-export type Informe = Static<typeof Informe>;
-
-export const CaracteristicasConstructivas = Type.Object({
-  id_pozo: Type.Integer(),
-  metodo_sedimentario: Type.String(),
-  metodo_rocoso: Type.String(),
-  cementacion: Type.String(),
-  desarrollo: Type.String(),
-  revestimiento: Type.Array(
-    Type.Object({
-      material: Type.String(),
-      diametro_pulg: Type.Number(),
-    })
-  ),
-  diametro_desde: Type.Number(),
-  diametro_hasta: Type.Number(),
-  diametro_tuberia: Type.Number(),
-});
-
-export type CaracteristicasConstructivas = Static<
-  typeof CaracteristicasConstructivas
->;

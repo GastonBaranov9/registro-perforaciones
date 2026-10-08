@@ -3,12 +3,9 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import {
-  Informe,
-  CaracteristicasConstructivas,
   IntervaloLitologico,
   PerfilLitologicoVistaPreviaBody,
 } from "../models/schemas.ts";
-import * as func from "../services/informes-services.ts";
 import { listIntervalosLitologicosByPozo } from "../services/intervalos-litologicos-services.ts";
 import { getReportePozo } from "../services/generar-informe-consultas.ts";
 import { generarPDFBytes } from "../pdf/pdf-generate.ts";
@@ -25,68 +22,6 @@ const informeRoutes = async function (
   const runtime = cargarConfiguracionRuntime();
   const { fotosDir } = runtime;
   const pdfCapacity = new PdfCapacityGate(runtime.pdf.maxConcurrent, runtime.pdf.maxQueue, runtime.pdf.queueTimeoutMs);
-  //Ver un informe
-  fastify.get(
-    "/usuarios/:id_usuario/pozos/:id_pozo/informes",
-    {
-      schema: {
-        summary: "Ver el informee",
-        description: "Rol: Administrador/Perforador",
-        tags: ["informes"],
-        params: Type.Object({
-          id_usuario: Type.Integer(),
-          id_pozo: Type.Integer(),
-        }),
-        response: {
-          200: Informe,
-          501: err.ErrorSchema,
-        },
-        security: [{ BearerAuth: [] }],
-      },
-      onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
-    },
-    async function (req, rep) {
-      const { id_pozo } = req.params as {
-        id_pozo: number;
-      };
-      const informeObtenido = await func.getInforme(id_pozo);
-      if (!informeObtenido) throw new err.T05InformeNoEncontrado();
-      return rep.code(200).send(informeObtenido);
-    }
-  );
-  fastify.get(
-    "/usuarios/:id_usuario/pozos/:id_pozo/caracteristicas",
-    {
-      schema: {
-        summary: "Ver características constructivas",
-        description: "Rol: Administrador/Perforador (Solo sus informes)",
-        tags: ["informes"],
-        params: Type.Object({
-          id_usuario: Type.Integer(),
-          id_pozo: Type.Integer(),
-        }),
-        response: {
-          200: CaracteristicasConstructivas,
-          501: err.ErrorSchema,
-        },
-        security: [{ BearerAuth: [] }],
-      },
-      onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
-    },
-    async function (req, rep) {
-      const { id_pozo } = req.params as {
-        id_pozo: number;
-      };
-      const caracteriticasObtenido = await func.getCaracteristicasConstructivas(
-        id_pozo
-      );
-      if (!caracteriticasObtenido) throw new err.T05InformeNoEncontrado();
-      return rep.code(200).send(caracteriticasObtenido);
-    }
-  );
-
   fastify.get(
     "/usuarios/:id_usuario/pozos/:id_pozo/litologia",
     {

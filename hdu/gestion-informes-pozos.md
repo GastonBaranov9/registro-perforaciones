@@ -1,5 +1,15 @@
 ## Historia de usuario: Gestión de informes de perforación
 
+### Estado actual
+
+El CRUD descrito más abajo es una propuesta histórica, no una funcionalidad implementada y validada.
+Se retiraron los GET `/usuarios/:id_usuario/pozos/:id_pozo/informes` y
+`/usuarios/:id_usuario/pozos/:id_pozo/caracteristicas`: no tenían consumidores internos y sus consultas eran incompatibles con el esquema de datos. Ahora responden 404.
+
+El flujo vigente genera el PDF desde el detalle del pozo mediante GET `.../informe-pdf`.
+Se conservan GET `.../litologia`, GET `.../perfil-litologico` y POST `.../perfil-litologico/vista-previa`, con su autenticación y autorización existentes.
+La tabla `informe` permanece sin cambios; su existencia no implica que haya un CRUD disponible.
+
 ### Título: Informes
 
 Creación, edición, visualización y eliminación de informes por Administrador o Perforador.
