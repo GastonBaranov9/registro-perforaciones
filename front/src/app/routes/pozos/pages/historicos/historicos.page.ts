@@ -1,4 +1,6 @@
 import { tecnicosPersistidos } from '../../../../shared/utils/tecnicos-persistidos';
+import { huellaFormulario } from '../../../../shared/utils/estado-formulario-perforacion';
+import { EstadoPerforacion, reconciliarPerforacion } from '../../../../shared/utils/reconciliar-perforacion';
 import { fotoHistoricaPendiente } from '../../../../shared/services/historico-foto-pendiente';
 
 import { PozosFormComponent } from '../../components/pozos-form/pozos-form.component';
@@ -13,7 +15,7 @@ import { AporteListService } from '../../../../shared/services/aportes-service/a
 import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas';
 import { convertirFoto } from '../../../../shared/services/pozos-create.service';
 import { cuerpoHistorico, tecnicosVacios } from '../../../../shared/utils/historicos-form';
-import { Component, inject, input, signal, ViewChild } from '@angular/core';
+import { Component, DestroyRef, inject, input, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
@@ -42,7 +44,18 @@ export class HistoricosPage {
   readonly tecnicos=signal<DatosTecnicosBorrador>(tecnicosVacios());
   readonly inicial=signal<DatosTecnicosBorrador>(tecnicosVacios());
   readonly cargado=signal(false);
+  readonly versionTecnicos = signal(0);
+  readonly recargaPendiente = signal(false);
+  private guardadoPendiente?: { enviado: EstadoPerforacion; foto: File | null; accion: AccionFotoEdicion };
   @ViewChild(PozosFormComponent) formulario?:PozosFormComponent;
+  private baseFormulario = this.huellaActual();
+  private readonly destroyRef = inject(DestroyRef);
+  private huellaActual() { return huellaFormulario(this.pozo(), this.sitio(), this.tecnicos(), true); }
+  tieneCambiosSinGuardar(): boolean {
+    return this.recargaPendiente() || this.huellaActual() !== this.baseFormulario
+      || !!this.formulario?.fotoFile || !!this.formulario?.eliminarFotoPendiente()
+      || !!this.formulario?.tieneCambiosPropietario();
+  }
   private editor=inject(PozosEditService);
   private propietariosService=inject(PropietariosOperativosService);
   private litologia=inject(IntervaloLitologicoListService);
@@ -125,27 +138,66 @@ export class HistoricosPage {
     this.pozo.set({...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)});
     if(p.sitio)this.sitio.set({...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''});
     const technical=tecnicosPersistidos(l,d,f,a);this.inicial.set(technical);this.tecnicos.set(technical);
+    this.baseFormulario = this.huellaActual();
   }
   async editar(data:{pozo:NuevoPozo;foto:File|null;fotoAccion:AccionFotoEdicion}){
     if(this.ocupado()||!this.cargado())return;
+    if (this.recargaPendiente()) { await this.actualizarGuardado(); return; }
     this.ocupado.set(true);this.error.set('');
     try{
-      const body=cuerpoHistorico(data.pozo,this.sitio(),this.tecnicos(),true);
-      body['foto_accion']=data.fotoAccion;
-      if(data.foto)body['foto']=await convertirFoto(data.foto);
-      await firstValueFrom(this.http.patch(environment.apiURL+'pozos/historicos/'+this.id_pozo(),body).pipe(timeout(90000)));
-      this.formulario?.cancelarCambioFoto();this.cargado.set(false);this.ver(Number(this.id_pozo()));
-    }catch(e){this.error.set(e instanceof HttpErrorResponse?e.error?.message||'No se confirmó la edición. Los cambios siguen en el formulario.':String(e));}
+      const enviado = structuredClone({ pozo: data.pozo, sitio: this.sitio(), tecnicos: this.tecnicos() });
+      const fotoEnviada = data.foto, accionEnviada = data.fotoAccion;
+      const id = Number(this.id_pozo()), rutaAlEnviar = this.router.url;
+      const body=cuerpoHistorico(enviado.pozo,enviado.sitio,enviado.tecnicos,true);
+      body['foto_accion']=accionEnviada;
+      if(fotoEnviada)body['foto']=await convertirFoto(fotoEnviada);
+      await firstValueFrom(this.http.patch(environment.apiURL+'pozos/historicos/'+id,body).pipe(timeout(90000)));
+      if (this.destroyRef.destroyed) return;
+      this.guardadoPendiente = { enviado, foto: fotoEnviada, accion: accionEnviada };
+      this.recargaPendiente.set(true);
+      await this.reconciliarGuardado();
+      // El guard puede cancelar: conservar los hijos y sus datos hasta salir.
+      if (!this.destroyRef.destroyed && this.router.url === rutaAlEnviar
+        && await this.router.navigate(['/pozos-detail', id])) this.cargado.set(false);
+    }catch(e){this.error.set(this.recargaPendiente() ? 'La edición fue guardada, pero falta actualizar sus datos. Reintentá la actualización antes de volver a guardar. Los cambios posteriores siguen en pantalla.' : e instanceof HttpErrorResponse?e.error?.message||'No se confirmó la edición. Los cambios siguen en el formulario.':String(e));}
     finally{this.ocupado.set(false);}
+  }
+  async actualizarGuardado() {
+    if (this.ocupado() || !this.guardadoPendiente) return;
+    this.ocupado.set(true); this.error.set('');
+    try { await this.reconciliarGuardado(); }
+    catch { this.error.set('La edición ya fue guardada. No se pudo actualizar sus datos; reintentá la actualización.'); }
+    finally { this.ocupado.set(false); }
+  }
+  private async reconciliarGuardado() {
+    const pendiente = this.guardadoPendiente;
+    if (!pendiente) return;
+    const id = Number(this.id_pozo());
+    const [p,l,d,f,a] = await Promise.all([this.editor.getPozoById(id),this.litologia.getIntervalosLitologicos(id),this.diametros.getIntervalosDiametros(id),this.filtros.listar(id),this.aportes.getNivelesAporte(id)]);
+    if (this.destroyRef.destroyed) return;
+    const canonico: EstadoPerforacion = {
+      pozo: {...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)},
+      sitio: p.sitio ? {...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''} : {departamento:'',localidad:'',latitud:'',longitud:''},
+      tecnicos: tecnicosPersistidos(l,d,f,a),
+    };
+    const actual = reconciliarPerforacion(pendiente.enviado, {pozo:this.pozo(),sitio:this.sitio(),tecnicos:this.tecnicos()}, canonico);
+    this.pozo.set(actual.pozo); this.sitio.set(actual.sitio);
+    this.tecnicos.set(actual.tecnicos); this.inicial.set(actual.tecnicos); this.versionTecnicos.update(v => v + 1);
+    const formulario = this.formulario;
+    if (formulario && formulario.fotoFile === pendiente.foto
+      && formulario.eliminarFotoPendiente() === (pendiente.accion === 'eliminar')) formulario.cancelarCambioFoto();
+    if (pendiente.accion !== 'conservar') formulario?.refrescarFotoPersistida();
+    this.baseFormulario = huellaFormulario(canonico.pozo, canonico.sitio, canonico.tecnicos, true);
+    this.guardadoPendiente = undefined; this.recargaPendiente.set(false);
   }
   async crearPropietario(body:PropietarioOperativoCrearBody){
     if(this.ocupado()||this.envio)return;this.ocupado.set(true);
-    try{const p=await this.propietariosService.crear(body);this.propietarios.update(xs=>[p,...xs]);this.pozo.update(x=>({...x,id_propietario:p.id_usuario,propietario_provisional:null}));}
+    try{const enviado={...body},formulario=this.formulario;const p=await this.propietariosService.crear(enviado);formulario?.confirmarPropietarioCreado(enviado);this.propietarios.update(xs=>[p,...xs]);this.pozo.update(x=>({...x,id_propietario:p.id_usuario,propietario_provisional:null}));}
     catch(e){this.error.set(String(e));}finally{this.ocupado.set(false);}
   }
   async actualizarPropietario(event:{id:number;body:PropietarioOperativoActualizarBody}){
     if(this.ocupado()||this.envio)return;this.ocupado.set(true);
-    try{const p=await this.propietariosService.actualizar(event.id,event.body);this.propietarios.update(xs=>xs.map(x=>x.id_usuario===event.id?{...x,...p}:x));}
+    try{const enviado={...event.body},formulario=this.formulario;const p=await this.propietariosService.actualizar(event.id,enviado);formulario?.confirmarPropietarioActualizado(event.id,enviado);this.propietarios.update(xs=>xs.map(x=>x.id_usuario===event.id?{...x,...p}:x));}
     catch(e){this.error.set(String(e));}finally{this.ocupado.set(false);}
   }
 }

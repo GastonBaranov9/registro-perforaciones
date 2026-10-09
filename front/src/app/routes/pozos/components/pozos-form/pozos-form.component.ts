@@ -1,6 +1,6 @@
 import { RuntimePlatformService } from '../../../../core/native/runtime-platform.service';
 import { numeroPerforacionValido } from '../../../../shared/services/numeracion-perforacion.service';
-import { Component, OnDestroy, inject, input, output, signal } from '@angular/core';
+import { Component, OnDestroy, ViewChild, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
 import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
@@ -13,6 +13,7 @@ import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/uti
 import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
 import { ProtectedResourceDirective } from '../../../../core/resources/protected-resource.directive';
+import { huellaPropietario } from '../../../../shared/utils/estado-formulario-perforacion';
 
 type PropietarioEdicionEstado = {
   id_usuario: number;
@@ -41,6 +42,8 @@ type PropietarioEdicionEstado = {
 ],
 })
 export class PozosFormComponent implements OnDestroy {
+  @ViewChild(FotoComponent) private selectorFoto?: FotoComponent;
+  capturaPendiente(): boolean { return this.capturandoUbicacion() || !!this.selectorFoto?.procesando(); }
   private readonly runtime = inject(RuntimePlatformService);
   public borradorLocal = input(false);
   public historico = input(false);
@@ -78,6 +81,24 @@ export class PozosFormComponent implements OnDestroy {
   public propietarioNuevo: PropietarioOperativoCrearBody = propietarioVacio();
   public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
   public propietarioEdicion = signal<PropietarioEdicionEstado | null>(null);
+  private basePropietarioNuevo = huellaPropietario(this.propietarioNuevo);
+  private basePropietarioEdicion: PropietarioOperativoActualizarBody = {};
+
+  tieneCambiosPropietario(): boolean {
+    const editor = this.propietarioEdicion();
+    return huellaPropietario(this.propietarioNuevo) !== this.basePropietarioNuevo
+      || !!editor && huellaPropietario(editor.body) !== huellaPropietario(this.basePropietarioEdicion);
+  }
+
+  confirmarPropietarioCreado(enviado: PropietarioOperativoCrearBody): void {
+    this.basePropietarioNuevo = huellaPropietario(enviado);
+  }
+
+  confirmarPropietarioActualizado(id: number, enviado: PropietarioOperativoActualizarBody): void {
+    if (this.propietarioEdicion()?.id_usuario === id) {
+      this.basePropietarioEdicion = { ...this.basePropietarioEdicion, ...enviado };
+    }
+  }
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
   datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.historico() || this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
@@ -89,6 +110,8 @@ export class PozosFormComponent implements OnDestroy {
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
   public fotoVistaPrevia = signal<string | null>(null);
+  readonly revisionFoto = signal(0);
+  refrescarFotoPersistida() { this.revisionFoto.update(v => v + 1); }
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
@@ -170,6 +193,7 @@ export class PozosFormComponent implements OnDestroy {
         departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
       },
     });
+    this.basePropietarioEdicion = { ...this.propietarioEdicion()!.body };
   }
   guardarEditorPropietario() {
     const editor = this.propietarioEdicion();

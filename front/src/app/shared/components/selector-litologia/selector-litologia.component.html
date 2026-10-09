@@ -5,7 +5,7 @@
       Buscar litología por nombre o familia
     </button>
     <dialog #dialogo class="dialogo-movil" [attr.aria-labelledby]="listaId + '-titulo'"
-      (cancel)="cerrarLista()" (close)="abierto.set(false)">
+      (cancel)="cerrarLista()" (close)="alCerrarDialogo()">
       <header>
         <strong [id]="listaId + '-titulo'">Seleccionar litología</strong>
         <button type="button" (click)="cerrarLista()">Cerrar</button>

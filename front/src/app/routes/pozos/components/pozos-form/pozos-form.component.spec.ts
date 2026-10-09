@@ -309,4 +309,32 @@ describe('PozosFormComponent', () => {
     const emitir=spyOn(component.saved,'emit');component.handlePozo();
     expect(sitio.latitud).toBe('-31.4439167');expect(sitio.longitud).toBe('-57.9865556');expect(emitir).toHaveBeenCalled();
   });
+
+  it('la confirmación del propietario nuevo conserva ediciones posteriores al envío', () => {
+    component.propietarioNuevo.nombre = 'Ana';
+    const enviado = { ...component.propietarioNuevo };
+    component.propietarioNuevo.telefono = 'Posterior';
+    component.confirmarPropietarioCreado(enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.propietarioNuevo.telefono = ' \t ';
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+  });
+
+  it('la confirmación de edición conserva cambios posteriores y no limpia otro propietario', () => {
+    fixture.componentRef.setInput('propietarios', [propietarioA, propietarioB]);
+    component.seleccionarPropietario(propietarioA); component.abrirEditorPropietario();
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+    component.propietarioEdicion()!.body.telefono = 'Enviado';
+    const enviado = { ...component.propietarioEdicion()!.body };
+    component.propietarioEdicion()!.body.telefono = 'Posterior';
+    component.confirmarPropietarioActualizado(1, enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.propietarioEdicion()!.body.telefono = 'Enviado';
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+    component.seleccionarPropietario(propietarioB); component.abrirEditorPropietario();
+    component.propietarioEdicion()!.body.telefono = 'De B';
+    component.confirmarPropietarioActualizado(1, enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.cerrarEditorPropietario(); expect(component.tieneCambiosPropietario()).toBeFalse();
+  });
 });

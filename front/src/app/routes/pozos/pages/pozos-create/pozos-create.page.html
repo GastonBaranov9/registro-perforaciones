@@ -1,7 +1,7 @@
 <ion-content class="ion-padding">
   <ion-toolbar>
       <ion-buttons slot="start" color="primary">
-        <ion-back-button default-href="#" (click)="irAtras()" color="primary"></ion-back-button>
+        <ion-back-button default-href="/pozo" color="primary"></ion-back-button>
       </ion-buttons>
     </ion-toolbar>
     <ion-card>
@@ -9,6 +9,7 @@
         <h2>Crear nueva perforación</h2>
 
         @if (catalogos(); as personas) {
+        <div [inert]="disabled() || !!creado()" [attr.aria-busy]="disabled()">
         <app-pozos-form
           [pozo]="nuevoPozo()"
           [administrarPropietarios]="authService.tieneRol('administracion')"
@@ -20,20 +21,28 @@
           (saved)="guardarPozo($event)"
           [id_pozo]="null"
           [agregareditar]="false"
-          [guardando]="disabled()"
+          [guardando]="disabled() || !!creado()"
           (crearPropietario)="crearPropietario($event)"
           (actualizarPropietario)="actualizarPropietario($event)"
         >
           <app-datos-tecnicos-borrador
             [profundidad]="nuevoPozo().profundidad_final_m"
-            [guardando]="disabled()"
+            [guardando]="disabled() || !!creado()"
             (cambiado)="datosTecnicos.set($event)"
           />
         </app-pozos-form>
+        </div>
         } @else if (cargandoCatalogos()) { <p role="status">Cargando personas disponibles…</p> }
         @else { <p>No fue posible cargar los selectores.</p><ion-button type="button" (click)="cargarCatalogos()">REINTENTAR</ion-button> }
 
         @if (disabled()) { <p role="status">Guardando perforación completa…</p> }
+        @if (creado(); as registro) {
+          <p role="status">Perforación {{ registro.numero ? 'P-' + registro.numero : 'ID ' + registro.id }} creada. Esta alta ya fue guardada.</p>
+          @if (tieneCambiosSinGuardar()) {
+            <p role="alert">Hay cambios posteriores que no se enviaron. Se conservan en pantalla; salir requiere confirmar su descarte.</p>
+          }
+          <ion-button type="button" [disabled]="disabled()" (click)="verCreado()">Ver perforación creada</ion-button>
+        }
 
         @if (errorMessage()) {
         <p class="error">

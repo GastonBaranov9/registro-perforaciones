@@ -3,7 +3,7 @@
     @if (agregareditar()) {
       <p>Perforación: <strong>{{ pozo().numero_perforacion ?? "Sin número asignado" }}</strong> · ID interno: {{ id_pozo() }}</p>
     } @else if (historico()) {
-      <ion-item><ion-input label="Número histórico P-" labelPlacement="stacked" name="numero_historico" type="number" min="1" max="3281" step="1" required [(ngModel)]="pozo().numero_perforacion" /></ion-item>
+      <ion-item><ion-input [disabled]="guardando()" label="Número histórico P-" labelPlacement="stacked" name="numero_historico" type="number" min="1" max="3281" step="1" required [(ngModel)]="pozo().numero_perforacion" /></ion-item>
     } @else if (borradorLocal()) {
       <p>El servidor asignará el número al sincronizar.</p>
     } @else {
@@ -11,7 +11,7 @@
     }
     <ion-item>
       <ion-label position="stacked">Empresa</ion-label>
-      <ion-input type="text" name="empresa" [(ngModel)]="this.pozo().empresa" [required]="!historico()"></ion-input>
+      <ion-input [disabled]="guardando()" type="text" name="empresa" [(ngModel)]="this.pozo().empresa" [required]="!historico()"></ion-input>
     </ion-item>
 
     @if (administrarPropietarios()) {
@@ -37,24 +37,24 @@
     @if (administrarPropietarios() && (!agregareditar() || historico()) && !propietarioSeleccionado()) {
       <fieldset class="propietario-nuevo">
         <legend>Registrar propietario</legend>
-        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" name="propietario_nuevo_nombre" maxlength="160"
+        <ion-item><ion-input [disabled]="guardando()" label="Nombre y apellido *" labelPlacement="stacked" name="propietario_nuevo_nombre" maxlength="160"
           [(ngModel)]="propietarioNuevo.nombre" [ngModelOptions]="{standalone: true}" [required]="!historico()" /></ion-item>
-        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" name="propietario_nuevo_documento" maxlength="80"
+        <ion-item><ion-input [disabled]="guardando()" label="Documento / RUT" labelPlacement="stacked" name="propietario_nuevo_documento" maxlength="80"
           [(ngModel)]="propietarioNuevo.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" name="propietario_nuevo_telefono" maxlength="80"
+        <ion-item><ion-input [disabled]="guardando()" label="Teléfono" labelPlacement="stacked" name="propietario_nuevo_telefono" maxlength="80"
           [(ngModel)]="propietarioNuevo.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Email" labelPlacement="stacked" name="propietario_nuevo_email" type="email" maxlength="254"
+        <ion-item><ion-input [disabled]="guardando()" label="Email" labelPlacement="stacked" name="propietario_nuevo_email" type="email" maxlength="254"
           [(ngModel)]="propietarioNuevo.email" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Dirección" labelPlacement="stacked" name="propietario_nuevo_direccion" maxlength="300"
+        <ion-item><ion-input [disabled]="guardando()" label="Dirección" labelPlacement="stacked" name="propietario_nuevo_direccion" maxlength="300"
           [(ngModel)]="propietarioNuevo.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="propietario_nuevo_localidad" maxlength="160"
+        <ion-item><ion-input [disabled]="guardando()" label="Localidad" labelPlacement="stacked" name="propietario_nuevo_localidad" maxlength="160"
           [(ngModel)]="propietarioNuevo.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" name="propietario_nuevo_departamento"
+        <ion-item><ion-select [disabled]="guardando()" label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" name="propietario_nuevo_departamento"
           [(ngModel)]="propietarioNuevo.departamento" [ngModelOptions]="{standalone: true}">
-          <ion-select-option value="">Sin especificar</ion-select-option>
-          @for (departamento of departamentos; track departamento) { <ion-select-option [value]="departamento">{{ departamento }}</ion-select-option> }
+          <ion-select-option [disabled]="guardando()" value="">Sin especificar</ion-select-option>
+          @for (departamento of departamentos; track departamento) { <ion-select-option [disabled]="guardando()" [value]="departamento">{{ departamento }}</ion-select-option> }
         </ion-select></ion-item>
-        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" name="propietario_nuevo_observaciones" maxlength="2000" [autoGrow]="true" rows="3"
+        <ion-item><ion-textarea [disabled]="guardando()" label="Observaciones" labelPlacement="stacked" name="propietario_nuevo_observaciones" maxlength="2000" [autoGrow]="true" rows="3"
           [(ngModel)]="propietarioNuevo.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
         <ion-button type="button" fill="outline" (click)="registrarPropietario()"
           [disabled]="guardando() || !propietarioNuevo.nombre.trim()">REGISTRAR PROPIETARIO</ion-button>
@@ -64,17 +64,17 @@
     @if (propietarioEdicion(); as propietarioEditar) {
       <fieldset class="propietario-nuevo">
         <legend>Editar propietario</legend>
-        <ion-item><ion-input label="Nombre y apellido *" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.nombre" [ngModelOptions]="{standalone: true}" [required]="!historico()" /></ion-item>
-        <ion-item><ion-input label="Documento / RUT" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Teléfono" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Email" labelPlacement="stacked" type="email" maxlength="254" [(ngModel)]="propietarioEditar.body.email" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Dirección" labelPlacement="stacked" maxlength="300" [(ngModel)]="propietarioEditar.body.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-input label="Localidad" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
-        <ion-item><ion-select label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" [(ngModel)]="propietarioEditar.body.departamento" [ngModelOptions]="{standalone: true}">
-          <ion-select-option value="">Sin especificar</ion-select-option>
-          @for (departamento of departamentos; track departamento) { <ion-select-option [value]="departamento">{{ departamento }}</ion-select-option> }
+        <ion-item><ion-input [disabled]="guardando()" label="Nombre y apellido *" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.nombre" [ngModelOptions]="{standalone: true}" [required]="!historico()" /></ion-item>
+        <ion-item><ion-input [disabled]="guardando()" label="Documento / RUT" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.documento_rut" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input [disabled]="guardando()" label="Teléfono" labelPlacement="stacked" maxlength="80" [(ngModel)]="propietarioEditar.body.telefono" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input [disabled]="guardando()" label="Email" labelPlacement="stacked" type="email" maxlength="254" [(ngModel)]="propietarioEditar.body.email" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input [disabled]="guardando()" label="Dirección" labelPlacement="stacked" maxlength="300" [(ngModel)]="propietarioEditar.body.direccion" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-input [disabled]="guardando()" label="Localidad" labelPlacement="stacked" maxlength="160" [(ngModel)]="propietarioEditar.body.localidad" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-select [disabled]="guardando()" label="Departamento" labelPlacement="stacked" placeholder="Seleccionar departamento" [(ngModel)]="propietarioEditar.body.departamento" [ngModelOptions]="{standalone: true}">
+          <ion-select-option [disabled]="guardando()" value="">Sin especificar</ion-select-option>
+          @for (departamento of departamentos; track departamento) { <ion-select-option [disabled]="guardando()" [value]="departamento">{{ departamento }}</ion-select-option> }
         </ion-select></ion-item>
-        <ion-item><ion-textarea label="Observaciones" labelPlacement="stacked" maxlength="2000" [autoGrow]="true" rows="3" [(ngModel)]="propietarioEditar.body.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
+        <ion-item><ion-textarea [disabled]="guardando()" label="Observaciones" labelPlacement="stacked" maxlength="2000" [autoGrow]="true" rows="3" [(ngModel)]="propietarioEditar.body.observaciones" [ngModelOptions]="{standalone: true}" /></ion-item>
         <ion-button type="button" fill="outline" (click)="guardarEditorPropietario()" [disabled]="guardando() || !propietarioEditar.body.nombre.trim()">GUARDAR PROPIETARIO</ion-button>
         <ion-button type="button" fill="clear" (click)="cerrarEditorPropietario()" [disabled]="guardando()">CANCELAR</ion-button>
       </fieldset>
@@ -93,20 +93,20 @@
     } @else if (sitioNuevo(); as sitio) {
       <fieldset class="ubicacion-nueva">
         <legend>Ubicación del nuevo pozo</legend>
-        <ion-item><ion-input label="Departamento" labelPlacement="stacked" name="departamento"
+        <ion-item><ion-input [disabled]="guardando()" label="Departamento" labelPlacement="stacked" name="departamento"
           [(ngModel)]="sitio.departamento" [required]="!historico()" /></ion-item>
-        <ion-item><ion-input label="Localidad" labelPlacement="stacked" name="localidad"
+        <ion-item><ion-input [disabled]="guardando()" label="Localidad" labelPlacement="stacked" name="localidad"
           [(ngModel)]="sitio.localidad" /></ion-item>
-        <ion-item><ion-input label="Padrón" labelPlacement="stacked" name="padron" maxlength="80"
+        <ion-item><ion-input [disabled]="guardando()" label="Padrón" labelPlacement="stacked" name="padron" maxlength="80"
           [(ngModel)]="sitio.padron" /></ion-item>
-        <ion-item><ion-input label="Latitud" labelPlacement="stacked" name="latitud" type="text"
+        <ion-item><ion-input [disabled]="guardando()" label="Latitud" labelPlacement="stacked" name="latitud" type="text"
           [(ngModel)]="sitio.latitud" (ionBlur)="normalizarCoordenadaNueva('latitud')" [required]="!historico()" /></ion-item>
-        <ion-item><ion-input label="Longitud" labelPlacement="stacked" name="longitud" type="text"
+        <ion-item><ion-input [disabled]="guardando()" label="Longitud" labelPlacement="stacked" name="longitud" type="text"
           [(ngModel)]="sitio.longitud" (ionBlur)="normalizarCoordenadaNueva('longitud')" [required]="!historico()" /></ion-item>
         <p class="ayuda-coordenadas">Se aceptan coordenadas decimales o grados/minutos/segundos.</p>
         @if (ubicacionPrecision() !== null) { <p>Precisión aproximada: {{ ubicacionPrecision() | number:'1.0-0' }} m</p> }
         @if (ubicacionError()) { <ion-text color="danger"><p role="alert">{{ ubicacionError() }}</p></ion-text> }
-        <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="capturandoUbicacion()">
+        <ion-button type="button" fill="outline" (click)="tomarUbicacionNueva()" [disabled]="guardando() || capturandoUbicacion()">
           {{ capturandoUbicacion() ? 'OBTENIENDO UBICACIÓN…' : ubicacionError() ? 'Reintentar ubicación' : 'TOMAR UBICACIÓN' }}
         </ion-button>
         @if (borradorLocal()) { <p>Puede guardar sin ubicación. Si el intento falla, las coordenadas anteriores, si las hay, se conservan sin actualizar.</p> }
@@ -119,17 +119,17 @@
     @if (historico()) { <ion-button type="button" fill="clear" (click)="pozo().id_perforador=0" [disabled]="guardando()">Perforador desconocido</ion-button> }
     <ion-item>
       <ion-label position="stacked">Fecha de inicio</ion-label>
-      <ion-input type="date" name="fecha_inicio" [(ngModel)]="this.pozo().fecha_inicio"></ion-input>
+      <ion-input [disabled]="guardando()" type="date" name="fecha_inicio" [(ngModel)]="this.pozo().fecha_inicio"></ion-input>
     </ion-item>
 
     <ion-item>
       <ion-label position="stacked">Fecha de fin</ion-label>
-      <ion-input type="date" name="fecha_fin" [(ngModel)]="this.pozo().fecha_fin"></ion-input>
+      <ion-input [disabled]="guardando()" type="date" name="fecha_fin" [(ngModel)]="this.pozo().fecha_fin"></ion-input>
     </ion-item>
 
     <ion-item>
       <ion-label position="stacked">Profundidad final (m)</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         min="0"
         step="1"
         type="number"
@@ -142,7 +142,7 @@
 
     <ion-item>
       <ion-label position="stacked">Nivel estático (m)</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         min="0"
         step="1"
         type="number"
@@ -153,7 +153,7 @@
 
     <ion-item>
       <ion-label position="stacked">Nivel dinámico (m)</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         min="0"
         step="1"
         type="number"
@@ -164,7 +164,7 @@
 
     <ion-item>
       <ion-label position="stacked">Caudal estimado (L/h)</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         min="0"
         step="1"
         type="number"
@@ -175,40 +175,40 @@
 
     <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_sedimentario')">
       <ion-label position="stacked">Método sedimentario</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         type="text"
         name="metodo_sedimentario"
         [(ngModel)]="this.pozo().metodo_sedimentario"
         [readonly]="!datoTecnicoEditable('metodo_sedimentario')"
       ></ion-input>
-      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método sedimentario" (click)="editarDatoTecnico('metodo_sedimentario')">Editar</ion-button>
+      <ion-button [disabled]="guardando()" type="button" slot="end" fill="clear" aria-label="Editar método sedimentario" (click)="editarDatoTecnico('metodo_sedimentario')">Editar</ion-button>
     </ion-item>
 
     <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_rocoso')">
       <ion-label position="stacked">Método rocoso</ion-label>
-      <ion-input
+      <ion-input [disabled]="guardando()"
         type="text"
         name="metodo_rocoso"
         [(ngModel)]="this.pozo().metodo_rocoso"
         [readonly]="!datoTecnicoEditable('metodo_rocoso')"
       ></ion-input>
-      <ion-button type="button" slot="end" fill="clear" aria-label="Editar método rocoso" (click)="editarDatoTecnico('metodo_rocoso')">Editar</ion-button>
+      <ion-button [disabled]="guardando()" type="button" slot="end" fill="clear" aria-label="Editar método rocoso" (click)="editarDatoTecnico('metodo_rocoso')">Editar</ion-button>
     </ion-item>
 
     <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('cementacion')">
       <ion-label position="stacked">Cementación</ion-label>
-      <ion-textarea name="cementacion" [(ngModel)]="this.pozo().cementacion" [readonly]="!datoTecnicoEditable('cementacion')" [autoGrow]="true" rows="2"></ion-textarea>
-      <ion-button type="button" slot="end" fill="clear" aria-label="Editar cementación" (click)="editarDatoTecnico('cementacion')">Editar</ion-button>
+      <ion-textarea [disabled]="guardando()" name="cementacion" [(ngModel)]="this.pozo().cementacion" [readonly]="!datoTecnicoEditable('cementacion')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button [disabled]="guardando()" type="button" slot="end" fill="clear" aria-label="Editar cementación" (click)="editarDatoTecnico('cementacion')">Editar</ion-button>
     </ion-item>
 
     <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('desarrollo')">
       <ion-label position="stacked">Desarrollo</ion-label>
-      <ion-textarea name="desarrollo" [(ngModel)]="this.pozo().desarrollo" [readonly]="!datoTecnicoEditable('desarrollo')" [autoGrow]="true" rows="2"></ion-textarea>
-      <ion-button type="button" slot="end" fill="clear" aria-label="Editar desarrollo" (click)="editarDatoTecnico('desarrollo')">Editar</ion-button>
+      <ion-textarea [disabled]="guardando()" name="desarrollo" [(ngModel)]="this.pozo().desarrollo" [readonly]="!datoTecnicoEditable('desarrollo')" [autoGrow]="true" rows="2"></ion-textarea>
+      <ion-button [disabled]="guardando()" type="button" slot="end" fill="clear" aria-label="Editar desarrollo" (click)="editarDatoTecnico('desarrollo')">Editar</ion-button>
     </ion-item>
 
     @if (historico()) {
-      <ion-item><ion-textarea label="Revestimiento documentado" labelPlacement="stacked" name="revestimiento" [(ngModel)]="pozo().revestimiento" [autoGrow]="true" /></ion-item>
+      <ion-item><ion-textarea [disabled]="guardando()" label="Revestimiento documentado" labelPlacement="stacked" name="revestimiento" [(ngModel)]="pozo().revestimiento" [autoGrow]="true" /></ion-item>
     }
     <section class="foto-editor" aria-label="Fotografía del pozo">
       <h3>{{ agregareditar() ? 'Fotografía del pozo' : 'Agregar foto al pozo' }}</h3>
@@ -222,7 +222,9 @@
         <img class="foto-preview" [src]="local" alt="Fotografía guardada en este dispositivo" />
         <p>Fotografía guardada en este dispositivo</p>
       } @else if (getFoto(); as persistida) {
-        <img class="foto-preview" [protectedSrc]="persistida" alt="Fotografía guardada del pozo" />
+        @for (revision of [revisionFoto()]; track revision) {
+          <img class="foto-preview" [protectedSrc]="persistida" alt="Fotografía guardada del pozo" />
+        }
         <p>Fotografía guardada</p>
         <ion-button type="button" color="danger" fill="outline" (click)="solicitarEliminarFotoPersistida()" [disabled]="guardando()">Eliminar fotografía</ion-button>
       } @else { <p>No hay fotografía seleccionada.</p> }

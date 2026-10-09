@@ -1,11 +1,12 @@
 import { edicionPozoGuard } from './core/guards/edicion-pozo.guard';
+import { cambiosPerforacionGuard } from './core/guards/cambios-perforacion.guard';
 import { Routes } from '@angular/router';
 import { offlineGuard } from './core/guards/offline.guard';
 import { HomePage } from './routes/home/home.page';
 import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
-  { path: 'pozos-historicos/:id_pozo/editar', canActivate: [isloggedGuard, isAdminGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Editar perforación histórica' },
+  { path: 'pozos-historicos/:id_pozo/editar', canActivate: [isloggedGuard, isAdminGuard], canDeactivate: [cambiosPerforacionGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Editar perforación histórica' },
   { path: 'pozos-historicos', canActivate: [isloggedGuard, isAdminGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Nueva perforación histórica' },
   { path: 'trabajo-local', canActivate: [offlineGuard], loadComponent: async () => (await import('./routes/offline/offline.page')).OfflinePage, title: 'Trabajo de campo' },
   {
@@ -171,6 +172,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos-create',
+    canDeactivate: [cambiosPerforacionGuard],
     canActivate: [isloggedGuard, isPerfOrAdminGuard],
     loadComponent: async () =>
       (await import('../app/routes/pozos/pages/pozos-create/pozos-create.page')).PozosCreatePage,

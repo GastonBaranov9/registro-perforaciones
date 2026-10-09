@@ -6,6 +6,7 @@ import { By } from '@angular/platform-browser';
 import { SelectorLitologiaComponent } from './selector-litologia.component';
 import { LitologiasService } from '../../services/litologias.service';
 import { LitologiaPublica } from '../../types/schemas';
+import { DialogosFormularioService } from '../../../core/guards/cambios-perforacion.guard';
 
 @Component({ standalone: true, imports: [SelectorLitologiaComponent], template: '<app-selector-litologia />' })
 class HostComponent {}
@@ -245,5 +246,74 @@ describe('Autocompletado litológico', () => {
     f.destroy();
     expect(eliminarListener).toHaveBeenCalledWith('resize', jasmine.any(Function));
     expect(eliminarListener).toHaveBeenCalledWith('scroll', jasmine.any(Function));
+  });
+
+  it('Atrás Android cierra sólo el modal, sin seleccionar ni propagar a navegación', async () => {
+    simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    f.componentRef.setInput('seleccionado', 1);
+    f.detectChanges(); await f.whenStable();
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    c.abrirMovil();
+    c.buscar('marrón');
+    const navegar = jasmine.createSpy('navegar');
+    const handlers: { prioridad: number; handler: () => void }[] = [{ prioridad: 0, handler: navegar }];
+    const atras = () => document.dispatchEvent(new CustomEvent('ionBackButton', {
+      detail: { register: (prioridad: number, handler: () => void) => handlers.push({ prioridad, handler }) },
+    }));
+    atras();
+    handlers.sort((a, b) => b.prioridad - a.prioridad)[0].handler();
+    expect(navegar).not.toHaveBeenCalled();
+    expect(c.abierto()).toBeFalse();
+    expect(f.nativeElement.querySelector('dialog').open).toBeFalse();
+    expect(c.seleccionado()).toBe(1);
+    expect(selected).not.toHaveBeenCalled();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeFalse();
+    handlers.length = 0; atras(); expect(handlers.some(h => h.prioridad === 101)).toBeFalse();
+    c.abrirMovil(); f.destroy(); handlers.length = 0; atras();
+    expect(handlers.some(h => h.prioridad === 101)).toBeFalse();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeFalse();
+  });
+
+  it('el router cierra el modal sin modificar la selección; cerrar y reabrir no deja registros viejos', async () => {
+    simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    const selected = spyOn(c.seleccionadoChange, 'emit');
+    const dialogos = TestBed.inject(DialogosFormularioService);
+    c.abrirMovil(); c.cerrarLista(); c.abrirMovil();
+    expect(dialogos.cerrarActivo()).toBeTrue();
+    expect(c.abierto()).toBeFalse();
+    expect(selected).not.toHaveBeenCalled();
+    expect(dialogos.cerrarActivo()).toBeFalse();
+  });
+
+  it('salir de una página conservada por Ionic retira modal, callback y handler sin destruir el selector', async () => {
+    simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    f.nativeElement.classList.add('ion-page');
+    c.abrirMovil();
+    f.nativeElement.dispatchEvent(new CustomEvent('ionViewWillLeave'));
+    expect(c.abierto()).toBeFalse();
+    expect(f.nativeElement.querySelector('dialog').open).toBeFalse();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeFalse();
+    const register = jasmine.createSpy('register');
+    document.dispatchEvent(new CustomEvent('ionBackButton', { detail: { register } }));
+    expect(register.calls.allArgs().some(args => args[0] === 101)).toBeFalse();
+    c.abrirMovil();
+    expect(c.abierto()).toBeTrue();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeTrue();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeFalse();
+  });
+
+  it('un close encolado no cierra el selector recién reabierto', async () => {
+    simularMovil();
+    const f = await fixture(), c = f.componentInstance;
+    c.abrirMovil(); c.cerrarLista(); c.abrirMovil();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    expect(c.abierto()).toBeTrue();
+    expect(f.nativeElement.querySelector('dialog').open).toBeTrue();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeTrue();
+    await f.whenStable();
+    expect(TestBed.inject(DialogosFormularioService).cerrarActivo()).toBeFalse();
   });
 });

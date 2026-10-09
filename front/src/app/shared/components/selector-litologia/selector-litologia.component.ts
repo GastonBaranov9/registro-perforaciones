@@ -3,6 +3,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LitologiaPublica } from '../../types/schemas';
 import { LitologiasService } from '../../services/litologias.service';
+import { DialogosFormularioService } from '../../../core/guards/cambios-perforacion.guard';
 
 @Component({
   selector: 'app-selector-litologia',
@@ -28,6 +29,10 @@ export class SelectorLitologiaComponent {
   readonly error = signal('');
   readonly seleccionada = computed(() => this.opciones().find((x) => x.id_litologia === this.seleccionado()) ?? null);
   private readonly service = inject(LitologiasService);
+  private readonly dialogos = inject(DialogosFormularioService);
+  private desregistrarDialogo?: () => void;
+  private pagina?: HTMLElement;
+  private readonly alSalirDePagina = () => this.cerrarLista();
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly mediaMovil = window.matchMedia('(max-width: 767px), (pointer: coarse)');
@@ -48,7 +53,7 @@ export class SelectorLitologiaComponent {
     viewport?.addEventListener('scroll', ajustar);
     window.addEventListener('resize', ajustar);
     inject(DestroyRef).onDestroy(() => {
-      this.dialogo()?.nativeElement.close();
+      this.cerrarLista();
       this.mediaMovil.removeEventListener('change', cambiarModo);
       viewport?.removeEventListener('resize', ajustar);
       viewport?.removeEventListener('scroll', ajustar);
@@ -78,14 +83,38 @@ export class SelectorLitologiaComponent {
     // La capa superior evita que ion-content o las tarjetas recorten las opciones.
     this.ajustarDialogo();
     dialogo.showModal();
+    this.desregistrarDialogo?.();
+    this.desregistrarDialogo = this.dialogos.registrar(() => this.cerrarLista());
+    // Ionic conserva páginas sin destruir sus componentes. El evento se emite
+    // sobre la página, no sobre sus hijos, y también ocurre en rutas sin guard.
+    this.pagina = (this.host.nativeElement as HTMLElement).closest<HTMLElement>('.ion-page') ?? undefined;
+    this.pagina?.addEventListener('ionViewWillLeave', this.alSalirDePagina);
     dialogo.querySelector('input')?.focus({ preventScroll: true });
   }
 
   cerrarLista() {
+    this.desregistrarDialogo?.();
+    this.desregistrarDialogo = undefined;
+    this.pagina?.removeEventListener('ionViewWillLeave', this.alSalirDePagina);
+    this.pagina = undefined;
     this.abierto.set(false);
     this.indiceActivo.set(-1);
     const dialogo = this.dialogo()?.nativeElement;
     if (dialogo?.open) dialogo.close();
+  }
+
+  alCerrarDialogo() {
+    // Un close encolado de la apertura anterior no debe cerrar la nueva.
+    if (!this.dialogo()?.nativeElement.open) this.cerrarLista();
+  }
+
+  @HostListener('document:ionBackButton', ['$event'])
+  atrasAndroid(event: Event) {
+    if (this.dialogo()?.nativeElement.open) {
+      // Por encima de overlays (100) y navegación (0), sin continuar la cadena.
+      const atras = event as CustomEvent<{ register: (prioridad: number, handler: () => void) => void }>;
+      atras.detail.register(101, () => this.cerrarLista());
+    }
   }
 
   private ajustarDialogo() {
