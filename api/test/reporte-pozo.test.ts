@@ -47,6 +47,11 @@ test("consulta preserva los NULL de históricos y selecciona origen, sello sanit
     assert.deepEqual(params, [90042]);
     if (consultas++ === 0) {
       for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro"]) assert.ok(sql.includes(campo));
+      // El orden conserva la prioridad del vínculo; sin ambos nombres, SQL devuelve NULL.
+      assert.match(sql, /COALESCE\(\s*prop\.nombre,\s*p\.propietario_provisional\s*\)\s+AS propietario/);
+      assert.doesNotMatch(sql, /pendiente de vinculación/);
+      for (const tabla of ["usuario prop", "usuario perf", "sitio s"])
+        assert.ok(sql.includes(`LEFT JOIN public.${tabla}`), `Conservar históricos parciales: ${tabla}`);
       return { rows: [fila] };
     }
     return { rows: [] };

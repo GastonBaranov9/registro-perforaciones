@@ -9,7 +9,7 @@ import { crearPDF } from "../src/pdf/pdf-generate.ts";
 import { PerfilLitologicoInvalido } from "../src/pdf/perfil-litologico.ts";
 import { myPool } from "../src/db/pool.ts";
 import informes from "../src/routes/informes.ts";
-import type { ReportePozo } from "../src/services/generar-informe-consultas.ts";
+import { getReportePozo, type ReportePozo } from "../src/services/generar-informe-consultas.ts";
 
 // Datos exclusivamente sintéticos. No se consulta PostgreSQL ni se leen fotos reales.
 const idPozo = 90042;
@@ -40,6 +40,44 @@ function textoPDF(doc: PDFDocument): string {
 
 async function generar(reporte: ReportePozo) {
   return crearPDF(reporte, idPozo, { mapa: {}, directorioFotos: tmpdir() });
+}
+
+for (const [caso, propietario] of [
+  ["vinculado", "Ana Vinculada"],
+  ["provisional", "José Provisional"],
+  ["ausente", null],
+] as const) {
+  test(`reporte y PDF de histórico parcial con propietario ${caso} no agregan leyenda de vinculación`, async () => {
+    // Simula las filas de PostgreSQL; la expresión SQL y su prioridad se verifican
+    // en reporte-pozo.test.ts, sin reproducir COALESCE dentro del mock.
+    const fila = historico({ propietario });
+    const db = { async query(sql: string, params: unknown[]) {
+      assert.deepEqual(params, [idPozo]);
+      return { rows: sql.includes("FROM public.pozo p") ? [fila] : [] };
+    } };
+    const reporte = await getReportePozo(idPozo, db as never);
+    assert.ok(reporte);
+    assert.equal(reporte.propietario, propietario);
+    assert.equal(reporte.perforador, null);
+    assert.equal(reporte.profundidad_final_m, null);
+    assert.doesNotMatch(JSON.stringify(reporte), /\(pendiente de vinculación\)/);
+
+    const doc = await generar(reporte);
+    const texto = textoPDF(doc);
+    assert.equal(doc.getPageCount(), 3);
+    assert.doesNotMatch(texto.replace(/\s+/g, " "), /pendiente de vinculación/);
+    assert.match(texto, /Propietario\n/);
+    assert.ok(texto.includes(`Propietario\n${propietario ?? "No especificado"}`));
+    if (propietario !== null) {
+      assert.equal(texto.split("\n").filter(linea => linea === propietario).length, 2,
+        "El nombre aparece sin sufijo tanto en portada como en el resumen");
+    } else {
+      assert.doesNotMatch(texto, /\bnull\b|\bundefined\b/);
+    }
+    assert.match(texto, /Perforador\nNo especificado/);
+    assert.match(texto, /Profundidad final\nNo especificado/);
+    assert.ok((await doc.save()).length > 1000);
+  });
 }
 
 test("histórico sin propietario genera PDF e identifica su origen sin inventar identidad", async () => {

@@ -132,7 +132,7 @@ test('012: migración, provisionales, vinculación, permisos y compatibilidad en
       assert.equal((await request(2,'GET',detalle.json().foto_url)).statusCode,200);
       const { getReportePozo } = await import('../src/services/generar-informe-consultas.ts');
       const reporte = await getReportePozo(idPozo, pool);
-      assert.match(reporte!.propietario, /Marcelo Bellagamba.*pendiente/);
+      assert.equal(reporte!.propietario, 'Marcelo Bellagamba');
     });
     await t.test('buscador devuelve una vez cada ID y conserva homónimos con múltiples roles', async () => {
       const respuesta = await request(1,'GET','/pozos/candidatos-personas?propietario=Marcelo');
