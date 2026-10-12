@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validarHistorico, validarEdicionHistorica } from '../src/models/historicos.ts';
+import { DATOS_TECNICOS_ESTANDAR } from '../src/constants/datos-tecnicos-estandar.ts';
+
+test('históricos admiten estándares explícitos, textos propios y desconocidos sin introducir defaults', () => {
+  const parcial = { numero_perforacion: 3281 };
+  validarHistorico(parcial);
+  assert.deepEqual(parcial, { numero_perforacion: 3281 });
+  assert.doesNotThrow(() => validarHistorico({ ...parcial, ...DATOS_TECNICOS_ESTANDAR }));
+  assert.doesNotThrow(() => validarEdicionHistorica({ ...DATOS_TECNICOS_ESTANDAR }));
+  const nulos = Object.fromEntries(Object.keys(DATOS_TECNICOS_ESTANDAR).map(campo => [campo, null]));
+  validarEdicionHistorica(nulos);
+  assert.ok(Object.values(nulos).every(valor => valor === null));
+  for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR)) {
+    assert.doesNotThrow(() => validarHistorico({ ...parcial, [campo]: 'Texto documentado' }));
+    assert.doesNotThrow(() => validarEdicionHistorica({ [campo]: 'Texto documentado' }));
+    // El contrato vigente representa vacío como omisión al crear y NULL al editar.
+    assert.throws(() => validarHistorico({ ...parcial, [campo]: '' }));
+    assert.throws(() => validarEdicionHistorica({ [campo]: '' }));
+  }
+});
 
 test('históricos no convierten números, no aceptan futuro ni fechas inventadas', () => {
   for(const numero of [undefined,null,0,-1,1.5,3282,2147483647,'3281',true,NaN,Infinity])

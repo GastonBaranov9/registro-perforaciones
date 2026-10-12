@@ -20,6 +20,7 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
 import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-borrador/datos-tecnicos-borrador.component';
 import { ProtectedResourceService } from '../../../../core/resources/protected-resource.service';
 import { of } from 'rxjs';
+import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
 
 describe('Carga histórica separada',()=>{
   let page:HistoricosPage,http:HttpTestingController;
@@ -34,12 +35,13 @@ describe('Carga histórica separada',()=>{
   });
   afterEach(()=>{http.verify();sessionStorage.removeItem(storage);});
 
-  async function cargarEdicionPrueba() {
+  async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string>> = {}) {
     const fixture = TestBed.createComponent(HistoricosPage);
     fixture.componentRef.setInput('id_pozo', '18'); page = fixture.componentInstance;
     spyOn(TestBed.inject(PozosEditService), 'getPozoById').and.resolveTo({
       id_pozo: 18, numero_perforacion: 3281, origen: 'historico', id_sitio: null,
       id_propietario: null, id_perforador: null, fecha_creado: '2026-10-06',
+      ...textos,
     });
     spyOn(TestBed.inject(IntervaloLitologicoListService), 'getIntervalosLitologicos').and.resolveTo([]);
     spyOn(TestBed.inject(IntervaloDiametroListService), 'getIntervalosDiametros').and.resolveTo([]);
@@ -48,6 +50,69 @@ describe('Carga histórica separada',()=>{
     await page.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
     return fixture;
   }
+
+  it('el histórico nuevo inicia vacío y sólo aplica los cuatro estándares mediante el botón', async () => {
+    const fixture = TestBed.createComponent(HistoricosPage); page = fixture.componentInstance;
+    await page.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
+    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[]) expect(page.pozo()[campo]).toBeUndefined();
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    page.pozo().profundidad_final_m = 30; page.pozo().nivel_estatico_m = 0; page.pozo().revestimiento = 'Original';
+    const datos = page.tecnicos();
+    datos.intervalosLitologicos.push({ idLocal: 'l', dato: { desde_m: 0, hasta_m: 30, material: 'Basalto', id_litologia: 1 } });
+    datos.intervalosDiametro.push({ idLocal: 'd', dato: { desde_m: 0, hasta_m: 30, diametro_pulg: 6, material_tuberia: 'Acero' } });
+    datos.intervalosFiltro.push({ idLocal: 'f', dato: { desde_m: 10, hasta_m: 20, diametro_pulg: 4, material_tuberia: 'PVC', ranura_mm: 0.75 } });
+    datos.nivelesAporte.push({ idLocal: 'a', dato: { profundidad_m: 15 } });
+    const antes = structuredClone({ pozo: page.pozo(), sitio: page.sitio(), tecnicos: page.tecnicos() });
+    fixture.nativeElement.querySelector('ion-button.aplicar-estandares').click();
+    expect(page.pozo()).toEqual({ ...antes.pozo, ...DATOS_TECNICOS_ESTANDAR });
+    expect(page.sitio()).toEqual(antes.sitio); expect(page.tecnicos()).toEqual(antes.tecnicos);
+  });
+
+  it('aplicar estándares en edición activa el guard; permite editar y borrar los cuatro para enviar NULL', async () => {
+    const fixture = await cargarEdicionPrueba();
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    fixture.nativeElement.querySelector('ion-button.aplicar-estandares').click();
+    fixture.detectChanges(); await fixture.whenStable();
+    expect(page.pozo()).toEqual(jasmine.objectContaining(DATOS_TECNICOS_ESTANDAR));
+    expect(page.tieneCambiosSinGuardar()).toBeTrue();
+    const confirmar = spyOn(TestBed.inject(ConfirmarSalidaPerforacionService), 'confirmar').and.resolveTo(false);
+    const snapshot = TestBed.inject(Router).routerState.snapshot;
+    expect(await TestBed.runInInjectionContext(() => cambiosPerforacionGuard(page, snapshot.root, snapshot, snapshot))).toBeFalse();
+    expect(confirmar).toHaveBeenCalledTimes(1);
+    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[]) {
+      const control = fixture.nativeElement.querySelector(`[name="${campo}"]`);
+      expect(control.readonly).toBeFalse();
+      control.value = `Personalizado ${campo}`;
+      control.dispatchEvent(new CustomEvent('ionInput', { bubbles: true }));
+      expect(page.pozo()[campo]).toBe(`Personalizado ${campo}`);
+    }
+    const guardar = page.editar({ pozo: page.pozo(), foto: null, fotoAccion: 'conservar' });
+    const req = http.expectOne(`${environment.apiURL}pozos/historicos/18`);
+    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR)) expect(req.request.body[campo]).toBe(`Personalizado ${campo}`);
+    req.flush({}, { status: 500, statusText: 'Error de prueba' }); await guardar;
+    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR)) {
+      const control = fixture.nativeElement.querySelector(`[name="${campo}"]`);
+      control.value = '';
+      control.dispatchEvent(new CustomEvent('ionInput', { bubbles: true }));
+    }
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(false);
+    const limpiar = page.editar({ pozo: page.pozo(), foto: null, fotoAccion: 'conservar' });
+    const patch = http.expectOne(`${environment.apiURL}pozos/historicos/18`);
+    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR)) expect(patch.request.body[campo]).toBeNull();
+    patch.flush({ id_pozo: 18 }); await limpiar;
+  });
+
+  it('cargar y reabrir una edición conserva exactamente los cuatro textos históricos', async () => {
+    const textos = { metodo_sedimentario: ' Rotación antigua ', metodo_rocoso: 'Percusión documentada', cementacion: 'Parcial', desarrollo: 'Bombeo' };
+    const fixture = await cargarEdicionPrueba(textos);
+    await page.ionViewWillEnter(); fixture.detectChanges();
+    expect(page.pozo()).toEqual(jasmine.objectContaining(textos));
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    page.formulario!.aplicarValoresEstandar();
+    expect(page.pozo()).toEqual(jasmine.objectContaining(textos));
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+  });
 
   it('un segundo PATCH usa los IDs recargados y conserva cambios posteriores incluso durante la recarga', async () => {
     const fixture = await cargarEdicionPrueba();

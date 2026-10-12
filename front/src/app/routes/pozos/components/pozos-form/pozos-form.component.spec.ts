@@ -6,6 +6,8 @@ import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
 import { PozosFormComponent } from './pozos-form.component';
+import { DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { By } from '@angular/platform-browser';
 
 describe('PozosFormComponent', () => {
   let component: PozosFormComponent;
@@ -106,6 +108,38 @@ describe('PozosFormComponent', () => {
     expect(component.datoTecnicoEditable('cementacion')).toBeFalse();
     expect(desarrollo.readonly).toBeFalse();
   });
+
+  it('ofrece estándares sólo en históricos y completa vacíos sin reemplazar textos existentes', () => {
+    const selector = 'ion-button.aplicar-estandares';
+    expect(fixture.nativeElement.querySelector(selector)).toBeNull();
+    const antes = { ...component.pozo() };
+    component.aplicarValoresEstandar();
+    expect(component.pozo()).toEqual(antes);
+    fixture.componentRef.setInput('historico', true);
+    fixture.componentRef.setInput('pozo', { ...antes, metodo_sedimentario: ' Método original ', desarrollo: 'Desarrollo documentado', cementacion: null, metodo_rocoso: '  ' });
+    fixture.detectChanges();
+    const cambio = spyOn(component.cambiado, 'emit');
+    fixture.debugElement.query(By.css(selector)).triggerEventHandler('click');
+    fixture.detectChanges();
+    expect(component.pozo()).toEqual({ ...antes, metodo_sedimentario: ' Método original ', desarrollo: 'Desarrollo documentado',
+      cementacion: DATOS_TECNICOS_ESTANDAR.cementacion, metodo_rocoso: DATOS_TECNICOS_ESTANDAR.metodo_rocoso });
+    expect(cambio).toHaveBeenCalledTimes(1);
+    expect(fixture.nativeElement.querySelector(selector).disabled).toBeTrue();
+    component.aplicarValoresEstandar();
+    expect(cambio).toHaveBeenCalledTimes(1);
+  });
+
+  for (const bloqueo of ['guardando', 'soloLectura']) {
+    it(`no aplica estándares con ${bloqueo}`, () => {
+      fixture.componentRef.setInput('historico', true);
+      fixture.componentRef.setInput(bloqueo, true);
+      fixture.detectChanges();
+      const antes = { ...component.pozo() };
+      component.aplicarValoresEstandar();
+      expect(component.pozo()).toEqual(antes);
+      expect(fixture.nativeElement.querySelector('ion-button.aplicar-estandares').disabled).toBeTrue();
+    });
+  }
 
   it('el perforador guarda solo un nombre provisional y no emite alta de usuario', () => {
     fixture.componentRef.setInput('administrarPropietarios', false);

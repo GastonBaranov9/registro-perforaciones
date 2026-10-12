@@ -1,3 +1,4 @@
+// Contrato con frontend verificado en test/datos-tecnicos-estandar-contrato.test.ts.
 export const DATOS_TECNICOS_ESTANDAR = Object.freeze({
   desarrollo: "Fue realizado el desarrollo con aire comprimido.",
   cementacion: "Es el espacio anular entre el tubo de protección sanitario y el revestimiento que fue cementado.",

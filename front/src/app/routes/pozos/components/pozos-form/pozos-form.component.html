@@ -173,6 +173,13 @@
       ></ion-input>
     </ion-item>
 
+    @if (historico()) {
+      <ion-button class="aplicar-estandares" type="button" fill="outline" (click)="aplicarValoresEstandar()"
+        [disabled]="guardando() || soloLectura() || !hayDatosTecnicosVacios()"
+        aria-describedby="ayuda-estandares-historicos">Aplicar valores estándar</ion-button>
+      <p id="ayuda-estandares-historicos">Completa únicamente los campos vacíos de método sedimentario, método rocoso, cementación y desarrollo. Conserva los textos existentes. Aplicá estos valores sólo si corresponden; los datos desconocidos pueden quedar vacíos. Podés editar o borrar los textos después.</p>
+    }
+
     <ion-item class="dato-estandar" [class.dato-estandar--editable]="datoTecnicoEditable('metodo_sedimentario')">
       <ion-label position="stacked">Método sedimentario</ion-label>
       <ion-input [disabled]="guardando()"

@@ -10,7 +10,7 @@ import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
 import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
 import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
-import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
 import { ProtectedResourceDirective } from '../../../../core/resources/protected-resource.directive';
 import { huellaPropietario } from '../../../../shared/utils/estado-formulario-perforacion';
@@ -100,6 +100,17 @@ export class PozosFormComponent implements OnDestroy {
     }
   }
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
+  private readonly camposEstandar = Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[];
+  hayDatosTecnicosVacios(): boolean {
+    return this.camposEstandar.some(campo => !this.pozo()[campo]?.trim());
+  }
+  aplicarValoresEstandar(): void {
+    if (!this.historico() || this.guardando() || this.soloLectura() || !this.hayDatosTecnicosVacios()) return;
+    for (const campo of this.camposEstandar) {
+      if (!this.pozo()[campo]?.trim()) this.pozo()[campo] = DATOS_TECNICOS_ESTANDAR[campo];
+    }
+    this.notificarCambio();
+  }
   datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.historico() || this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
     this.camposTecnicosEditables.update((actual) => new Set(actual).add(campo));

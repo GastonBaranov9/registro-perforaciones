@@ -1,6 +1,21 @@
 import { cuerpoHistorico, tecnicosVacios } from './historicos-form';
+import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../constants/datos-tecnicos-estandar';
+import { NuevoPozo } from '../types/schemas';
 
 describe('Payload histórico completo',()=>{
+  for (const valor of [undefined, null, '', '   ']) {
+    it(`conserva desconocidos (${JSON.stringify(valor)}) como omisión al crear y NULL al editar`, () => {
+      const pozo: NuevoPozo = { id_propietario: null, id_perforador: 0, id_sitio: 0 };
+      for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[]) Object.assign(pozo, { [campo]: valor });
+      const sitio = { departamento: '', localidad: '', latitud: '', longitud: '' };
+      const nuevo = cuerpoHistorico(pozo, sitio, tecnicosVacios(), false);
+      const edicion = cuerpoHistorico(pozo, sitio, tecnicosVacios(), true);
+      for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR)) {
+        expect(campo in nuevo).toBeFalse();
+        expect(edicion[campo]).toBeNull();
+      }
+    });
+  }
   it('omite desconocidos al crear y no introduce defaults ni identidades editables',()=>{
     const body=cuerpoHistorico({id_propietario:null,id_perforador:0,id_sitio:0,numero_perforacion:3281},{departamento:'',localidad:'',latitud:'',longitud:''},tecnicosVacios(),false);
     expect(body).toEqual({});
