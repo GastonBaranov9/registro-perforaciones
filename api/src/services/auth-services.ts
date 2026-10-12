@@ -56,9 +56,10 @@ export async function logUser(
 
 export async function rolUser(
   id_usuario: number,
-  rol_nombre: string
+  rol_nombre: string,
+  db: Pick<typeof myPool, 'query'> = myPool,
 ): Promise<boolean> {
-  const { rows } = await myPool.query(
+  const { rows } = await db.query(
     `
       SELECT 1
       FROM usuario_rol ur

@@ -9,7 +9,7 @@ type Consultable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
 export async function listarCandidatosPozo(
   idSesion: number,
-  esAdmin: boolean,
+  puedeElegirCualquierPerforador: boolean,
   db: Consultable = myPool,
   filtros: { propietario?: string; perforador?: string; limite?: number; propietarioId?: number; perforadorId?: number } = {},
 ): Promise<{ propietarios: CandidatoPozo[]; perforadores: CandidatoPozo[] }> {
@@ -19,7 +19,7 @@ export async function listarCandidatosPozo(
   const propietarios = propietario || filtros.propietarioId
     ? await candidatosPorRol("propietario", db, undefined, propietario, limite, filtros.propietarioId)
     : [];
-  const perforadores = esAdmin
+  const perforadores = puedeElegirCualquierPerforador
     ? (perforador || filtros.perforadorId
       ? await candidatosPorRol("perforador", db, undefined, perforador, limite, filtros.perforadorId)
       : [])

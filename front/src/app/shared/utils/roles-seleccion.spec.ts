@@ -5,6 +5,13 @@ import {
 } from './roles-seleccion';
 
 describe('validarRolesSeleccionados', () => {
+  it('impide administración junto con operador usando los nombres del catálogo', () => {
+    const roles: Rol[] = ['administracion', 'operador_administrativo', 'perforador', 'propietario']
+      .map((nombre, i) => ({ id_rol: i + 1, nombre, descr: nombre }));
+    expect(() => validarRolesSeleccionados([roles[0], { ...roles[1], nombre: 'nombre-falso' }], roles)).toThrowError(/no pueden asignarse/);
+    expect(validarRolesSeleccionados(roles.slice(1), roles)).toEqual(roles.slice(1));
+    expect(validarRolesSeleccionados([roles[0], ...roles.slice(2)], roles)).toEqual([roles[0], ...roles.slice(2)]);
+  });
   const catalogo: Rol[] = [
     { id_rol: 10, nombre: 'rol-a', descr: 'Rol A' },
     { id_rol: 20, nombre: 'rol-b', descr: 'Rol B' },

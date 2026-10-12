@@ -33,6 +33,7 @@ async function fixture(t: TestContext) {
       assert.deepEqual(params, [7]);
       return { rows: [{ activo: estado.activo, version_sesion: estado.version }] };
     }
+    if (sql.includes('SELECT r.nombre FROM rol r')) return { rows: estado.roles.map(nombre => ({ nombre })) };
     if (sql.includes('FROM usuario_rol')) {
       assert.equal(params[0], 7);
       return { rows: estado.roles.includes(String(params[1])) ? [{}] : [] };
@@ -52,7 +53,7 @@ async function fixture(t: TestContext) {
     if (route.method === 'HEAD') return;
     registradas.push(`${route.method} ${route.url}`);
     assert.deepEqual(route.onRequest, [app.authenticate]);
-    assert.deepEqual(route.preHandler, [app.pozoIsFromUser, app.userIsPropietarioOrPerforadorOrAdmin]);
+    assert.deepEqual(route.preHandler, [app.pozoIsFromUser, app.puedeConsultarRecursos]);
     if (route.method === 'POST') assert.equal(route.config?.pozoSoloLectura, true);
     // Mantener schemas y hooks reales; aislar sólo el contenido después de autorizar.
     route.handler = async (_req, rep) => {

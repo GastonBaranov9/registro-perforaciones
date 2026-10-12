@@ -5,7 +5,7 @@ import { myPool } from '../src/db/pool.ts';
 import pozoRoutes from '../src/routes/pozos.ts';
 
 const casos = [
-  ['administracion'], ['perforador'], ['propietario'],
+  ['administracion'], ['perforador'], ['propietario'], ['operador_administrativo'], ['operador_administrativo', 'perforador', 'propietario'],
   ['administracion', 'perforador'], ['administracion', 'propietario'],
   ['administracion', 'perforador', 'propietario'], ['propietario', 'perforador'], [],
 ];
@@ -13,7 +13,7 @@ for (const roles of casos) {
   test(`GET pozos: ${roles.join(' + ') || 'sin permisos'} usa alcance de sesión`, async () => {
     const consultas: { sql: string; params?: unknown[] }[] = [];
     const original = myPool.query;
-    const admin = roles.includes('administracion');
+    const admin = roles.includes('administracion') || roles.includes('operador_administrativo');
     const alcance = admin ? '1=1' : roles.includes('propietario') ? 'id_propietario = $1' : 'id_perforador = $1';
     myPool.query = (async (sql: string, params?: unknown[]) => {
       consultas.push({ sql, params });
@@ -31,7 +31,7 @@ for (const roles of casos) {
     }) as typeof myPool.query;
     const app = Fastify();
     app.decorate('authenticate', async req => { (req as unknown as { user: { sub: number } }).user = { sub: 7 }; });
-    for (const hook of ['userIsAdmin', 'pozoIsFromUser', 'userIsAdminOrPerforador', 'userIsPropietarioOrPerforadorOrAdmin']) app.decorate(hook, async () => {});
+    for (const hook of ['puedeOperarTodosLosPozos', 'userIsAdmin', 'pozoIsFromUser', 'puedeOperarPozos', 'puedeConsultarRecursos']) app.decorate(hook, async () => {});
     try {
       await app.register(pozoRoutes);
       // URL deliberately differs: identity must come from authenticated sub.

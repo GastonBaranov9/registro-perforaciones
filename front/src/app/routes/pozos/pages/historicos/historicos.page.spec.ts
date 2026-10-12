@@ -29,11 +29,30 @@ describe('Carga histórica separada',()=>{
   beforeEach(()=>{
     sessionStorage.removeItem(storage);
     TestBed.configureTestingModule({imports:[HistoricosPage],providers:[provideHttpClient(),provideHttpClientTesting(),provideRouter([]),
-      {provide:AuthService,useValue:{userId:()=>1}},
+      {provide:AuthService,useValue:{userId:()=>1,puedeGestionarHistoricos:()=>true,puedeAdministrarUsuarios:()=>true}},
       {provide:CandidatosPozoService,useValue:{obtener:async()=>({propietarios:[],perforadores:[]})}}]});
     page=TestBed.createComponent(HistoricosPage).componentInstance;http=TestBed.inject(HttpTestingController);
   });
   afterEach(()=>{http.verify();sessionStorage.removeItem(storage);});
+
+  it('operador selecciona personas existentes y carga técnicos, sin crear ni editar identidades', async () => {
+    spyOn(TestBed.inject(AuthService), 'puedeAdministrarUsuarios').and.returnValue(false);
+    const fixture = TestBed.createComponent(HistoricosPage);
+    page = fixture.componentInstance;
+    page.cargado.set(true);
+    fixture.detectChanges();
+    const formulario = fixture.debugElement.query(By.directive(PozosFormComponent)).componentInstance as PozosFormComponent;
+    expect(formulario.seleccionarPropietarios()).toBeTrue();
+    expect(formulario.administrarPropietarios()).toBeFalse();
+    expect(fixture.nativeElement.textContent).not.toContain('REGISTRAR PROPIETARIO');
+    expect(fixture.nativeElement.textContent).not.toContain('EDITAR DATOS DEL PROPIETARIO');
+    expect(fixture.debugElement.query(By.directive(DatosTecnicosBorradorComponent))).not.toBeNull();
+    const crear = spyOn(TestBed.inject(PropietariosOperativosService), 'crear');
+    const actualizar = spyOn(TestBed.inject(PropietariosOperativosService), 'actualizar');
+    await page.crearPropietario({ nombre: 'Intento' });
+    await page.actualizarPropietario({ id: 5, body: { nombre: 'Intento' } });
+    expect(crear).not.toHaveBeenCalled(); expect(actualizar).not.toHaveBeenCalled();
+  });
 
   async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string>> = {}) {
     const fixture = TestBed.createComponent(HistoricosPage);

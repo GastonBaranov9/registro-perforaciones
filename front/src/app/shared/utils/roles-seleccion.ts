@@ -54,5 +54,8 @@ export function validarRolesSeleccionados(
     throw new Error('La selección contiene roles que no están disponibles.');
   }
 
-  return Array.from(idsSeleccionados).map((idRol) => catalogoPorId.get(idRol)!);
+  const seleccion = Array.from(idsSeleccionados).map((idRol) => catalogoPorId.get(idRol)!);
+  if (seleccion.some(r => r.nombre.toLowerCase() === 'administracion') && seleccion.some(r => r.nombre.toLowerCase() === 'operador_administrativo'))
+    throw new Error('Administración y operador administrativo no pueden asignarse a la misma cuenta.');
+  return seleccion;
 }

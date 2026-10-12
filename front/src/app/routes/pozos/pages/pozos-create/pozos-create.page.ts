@@ -72,7 +72,7 @@ export class PozosCreatePage {
   }
 
   async ionViewWillEnter() {
-    if (this.authService.isNative() && this.authService.tieneRol('perforador') && !this.authService.tieneRol('administracion')) {
+    if (this.authService.isNative() && this.authService.tieneRol('perforador') && !this.authService.puedeOperarTodosLosPozos()) {
       await this.router.navigateByUrl('/trabajo-local'); return;
     }
     if (!this.catalogos()) await this.cargarCatalogos();

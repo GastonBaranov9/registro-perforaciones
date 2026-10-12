@@ -60,6 +60,7 @@ export class PozosFormComponent implements OnDestroy {
   public perforadorBloqueado = input(false);
   public administrarNumeracion = input(false);
   public administrarPropietarios = input(false);
+  public seleccionarPropietarios = input(false);
   public textoGuardar = input('Guardar pozo');
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();

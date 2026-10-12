@@ -33,8 +33,8 @@ import { AuthService } from '../../../../shared/services/auth-service/auth.servi
 })
 export class HistoricosPage {
   private http = inject(HttpClient); private router = inject(Router); private candidatos = inject(CandidatosPozoService);
-  private auth = inject(AuthService);
-  private storageKey() { const actor = this.auth.userId(); if (!actor) throw new Error('Inicie sesión como administrador.'); return `historico-pendiente:${environment.apiURL}:${actor}`; }
+  readonly auth = inject(AuthService);
+  private storageKey() { const actor = this.auth.userId(); if (!actor) throw new Error('Inicie sesión con permiso para carga histórica.'); return `historico-pendiente:${environment.apiURL}:${actor}`; }
   propietarios = signal<CandidatoPozo[]>([]); perforadores = signal<CandidatoPozo[]>([]);
   error = signal(''); ocupado = signal(false); retirada = signal(false);
   resultado = signal<{ id_pozo: number; numero_perforacion: number } | null>(null);
@@ -191,12 +191,12 @@ export class HistoricosPage {
     this.guardadoPendiente = undefined; this.recargaPendiente.set(false);
   }
   async crearPropietario(body:PropietarioOperativoCrearBody){
-    if(this.ocupado()||this.envio)return;this.ocupado.set(true);
+    if(!this.auth.puedeAdministrarUsuarios()||this.ocupado()||this.envio)return;this.ocupado.set(true);
     try{const enviado={...body},formulario=this.formulario;const p=await this.propietariosService.crear(enviado);formulario?.confirmarPropietarioCreado(enviado);this.propietarios.update(xs=>[p,...xs]);this.pozo.update(x=>({...x,id_propietario:p.id_usuario,propietario_provisional:null}));}
     catch(e){this.error.set(String(e));}finally{this.ocupado.set(false);}
   }
   async actualizarPropietario(event:{id:number;body:PropietarioOperativoActualizarBody}){
-    if(this.ocupado()||this.envio)return;this.ocupado.set(true);
+    if(!this.auth.puedeAdministrarUsuarios()||this.ocupado()||this.envio)return;this.ocupado.set(true);
     try{const enviado={...event.body},formulario=this.formulario;const p=await this.propietariosService.actualizar(event.id,enviado);formulario?.confirmarPropietarioActualizado(event.id,enviado);this.propietarios.update(xs=>xs.map(x=>x.id_usuario===event.id?{...x,...p}:x));}
     catch(e){this.error.set(String(e));}finally{this.ocupado.set(false);}
   }

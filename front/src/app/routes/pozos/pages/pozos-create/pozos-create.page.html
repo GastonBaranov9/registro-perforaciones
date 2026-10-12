@@ -12,12 +12,12 @@
         <div [inert]="disabled() || !!creado()" [attr.aria-busy]="disabled()">
         <app-pozos-form
           [pozo]="nuevoPozo()"
-          [administrarPropietarios]="authService.tieneRol('administracion')"
+          [seleccionarPropietarios]="authService.puedeOperarTodosLosPozos()" [administrarPropietarios]="authService.tieneRol('administracion')"
           [administrarNumeracion]="authService.tieneRol('administracion')"
           [propietarios]="personas.propietarios" [perforadores]="personas.perforadores" [catalogosDisponibles]="true"
           [sitioNuevo]="sitioNuevo()"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
-          [perforadorBloqueado]="!authService.tieneRol('administracion')"
+          [perforadorBloqueado]="!authService.puedeOperarTodosLosPozos()"
           (saved)="guardarPozo($event)"
           [id_pozo]="null"
           [agregareditar]="false"

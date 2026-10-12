@@ -8,7 +8,7 @@ test("el preview arbitrario exige el contrato de edición y no habilita propieta
   const fin = fuente.indexOf("/usuarios/:id_usuario/sitios/:id_sitio/mapa-aereo\"", inicio);
   assert.ok(inicio >= 0 && fin > inicio);
   const preview = fuente.slice(inicio, fin);
-  assert.match(preview, /preHandler: \[fastify\.userIsAdminOrPerforador\]/);
+  assert.match(preview, /preHandler: \[fastify\.puedeOperarPozos\]/);
   assert.match(preview, /sitioEsGestionablePorPerforador\(id_sitio, req\.user\.sub\)/);
   assert.doesNotMatch(preview, /rolUser\(req\.user\.sub,\s*["']propietario/);
   assert.match(preview, /obtenerMapaEstatico/);

@@ -151,6 +151,7 @@ test('endpoint real: autenticación, permiso administrativo, descarga fresca, he
     { ...base, numero_perforacion: null, longitud: null }];
   t.mock.method(myPool, 'query', async (sql: string, params: unknown[]) => {
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo: true, version_sesion: 1 }] };
+    if (sql.includes('SELECT r.nombre FROM rol r')) return { rows: roles.map(nombre => ({ nombre })) };
     if (sql.includes('FROM usuario_rol')) {
       assert.deepEqual(params, [7, 'administracion']);
       return { rows: roles.includes(String(params[1])) ? [{}] : [] };
@@ -186,7 +187,7 @@ test('endpoint real: autenticación, permiso administrativo, descarga fresca, he
       assert.ok(!respuesta.body.includes('José'));
     });
   }
-  for (const caso of [['administracion'], ['administracion', 'perforador', 'propietario']]) {
+  for (const caso of [['operador_administrativo'], ['administracion'], ['administracion', 'perforador', 'propietario']]) {
     await t.test(`${caso.join('+')} descarga KML con contadores`, async () => {
       roles = caso;
       const respuesta = await app.inject(peticion);
@@ -203,18 +204,20 @@ test('endpoint real: autenticación, permiso administrativo, descarga fresca, he
   }
   await t.test('cada descarga refleja una lectura nueva, incluso si queda vacía', async () => {
     filas = [];
+    const lecturasAntes = lecturas;
     const respuesta = await app.inject(peticion);
-    assert.equal(lecturas, 3);
+    assert.equal(lecturas, lecturasAntes + 1);
     assert.equal(respuesta.headers['x-kml-exportadas'], '0');
     assert.equal(respuesta.headers['x-kml-omitidas'], '0');
     assert.equal(xml(respuesta.body).getElementsByTagName('Placemark').length, 0);
   });
   await t.test('CORS no autoriza origins adicionales ni wildcard para la exportación', async () => {
+    const lecturasAntes = lecturas;
     const respuesta = await app.inject({ method: 'OPTIONS', url: peticion.url, headers: {
       origin: 'https://otro.example.test', 'access-control-request-method': 'GET',
     } });
     assert.equal(respuesta.headers['access-control-allow-origin'], undefined);
     assert.equal(respuesta.headers['access-control-expose-headers'] ?? '', '');
-    assert.equal(lecturas, 3);
+    assert.equal(lecturas, lecturasAntes);
   });
 });

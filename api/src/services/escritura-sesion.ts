@@ -1,10 +1,12 @@
+import { exigirCapacidad, puedeOperarTodosLosPozos, type Capacidad } from './capacidades.ts';
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import { T05NoAutorizado } from "../models/errors.ts";
-import { exigirEdicionPozo, exigirEdicionSitio } from "./edicion-pozo.ts";
+import { exigirEdicionPozo, exigirEdicionSitio, puedeOperarSitioGlobal } from "./edicion-pozo.ts";
 
 interface SesionEscritura {
+  capacidad?: Capacidad;
   idUsuario: number;
   versionSesion: number;
   idSesionNativa?: number;
@@ -52,18 +54,12 @@ export async function iniciarEscrituraSesion(client: Pick<PoolClient, "query">, 
     );
     if (!nativa.rows[0]) throw new T05NoAutorizado();
   }
+  if (sesion.capacidad) await exigirCapacidad(sesion.idUsuario, sesion.capacidad, client);
   // Recheck the time window after waiting for transaction locks.
-  if (sesion.idPozo || sesion.idSitio) {
-    const admin = await client.query(
-      `SELECT 1 FROM usuario_rol ur JOIN rol r ON ur.id_rol=r.id_rol
-       WHERE ur.id_usuario=$1 AND LOWER(r.nombre)=LOWER($2)`,
-      [sesion.idUsuario, "administracion"],
-    );
-    if (!admin.rows.length) {
-      if (sesion.idPozo) await exigirEdicionPozo(sesion.idPozo, sesion.idUsuario, client);
-      if (sesion.idSitio) await exigirEdicionSitio(sesion.idSitio, sesion.idUsuario, client);
-    }
-  }
+  if (sesion.idPozo && !await puedeOperarTodosLosPozos(sesion.idUsuario, client))
+    await exigirEdicionPozo(sesion.idPozo, sesion.idUsuario, client);
+  if (sesion.idSitio && !await puedeOperarSitioGlobal(sesion.idSitio, sesion.idUsuario, client, true))
+    await exigirEdicionSitio(sesion.idSitio, sesion.idUsuario, client);
   protegidos.set(client, sesion);
 }
 

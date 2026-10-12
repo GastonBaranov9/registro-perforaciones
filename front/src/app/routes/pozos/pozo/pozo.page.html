@@ -4,10 +4,10 @@
       <h5 class="rojo">MENU PERFORACIONES</h5>
     </div>
     <div class="contenedor-pozos">
-      @if (authService.tieneRol('administracion')) { <app-estilo-paginas titulo="CARGA HISTÓRICA" link="/pozos-historicos" /> }
+      @if (authService.puedeGestionarHistoricos()) { <app-estilo-paginas titulo="CARGA HISTÓRICA" link="/pozos-historicos" /> }
       @if (authService.isNative() && authService.tieneRol('perforador')) { <app-estilo-paginas titulo="TRABAJO DE CAMPO · BORRADORES" link="/trabajo-local" /> }
       @if (authService.tieneRol('administracion')) { <app-estilo-paginas titulo="NUMERACIÓN DE PERFORACIONES" link="/pozos-numeracion" /> }
-      @if (authService.tieneRol('administracion') || authService.tieneRol('perforador')) {
+      @if (authService.puedeAdministrarPozos()) {
         <app-estilo-paginas titulo="CREAR POZOS" link="/pozos-create"> </app-estilo-paginas>
       }
       <app-estilo-paginas titulo="LISTA DE POZOS" link="/pozos-list"> </app-estilo-paginas>

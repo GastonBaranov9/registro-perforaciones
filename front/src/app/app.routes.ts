@@ -3,11 +3,11 @@ import { cambiosPerforacionGuard } from './core/guards/cambios-perforacion.guard
 import { Routes } from '@angular/router';
 import { offlineGuard } from './core/guards/offline.guard';
 import { HomePage } from './routes/home/home.page';
-import { isAdminGuard, isloggedGuard, isPerfOrAdminGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
+import { puedeGestionarHistoricosGuard, isAdminGuard, isloggedGuard, puedeOperarPozosGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
-  { path: 'pozos-historicos/:id_pozo/editar', canActivate: [isloggedGuard, isAdminGuard], canDeactivate: [cambiosPerforacionGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Editar perforación histórica' },
-  { path: 'pozos-historicos', canActivate: [isloggedGuard, isAdminGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Nueva perforación histórica' },
+  { path: 'pozos-historicos/:id_pozo/editar', canActivate: [isloggedGuard, puedeGestionarHistoricosGuard], canDeactivate: [cambiosPerforacionGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Editar perforación histórica' },
+  { path: 'pozos-historicos', canActivate: [isloggedGuard, puedeGestionarHistoricosGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Nueva perforación histórica' },
   { path: 'trabajo-local', canActivate: [offlineGuard], loadComponent: async () => (await import('./routes/offline/offline.page')).OfflinePage, title: 'Trabajo de campo' },
   {
     path: 'pozos-numeracion', canActivate: [isloggedGuard, isAdminGuard],
@@ -59,7 +59,7 @@ export const routes: Routes = [
   {
     path: 'pozos/:id_pozo/aportes-create',
 
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('./routes/pozos/pages/tecnica/aportes/aportes-create/aportes-create.page'))
         .AportesCreatePage,
@@ -68,7 +68,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/aportes-edit/:id_nivel_aporte',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('./routes/pozos/pages/tecnica/aportes/aportes-edit/aportes-edit.page'))
         .AportesEditPage,
@@ -86,7 +86,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-diametros-create',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -98,7 +98,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-diametros-edit/:id_intervalo_diametro',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -122,7 +122,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-create',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -134,7 +134,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-edit/:id_intervalo_litologico',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
         await import(
@@ -164,7 +164,7 @@ export const routes: Routes = [
   },
   {
     path: 'pozo-edit/:id_pozo',
-    canActivate: [isloggedGuard, isPerfOrAdminGuard, edicionPozoGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('../app/routes/pozos/pages/pozo-edit/pozo-edit.page')).PozoEditPage,
     title: 'pozo-edit',
@@ -173,7 +173,7 @@ export const routes: Routes = [
   {
     path: 'pozos-create',
     canDeactivate: [cambiosPerforacionGuard],
-    canActivate: [isloggedGuard, isPerfOrAdminGuard],
+    canActivate: [isloggedGuard, puedeOperarPozosGuard],
     loadComponent: async () =>
       (await import('../app/routes/pozos/pages/pozos-create/pozos-create.page')).PozosCreatePage,
     title: 'Crear pozo',

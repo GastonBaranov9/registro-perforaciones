@@ -12,7 +12,7 @@ import multipart from '@fastify/multipart';
 
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
 
-test('session writes: PostgreSQL real, HTTP web/Android, locks, rollback and 37 operations', { timeout: 120_000 }, async t => {
+test('session writes: PostgreSQL real, HTTP web/Android, locks, rollback and 40 operations', { timeout: 120_000 }, async t => {
   const port = Number(process.env.RSP_SESSION_TEST_PORT);
   assert.ok(Number.isInteger(port) && port >= 1024 && port !== 5432, 'Require explicit disposable PostgreSQL port, never 5432');
   const database = `rsp_session_test_${process.pid}_${Date.now()}`;
@@ -163,6 +163,9 @@ test('session writes: PostgreSQL real, HTTP web/Android, locks, rollback and 37 
       ['POST','/litologias',{...litologia,codigo:'prueba'}], ['PUT','/litologias/1',litologia],
       ['PATCH','/litologias/1/activar'], ['PATCH','/litologias/1/desactivar'],
       ['POST','/usuarios',cuenta], ['PUT','/usuarios/4',cuenta], ['DELETE','/usuarios/4'], ['PUT',`/usuarios/4/roles/${perfRole.id_rol}`],
+      ['POST','/usuarios/personas/4/acceso',{email:cuenta.email,password,confirmar:password}],
+      ['DELETE','/usuarios/personas/4'],
+      ['POST','/pozos/offline/12345678-1234-4234-8234-123456789abc/cerrar'],
       ['POST','/roles',{nombre:'Prueba',descr:'Prueba'}], ['PUT',`/roles/${perfRole.id_rol}`,{nombre:'Prueba',descr:'Prueba'}], ['DELETE',`/roles/${perfRole.id_rol}`],
     ];
     for (const [resource, data] of [
@@ -171,7 +174,7 @@ test('session writes: PostgreSQL real, HTTP web/Android, locks, rollback and 37 
       ['intervalos_filtro',{desde_m:20,hasta_m:30,diametro_pulg:6,material_tuberia:'PVC',ranura_mm:0.75}],
       ['niveles_aporte',{profundidad_m:25}],
     ] as const) cases.push(['POST',`${p}/${resource}`,data],['PUT',`${p}/${resource}/1`,data],['DELETE',`${p}/${resource}/1`]);
-    assert.equal(cases.length,37);
+    assert.equal(cases.length,40);
     const snapshot = async () => {
       const state: Record<string,unknown> = {};
       for (const table of ['pozo','sitio','intervalo_litologico','intervalo_diametro_perforacion','intervalo_filtro','nivel_aporte','catalogo_litologia','numeracion_perforacion','numero_perforacion_reservado','rol','usuario_rol'])
@@ -239,7 +242,11 @@ test('session writes: PostgreSQL real, HTTP web/Android, locks, rollback and 37 
       assert.equal((await app.inject({method:'DELETE',url:p,...auth})).statusCode,403);
     });
     const inventory=recorded.filter(r=>!r.includes('/auth/')&&!r.includes('/perfil-litologico/vista-previa')&&r!=='POST /usuarios/:id_usuario/pozos');
-    assert.equal(inventory.length,37,'all registered domain/admin mutations accounted for');
+    assert.equal(inventory.length,cases.length,'all registered domain/admin mutations accounted for');
+    for (const route of inventory) {
+      const pattern = new RegExp('^' + route.replace(/:[a-z_]+/g, '[^/]+') + '$');
+      assert.ok(cases.some(([method,url]) => pattern.test(`${method} ${url}`)), `Missing case: ${route}`);
+    }
   } finally {
     pause?.resume.resolve();
     await held.query('SELECT pg_advisory_unlock_all()'); held.release();

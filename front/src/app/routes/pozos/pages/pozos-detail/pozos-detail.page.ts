@@ -110,7 +110,7 @@ export class PozosDetailPage implements ViewWillEnter {
     }
   }
   public irAEditarHistorico() {
-    if(this.authService.tieneRol('administracion') && this.pozo()?.origen==='historico')void this.router.navigate(['/pozos-historicos',this.id_pozo,'editar']);
+    if(this.authService.puedeGestionarHistoricos() && this.pozo()?.origen==='historico')void this.router.navigate(['/pozos-historicos',this.id_pozo,'editar']);
   }
   public irAEditarPozo() {
     if (!this.permisos.puedeEditar(this.pozo())) return;

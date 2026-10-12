@@ -1,3 +1,4 @@
+import { tieneCapacidad, puedeOperarTodosLosPozos, type Capacidad } from '../services/capacidades.ts';
 import { contextoEscritura } from "../services/escritura-sesion.ts";
 import { exigirEdicionPozo } from "../services/edicion-pozo.ts";
 import fastifyJwt from "@fastify/jwt";
@@ -98,7 +99,7 @@ export default fastifyPlugin(async function (fastify) {
     secret,
     cookie: { cookieName: SESSION_COOKIE, signed: false },
   });
-  const authenticatedRequests = new WeakMap<object, { idUsuario: number }>();
+  const authenticatedRequests = new WeakMap<object, { idUsuario: number; capacidad?: Capacidad }>();
 
   // Carry verified identity only. Transactions remain owned by the services.
   fastify.addHook("onRoute", (route) => {
@@ -108,6 +109,7 @@ export default fastifyPlugin(async function (fastify) {
       const params = req.params as Record<string, string>;
       const mutacion = !["GET", "HEAD", "OPTIONS"].includes(req.method) && !req.routeOptions.config.pozoSoloLectura;
       return contextoEscritura.run({
+        capacidad: authenticatedRequests.get(req)?.capacidad,
         idUsuario: Number(req.user.sub), versionSesion: Number(req.user.version_sesion),
         idSesionNativa: req.nativeAuth?.session.idSesionNativa,
         expiresAt: req.authMechanism === "web-cookie" ? Number(req.user.exp) * 1000 : undefined,
@@ -199,6 +201,7 @@ export default fastifyPlugin(async function (fastify) {
     const { sub } = req.user as { sub: number };
     const ok = await rolUser(sub, "administracion");
     if (!ok) throw new err.T05SinPermiso();
+    authenticatedRequests.get(req)!.capacidad = "administrarUsuarios";
   });
   fastify.decorate("userIsPerforador", async function (req, rep) {
     await (fastify as any).authenticate(req, rep);
@@ -244,11 +247,32 @@ export default fastifyPlugin(async function (fastify) {
       if (!(isAdmin || IsPerforador)) throw new err.T05SinPermiso();
     }
   );
+  for (const [nombre, capacidad] of [
+    ['puedeOperarPozos', 'escribirPozos'],
+    ['puedeOperarTodosLosPozos', 'operarTodosLosPozos'],
+    ['puedeGestionarHistoricos', 'gestionarHistoricos'],
+    ['puedeConsultarRecursos', 'consultarRecursos'],
+  ] as const) {
+    fastify.decorate(nombre, async function (req: FastifyRequest, rep: FastifyReply) {
+      await fastify.authenticate(req, rep);
+      if (!await tieneCapacidad(Number(req.user.sub), capacidad)) {
+        // La cuenta puede haberse revocado entre onRequest y preHandler.
+        // Conservar 401 para esa sesión; 403 sólo para falta de capacidad.
+        const estado = await getEstadoSesionUsuario(Number(req.user.sub));
+        if (!sesionVigente(estado, Number(req.user.version_sesion))) throw new err.T05NoAutorizado();
+        throw new err.T05SinPermiso();
+      }
+      authenticatedRequests.get(req)!.capacidad = capacidad;
+    });
+  }
   fastify.decorate("pozoIsFromUser", async function (req: any, rep: any) {
     await (fastify as any).authenticate(req, rep);
     const { sub } = req.user as { sub: number };
     const { id_pozo } = req.params as { id_pozo: number };
-    if (await rolUser(sub, "administracion")) return;
+    if (await puedeOperarTodosLosPozos(sub)) return;
+    // Este hook también puede preceder al control de capacidad operativa.
+    const estado = await getEstadoSesionUsuario(Number(sub));
+    if (!sesionVigente(estado, Number(req.user.version_sesion))) throw new err.T05NoAutorizado();
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !req.routeOptions.config.pozoSoloLectura) {
       if (!(await rolUser(sub, "perforador"))) throw new err.T05SinPermiso();
       await exigirEdicionPozo(id_pozo, sub);
@@ -295,6 +319,10 @@ declare module "fastify" {
       req: FastifyRequest,
       rep: FastifyReply,
     ) => Promise<void>;
+    puedeOperarPozos: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    puedeOperarTodosLosPozos: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    puedeGestionarHistoricos: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
+    puedeConsultarRecursos: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
     userIsAdmin: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
     userIsPerforador: (req: FastifyRequest, rep: FastifyReply) => Promise<void>;
     userIsPropietario: (

@@ -1,5 +1,5 @@
 <ion-content>
-  @if (authService.tieneRol('administracion')) {
+  @if (authService.puedeOperarTodosLosPozos()) {
     <ion-button id="exportar-kml" expand="block" [disabled]="exportandoKml()" (click)="exportarKml()">
       {{ exportandoKml() ? 'Exportando…' : 'Exportar Google Earth (KML)' }}
     </ion-button>

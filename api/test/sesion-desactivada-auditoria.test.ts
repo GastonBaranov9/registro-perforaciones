@@ -82,6 +82,8 @@ async function fixture(t: TestContext, pausa?: { entered: () => void; wait: Prom
       if (values[5]) state.version++;
       return result([{ id_usuario: empleado, email: values[1], nombre: values[2], activo: state.activo, fecha_registro: fecha }]);
     }
+    if (sql.startsWith('SELECT nombre FROM rol WHERE id_rol')) return result([rol]);
+    if (sql.includes('SELECT r.nombre FROM rol r')) return result([{ nombre: values[0] === administrador ? 'administracion' : 'perforador' }]);
     if (sql.includes('FROM usuario_rol ur')) return result((values[0] === administrador ? values[1] === 'administracion' : values[1] === 'perforador') ? [{}] : []);
     if (sql.includes('FROM rol r')) return result([values[0] === 3 ? { ...rol, nombre: 'propietario' } : rol]);
     if (sql.startsWith('SELECT creado_por, fecha_creado')) return result([{ creado_por: empleado, fecha_creado: fecha }]);

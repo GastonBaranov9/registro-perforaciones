@@ -2,13 +2,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Pool } from 'pg';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
-import { ejecutarMigraciones } from '../src/db/migrator.ts';
+import { DIRECTORIO_MIGRACIONES, ejecutarMigraciones } from '../src/db/migrator.ts';
 
 test('carga historica en PostgreSQL aislada', async t=>{
   const port=Number(process.env.RSP_RESET_TEST_PORT);
@@ -18,14 +19,29 @@ test('carga historica en PostgreSQL aislada', async t=>{
   assert.equal((await control.query('SELECT current_user')).rows[0].current_user,'rsp_reset_test');
   await control.query(`CREATE DATABASE ${db}`);
   const fotos=await fs.mkdtemp(path.join(os.tmpdir(),'rsp-epoch-'));
-  Object.assign(process.env,{PGHOST:'127.0.0.1',PGPORT:String(port),PGUSER:'rsp_reset_test',PGDATABASE:db,PGPASSWORD:'',NODE_ENV:'test',FOTOS_DIR:fotos,FASTIFY_SECRET:'isolated-epoch-test-secret'});
+  Object.assign(process.env,{PGHOST:'127.0.0.1',PGPORT:String(port),PGUSER:'rsp_reset_test',PGDATABASE:db,NODE_ENV:'test',FOTOS_DIR:fotos,FASTIFY_SECRET:'isolated-epoch-test-secret'});
   const {myPool:pool}=await import('../src/db/pool.ts');
   const {crearHistorico}=await import('../src/services/historicos-service.ts');
   const app=Fastify();
   try {
-    await ejecutarMigraciones(pool);
-    assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,[]);
+    const previas=path.join(fotos,'migraciones-previas');
+    await fs.mkdir(previas);
+    const archivos=(await fs.readdir(DIRECTORIO_MIGRACIONES)).filter(f=>/^\d{3}_.*\.sql$/.test(f)).sort();
+    for(const file of archivos.filter(f=>f<'018_')) await fs.copyFile(path.join(DIRECTORIO_MIGRACIONES,file),path.join(previas,file));
+    assert.equal((await ejecutarMigraciones(pool,{directorio:previas})).aplicadas.length,18);
     await pool.query("INSERT INTO usuario(id_usuario,nombre,email,password) VALUES(1,'Admin','admin@test.local','test'),(2,'Owner','owner@test.local','test'),(3,'Perf','perf@test.local','test'); INSERT INTO usuario_rol VALUES(1,1),(2,3),(3,2); UPDATE numeracion_perforacion SET proximo=3282");
+    await t.test('migración 018 registra sólo el rol, sin cambiar cuentas, asignaciones ni contador; reintento idempotente',async()=>{
+      const snapshot=async()=>Promise.all(['usuario','usuario_rol','numeracion_perforacion'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1,2`)).rows));
+      const before=await snapshot();
+      const rolesBefore=(await pool.query('SELECT * FROM rol ORDER BY id_rol')).rows;
+      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,['018_operador_administrativo.sql']);
+      assert.deepEqual(await snapshot(),before);
+      assert.deepEqual((await pool.query("SELECT * FROM rol WHERE nombre<>'operador_administrativo' ORDER BY id_rol")).rows,rolesBefore);
+      assert.equal((await pool.query("SELECT count(*) FROM rol WHERE nombre='operador_administrativo'")).rows[0].count,'1');
+      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,[]);
+      console.log('Migraciones verificadas: '+archivos.join(', '));
+    });
+    await pool.query("INSERT INTO usuario(id_usuario,nombre,email,password) VALUES(4,'Operador','operador@test.local','test'); INSERT INTO usuario_rol SELECT 4,id_rol FROM rol WHERE nombre='operador_administrativo'");
     let epoca=(await pool.query('SELECT epoca FROM epoca_datos')).rows[0].epoca;
     const body={pozo:{id_propietario:null,propietario_provisional:'Campo',id_perforador:3},sitio_nuevo:{departamento:'Salto',latitud:'-31',longitud:'-57'},intervalos_litologicos:[],intervalos_diametro:[],intervalos_filtro:[],niveles_aporte:[],foto:{mime_type:'image/png' as const,base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='}};
     let historicoId:number;
@@ -57,11 +73,191 @@ test('carga historica en PostgreSQL aislada', async t=>{
     await app.register(cookie); await app.register((await import('../src/plugins/jwt.ts')).default);
     await app.register((await import('../src/plugins/error-handler.ts')).default);
     app.decorate('notifyClient',()=>{}); app.decorate('notifyAdmin',()=>{});
+    let antesDelHandler: (()=>Promise<void>) | undefined;
+    app.addHook('onRoute',route=>{
+      const previos=Array.isArray(route.preHandler)?route.preHandler:route.preHandler?[route.preHandler]:[];
+      route.preHandler=[...previos,async()=>{
+        const paso=antesDelHandler; antesDelHandler=undefined;
+        await paso?.();
+      }];
+    });
+    for(const ruta of ['usuarios','roles','numeracion-perforacion','litologias','sitios']) await app.register((await import(`../src/routes/${ruta}.ts`)).default);
     await app.register((await import('../src/routes/pozos.ts')).default);
     await app.register((await import('../src/routes/historicos.ts')).default); await app.ready();
     const {SESSION_COOKIE}=await import('../src/plugins/cookies.ts');
-    const call=(actor:number,method:'POST'|'GET'|'PATCH',url:string,payload?:unknown,version=1)=>app.inject({method,url,...(payload?{payload}:{}),cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:actor,version_sesion:version},{expiresIn:'1h'})},headers:{'idempotency-key':randomUUID(),'x-epoca-datos':epoca}});
-    await t.test('HTTP: sólo admin, validación estricta y sesión revocada',async()=>{
+    const call=(actor:number,method:'POST'|'GET'|'PATCH'|'PUT'|'DELETE',url:string,payload?:unknown,version=1)=>app.inject({method,url,...(payload?{payload}:{}),cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:actor,version_sesion:version},{expiresIn:'1h'})},headers:{'idempotency-key':randomUUID(),'x-epoca-datos':epoca}});
+    await t.test('roles: renombrar mayúsculas revoca sesión anterior, conserva capacidades y permite revertir',async()=>{
+      const admin=(await pool.query("SELECT * FROM rol WHERE nombre='administracion'")).rows[0];
+      const op=(await pool.query("SELECT * FROM rol WHERE nombre='operador_administrativo'")).rows[0];
+      try {
+        const cambio=await call(1,'PUT',`/roles/${admin.id_rol}`,{nombre:'Administracion',descr:admin.descr});
+        assert.equal(cambio.statusCode,200,cambio.body);
+        assert.equal((await call(1,'GET','/usuarios')).statusCode,401);
+        assert.equal((await call(1,'GET','/usuarios',undefined,2)).statusCode,200);
+        const creado=await call(1,'POST','/roles',{nombre:'temporal_auditoria',descr:'Prueba desechable'},2);
+        assert.equal(creado.statusCode,201,creado.body);
+        const eliminado=await call(1,'DELETE',`/roles/${creado.json().id_rol}`,undefined,2);
+        assert.equal(eliminado.statusCode,204,eliminado.body);
+        const revertido=await call(1,'PUT',`/roles/${admin.id_rol}`,{nombre:admin.nombre,descr:admin.descr},2);
+        assert.equal(revertido.statusCode,200,revertido.body);
+        assert.equal((await call(1,'GET','/usuarios',undefined,3)).statusCode,200);
+        const mayuscula=await call(1,'PUT',`/roles/${op.id_rol}`,{nombre:'OPERADOR_ADMINISTRATIVO',descr:op.descr},3);
+        assert.equal(mayuscula.statusCode,200,mayuscula.body);
+        assert.equal((await call(4,'GET','/usuarios/999/pozos')).statusCode,401);
+        assert.equal((await call(4,'GET','/usuarios/999/pozos',undefined,2)).statusCode,200);
+        const editado=await call(4,'PATCH',`/pozos/historicos/${historicoId}`,{empresa:'Prueba mayúsculas'},2);
+        assert.equal(editado.statusCode,200,editado.body);
+        for(const url of ['/usuarios','/roles','/pozos/numeracion'])
+          assert.equal((await call(4,'GET',url,undefined,2)).statusCode,403,url);
+        const {exigirAdministracionNumeracion}=await import('../src/services/numeracion-perforacion-service.ts');
+        await assert.rejects(exigirAdministracionNumeracion(4,pool),{statusCode:403});
+      } finally {
+        // Restablecer sólo fixtures de esta base desechable para las pruebas siguientes.
+        await pool.query('UPDATE rol SET nombre=$2 WHERE id_rol=$1',[admin.id_rol,admin.nombre]);
+        await pool.query('UPDATE rol SET nombre=$2 WHERE id_rol=$1',[op.id_rol,op.nombre]);
+        await pool.query('UPDATE usuario SET version_sesion=1 WHERE id_usuario IN (1,4)');
+        await pool.query('UPDATE pozo SET empresa=NULL WHERE id_pozo=$1',[historicoId]);
+      }
+    });
+    await t.test('sitios: operador sólo consulta/edita asociados; administración conserva independientes',async()=>{
+      const sitio={departamento:'Salto',localidad:'Prueba',latitud:'-31',longitud:'-57',padron:'001'};
+      const id=(await pool.query("INSERT INTO sitio(departamento) VALUES('Salto') RETURNING id_sitio")).rows[0].id_sitio;
+      const url=`/usuarios/999/sitios/${id}`;
+      try {
+        await pool.query('UPDATE pozo SET id_sitio=$1 WHERE id_pozo=$2',[id,historicoId]);
+        for(const method of ['GET','PUT'] as const) {
+          const r=await call(4,method,url,method==='PUT'?sitio:undefined); assert.equal(r.statusCode,200,r.body);
+        }
+        await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
+        const before=(await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows;
+        for(const multirol of [false,true]) {
+          if(multirol)await pool.query('INSERT INTO usuario_rol VALUES(4,2),(4,3)');
+          for(const [method,target,payload] of [
+            ['GET',url],['PUT',url,{...sitio,localidad:'Prohibido'}],['DELETE',url],
+            ['GET','/usuarios/999/sitios'],['POST','/usuarios/999/sitios',sitio],
+          ] as const) {
+            const r=await call(4,method,target,payload); assert.equal(r.statusCode,403,`${method} ${target}: ${r.body}`);
+          }
+        }
+        assert.deepEqual((await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows,before);
+        for(const method of ['GET','PUT'] as const) {
+          const r=await call(1,method,url,method==='PUT'?{...sitio,localidad:'Administración'}:undefined);
+          assert.equal(r.statusCode,200,r.body);
+        }
+      } finally {
+        await pool.query('DELETE FROM usuario_rol WHERE id_usuario=4 AND id_rol IN (2,3)');
+        await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
+        await pool.query('DELETE FROM sitio WHERE id_sitio=$1',[id]);
+      }
+    });
+    await t.test('sitios: desvinculación después de autorización HTTP se rechaza en transacción real',async()=>{
+      const id=(await pool.query("INSERT INTO sitio(departamento) VALUES('Salto') RETURNING id_sitio")).rows[0].id_sitio;
+      await pool.query('UPDATE pozo SET id_sitio=$1 WHERE id_pozo=$2',[id,historicoId]);
+      const before=(await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows;
+      const gate=await pool.connect();
+      let pendiente: ReturnType<typeof call> | undefined;
+      try {
+        await gate.query('BEGIN');
+        await gate.query('SELECT pg_advisory_xact_lock(731024,1)');
+        // El handler comprueba la asociación; su transacción espera el gate.
+        pendiente=call(4,'PUT',`/usuarios/999/sitios/${id}`,{departamento:'Cambio prohibido'});
+        const respuesta=pendiente.then(r=>r);
+        let esperando=false;
+        for(let intento=0;intento<200&&!esperando;intento++) {
+          esperando=Boolean((await pool.query(`SELECT 1 FROM pg_stat_activity
+            WHERE datname=current_database() AND pid<>pg_backend_pid()
+              AND query LIKE '%pg_advisory_xact_lock_shared(731024%'
+              AND cardinality(pg_blocking_pids(pid))>0`)).rows.length);
+          if(!esperando)await delay(10);
+        }
+        assert.ok(esperando,'la petición debe alcanzar la transacción tras comprobar la asociación');
+        await gate.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
+        await gate.query('COMMIT');
+        const r=await respuesta; assert.equal(r.statusCode,403,r.body);
+        assert.deepEqual((await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows,before);
+      } finally {
+        await gate.query('ROLLBACK'); gate.release();
+        if(pendiente)await pendiente;
+        await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
+        await pool.query('DELETE FROM sitio WHERE id_sitio=$1',[id]);
+      }
+    });
+    await t.test('HTTP y SQL real: operador sin administración de cuentas, roles, numeración, catálogo ni eliminación',async()=>{
+      const snapshot=async()=>Promise.all(['usuario','usuario_rol','rol','numeracion_perforacion','numero_perforacion_reservado','catalogo_litologia','pozo'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1`)).rows));
+      const before=await snapshot();
+      const cuenta={nombre:'Intento',email:'intento@test.local',password:'ClaveDePrueba123!',activo:true,roles:[{id_rol:1,nombre:'administracion',descr:'Administración'}]};
+      const roca={codigo:'prueba',nombre:'Prueba',familia:'otro',color:'#123456',patron:'clay',orden:1};
+      const requests: Array<[Parameters<typeof call>[1],string,unknown?]>=[
+        ['POST','/usuarios',cuenta],['PUT','/usuarios/4',cuenta],['DELETE','/usuarios/2'],
+        ['POST','/usuarios/personas/2/acceso',{email:cuenta.email,password:cuenta.password,confirmar:cuenta.password}],
+        ['DELETE','/usuarios/personas/2'],['PUT','/usuarios/4/roles/1'],
+        ['POST','/roles',{nombre:'Intento',descr:'Intento'}],['PUT','/roles/2',{nombre:'Intento',descr:'Intento'}],['DELETE','/roles/2'],
+        ['GET','/usuarios'],['GET','/roles'],['GET','/pozos/numeracion'],
+        ['PUT','/pozos/numeracion',{proximo:5000,esperado:3282}],
+        ['PATCH',`/pozos/${historicoId}/numero-perforacion`,{numero_perforacion:3000}],
+        ['POST','/litologias',roca],['PUT','/litologias/1',roca],['PATCH','/litologias/1/activar'],['PATCH','/litologias/1/desactivar'],
+        ['DELETE',`/usuarios/1/pozos/${historicoId}`],['POST','/pozos/propietarios',{nombre:'Identidad prohibida'}],
+      ];
+      for(const [method,url,payload] of requests){const r=await call(4,method,url,payload);assert.equal(r.statusCode,403,`${method} ${url}: ${r.body}`);}
+      assert.deepEqual(await snapshot(),before);
+      const {exigirAdministracionNumeracion}=await import('../src/services/numeracion-perforacion-service.ts');
+      await assert.rejects(exigirAdministracionNumeracion(4,pool),{statusCode:403});
+      await exigirAdministracionNumeracion(1,pool);
+      for(const url of ['/usuarios','/roles','/pozos/numeracion']){const r=await call(1,'GET',url);assert.equal(r.statusCode,200,r.body);}
+    });
+    await t.test('combinación admin + operador: servicios rechazan y revierten; SQL externo puede eludirla',async()=>{
+      const roles=(await pool.query('SELECT * FROM rol ORDER BY id_rol')).rows;
+      const admin=roles.find(r=>r.nombre==='administracion'),op=roles.find(r=>r.nombre==='operador_administrativo');
+      const snapshot=async()=>Promise.all(['usuario','usuario_rol','rol'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1,2`)).rows));
+      const before=await snapshot();
+      const cuenta={nombre:'Intento',email:'intento@test.local',password:'ClaveDePrueba123!',activo:true,roles:[admin,op]};
+      for(const [method,url,payload] of [['POST','/usuarios',cuenta],['PUT','/usuarios/4',cuenta],['PUT',`/usuarios/4/roles/${admin.id_rol}`,undefined]] as const){
+        const r=await call(1,method,url,payload);assert.equal(r.statusCode,400,r.body);
+      }
+      assert.deepEqual(await snapshot(),before);
+      const client=await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('INSERT INTO usuario_rol(id_usuario,id_rol) VALUES(4,$1)',[admin.id_rol]);
+        assert.equal((await client.query('SELECT count(*) FROM usuario_rol WHERE id_usuario=4')).rows[0].count,'2');
+      } finally {await client.query('ROLLBACK');client.release();}
+      assert.deepEqual(await snapshot(),before);
+    });
+    await t.test('transacción: rol o versión retirados después del middleware impiden editar y crear históricos',async()=>{
+      const before=(await pool.query('SELECT * FROM pozo WHERE id_pozo=$1',[historicoId])).rows;
+      try {
+        antesDelHandler=async()=>{await pool.query('DELETE FROM usuario_rol WHERE id_usuario=4');};
+        const r=await call(4,'PATCH',`/pozos/historicos/${historicoId}`,{empresa:'No debe persistir'});
+        assert.equal(r.statusCode,403,r.body);
+        assert.deepEqual((await pool.query('SELECT * FROM pozo WHERE id_pozo=$1',[historicoId])).rows,before);
+        await assert.rejects(crearHistorico(4,{numero_perforacion:3099},randomUUID(),epoca,pool),{statusCode:403});
+        assert.equal((await pool.query('SELECT count(*) FROM numero_perforacion_reservado WHERE numero_perforacion=3099')).rows[0].count,'0');
+        await pool.query("INSERT INTO usuario_rol SELECT 4,id_rol FROM rol WHERE nombre='operador_administrativo'");
+        antesDelHandler=async()=>{await pool.query('UPDATE usuario SET version_sesion=2 WHERE id_usuario=4');};
+        const revocado=await call(4,'PATCH',`/pozos/historicos/${historicoId}`,{empresa:'Tampoco debe persistir'});
+        assert.equal(revocado.statusCode,401,revocado.body);
+        assert.deepEqual((await pool.query('SELECT * FROM pozo WHERE id_pozo=$1',[historicoId])).rows,before);
+      } finally {
+        antesDelHandler=undefined;
+        await pool.query("INSERT INTO usuario_rol SELECT 4,id_rol FROM rol WHERE nombre='operador_administrativo' ON CONFLICT DO NOTHING; UPDATE usuario SET version_sesion=1 WHERE id_usuario=4");
+      }
+    });
+    await t.test('HTTP: operador crea y edita históricos sin cambiar contador ni crear identidades',async()=>{
+      const antes = (await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo;
+      const personas = (await pool.query('SELECT count(*) FROM usuario')).rows[0].count;
+      const creado = await call(4,'POST','/pozos/historicos',{numero_perforacion:3100});
+      assert.equal(creado.statusCode,201,creado.body);
+      const id = creado.json().id_pozo;
+      const editado = await call(4,'PATCH',`/pozos/historicos/${id}`,{empresa:'Dato del operador'});
+      assert.equal(editado.statusCode,200,editado.body);
+      assert.equal((await call(4,'GET',`/usuarios/999/pozos/${historicoId}`)).statusCode,200);
+      assert.equal((await call(4,'GET','/usuarios/999/pozos')).statusCode,200);
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,antes);
+      assert.equal((await pool.query('SELECT count(*) FROM usuario')).rows[0].count,personas);
+      await pool.query('UPDATE usuario SET version_sesion=2 WHERE id_usuario=4');
+      assert.equal((await call(4,'PATCH',`/pozos/historicos/${id}`,{empresa:'Revocado'})).statusCode,401);
+    });
+    await t.test('HTTP: roles de consulta/campo denegados, validación estricta y sesión revocada',async()=>{
       assert.equal((await call(3,'POST','/pozos/historicos',{numero_perforacion:3279})).statusCode,403);
       assert.equal((await call(2,'POST','/pozos/historicos',{numero_perforacion:3279})).statusCode,403);
       for(const n of [0,-1,1.5,3282,'3281',true]) assert.equal((await call(1,'POST','/pozos/historicos',{numero_perforacion:n})).statusCode,400);

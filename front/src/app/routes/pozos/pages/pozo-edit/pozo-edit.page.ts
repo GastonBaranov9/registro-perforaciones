@@ -89,7 +89,7 @@ export class PozoEditPage {
       ]);
       if (pozo.origen === 'historico' || pozo.id_sitio == null || pozo.id_perforador == null) throw new Error('Este registro histórico no se edita con el formulario de alta normal.');
       const [propietario, perforador] = await Promise.all([
-        !this.authService.tieneRol('administracion') || pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
+        !this.authService.puedeOperarTodosLosPozos() || pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
         pozo.id_perforador == null || personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
       ]);
       const personas = {

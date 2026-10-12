@@ -57,7 +57,7 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   readonly exportandoKml = signal(false);
 
   async exportarKml(): Promise<void> {
-    if (!this.authService.tieneRol('administracion') || this.exportandoKml()) return;
+    if (!this.authService.puedeOperarTodosLosPozos() || this.exportandoKml()) return;
     this.exportandoKml.set(true);
     try {
       const { exportadas, omitidas } = await this.exportarKmlService.descargar();

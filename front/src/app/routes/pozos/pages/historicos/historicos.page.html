@@ -1,6 +1,6 @@
 <ion-content class="ion-padding">
   <h1>{{ id_pozo() ? 'Editar perforación histórica' : 'Nueva perforación histórica' }}</h1>
-  <p>Para perforaciones anteriores. Administración registra el número real hasta P-3281; no consume el próximo número automático.</p>
+  <p>Para perforaciones anteriores. Registre el número real hasta P-3281; no consume el próximo número automático.</p>
   <p>Complete toda la información disponible. Los datos desconocidos pueden quedar vacíos.</p>
   @if (error()) { <p role="alert" class="error">{{ error() }}</p> }
   @if (recargaPendiente()) { <ion-button [disabled]="ocupado()" (click)="actualizarGuardado()">Actualizar datos guardados</ion-button> }
@@ -8,7 +8,7 @@
     <fieldset [disabled]="ocupado() || !!envio || !!resultado()">
       <app-pozos-form [historico]="true" [pozo]="pozo()" [id_pozo]="id_pozo() ? +id_pozo()! : null" [agregareditar]="!!id_pozo()"
         [propietarios]="propietarios()" [perforadores]="perforadores()" [catalogosDisponibles]="true"
-        [administrarPropietarios]="true" [sitioNuevo]="sitio()" [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
+        [seleccionarPropietarios]="auth.puedeGestionarHistoricos()" [administrarPropietarios]="auth.puedeAdministrarUsuarios()" [sitioNuevo]="sitio()" [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
         [guardando]="ocupado() || !!envio || !!resultado()" [textoGuardar]="id_pozo() ? 'Guardar cambios históricos' : 'Guardar perforación histórica'"
         (saved)="guardar($event)" (crearPropietario)="crearPropietario($event)" (actualizarPropietario)="actualizarPropietario($event)">
         <app-datos-tecnicos-borrador [profundidad]="pozo().profundidad_final_m" [inicial]="inicial()"

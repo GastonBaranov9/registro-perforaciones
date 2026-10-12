@@ -1,3 +1,4 @@
+import { validarIdsRolesCompatibles } from './capacidades.ts';
 import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type {
@@ -45,6 +46,7 @@ export async function createUsuario(
 
   try {
     await iniciarEscrituraSesion(client, true);
+    await validarIdsRolesCompatibles(data.roles.map(r => r.id_rol), client);
 
     const passwordHash = await hashPassword(data.password);
 
@@ -118,6 +120,7 @@ export async function updateUsuario(
 
   try {
     await iniciarEscrituraSesion(client, true);
+    await validarIdsRolesCompatibles(data.roles.map(r => r.id_rol), client);
 
     const { rows: estados } = await client.query<{ activo: boolean }>(
       `SELECT activo FROM usuario

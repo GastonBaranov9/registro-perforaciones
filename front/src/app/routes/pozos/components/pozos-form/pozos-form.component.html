@@ -14,7 +14,7 @@
       <ion-input [disabled]="guardando()" type="text" name="empresa" [(ngModel)]="this.pozo().empresa" [required]="!historico()"></ion-input>
     </ion-item>
 
-    @if (administrarPropietarios()) {
+    @if (administrarPropietarios() || seleccionarPropietarios()) {
     <app-selector-persona-pozo etiqueta="Propietario" rol="propietario" [buscarRemoto]="buscarPropietarios()" [candidatos]="propietarios()"
       [(seleccionado)]="pozo().id_propietario" (personaSeleccionada)="seleccionarPropietario($event)"
       [deshabilitado]="(agregareditar() && !historico()) || guardando() || !catalogosDisponibles()" />

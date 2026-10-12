@@ -123,7 +123,7 @@
       </section>
       <ion-toolbar>
         <ion-buttons slot="start">
-          @if (authService.tieneRol('administracion') && pozo()?.origen === 'historico') { <ion-button fill="outline" (click)="irAEditarHistorico()">Editar perforación histórica</ion-button> }
+          @if (authService.puedeGestionarHistoricos() && pozo()?.origen === 'historico') { <ion-button fill="outline" (click)="irAEditarHistorico()">Editar perforación histórica</ion-button> }
           @if (permisos.puedeEditar(pozo()) && pozo()?.origen !== 'historico') { <ion-button fill="outline" color="primary" (click)="irAEditarPozo()"> Editar </ion-button> }
         </ion-buttons>
         <ion-buttons slot="end">

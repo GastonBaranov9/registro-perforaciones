@@ -4,11 +4,11 @@ import { routes } from './app.routes';
 import { MainStore } from './shared/services/mainstore-service/main.store';
 import { RuntimePlatformService } from './core/native/runtime-platform.service';
 import { AuthService } from './shared/services/auth-service/auth.service';
-import { isPerfOrAdminGuard } from './core/guards/islogged-guard-guard';
+import { puedeOperarPozosGuard } from './core/guards/islogged-guard-guard';
 
 describe('autorización de rutas de pozos y Sitios', () => {
   for (const plataforma of ['web', 'android']) {
-    for (const rol of ['propietario', 'perforador', 'administracion']) {
+    for (const rol of ['propietario', 'perforador', 'administracion', 'operador_administrativo']) {
       it(`${plataforma}/${rol}: protege URLs directas y conserva consulta de pozos`, async () => {
         TestBed.configureTestingModule({ providers: [provideRouter([]),
           { provide: RuntimePlatformService, useValue: { platform: () => plataforma } },
@@ -19,6 +19,10 @@ describe('autorización de rutas de pozos y Sitios', () => {
           ...['sitio', 'sitios-list', 'sitio-detail/:id_sitio', 'sitios-edit/:id_sitio', 'sitios-create/:id_usuario']
             .map(path => [path, rol === 'administracion'] as [string, boolean]),
           ['pozos-create', rol !== 'propietario'], ['pozos-list', true], ['pozos-detail/:id_pozo', true],
+          ...['pozos-historicos', 'pozos-historicos/:id_pozo/editar']
+            .map(path => [path, ['administracion', 'operador_administrativo'].includes(rol)] as [string, boolean]),
+          ...['usuario', 'usuarios-create', 'usuarios-list', 'usuarios-edit/:id_usuario', 'litologias-admin', 'pozos-numeracion']
+            .map(path => [path, rol === 'administracion'] as [string, boolean]),
         ];
         for (const [path, permitido] of casos) {
           const ruta = routes.find(ruta => ruta.path === path)!;
@@ -28,7 +32,7 @@ describe('autorización de rutas de pozos y Sitios', () => {
           expect(resultados.every(resultado => resultado === true)).withContext(path).toBe(permitido);
           if (!permitido) expect(resultados.some(resultado => resultado instanceof UrlTree)).toBeTrue();
         }
-        expect(routes.find(ruta => ruta.path === 'pozos-create')!.canActivate).toContain(isPerfOrAdminGuard);
+        expect(routes.find(ruta => ruta.path === 'pozos-create')!.canActivate).toContain(puedeOperarPozosGuard);
       });
     }
   }

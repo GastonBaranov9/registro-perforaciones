@@ -40,7 +40,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as {
@@ -71,7 +71,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as { id_pozo: number };
@@ -102,7 +102,7 @@ const informeRoutes = async function (
         response: { 200: Type.Unknown(), 400: err.ErrorSchema, 404: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const borrador = req.body as import("../models/schemas.ts").PerfilLitologicoVistaPreviaBody;
@@ -145,7 +145,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       await fastify.rateLimitPdf(req, rep);

@@ -332,8 +332,15 @@ export class AuthService {
     return this.mainStore.user()?.roles?.some((rol) => rol.nombre === nombre) ?? false;
   }
 
+  public puedeOperarTodosLosPozos(): boolean {
+    return this.tieneRol('administracion') || this.tieneRol('operador_administrativo');
+  }
+
+  public puedeGestionarHistoricos(): boolean { return this.puedeOperarTodosLosPozos(); }
+  public puedeAdministrarUsuarios(): boolean { return this.tieneRol('administracion'); }
+
   public puedeAdministrarPozos(): boolean {
-    return this.tieneRol('administracion') || this.tieneRol('perforador');
+    return this.puedeOperarTodosLosPozos() || this.tieneRol('perforador');
   }
 
   private async bootstrapInternal(): Promise<void> {

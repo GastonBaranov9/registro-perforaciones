@@ -9,6 +9,8 @@ import {
 import { MainStore } from '../../shared/services/mainstore-service/main.store';
 import { UsuarioPublico } from '../../shared/types/schemas';
 import {
+  puedeOperarPozosGuard,
+  puedeGestionarHistoricosGuard,
   isAdminGuard,
   isloggedGuard,
   isPerfOrAdminGuard,
@@ -61,6 +63,15 @@ describe('guards de acceso', () => {
 
     expect(ejecutar(isAdminGuard)).toBeTrue();
   });
+
+  for (const rol of ['administracion', 'operador_administrativo', 'perforador', 'propietario', 'sin-rol']) {
+    it(`${rol}: separa capacidades operativas de administración`, () => {
+      store.user.set(usuarioConRol(rol));
+      expect(ejecutar(isAdminGuard) === true).toBe(rol === 'administracion');
+      expect(ejecutar(puedeOperarPozosGuard) === true).toBe(['administracion', 'operador_administrativo', 'perforador'].includes(rol));
+      expect(ejecutar(puedeGestionarHistoricosGuard) === true).toBe(['administracion', 'operador_administrativo'].includes(rol));
+    });
+  }
 
   it('deniega un rol incorrecto en el guard administrativo', () => {
     store.user.set(usuarioConRol('propietario'));

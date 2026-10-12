@@ -1,11 +1,24 @@
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import { T05SinPermiso, T05PozoNoEncontrado } from "../models/errors.ts";
+import { rolUser } from './auth-services.ts';
+import { puedeOperarTodosLosPozos } from './capacidades.ts';
 
 export const MENSAJE_EDICION_POZO = "El perforador solo puede editar perforaciones propias dentro de las primeras 24 horas desde su creación.";
 export const VENTANA_EDICION_MS = 24 * 60 * 60 * 1000;
 type Db = Pick<Pool | PoolClient, "query">;
 type Creacion = { creado_por: number | string | null; fecha_creado: Date | string | null; origen?:string };
+
+// Administración conserva sitios independientes; el alcance operativo global
+// sólo habilita sitios asociados. En escritura se retiene una asociación hasta COMMIT.
+export async function puedeOperarSitioGlobal(idSitio: number, actor: number, db: Db = myPool, bloquear = false): Promise<boolean> {
+  if (await rolUser(actor, 'administracion', db)) return true;
+  if (!await puedeOperarTodosLosPozos(actor, db)) return false;
+  const { rows } = await db.query(
+    'SELECT id_pozo FROM public.pozo WHERE id_sitio=$1 LIMIT 1' + (bloquear ? ' FOR SHARE' : ''), [idSitio]);
+  if (!rows.length) throw new T05SinPermiso('El operador sólo puede acceder a sitios asociados a una perforación.');
+  return true;
+}
 
 // El reloj se inyecta en pruebas; producción usa siempre el reloj del servidor.
 export function puedeEditarCreacion(pozo: Creacion, idUsuario: number, ahora = Date.now()): boolean {

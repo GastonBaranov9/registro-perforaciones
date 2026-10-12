@@ -100,3 +100,9 @@ export const isPerfOrAdminGuard: CanActivateFn = (_route, state) =>
 
 export const isPropGuard: CanActivateFn = (_route, state) =>
   requireRole(['propietario'], state);
+
+export const puedeOperarPozosGuard: CanActivateFn = (_route, state) =>
+  requireRole(['perforador', 'administracion', 'operador_administrativo'], state);
+
+export const puedeGestionarHistoricosGuard: CanActivateFn = (_route, state) =>
+  requireRole(['administracion', 'operador_administrativo'], state);

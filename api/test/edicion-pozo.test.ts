@@ -43,6 +43,7 @@ test('rutas reales: todas las mutaciones técnicas usan autorización, sesión a
   let activo = true;
   t.mock.method(myPool, 'query', async (sql: string, params: unknown[]) => {
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo, version_sesion: 1 }] };
+    if (sql.includes('SELECT r.nombre FROM rol r')) return { rows: roles.map(nombre => ({ nombre })) };
     if (sql.includes('FROM usuario_rol')) return { rows: roles.includes(String(params[1])) ? [{}] : [] };
     if (sql.includes('SELECT creado_por, fecha_creado')) { assert.deepEqual(params, [1]); return { rows: [registro] }; }
     if (sql.includes('SELECT 1') && sql.includes('public.pozo')) return { rows: [{}], rowCount: 1 };

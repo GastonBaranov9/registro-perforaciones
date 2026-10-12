@@ -1,3 +1,4 @@
+import { puedeOperarTodosLosPozos } from '../services/capacidades.ts';
 import { vincularPropietarioPozo } from "../services/propietario-pozo-service.ts";
 import { cerrarOperacionOffline } from '../services/offline-cierre-service.ts';
 import { obtenerEpoca } from '../services/epoca-datos-service.ts';
@@ -9,7 +10,7 @@ import { CandidatoPozo, Estado, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoU
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import * as funcPozo from "../services/pozos-services.ts";
-import { isAdmin, isPerf, isProp } from "../services/roles-services.ts";
+import { isPerf, isProp } from "../services/roles-services.ts";
 import fs from "fs/promises";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
@@ -23,8 +24,8 @@ import { exportarKml, KML_CONTENT_TYPE, KML_FILENAME } from '../services/exporta
 const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   const { fotosDir } = cargarConfiguracionRuntime();
   fastify.get('/pozos/exportar/kml', {
-    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
-    schema: { summary: 'Administración: exportar perforaciones a Google Earth', tags: ['pozos'] },
+    onRequest: [fastify.authenticate], preHandler: [fastify.puedeOperarTodosLosPozos],
+    schema: { summary: 'Exportar perforaciones a Google Earth con alcance global', tags: ['pozos'] },
   }, async (_req, rep) => {
     const { kml, exportadas, omitidas } = await exportarKml();
     return rep.type(KML_CONTENT_TYPE)
@@ -35,10 +36,10 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       .send(kml);
   });
   fastify.get('/pozos/epoca-datos', {
-    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+    onRequest: [fastify.authenticate], preHandler: [fastify.puedeOperarPozos],
   }, async (_req, rep) => rep.header('Cache-Control', 'no-store').send({ epoca: await obtenerEpoca() }));
   fastify.post('/pozos/offline/:clave/cerrar', {
-    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdminOrPerforador],
+    onRequest: [fastify.authenticate], preHandler: [fastify.puedeOperarPozos],
     schema: { params: Type.Object({ clave: Type.String({ format: 'uuid' }) }), response: { 200: Type.Any() } },
   }, async req => cerrarOperacionOffline(Number(req.user.sub), (req.params as { clave: string }).clave, req.headers['x-epoca-datos']));
   fastify.post(
@@ -95,13 +96,13 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     {
       schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], querystring: Type.Object({ propietario: Type.Optional(Type.String({ maxLength: 80 })), perforador: Type.Optional(Type.String({ maxLength: 80 })), limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), propietario_id: Type.Optional(Type.Integer({ minimum: 1 })), perforador_id: Type.Optional(Type.Integer({ minimum: 1 })) }), response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async (req) => {
       const q = req.query as { propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
-      const admin = await isAdmin(req.user.sub);
-      if (!admin && (q.propietario !== undefined || q.propietario_id !== undefined)) throw new err.T05SinPermiso();
-      return listarCandidatosPozo(req.user.sub, admin, undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
+      const alcanceGlobal = await puedeOperarTodosLosPozos(req.user.sub);
+      if (!alcanceGlobal && (q.propietario !== undefined || q.propietario_id !== undefined)) throw new err.T05SinPermiso();
+      return listarCandidatosPozo(req.user.sub, alcanceGlobal, undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
     },
   );
   fastify.post(
@@ -122,12 +123,12 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const idUsuarioSesion = Number(req.user.sub);
       const data = req.body as PozoCompletoBody;
-      if (!(await isAdmin(idUsuarioSesion))) {
+      if (!(await puedeOperarTodosLosPozos(idUsuarioSesion))) {
         if (data.pozo.id_perforador !== idUsuarioSesion || data.pozo.id_propietario !== null)
           throw new err.T05SinPermiso();
       }
@@ -158,13 +159,13 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         tags: ["pozos"], body: PozoCompletoUpdateBody, response: { 200: Type.Any(), 400: err.ErrorSchema, 404: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as { id_pozo: number };
       const data = req.body as PozoCompletoUpdateBody;
       const idUsuarioSesion=Number(req.user.sub);
-      if (!(await isAdmin(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion) throw new err.T05SinPermiso();
+      if (!(await puedeOperarTodosLosPozos(idUsuarioSesion)) && data.pozo.id_perforador !== idUsuarioSesion) throw new err.T05SinPermiso();
       const resultado = await actualizarPozoCompleto(id_pozo, data, fotosDir, undefined, { logger: req.log });
       if (resultado.pozo.id_propietario !== null) fastify.notifyClient(resultado.pozo.id_propietario, { type: "pozo" });
       return rep.code(200).send(resultado);
@@ -207,7 +208,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       throw new err.T05DatosIncorrectos("La creación de un pozo requiere una ubicación nueva dentro de la operación completa.");
@@ -235,13 +236,13 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const { sub: id_usuario } = req.user;
       const data = req.body as NuevoPozo;
 
-      if (!(await isAdmin(id_usuario)) && data.id_perforador !== id_usuario)
+      if (!(await puedeOperarTodosLosPozos(id_usuario)) && data.id_perforador !== id_usuario)
         throw new err.T05SinPermiso();
 
       const isPropietario = data.id_propietario === null || await isProp(data.id_propietario);
@@ -286,7 +287,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       onRequest: [fastify.authenticate],
       preHandler: [
         fastify.pozoIsFromUser,
-        fastify.userIsPropietarioOrPerforadorOrAdmin,
+        fastify.puedeConsultarRecursos,
       ],
     },
     async (req, rep) => {
@@ -350,8 +351,8 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
       if (sello_sanitario === false) sello = false;
       const isPropietario = await isProp(id_usuario);
       const isPerforador = await isPerf(id_usuario);
-      const isAdministrador = await isAdmin(id_usuario);
-      if (isAdministrador) {
+      const alcanceGlobal = await puedeOperarTodosLosPozos(id_usuario);
+      if (alcanceGlobal) {
         const pozos = await funcPozo.getAllPozo(
           caudal_min,
           caudal_max,
@@ -444,7 +445,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as {
@@ -489,7 +490,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as { id_pozo: number };
@@ -512,7 +513,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async (req, rep) => {
       const { id_pozo } = req.params as { id_pozo: number };

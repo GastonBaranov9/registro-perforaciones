@@ -1,9 +1,10 @@
+import { exigirCapacidad } from './capacidades.ts';
 import type { Pool } from 'pg';
 import { myPool } from '../db/pool.ts';
 import { validarHistorico, validarEdicionHistorica, validarFechasHistoricas, CAMPOS_HISTORICOS, type HistoricoBody, type HistoricoUpdateBody } from '../models/historicos.ts';
 import { T05DatosIncorrectos, T05PozoNoEncontrado, T05ConflictoNumeracion, T05HistoricoNumeroOcupado } from '../models/errors.ts';
 import { iniciarEscrituraSesion } from './escritura-sesion.ts';
-import { exigirAdministracionNumeracion, traducirErrorNumeracion } from './numeracion-perforacion-service.ts';
+import { traducirErrorNumeracion } from './numeracion-perforacion-service.ts';
 import { exigirEpoca, validarClaveOperacion } from './epoca-datos-service.ts';
 import { validarPersonaPozo } from './candidatos-pozo-service.ts';
 import { huellaOffline, insertarHijos, validarDatosTecnicosPozo, reemplazarHijosPozo } from './pozo-completo-service.ts';
@@ -30,7 +31,7 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
   let descartar=false;
   try {
     await iniciarEscrituraSesion(client, false);
-    await exigirAdministracionNumeracion(actor, client);
+    await exigirCapacidad(actor, 'gestionarHistoricos', client);
     const generacion = await exigirEpoca(client, epoca);
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 717))', [`${actor}:${clave}`]);
     const previo = await client.query('SELECT epoca,huella,resultado FROM creacion_historica WHERE actor=$1 AND clave=$2', [actor, clave]);
@@ -86,7 +87,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
   let descartar=false;
   try{
     await iniciarEscrituraSesion(client,false);
-    await exigirAdministracionNumeracion(actor,client);
+    await exigirCapacidad(actor, 'gestionarHistoricos', client);
     await client.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
     const original=(await client.query('SELECT * FROM pozo WHERE id_pozo=$1 FOR UPDATE',[idPozo])).rows[0];
     if(!original)throw new T05PozoNoEncontrado();

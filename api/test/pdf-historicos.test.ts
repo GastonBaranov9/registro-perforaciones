@@ -9,6 +9,8 @@ import { crearPDF } from "../src/pdf/pdf-generate.ts";
 import { PerfilLitologicoInvalido } from "../src/pdf/perfil-litologico.ts";
 import { myPool } from "../src/db/pool.ts";
 import informes from "../src/routes/informes.ts";
+import jwt from '../src/plugins/jwt.ts';
+import cookies, { SESSION_COOKIE } from '../src/plugins/cookies.ts';
 import { getReportePozo, type ReportePozo } from "../src/services/generar-informe-consultas.ts";
 
 // Datos exclusivamente sintéticos. No se consulta PostgreSQL ni se leen fotos reales.
@@ -188,9 +190,13 @@ test("una litología inconsistente con profundidad conocida conserva su validaci
 });
 
 test("endpoint PDF principal responde 200 con un histórico parcial y SQL simulado", async (t) => {
+  process.env.FASTIFY_SECRET = 'pdf-operador-test-never-production';
+  let rol = 'operador_administrativo';
   const fila = historico({ litologia: [{ desde_m: 0, hasta_m: 12, material: "Arena" }] });
   t.mock.method(myPool, "connect", () => { throw new Error("Prohibido conectar a PostgreSQL"); });
   t.mock.method(myPool, "query", async (sql: string, params: unknown[]) => {
+    if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo: true, version_sesion: 1 }] };
+    if (sql.includes('SELECT r.nombre FROM rol r')) { assert.deepEqual(params, [7]); return { rows: [{ nombre: rol }] }; }
     assert.deepEqual(params, [idPozo]);
     if (sql.includes("FROM public.pozo p")) {
       for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro"]) assert.ok(sql.includes(campo));
@@ -201,15 +207,18 @@ test("endpoint PDF principal responde 200 con un histórico parcial y SQL simula
     throw new Error("Consulta no prevista en la prueba");
   });
   const app = Fastify();
-  for (const hook of ["authenticate", "pozoIsFromUser", "userIsPropietarioOrPerforadorOrAdmin", "rateLimitPdf"])
-    app.decorate(hook, async () => {});
+  await app.register(cookies); await app.register(jwt);
+  app.decorate('rateLimitPdf', async () => {});
   try {
     await app.register(informes);
-    const respuesta = await app.inject({ method: "GET", url: `/usuarios/1/pozos/${idPozo}/informe-pdf` });
+    const credenciales = { [SESSION_COOKIE]: app.jwt.sign({ sub: 7, version_sesion: 1 }, { expiresIn: '1h' }) };
+    const respuesta = await app.inject({ method: "GET", url: `/usuarios/1/pozos/${idPozo}/informe-pdf`, cookies: credenciales });
     assert.equal(respuesta.statusCode, 200, respuesta.body);
     assert.equal(respuesta.headers["content-type"], "application/pdf");
     assert.equal(respuesta.headers["content-disposition"], `attachment; filename="informe_pozo_${idPozo}.pdf"`);
     assert.equal(respuesta.rawPayload.subarray(0, 5).toString(), "%PDF-");
     assert.equal((await PDFDocument.load(respuesta.rawPayload)).getPageCount(), 3);
+    rol = 'administracion';
+    assert.equal((await app.inject({ method: 'GET', url: `/usuarios/1/pozos/${idPozo}/informe-pdf`, cookies: credenciales })).statusCode, 200);
   } finally { await app.close(); }
 });

@@ -6,12 +6,15 @@ import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 
 describe('App', () => {
-  for (const rol of ['propietario', 'perforador', 'administracion']) {
+  for (const rol of ['propietario', 'perforador', 'administracion', 'operador_administrativo']) {
     it(`${rol}: acceso a Sitios sólo para administración`, () => {
       const fixture = TestBed.createComponent(App);
       fixture.componentInstance.mainStore.setUser({ id_usuario: 7, nombre: 'Usuario', roles: [{ id_rol: 1, nombre: rol, descr: rol }] });
       fixture.detectChanges();
       expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/sitio"]')).toBe(rol === 'administracion');
+      expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/usuario"]')).toBe(rol === 'administracion');
+      expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/litologias-admin"]')).toBe(rol === 'administracion');
+      expect(fixture.componentInstance.mainStore.isAdmin()).toBe(rol === 'administracion');
     });
   }
   beforeEach(async () => {
