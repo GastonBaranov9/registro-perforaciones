@@ -44,7 +44,7 @@ test('capacidades: mayúsculas conservan exactamente los permisos canónicos, si
 test('capacidades: combinaciones no convierten al operador en administrador', () => {
   for (const roles of combinaciones) {
     const admin = roles.includes('administracion'), global = admin || roles.includes(operador);
-    assert.equal(rolesPermiten(roles, 'operarTodosLosPozos'), global);
+    assert.equal(rolesPermiten(roles, 'operarTodosLosPozos'), admin);
     assert.equal(rolesPermiten(roles, 'gestionarHistoricos'), global);
     assert.equal(rolesPermiten(roles, 'escribirPozos'), global || roles.includes('perforador'));
     assert.equal(rolesPermiten(roles, 'administrarUsuarios'), admin);
@@ -58,6 +58,7 @@ test('HTTP real: inventario administrativo denegado y operaciones autorizadas co
   let roles = [operador], activo = true, version = 1;
   t.mock.method(myPool, 'connect', () => { throw Error('Prohibida conexión real'); });
   t.mock.method(myPool, 'query', async (sql: string, params: unknown[]) => {
+    if (sql.includes('SELECT origen FROM pozo')) return {rows:[{origen:'historico'}]};
     assert.equal(params[0], 7, 'el actor no se obtiene del parámetro URL 999');
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo, version_sesion: version }] };
     if (sql.includes('SELECT r.nombre FROM rol r')) return { rows: roles.map(nombre => ({ nombre })) };
@@ -102,7 +103,7 @@ test('HTTP real: inventario administrativo denegado y operaciones autorizadas co
   roles = [operador];
   for (const request of permitidas) {
     const response = await app.inject({ ...request, cookies: credentials });
-    assert.equal(response.statusCode, 204, `${request.method} ${request.url}: ${response.body}`);
+    assert.equal(response.statusCode, request.url.includes('kml') ? 403 : 204, `${request.method} ${request.url}: ${response.body}`);
   }
   for (const state of ['inactivo', 'revocado', 'sin rol']) {
     activo = state !== 'inactivo'; version = state === 'revocado' ? 2 : 1;
@@ -197,7 +198,7 @@ test('transacciones: capacidad y sesión se revisan en la misma conexión, sin e
   const sesion = { idUsuario: 7, versionSesion: 1, idPozo: 22, capacidad: 'escribirPozos' as const };
   await contextoEscritura.run(sesion, () => iniciarEscrituraSesion(db));
   assert.ok(consultas.some(q => q.includes('session-write-user-lock')));
-  assert.ok(!consultas.some(q => q.includes('SELECT creado_por')));
+  assert.ok(consultas.some(q => q.includes('SELECT creado_por')));
   await assert.rejects(contextoEscritura.run({ ...sesion, capacidad: 'administrarUsuarios' }, () => iniciarEscrituraSesion(db, true)), { statusCode: 403 });
   for (const restantes of [[], ['propietario'], ['perforador']]) {
     roles = restantes;
@@ -224,6 +225,7 @@ test('HTTP históricos: operador crea y edita con hooks, servicios y transaccion
     if (sql.includes('session-write-user-lock')) return { rows: [{ activo: true, cuenta_acceso: true, version_sesion: 1 }] };
     if (sql.includes('SELECT proximo')) return { rows: [{ proximo: 3282 }] };
     if (sql.includes('SELECT epoca') && !sql.includes('creacion_historica')) return { rows: [{ epoca }] };
+    if (sql.includes('SELECT creado_por')) return {rows:[{creado_por:7,fecha_creado:new Date(),origen:'historico'}]};
     if (sql.includes('INSERT INTO pozo') || sql.includes('SELECT * FROM pozo')) return { rows: [{ id_pozo: 22, numero_perforacion: 123, origen: 'historico' }] };
     return { rows: [], rowCount: 0 };
   } };
@@ -285,12 +287,12 @@ test('roles incompatibles se validan por IDs del catálogo, sin confiar en nombr
   await assert.rejects(validarIdsRolesCompatibles([1, 4], db), { statusCode: 400 });
 });
 
-test('HTTP alta normal y ubicación: operador usa al perforador elegido, actor autenticado y número automático', async t => {
+test('HTTP alta normal y ubicación: operador usa su identidad, actor autenticado y número automático', async t => {
   process.env.FASTIFY_SECRET = 'normal-operador-test-never-production';
   const consultas: string[] = [];
   const sitio = { id_sitio: 33, departamento: 'Salto', localidad: 'Campo', latitud: '-31', longitud: '-57' };
   const pozo = { id_pozo: 22, numero_perforacion: 9000, id_propietario: null, propietario_provisional: 'Cliente',
-    id_sitio: 33, id_perforador: 8, creado_por: 7, fecha_creado: new Date().toISOString() };
+    id_sitio: 33, id_perforador: 7, creado_por: 7, fecha_creado: new Date().toISOString() };
   const query = async (sql: string, params: any[] = []) => {
     consultas.push(sql);
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo: true, version_sesion: 1 }] };
@@ -300,13 +302,14 @@ test('HTTP alta normal y ubicación: operador usa al perforador elegido, actor a
     if (sql.includes('SELECT id_pozo FROM public.pozo WHERE id_sitio')) return { rows: [{ id_pozo: 22 }] };
     if (sql.includes('FROM rol r')) return { rows: [{ id_rol: 2, nombre: 'perforador' }] };
     if (sql.includes('FROM usuario u') && sql.includes('JOIN usuario_rol')) {
-      assert.equal(params[0], 8); return { rows: [{ id_usuario: 8 }] };
+      assert.equal(params[0], 7); return { rows: [{ id_usuario: 7 }] };
     }
     if (sql.includes('INSERT INTO public.sitio') || sql.includes('UPDATE sitio')) return { rows: [sitio] };
     if (sql.includes('INSERT INTO public.pozo')) {
-      assert.equal(params[3], 8); assert.equal(params[4], 7); assert.equal(params[16], null, 'sin número manual');
+      assert.equal(params[3], 7); assert.equal(params[4], 7); assert.equal(params[16], null, 'sin número manual');
       return { rows: [pozo] };
     }
+    if (sql.includes('SELECT creado_por')) return {rows:[{creado_por:7,fecha_creado:new Date(Date.now()-1000),origen:'normal'}]};
     if (sql.includes('SELECT 1 FROM sitio')) return { rows: [{}] };
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     throw Error('SQL no previsto: ' + sql);
@@ -318,7 +321,7 @@ test('HTTP alta normal y ubicación: operador usa al perforador elegido, actor a
   app.decorate('notifyClient', () => {});
   await app.register(pozos); await app.register(sitios);
   const credentials = { [SESSION_COOKIE]: app.jwt.sign({ sub: 7, version_sesion: 1 }, { expiresIn: '1h' }) };
-  const payload = { pozo: { id_propietario: null, propietario_provisional: 'Cliente', id_perforador: 8 },
+  const payload = { pozo: { id_propietario: null, propietario_provisional: 'Cliente', id_perforador: 7 },
     sitio_nuevo: sitio, intervalos_litologicos: [], intervalos_diametro: [], intervalos_filtro: [], niveles_aporte: [] };
   const creado = await app.inject({ method: 'POST', url: '/usuarios/999/pozos/completo', cookies: credentials, payload });
   assert.equal(creado.statusCode, 201, creado.body);

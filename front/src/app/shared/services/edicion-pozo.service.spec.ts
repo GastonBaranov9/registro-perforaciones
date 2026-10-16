@@ -23,7 +23,8 @@ describe('EdicionPozoService: roles y pantalla abierta', () => {
   beforeEach(() => {
     roles = ['perforador'];
     TestBed.configureTestingModule({ providers: [{ provide: AuthService, useValue: {
-      puedeOperarTodosLosPozos: () => roles.includes('administracion') || roles.includes('operador_administrativo'),
+      puedeOperarTodosLosPozos: () => roles.includes('administracion'),
+      puedeGestionarHistoricos: () => roles.includes('administracion') || roles.includes('operador_administrativo'),
       tieneRol: (rol: string) => roles.includes(rol), userId: () => 7,
     } }] });
   });
@@ -41,6 +42,7 @@ describe('EdicionPozoService: roles y pantalla abierta', () => {
     roles = ['administracion', 'perforador'];
     expect(service.puedeEditar(viejo)).toBeTrue();
     roles = ['operador_administrativo'];
+    expect(service.puedeEditar(viejo)).toBeFalse();
     expect(service.puedeEditar({...viejo, origen:'historico'})).toBeTrue();
     roles = ['propietario'];
     expect(service.puedeEditar(viejo)).toBeFalse();

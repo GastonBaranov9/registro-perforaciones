@@ -1,3 +1,4 @@
+import { myPool } from '../db/pool.ts';
 import { tieneCapacidad, puedeOperarTodosLosPozos, type Capacidad } from '../services/capacidades.ts';
 import { contextoEscritura } from "../services/escritura-sesion.ts";
 import { exigirEdicionPozo } from "../services/edicion-pozo.ts";
@@ -206,7 +207,7 @@ export default fastifyPlugin(async function (fastify) {
   fastify.decorate("userIsPerforador", async function (req, rep) {
     await (fastify as any).authenticate(req, rep);
     const { sub } = req.user as { sub: number };
-    const ok = await rolUser(sub, "perforador");
+    const ok = await tieneCapacidad(sub, "alcancePerforador");
     if (!ok) throw new err.T05SinPermiso();
   });
   fastify.decorate("userIsPropietario", async function (req, rep) {
@@ -221,7 +222,7 @@ export default fastifyPlugin(async function (fastify) {
       await (fastify as any).authenticate(req, rep);
       const { sub } = req.user as { sub: number };
       const isPropietario = await rolUser(sub, "propietario");
-      const IsPerforador = await rolUser(sub, "perforador");
+      const IsPerforador = await tieneCapacidad(sub, "alcancePerforador");
       if (!(isPropietario || IsPerforador)) throw new err.T05SinPermiso();
     }
   );
@@ -232,7 +233,7 @@ export default fastifyPlugin(async function (fastify) {
       await (fastify as any).authenticate(req, rep);
       const { sub } = req.user as { sub: number };
       const isPropietario = await rolUser(sub, "propietario");
-      const IsPerforador = await rolUser(sub, "perforador");
+      const IsPerforador = await tieneCapacidad(sub, "alcancePerforador");
        const IsAdmin = await rolUser(sub, "administracion");
       if (!(isPropietario || IsPerforador || IsAdmin)) throw new err.T05SinPermiso();
     }
@@ -243,7 +244,7 @@ export default fastifyPlugin(async function (fastify) {
       await (fastify as any).authenticate(req, rep);
       const { sub } = req.user as { sub: number };
       const isAdmin = await rolUser(sub, "administracion");
-      const IsPerforador = await rolUser(sub, "perforador");
+      const IsPerforador = await tieneCapacidad(sub, "alcancePerforador");
       if (!(isAdmin || IsPerforador)) throw new err.T05SinPermiso();
     }
   );
@@ -270,19 +271,24 @@ export default fastifyPlugin(async function (fastify) {
     const { sub } = req.user as { sub: number };
     const { id_pozo } = req.params as { id_pozo: number };
     if (await puedeOperarTodosLosPozos(sub)) return;
+    if (await tieneCapacidad(sub, 'gestionarHistoricos')) {
+      const { rows } = await myPool.query("SELECT origen FROM pozo WHERE id_pozo=$1", [id_pozo]);
+      if (rows[0]?.origen === 'historico') return;
+    }
     // Este hook también puede preceder al control de capacidad operativa.
     const estado = await getEstadoSesionUsuario(Number(sub));
     if (!sesionVigente(estado, Number(req.user.version_sesion))) throw new err.T05NoAutorizado();
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !req.routeOptions.config.pozoSoloLectura) {
-      if (!(await rolUser(sub, "perforador"))) throw new err.T05SinPermiso();
+      if (!(await tieneCapacidad(sub, "alcancePerforador"))) throw new err.T05SinPermiso();
       await exigirEdicionPozo(id_pozo, sub);
       return;
     }
     if (await rolUser(sub, "propietario")) {
-      if (!(await pozoPerteneceAUsuario(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
+      if (!(await pozoPerteneceAUsuario(id_pozo, sub))
+        && !(await tieneCapacidad(sub, 'gestionarHistoricos') && await pozoPerteneceAPerforador(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
       return;
     }
-    if (await rolUser(sub, "perforador")) {
+    if (await tieneCapacidad(sub, "alcancePerforador")) {
       if (!(await pozoPerteneceAPerforador(id_pozo, sub))) throw new err.T05PozoNoEncontrado();
       return;
     }

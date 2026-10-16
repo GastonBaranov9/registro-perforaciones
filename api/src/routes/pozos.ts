@@ -1,4 +1,4 @@
-import { puedeOperarTodosLosPozos } from '../services/capacidades.ts';
+import { puedeOperarTodosLosPozos, tieneCapacidad } from '../services/capacidades.ts';
 import { vincularPropietarioPozo } from "../services/propietario-pozo-service.ts";
 import { cerrarOperacionOffline } from '../services/offline-cierre-service.ts';
 import { obtenerEpoca } from '../services/epoca-datos-service.ts';
@@ -94,13 +94,14 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
   fastify.get(
     "/pozos/candidatos-personas",
     {
-      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], querystring: Type.Object({ propietario: Type.Optional(Type.String({ maxLength: 80 })), perforador: Type.Optional(Type.String({ maxLength: 80 })), limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), propietario_id: Type.Optional(Type.Integer({ minimum: 1 })), perforador_id: Type.Optional(Type.Integer({ minimum: 1 })) }), response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
+      schema: { summary: "Listar personas elegibles para pozos", tags: ["pozos"], querystring: Type.Object({ historico: Type.Optional(Type.Boolean()), propietario: Type.Optional(Type.String({ maxLength: 80 })), perforador: Type.Optional(Type.String({ maxLength: 80 })), limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })), propietario_id: Type.Optional(Type.Integer({ minimum: 1 })), perforador_id: Type.Optional(Type.Integer({ minimum: 1 })) }), response: { 200: Type.Object({ propietarios: Type.Array(CandidatoPozo), perforadores: Type.Array(CandidatoPozo) }) } },
       onRequest: [fastify.authenticate],
       preHandler: [fastify.puedeOperarPozos],
     },
     async (req) => {
-      const q = req.query as { propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
-      const alcanceGlobal = await puedeOperarTodosLosPozos(req.user.sub);
+      const q = req.query as { historico?: boolean; propietario?: string; perforador?: string; limite?: number; propietario_id?: number; perforador_id?: number };
+      if (q.historico && !await tieneCapacidad(req.user.sub, 'gestionarHistoricos')) throw new err.T05SinPermiso();
+      const alcanceGlobal = q.historico === true || await puedeOperarTodosLosPozos(req.user.sub);
       if (!alcanceGlobal && (q.propietario !== undefined || q.propietario_id !== undefined)) throw new err.T05SinPermiso();
       return listarCandidatosPozo(req.user.sub, alcanceGlobal, undefined, { ...q, propietarioId: q.propietario_id, perforadorId: q.perforador_id });
     },
@@ -362,7 +363,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
         );
         return rep.code(200).send(pozos);
       }
-      if (isPropietario) {
+      if (isPropietario && !await tieneCapacidad(id_usuario, 'gestionarHistoricos')) {
         const pozos = await funcPozo.getPozosByPropietario(
           id_usuario,
           caudal_min,
@@ -381,7 +382,8 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
           caudal_max,
           profundidad_max,
           profundidad_min,
-          sello_sanitario
+          sello_sanitario,
+          isPropietario
         );
         return rep.code(200).send(pozos);
       }

@@ -68,6 +68,11 @@ export class DatosTecnicosBorradorComponent {
     if (id != null) item.material = nombre;
     this.notificarEdicion();
   }
+  provisional(item: IntervaloLitologicoBody, texto: string | null) {
+    item.litologia_provisional = texto;
+    if (texto != null) { item.id_litologia = undefined; item.material = texto.trim(); }
+    this.notificarEdicion();
+  }
   agregarDiametro() {
     if (this.guardando()) return;
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());

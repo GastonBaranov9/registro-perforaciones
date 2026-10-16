@@ -3,7 +3,8 @@ import { myPool } from '../db/pool.ts';
 import { T05DatosIncorrectos, T05SinPermiso } from '../models/errors.ts';
 
 export const ROLES_CAPACIDAD = {
-  operarTodosLosPozos: ['administracion', 'operador_administrativo'],
+  operarTodosLosPozos: ['administracion'],
+  alcancePerforador: ['perforador', 'operador_administrativo'],
   gestionarHistoricos: ['administracion', 'operador_administrativo'],
   escribirPozos: ['administracion', 'operador_administrativo', 'perforador'],
   consultarRecursos: ['administracion', 'operador_administrativo', 'perforador', 'propietario'],

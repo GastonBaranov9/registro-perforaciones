@@ -1,4 +1,5 @@
 import { exigirCapacidad } from './capacidades.ts';
+import { exigirVinculacionDesdePendientes } from './litologia-provisional.ts';
 import type { Pool } from 'pg';
 import { myPool } from '../db/pool.ts';
 import { validarHistorico, validarEdicionHistorica, validarFechasHistoricas, CAMPOS_HISTORICOS, type HistoricoBody, type HistoricoUpdateBody } from '../models/historicos.ts';
@@ -52,8 +53,8 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
       sitio = (await client.query(`INSERT INTO sitio(departamento,localidad,padron,latitud,longitud)
         VALUES($1,$2,$3,$4,$5) RETURNING *`, [s.departamento.trim(), s.localidad ?? null, s.padron ?? null, coordenadas?.latitud ?? null, coordenadas?.longitud ?? null])).rows[0];
     }
-    const fields = ['empresa','fecha_inicio','fecha_fin','profundidad_final_m','caudal_estimado_lh','nivel_estatico_m','nivel_dinamico_m','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const;
-    const values = [data.numero_perforacion, actor, data.id_propietario ?? null, data.propietario_provisional?.trim() ?? null, data.id_perforador ?? null, sitio?.id_sitio ?? null, ...fields.map(f => data[f] ?? null)];
+    const fields = ['perforador_provisional','empresa','fecha_inicio','fecha_fin','profundidad_final_m','caudal_estimado_lh','nivel_estatico_m','nivel_dinamico_m','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const;
+    const values = [data.numero_perforacion, actor, data.id_propietario ?? null, data.propietario_provisional?.trim() ?? null, data.id_perforador ?? null, sitio?.id_sitio ?? null, ...fields.map(f => f === 'perforador_provisional' ? data[f]?.trim() ?? null : data[f] ?? null)];
     const pozo = (await client.query(`INSERT INTO pozo(origen,numero_perforacion,creado_por,id_propietario,propietario_provisional,id_perforador,id_sitio,${fields.join(',')})
       VALUES('historico',${values.map((_, i) => '$' + (i + 1)).join(',')}) RETURNING *`, values)).rows[0];
     const hijos = await insertarHijos(client, Number(pozo.id_pozo), tecnicos);
@@ -93,8 +94,11 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
     if(!original)throw new T05PozoNoEncontrado();
     if(original.origen!=='historico')throw new T05DatosIncorrectos('Esta ruta sólo edita perforaciones históricas.');
     const p={...original,...data};
+    exigirVinculacionDesdePendientes(original.perforador_provisional,p.id_perforador);
+    exigirVinculacionDesdePendientes(original.propietario_provisional,p.id_propietario);
     // pg devuelve Date para algunos entornos; validar siempre fechas calendario.
     validarFechasHistoricas({fecha_inicio:p.fecha_inicio instanceof Date?p.fecha_inicio.toISOString().slice(0,10):p.fecha_inicio,fecha_fin:p.fecha_fin instanceof Date?p.fecha_fin.toISOString().slice(0,10):p.fecha_fin});
+    if(p.id_perforador&&p.perforador_provisional)throw new T05DatosIncorrectos('Seleccione perforador o nombre provisional, no ambos.');
     if(p.id_propietario&&p.propietario_provisional)throw new T05DatosIncorrectos('Seleccione propietario o nombre provisional, no ambos.');
     if(data.id_propietario)await validarPersonaPozo(data.id_propietario,'propietario',client);
     if(data.id_perforador)await validarPersonaPozo(data.id_perforador,'perforador',client);
@@ -112,7 +116,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
       }else sitioId=(await client.query('INSERT INTO sitio(departamento,localidad,padron,latitud,longitud) VALUES($1,$2,$3,$4,$5) RETURNING id_sitio',values)).rows[0].id_sitio;
     }
     const children={
-      intervalos_litologicos:data.intervalos_litologicos??(await client.query('SELECT id_intervalo_litologico,desde_m::float8,hasta_m::float8,material,id_litologia FROM intervalo_litologico WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows.map(r=>({...r,id_intervalo_litologico:Number(r.id_intervalo_litologico),id_litologia:r.id_litologia==null?undefined:Number(r.id_litologia)})),
+      intervalos_litologicos:data.intervalos_litologicos??(await client.query('SELECT id_intervalo_litologico,desde_m::float8,hasta_m::float8,material,id_litologia,litologia_provisional FROM intervalo_litologico WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows.map(r=>({...r,id_intervalo_litologico:Number(r.id_intervalo_litologico),id_litologia:r.id_litologia==null?undefined:Number(r.id_litologia)})),
       intervalos_diametro:data.intervalos_diametro??(await client.query('SELECT desde_m::float8,hasta_m::float8,diametro_pulg::float8,material_tuberia FROM intervalo_diametro_perforacion WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows,
       intervalos_filtro:data.intervalos_filtro??(await client.query('SELECT id_intervalo_filtro,desde_m::float8,hasta_m::float8,diametro_pulg::float8,material_tuberia,ranura_mm::float8 FROM intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows.map(r=>({...r,id_intervalo_filtro:Number(r.id_intervalo_filtro)})),
       niveles_aporte:data.niveles_aporte??(await client.query('SELECT profundidad_m::float8 FROM nivel_aporte WHERE id_pozo=$1 ORDER BY profundidad_m',[idPozo])).rows,
@@ -120,7 +124,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
     const errors=validarDatosTecnicosPozo({...children,profundidad_final_m:p.profundidad_final_m==null?undefined:Number(p.profundidad_final_m)});
     if(errors.length)throw new T05DatosIncorrectos(errors.join(' '));
     const fields=CAMPOS_HISTORICOS.filter(f=>Object.hasOwn(data,f));
-    if(fields.length)await client.query(`UPDATE pozo SET ${fields.map((f,i)=>`${f}=$${i+2}`).join(',')} WHERE id_pozo=$1`,[idPozo,...fields.map(f=>data[f]??null)]);
+    if(fields.length)await client.query(`UPDATE pozo SET ${fields.map((f,i)=>`${f}=$${i+2}`).join(',')} WHERE id_pozo=$1`,[idPozo,...fields.map(f=>f.endsWith('_provisional') ? (data[f] as string|null)?.trim()??null : data[f]??null)]);
     if(data.sitio)await client.query('UPDATE pozo SET id_sitio=$2 WHERE id_pozo=$1',[idPozo,sitioId]);
     // Si no se envían estructuras, ni siquiera se reemplazan sus IDs.
     if(['intervalos_litologicos','intervalos_diametro','intervalos_filtro','niveles_aporte'].some(k=>Object.hasOwn(data,k)))await reemplazarHijosPozo(client,idPozo,children);

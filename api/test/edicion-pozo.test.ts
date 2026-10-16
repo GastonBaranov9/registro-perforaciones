@@ -30,7 +30,7 @@ test('ventana exacta, creador persistido y fechas inválidas', async () => {
   await assert.rejects(exigirEdicionSitio(1, 7, compartido, ahora), { statusCode: 403 });
   const viejo = { query: async () => ({ rows: [{ ...propio, fecha_creado: new Date(0) }] }) } as unknown as typeof db;
   await assert.rejects(exigirEdicionSitio(1, 7, viejo, ahora), { statusCode: 403 });
-  const historico = { query: async () => ({ rows: [{ ...propio, origen:'historico' }] }) } as unknown as typeof db;
+  const historico = { query: async (sql:string) => ({ rows: sql.includes('SELECT r.nombre') ? [{nombre:'perforador'}] : [{ ...propio, origen:'historico' }] }) } as unknown as typeof db;
   await assert.rejects(exigirEdicionPozo(1,7,historico,ahora),{statusCode:403});
   await assert.rejects(exigirEdicionSitio(1,7,historico,ahora),{statusCode:403});
 });

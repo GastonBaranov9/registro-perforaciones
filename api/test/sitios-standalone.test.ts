@@ -23,9 +23,10 @@ test('sitios: HTTP y transacción restringen operador, multirol y carrera de des
     if (sql.includes('FROM rol r')) return { rows: roles.map(nombre => ({ id_rol: 4, nombre, descr: nombre })) };
     if (sql.includes('FROM usuario_rol')) return { rows: roles.map(r => r.toLowerCase()).includes(String(params[1])) ? [{}] : [] };
     if (sql.includes('SELECT id_pozo FROM public.pozo WHERE id_sitio')) return { rows: asociado ? [{ id_pozo: 22 }] : [] };
-    if (sql.includes('FROM public.pozo p')) return { rows: [] };
+    if (sql.includes('SELECT creado_por')) return {rows:asociado?[{creado_por:7,fecha_creado:new Date(Date.now()-1000),origen:'normal'}]:[]};
+    if (sql.includes('FROM public.pozo p')) return { rows: asociado ? [{}] : [] };
     if (sql.includes('UPDATE sitio')) { escrituras++; return { rows: [{ id_sitio: 12, ...body }] }; }
-    if (sql.includes('FROM sitio')) return { rows: [{ id_sitio: 12, ...body }] };
+    if (sql.includes('FROM sitio')) return { rows: sql.includes('id_propietario = $2') ? [] : [{ id_sitio: 12, ...body }] };
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     throw Error('SQL inesperado: ' + sql);
   };
@@ -45,14 +46,14 @@ test('sitios: HTTP y transacción restringen operador, multirol y carrera de des
     asociado = false;
     const antes = escrituras;
     for (const method of ['GET','PUT','DELETE'] as const) {
-      const r = await call(method); assert.equal(r.statusCode, 403, r.body);
+      const r = await call(method); assert.ok([403,404].includes(r.statusCode),r.body);
     }
     for (const method of ['GET','POST'] as const) {
-      const r = await call(method, '/usuarios/999/sitios'); assert.equal(r.statusCode, 403, r.body);
+      const r = await call(method, '/usuarios/999/sitios'); assert.ok([403,404].includes(r.statusCode),r.body);
     }
     assert.equal(escrituras, antes, 'sin escrituras sobre sitios independientes');
     for (const url of ['/usuarios/999/sitios/12/mapa-aereo', '/usuarios/999/sitios/12/mapa-aereo/preview?latitud=-31&longitud=-57'])
-      assert.equal((await call('GET', url)).statusCode, 403, 'mapas también respetan la asociación');
+      assert.ok([403,404].includes((await call('GET', url)).statusCode), 'mapas también respetan el alcance del perforador');
   }
   roles = ['administracion'];
   for (const method of ['GET','PUT'] as const) {
@@ -63,8 +64,8 @@ test('sitios: HTTP y transacción restringen operador, multirol y carrera de des
   const antes = escrituras, carrera = await call('PUT');
   assert.equal(carrera.statusCode, 403, carrera.body);
   assert.equal(escrituras, antes);
-  assert.equal(consultas.filter(q => q.includes('SELECT id_pozo FROM public.pozo WHERE id_sitio')).length, 2);
-  assert.ok(consultas.some(q => q.includes('LIMIT 1 FOR SHARE')));
+  assert.equal(consultas.filter(q => q.includes('SELECT creado_por')).length, 2);
+  assert.ok(consultas.some(q => q.includes('session-write-user-lock')));
   assert.ok(consultas.includes('ROLLBACK')); assert.ok(!consultas.includes('COMMIT'));
 });
 

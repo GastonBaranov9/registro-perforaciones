@@ -1,4 +1,14 @@
 <div class="selector-litologia" (focusout)="cerrar($event)">
+  @if (permitirProvisional()) {
+    <button type="button" [disabled]="deshabilitado()" (click)="usarProvisional()">No encuentro esta litología</button>
+    @if (modoProvisional() || provisional() != null) {
+      <label>Litología provisional
+        <input type="text" maxlength="160" required [ngModel]="provisional() ?? ''" [ngModelOptions]="{standalone:true}"
+          (ngModelChange)="escribirProvisional($event)" [disabled]="deshabilitado()" />
+      </label>
+      @if (!provisional()?.trim()) { <p role="alert">Escriba el nombre observado.</p> }
+    }
+  }
   @if (movil()) {
     <button class="abrir-selector" type="button" aria-haspopup="dialog" [attr.aria-expanded]="abierto()"
       [disabled]="deshabilitado() || cargando() || !!error()" (click)="abrirMovil()">
@@ -23,11 +33,14 @@
     }
     @if (!seleccionado() && materialHistorico()) { <p class="historico">Material histórico sin vínculo: {{ materialHistorico() }}</p> }
     @if (seleccionada()?.activo === false) { <p class="historico">Inactiva — uso histórico. Seleccione una activa para reemplazarla.</p> }
-    @if (requerirSeleccion() && !seleccionado()) { <p class="error" role="alert">Selecciona una litologia para el intervalo.</p> }
+    @if (requerirSeleccion() && !seleccionado() && !provisional()?.trim()) { <p class="error" role="alert">Seleccione una litología o escriba el nombre observado.</p> }
   }
 </div>
 
 <ng-template #buscador>
+  @if (movil() && permitirProvisional()) {
+    <button type="button" [disabled]="deshabilitado()" (click)="usarProvisional()">No encuentro esta litología</button>
+  }
   <label>Buscar litología por nombre o familia
     <input type="search" role="combobox" aria-autocomplete="list" autocomplete="off"
       [attr.aria-expanded]="abierto() && !cargando() && !error()" [attr.aria-controls]="listaId"

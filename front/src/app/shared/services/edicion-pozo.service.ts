@@ -20,7 +20,7 @@ export class EdicionPozoService {
   readonly mensaje = MENSAJE_SOLO_LECTURA;
   puedeEditar(pozo: CreacionPozo | null | undefined): boolean {
     this.pulso();
-    return this.auth.puedeOperarTodosLosPozos() || (pozo?.origen!=='historico' && this.auth.tieneRol('perforador')
+    return this.auth.puedeOperarTodosLosPozos() || (pozo?.origen==='historico' && this.auth.puedeGestionarHistoricos()) || (pozo?.origen!=='historico' && (this.auth.tieneRol('perforador') || this.auth.tieneRol('operador_administrativo'))
       && dentroDeVentana(pozo, this.auth.userId(), Date.now()));
   }
 }

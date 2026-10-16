@@ -5,7 +5,7 @@
     </div>
     <div class="contenedor-pozos">
       @if (authService.puedeGestionarHistoricos()) { <app-estilo-paginas titulo="CARGA HISTÓRICA" link="/pozos-historicos" /> }
-      @if (authService.isNative() && authService.tieneRol('perforador')) { <app-estilo-paginas titulo="TRABAJO DE CAMPO · BORRADORES" link="/trabajo-local" /> }
+      @if (authService.isNative() && (authService.tieneRol('perforador') || authService.tieneRol('operador_administrativo'))) { <app-estilo-paginas titulo="TRABAJO DE CAMPO · BORRADORES" link="/trabajo-local" /> }
       @if (authService.tieneRol('administracion')) { <app-estilo-paginas titulo="NUMERACIÓN DE PERFORACIONES" link="/pozos-numeracion" /> }
       @if (authService.puedeAdministrarPozos()) {
         <app-estilo-paginas titulo="CREAR POZOS" link="/pozos-create"> </app-estilo-paginas>

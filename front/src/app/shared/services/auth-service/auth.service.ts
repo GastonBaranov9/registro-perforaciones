@@ -333,14 +333,16 @@ export class AuthService {
   }
 
   public puedeOperarTodosLosPozos(): boolean {
-    return this.tieneRol('administracion') || this.tieneRol('operador_administrativo');
+    return this.tieneRol('administracion');
   }
 
-  public puedeGestionarHistoricos(): boolean { return this.puedeOperarTodosLosPozos(); }
+  public puedeGestionarHistoricos(): boolean { return this.tieneRol('administracion') || this.tieneRol('operador_administrativo'); }
+
+  public tieneAlcancePerforador(): boolean { return this.tieneRol('perforador') || this.tieneRol('operador_administrativo'); }
   public puedeAdministrarUsuarios(): boolean { return this.tieneRol('administracion'); }
 
   public puedeAdministrarPozos(): boolean {
-    return this.puedeOperarTodosLosPozos() || this.tieneRol('perforador');
+    return this.puedeOperarTodosLosPozos() || this.tieneAlcancePerforador();
   }
 
   private async bootstrapInternal(): Promise<void> {

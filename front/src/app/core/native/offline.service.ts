@@ -50,7 +50,7 @@ export class OfflineService {
     const session = await this.secure.load();
     if (!session || await this.pending.load() || session.installationId !== await this.installation.loadExisting()) throw new Error('Debe iniciar sesión para abrir sus borradores.');
     const user = session.offlineUser;
-    if (!user || !Number.isSafeInteger(user.id_usuario) || !user.roles.some(r => r.nombre === 'perforador')) throw new Error('Inicie sesión como perforador con conexión para habilitar el trabajo local.');
+    if (!user || !Number.isSafeInteger(user.id_usuario) || !user.roles.some(r => ['perforador','operador_administrativo'].includes(r.nombre))) throw new Error('Inicie sesión como perforador con conexión para habilitar el trabajo local.');
     if (this.auth.state() === 'authenticated' && this.auth.userId() !== user.id_usuario) throw new Error('La cuenta cambió. Vuelva a abrir sus borradores.');
     return user;
   }
@@ -159,7 +159,7 @@ export class OfflineService {
     try {
       const owner = await this.owner();
       await this.auth.getUser();
-      if (this.auth.state() !== 'authenticated' || this.auth.userId() !== owner.id_usuario || !this.auth.tieneRol('perforador')) throw new Error('Vuelva a iniciar sesión como el mismo perforador para sincronizar. Sus borradores se conservan.');
+      if (this.auth.state() !== 'authenticated' || this.auth.userId() !== owner.id_usuario || !(this.auth.tieneRol('perforador') || this.auth.tieneRol('operador_administrativo'))) throw new Error('Vuelva a iniciar sesión como el mismo perforador para sincronizar. Sus borradores se conservan.');
       const repo = await this.repository();
       for (const draft of await repo.list()) {
         if (!draft.epoca) {

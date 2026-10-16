@@ -114,9 +114,13 @@
     }
 
     <app-selector-persona-pozo etiqueta="Perforador" rol="perforador" [buscarRemoto]="buscarPerforadores()" [candidatos]="perforadores()"
-      [(seleccionado)]="pozo().id_perforador" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadorBloqueado()" />
+      [(seleccionado)]="pozo().id_perforador" (seleccionadoChange)="pozo().perforador_provisional=null; notificarCambio()" [deshabilitado]="guardando() || !catalogosDisponibles() || perforadorBloqueado()" />
 
-    @if (historico()) { <ion-button type="button" fill="clear" (click)="pozo().id_perforador=0" [disabled]="guardando()">Perforador desconocido</ion-button> }
+    @if (historico()) {
+      <ion-item><ion-input label="Nombre del perforador provisional" labelPlacement="stacked" name="perforador_provisional" maxlength="160"
+        [(ngModel)]="pozo().perforador_provisional" (ngModelChange)="pozo().id_perforador=0; notificarCambio()" [disabled]="guardando()" /></ion-item>
+    }
+    @if (historico()) { <ion-button type="button" fill="clear" (click)="pozo().id_perforador=0; pozo().perforador_provisional=null; notificarCambio()" [disabled]="guardando()">Perforador desconocido</ion-button> }
     <ion-item>
       <ion-label position="stacked">Fecha de inicio</ion-label>
       <ion-input [disabled]="guardando()" type="date" name="fecha_inicio" [(ngModel)]="this.pozo().fecha_inicio"></ion-input>

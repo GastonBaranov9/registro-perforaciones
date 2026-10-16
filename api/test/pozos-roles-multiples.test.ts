@@ -5,7 +5,7 @@ import { myPool } from '../src/db/pool.ts';
 import pozoRoutes from '../src/routes/pozos.ts';
 
 const casos = [
-  ['administracion'], ['perforador'], ['propietario'], ['operador_administrativo'], ['operador_administrativo', 'perforador', 'propietario'],
+  ['administracion'], ['perforador'], ['propietario'], ['operador_administrativo'], ['operador_administrativo', 'propietario'], ['operador_administrativo', 'perforador'], ['operador_administrativo', 'perforador', 'propietario'],
   ['administracion', 'perforador'], ['administracion', 'propietario'],
   ['administracion', 'perforador', 'propietario'], ['propietario', 'perforador'], [],
 ];
@@ -13,8 +13,8 @@ for (const roles of casos) {
   test(`GET pozos: ${roles.join(' + ') || 'sin permisos'} usa alcance de sesión`, async () => {
     const consultas: { sql: string; params?: unknown[] }[] = [];
     const original = myPool.query;
-    const admin = roles.includes('administracion') || roles.includes('operador_administrativo');
-    const alcance = admin ? '1=1' : roles.includes('propietario') ? 'id_propietario = $1' : 'id_perforador = $1';
+    const admin = roles.includes('administracion');
+    const alcance = admin ? '1=1' : roles.includes('propietario') && !roles.includes('operador_administrativo') ? 'id_propietario = $1' : '(id_perforador = $1';
     myPool.query = (async (sql: string, params?: unknown[]) => {
       consultas.push({ sql, params });
       if (sql.includes('FROM rol r')) {

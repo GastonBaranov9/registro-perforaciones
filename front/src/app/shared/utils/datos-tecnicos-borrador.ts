@@ -88,8 +88,9 @@ export function sugerirInicioSiguienteIntervalo(
 export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?: number): string[] {
   const errores: string[] = [];
   datos.intervalosLitologicos.forEach((item, indice) => {
+    if (item.dato.litologia_provisional != null && (!item.dato.litologia_provisional.trim() || item.dato.litologia_provisional.trim().length > 160 || item.dato.id_litologia != null)) errores.push('Indique un nombre provisional de 1 a 160 caracteres o una litología catalogada.');
     const persistido = item.dato.id_intervalo_litologico != null;
-    if (!persistido && item.dato.id_litologia == null) errores.push(`Intervalo litologico ${indice + 1}: selecciona una litologia para el intervalo.`);
+    if (!persistido && item.dato.id_litologia == null && !item.dato.litologia_provisional?.trim()) errores.push(`Intervalo litologico ${indice + 1}: selecciona una litologia para el intervalo.`);
     if (!item.dato.material.trim()) errores.push(`Intervalo litologico ${indice + 1}: el material no puede estar vacio.`);
   });
   validarIntervalos(datos.intervalosLitologicos.map((item) => item.dato), 'litológico', profundidad, errores);

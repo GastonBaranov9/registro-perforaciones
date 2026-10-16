@@ -11,6 +11,7 @@ export const HistoricoBody = Type.Object({
   id_propietario: Type.Optional(id()),
   propietario_provisional: Type.Optional(Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' })),
   id_perforador: Type.Optional(id()),
+  perforador_provisional: Type.Optional(Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' })),
   empresa: Type.Optional(texto()),
   fecha_inicio: Type.Optional(fecha()), fecha_fin: Type.Optional(fecha()),
   profundidad_final_m: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
@@ -30,7 +31,7 @@ export const HistoricoBody = Type.Object({
   foto: Type.Optional(FotoNuevaPozo),
 }, { additionalProperties: false });
 export type HistoricoBody = Static<typeof HistoricoBody>;
-export const CAMPOS_HISTORICOS = ['id_propietario','propietario_provisional','id_perforador','empresa','fecha_inicio','fecha_fin','profundidad_final_m','caudal_estimado_lh','nivel_estatico_m','nivel_dinamico_m','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const;
+export const CAMPOS_HISTORICOS = ['id_propietario','propietario_provisional','id_perforador','perforador_provisional','empresa','fecha_inicio','fecha_fin','profundidad_final_m','caudal_estimado_lh','nivel_estatico_m','nivel_dinamico_m','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento'] as const;
 const editables = Type.Pick(HistoricoBody, [...CAMPOS_HISTORICOS]);
 export const HistoricoUpdateBody = Type.Object({
   ...Object.fromEntries(Object.entries(editables.properties).map(([k,v]) => [k, Type.Optional(Type.Union([v, Type.Null()]))])),
@@ -57,6 +58,7 @@ export function validarEdicionHistorica(data: unknown): asserts data is Historic
 export function validarHistorico(data: unknown): asserts data is HistoricoBody {
   if (!Value.Check(HistoricoBody, data)) throw new T05DatosIncorrectos('Histórico inválido: número entero entre 1 y 3281 y sólo datos conocidos.');
   if (data.id_propietario && data.propietario_provisional) throw new T05DatosIncorrectos('Seleccione propietario o nombre provisional, no ambos.');
+  if (data.id_perforador && data.perforador_provisional) throw new T05DatosIncorrectos('Seleccione perforador o nombre provisional, no ambos.');
   validarFechasHistoricas(data);
 }
 export function validarFechasHistoricas(data: {fecha_inicio?:string|null;fecha_fin?:string|null}) {

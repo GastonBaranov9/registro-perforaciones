@@ -62,7 +62,7 @@ export async function getReportePozo(
       prop.telefono AS propietario_telefono,
       prop.propietario_email AS propietario_email,
       p.empresa AS empresa,
-      perf.nombre AS perforador,
+      COALESCE(perf.nombre,p.perforador_provisional) AS perforador,
       s.departamento || COALESCE(' - ' || s.localidad, '') AS sitio,
       s.departamento,
       s.localidad,
@@ -99,7 +99,7 @@ export async function getReportePozo(
   const pozo = rows[0];
 
   const litologiaSql = `
-    SELECT i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
+    SELECT i.desde_m,i.hasta_m,COALESCE(c.nombre,i.litologia_provisional,i.material) AS material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
     FROM public.intervalo_litologico i LEFT JOIN public.catalogo_litologia c ON c.id_litologia=i.id_litologia
     WHERE i.id_pozo = $1 ORDER BY i.desde_m;
   `;

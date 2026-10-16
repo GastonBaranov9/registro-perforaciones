@@ -12,7 +12,8 @@ describe('PermisosSitioService: sitios asociados y roles', () => {
       TestBed.configureTestingModule({ providers: [PermisosSitioService,
         { provide: AuthService, useValue: {
           tieneRol: (rol: string) => roles.includes(rol), userId: () => 7,
-          puedeOperarTodosLosPozos: () => roles.includes('administracion') || roles.includes('operador_administrativo'),
+          puedeOperarTodosLosPozos: () => roles.includes('administracion'),
+          puedeGestionarHistoricos: () => roles.includes('administracion') || roles.includes('operador_administrativo'),
         } },
         { provide: PozosListService, useValue: { getListaPozos: listado } },
       ] });

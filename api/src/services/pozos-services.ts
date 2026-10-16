@@ -125,7 +125,7 @@ export async function updatePozo(
 // Obtener un pozo específico
 export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> {
   const { rows } = await myPool.query<PozoDetalle>(
-    `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+    `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.perforador_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
       p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
       p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
       p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
@@ -134,7 +134,7 @@ export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> 
       prop.documento_rut AS propietario_documento_rut, prop.telefono AS propietario_telefono,
       prop.direccion AS propietario_direccion, prop.localidad AS propietario_localidad,
       prop.departamento AS propietario_departamento, prop.observaciones AS propietario_observaciones,
-      perf.nombre AS perforador_nombre, perf.email AS perforador_email,
+      COALESCE(perf.nombre,p.perforador_provisional) AS perforador_nombre, perf.email AS perforador_email,
       json_build_object('id_sitio',s.id_sitio,'departamento',s.departamento,'localidad',s.localidad,
         'latitud',s.latitud,'longitud',s.longitud,'padron',s.padron) AS sitio
      FROM public.pozo p
@@ -208,7 +208,7 @@ export async function updatePozoFoto(
   }, db, false);
 }
 // Identificación de la lista en una sola consulta, conservando su alcance por rol.
-const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+const POZOS_LISTADO_SELECT = `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.perforador_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
     p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
     p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
     p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,
@@ -308,9 +308,10 @@ export async function getPozosByPerforador(
   caudal_max: number,
   profundidad_max: number,
   profundidad_min: number,
-  sello_sanitario: boolean
+  sello_sanitario: boolean,
+  incluirPropiosComoPropietario = false
 ): Promise<PozoListado[]> {
-  let query = `${POZOS_LISTADO_SELECT} WHERE id_perforador = $1 `;
+  let query = `${POZOS_LISTADO_SELECT} WHERE (id_perforador = $1 ${incluirPropiosComoPropietario ? 'OR id_propietario = $1' : ''} OR (p.origen='historico' AND EXISTS (SELECT 1 FROM usuario_rol ur JOIN rol r USING(id_rol) WHERE ur.id_usuario=$1 AND lower(r.nombre)='operador_administrativo'))) `;
 
   const params: Array<number | boolean> = [id_perforador];
   if (caudal_min !== undefined) {

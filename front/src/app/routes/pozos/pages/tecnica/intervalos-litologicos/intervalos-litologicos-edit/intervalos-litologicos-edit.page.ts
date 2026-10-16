@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { IntervaloLitologicoBody } from '../../../../../../shared/types/schemas';
 import { IonContent, IonCard, IonCardContent, IonSpinner, IonButton, IonToolbar, IonButtons, IonBackButton, ToastController } from '@ionic/angular/standalone';
 import { IntervaloLitFormComponent } from '../components/intervalo-lit-form/intervalo-lit-form.component';
+import { huellaIntervaloLitologico } from '../../../../../../shared/utils/estado-intervalo-litologico';
 
 @Component({
   providers: [PermisosTecnicosService],
@@ -24,10 +25,18 @@ export class IntervalosLitologicosEditPage {
   public disabled = signal<boolean>(false);
   public id_pozo = input.required<number>();
   public id_intervalo_litologico = input.required<number>();
+  private base = '';
+  tieneCambiosSinGuardar() {
+    return this.intervaloResource.hasValue() && huellaIntervaloLitologico(this.intervaloResource.value()) !== this.base;
+  }
 
   public intervaloResource = resource({
     params: () => ({ idPozo: this.id_pozo(), idIntervalo: this.id_intervalo_litologico() }),
-    loader: ({ params }) => this.interevaloEditLito.getIntLito(params.idPozo, params.idIntervalo),
+    loader: async ({ params }) => {
+      const dato = await this.interevaloEditLito.getIntLito(params.idPozo, params.idIntervalo);
+      this.base = huellaIntervaloLitologico(dato);
+      return dato;
+    },
   });
 
   async handleEdit(intervalo: IntervaloLitologicoBody) {
@@ -36,12 +45,14 @@ export class IntervalosLitologicosEditPage {
       const id_pozo = this.id_pozo();
       const id_intervalo_litologico = this.id_intervalo_litologico();
       this.disabled.set(true);
+      const enviado = huellaIntervaloLitologico(intervalo);
       await this.interevaloEditLito.editIntervaloLito(
         id_pozo,
         id_intervalo_litologico,
         intervalo
       );
 
+       this.base = enviado;
        this.router.navigate([`/pozos/${id_pozo}/intervalos-litologicos-list`]);
     } catch (err: any) {
       const toast = await this.toastController.create({

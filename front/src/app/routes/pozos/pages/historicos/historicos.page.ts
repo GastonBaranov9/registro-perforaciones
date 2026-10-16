@@ -52,6 +52,7 @@ export class HistoricosPage {
   private readonly destroyRef = inject(DestroyRef);
   private huellaActual() { return huellaFormulario(this.pozo(), this.sitio(), this.tecnicos(), true); }
   tieneCambiosSinGuardar(): boolean {
+    if (this.resultado() && !this.id_pozo()) return false;
     return this.recargaPendiente() || this.huellaActual() !== this.baseFormulario
       || !!this.formulario?.fotoFile || !!this.formulario?.eliminarFotoPendiente()
       || !!this.formulario?.tieneCambiosPropietario();
@@ -62,8 +63,8 @@ export class HistoricosPage {
   private diametros=inject(IntervaloDiametroListService);
   private filtros=inject(IntervalosFiltroService);
   private aportes=inject(AporteListService);
-  buscarPropietarios=(texto:string)=>this.candidatos.buscar('propietario',texto);
-  buscarPerforadores=(texto:string)=>this.candidatos.buscar('perforador',texto);
+  buscarPropietarios=(texto:string)=>this.candidatos.buscar('propietario',texto,true);
+  buscarPerforadores=(texto:string)=>this.candidatos.buscar('perforador',texto,true);
   get numero(){return this.pozo().numero_perforacion??null;}
   set numero(n:number|null){this.pozo.update(p=>({...p,numero_perforacion:n}));}
   envio?: { actor: number; clave: string; epoca: string; body: Record<string, unknown>; rechazada?: boolean; fotoKey?: string };
@@ -74,7 +75,7 @@ export class HistoricosPage {
       if(this.envio?.fotoKey&&!this.envio.body['foto']&&!this.resultado()){const foto=await fotoHistoricaPendiente(this.envio.fotoKey,'leer');if(!foto)throw Error('Falta la foto pendiente. No se enviará una carga incompleta.');this.envio.body['foto']=foto;}
       if (this.envio?.rechazada) this.retirada.set(true);
       if (this.envio && this.envio.actor !== this.auth.userId()) { this.envio = undefined; this.resultado.set(null); }
-      const c = await this.candidatos.obtener({ limite: 50 }); this.propietarios.set(c.propietarios); this.perforadores.set(c.perforadores);
+      const c = await this.candidatos.obtener({ limite: 50, historico: true }); this.propietarios.set(c.propietarios); this.perforadores.set(c.perforadores);
       if(this.id_pozo()&&!this.cargado())await this.cargarEdicion();
       this.cargado.set(true);
     }
@@ -133,8 +134,8 @@ export class HistoricosPage {
     if(!Number.isInteger(id)||id<1)throw Error('Identificador inválido.');
     const [p,l,d,f,a]=await Promise.all([this.editor.getPozoById(id),this.litologia.getIntervalosLitologicos(id),this.diametros.getIntervalosDiametros(id),this.filtros.listar(id),this.aportes.getNivelesAporte(id)]);
     if(p.origen!=='historico')throw Error('Esta pantalla sólo edita perforaciones históricas.');
-    if(p.id_propietario&&!this.propietarios().some(x=>x.id_usuario===p.id_propietario)){const persona=await this.candidatos.obtenerPorId('propietario',p.id_propietario);if(persona)this.propietarios.update(xs=>[persona,...xs]);}
-    if(p.id_perforador&&!this.perforadores().some(x=>x.id_usuario===p.id_perforador)){const persona=await this.candidatos.obtenerPorId('perforador',p.id_perforador);if(persona)this.perforadores.update(xs=>[persona,...xs]);}
+    if(p.id_propietario&&!this.propietarios().some(x=>x.id_usuario===p.id_propietario)){const persona=await this.candidatos.obtenerPorId('propietario',p.id_propietario,true);if(persona)this.propietarios.update(xs=>[persona,...xs]);}
+    if(p.id_perforador&&!this.perforadores().some(x=>x.id_usuario===p.id_perforador)){const persona=await this.candidatos.obtenerPorId('perforador',p.id_perforador,true);if(persona)this.perforadores.update(xs=>[persona,...xs]);}
     this.pozo.set({...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)});
     if(p.sitio)this.sitio.set({...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''});
     const technical=tecnicosPersistidos(l,d,f,a);this.inicial.set(technical);this.tecnicos.set(technical);

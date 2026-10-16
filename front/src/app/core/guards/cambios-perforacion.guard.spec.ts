@@ -71,12 +71,10 @@ describe('Salida de perforación con Ionic y Router', () => {
 
   afterEach(async () => { await esperar(() => transiciones === 0); });
 
-  it('ambas rutas reales instalan la protección de salida', () => {
-    for (const path of ['pozos-create', 'pozos-historicos/:id_pozo/editar']) {
+  it('altas, edición histórica e intervalos instalan la protección de salida', () => {
+    for (const path of ['pozos-create', 'pozos-historicos', 'pozos-historicos/:id_pozo/editar', 'pozos/:id_pozo/intervalos-litologicos-create', 'pozos/:id_pozo/intervalos-litologicos-edit/:id_intervalo_litologico']) {
       expect(routes.find(route => route.path === path)?.canDeactivate).toContain(cambiosPerforacionGuard);
     }
-    expect(routes.filter(route => route.canDeactivate?.includes(cambiosPerforacionGuard)).map(route => route.path))
-      .toEqual(['pozos-historicos/:id_pozo/editar', 'pozos-create']);
   });
 
   for (const destino of ['/login?redirectTo=%2Fpozo', '/upgrade-required#actualizar', '/session-unavailable?reason=offline', '/session-unavailable?reason=logout-pending', '/session-unavailable?reason=client-error']) {

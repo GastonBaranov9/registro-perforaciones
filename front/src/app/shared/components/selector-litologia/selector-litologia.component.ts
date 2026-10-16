@@ -23,6 +23,21 @@ export class SelectorLitologiaComponent {
   readonly requerirSeleccion = input(false);
   readonly seleccionadoChange = output<number | null>();
   readonly nombreChange = output<string>();
+  readonly provisional = input<string | null | undefined>(null);
+  readonly permitirProvisional = input(true);
+  readonly provisionalChange = output<string | null>();
+  readonly modoProvisional = signal(false);
+
+  usarProvisional() {
+    if (this.deshabilitado()) return;
+    this.modoProvisional.set(true);
+    this.seleccionadoChange.emit(null);
+    this.provisionalChange.emit(this.provisional() ?? '');
+    this.cerrarLista();
+  }
+  escribirProvisional(texto: string) {
+    this.provisionalChange.emit(texto);
+  }
   readonly opciones = signal<LitologiaPublica[]>([]);
   readonly busqueda = signal('');
   readonly cargando = signal(true);
@@ -164,6 +179,7 @@ export class SelectorLitologiaComponent {
     const opcion = this.opciones().find((x) => x.id_litologia === id);
     if (id != null && (!opcion || (!opcion.activo && id !== this.seleccionado()))) return;
     this.seleccionadoChange.emit(id);
+    if (opcion) { this.modoProvisional.set(false); this.provisionalChange.emit(null); }
     if (opcion) this.nombreChange.emit(opcion.nombre);
     this.busqueda.set(''); this.cerrarLista();
   }

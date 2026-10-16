@@ -6,8 +6,9 @@ import { HomePage } from './routes/home/home.page';
 import { puedeGestionarHistoricosGuard, isAdminGuard, isloggedGuard, puedeOperarPozosGuard, nativeSessionGuard } from './core/guards/islogged-guard-guard';
 
 export const routes: Routes = [
+  { path: 'personas-pendientes', canActivate: [isloggedGuard,isAdminGuard], loadComponent: async () => (await import('./routes/pendientes/personas-pendientes.page')).PersonasPendientesPage, title: 'Personas pendientes de vinculación' },
   { path: 'pozos-historicos/:id_pozo/editar', canActivate: [isloggedGuard, puedeGestionarHistoricosGuard], canDeactivate: [cambiosPerforacionGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Editar perforación histórica' },
-  { path: 'pozos-historicos', canActivate: [isloggedGuard, puedeGestionarHistoricosGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Nueva perforación histórica' },
+  { path: 'pozos-historicos', canActivate: [isloggedGuard, puedeGestionarHistoricosGuard], canDeactivate: [cambiosPerforacionGuard], loadComponent: async () => (await import('./routes/pozos/pages/historicos/historicos.page')).HistoricosPage, title: 'Nueva perforación histórica' },
   { path: 'trabajo-local', canActivate: [offlineGuard], loadComponent: async () => (await import('./routes/offline/offline.page')).OfflinePage, title: 'Trabajo de campo' },
   {
     path: 'pozos-numeracion', canActivate: [isloggedGuard, isAdminGuard],
@@ -122,6 +123,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-create',
+    canDeactivate: [cambiosPerforacionGuard],
     canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (
@@ -134,6 +136,7 @@ export const routes: Routes = [
 
   {
     path: 'pozos/:id_pozo/intervalos-litologicos-edit/:id_intervalo_litologico',
+    canDeactivate: [cambiosPerforacionGuard],
     canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (

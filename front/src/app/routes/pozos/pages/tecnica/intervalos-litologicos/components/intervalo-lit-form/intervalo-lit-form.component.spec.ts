@@ -36,4 +36,19 @@ describe('IntervaloLitFormComponent', () => {
 
     expect(emit).toHaveBeenCalledOnceWith({ desde_m: 0, hasta_m: 10, material: 'arena' });
   });
+
+  it('edita provisional con id nulo y rechaza texto vacío o contradictorio', () => {
+    const emit = spyOn(component.saved, 'emit');
+    const dato = { desde_m: 0, hasta_m: 10, material: 'Tosca', id_litologia: null as number | null, litologia_provisional: 'Tosca' };
+    fixture.componentRef.setInput('intervaloLitologico', dato);
+    component.handleIntervaloLit();
+    expect(emit).toHaveBeenCalledOnceWith(dato);
+    emit.calls.reset();
+    dato.litologia_provisional = ' ';
+    component.handleIntervaloLit();
+    expect(emit).not.toHaveBeenCalled();
+    dato.litologia_provisional = 'Tosca'; dato.id_litologia = 1;
+    component.handleIntervaloLit();
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

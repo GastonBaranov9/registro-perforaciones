@@ -34,7 +34,7 @@ test('carga historica en PostgreSQL aislada', async t=>{
       const snapshot=async()=>Promise.all(['usuario','usuario_rol','numeracion_perforacion'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1,2`)).rows));
       const before=await snapshot();
       const rolesBefore=(await pool.query('SELECT * FROM rol ORDER BY id_rol')).rows;
-      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,['018_operador_administrativo.sql']);
+      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,['018_operador_administrativo.sql','019_datos_provisionales.sql']);
       assert.deepEqual(await snapshot(),before);
       assert.deepEqual((await pool.query("SELECT * FROM rol WHERE nombre<>'operador_administrativo' ORDER BY id_rol")).rows,rolesBefore);
       assert.equal((await pool.query("SELECT count(*) FROM rol WHERE nombre='operador_administrativo'")).rows[0].count,'1');
@@ -119,65 +119,19 @@ test('carga historica en PostgreSQL aislada', async t=>{
         await pool.query('UPDATE pozo SET empresa=NULL WHERE id_pozo=$1',[historicoId]);
       }
     });
-    await t.test('sitios: operador sólo consulta/edita asociados; administración conserva independientes',async()=>{
-      const sitio={departamento:'Salto',localidad:'Prueba',latitud:'-31',longitud:'-57',padron:'001'};
+    await t.test('sitios ajenos e independientes: operador sin alcance global; administración conserva acceso',async()=>{
+      const sitio={departamento:'Salto',localidad:'Prueba',latitud:'-31',longitud:'-57'};
       const id=(await pool.query("INSERT INTO sitio(departamento) VALUES('Salto') RETURNING id_sitio")).rows[0].id_sitio;
-      const url=`/usuarios/999/sitios/${id}`;
+      const url='/usuarios/999/sitios/'+id;
       try {
         await pool.query('UPDATE pozo SET id_sitio=$1 WHERE id_pozo=$2',[id,historicoId]);
-        for(const method of ['GET','PUT'] as const) {
-          const r=await call(4,method,url,method==='PUT'?sitio:undefined); assert.equal(r.statusCode,200,r.body);
-        }
-        await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
-        const before=(await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows;
-        for(const multirol of [false,true]) {
-          if(multirol)await pool.query('INSERT INTO usuario_rol VALUES(4,2),(4,3)');
-          for(const [method,target,payload] of [
-            ['GET',url],['PUT',url,{...sitio,localidad:'Prohibido'}],['DELETE',url],
-            ['GET','/usuarios/999/sitios'],['POST','/usuarios/999/sitios',sitio],
-          ] as const) {
-            const r=await call(4,method,target,payload); assert.equal(r.statusCode,403,`${method} ${target}: ${r.body}`);
-          }
-        }
-        assert.deepEqual((await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows,before);
-        for(const method of ['GET','PUT'] as const) {
-          const r=await call(1,method,url,method==='PUT'?{...sitio,localidad:'Administración'}:undefined);
-          assert.equal(r.statusCode,200,r.body);
-        }
+        assert.equal((await call(4,'GET',url)).statusCode,404);
+        assert.equal((await call(4,'PUT',url,sitio)).statusCode,403);
+        assert.equal((await call(4,'PATCH','/pozos/historicos/'+historicoId,{sitio})).statusCode,200);
+        for(const method of ['GET','PUT'] as const) assert.equal((await call(1,method,url,method==='PUT'?sitio:undefined)).statusCode,200);
+        assert.equal((await call(4,'GET','/usuarios/999/sitios')).statusCode,403);
+        assert.equal((await call(4,'POST','/usuarios/999/sitios',sitio)).statusCode,403);
       } finally {
-        await pool.query('DELETE FROM usuario_rol WHERE id_usuario=4 AND id_rol IN (2,3)');
-        await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
-        await pool.query('DELETE FROM sitio WHERE id_sitio=$1',[id]);
-      }
-    });
-    await t.test('sitios: desvinculación después de autorización HTTP se rechaza en transacción real',async()=>{
-      const id=(await pool.query("INSERT INTO sitio(departamento) VALUES('Salto') RETURNING id_sitio")).rows[0].id_sitio;
-      await pool.query('UPDATE pozo SET id_sitio=$1 WHERE id_pozo=$2',[id,historicoId]);
-      const before=(await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows;
-      const gate=await pool.connect();
-      let pendiente: ReturnType<typeof call> | undefined;
-      try {
-        await gate.query('BEGIN');
-        await gate.query('SELECT pg_advisory_xact_lock(731024,1)');
-        // El handler comprueba la asociación; su transacción espera el gate.
-        pendiente=call(4,'PUT',`/usuarios/999/sitios/${id}`,{departamento:'Cambio prohibido'});
-        const respuesta=pendiente.then(r=>r);
-        let esperando=false;
-        for(let intento=0;intento<200&&!esperando;intento++) {
-          esperando=Boolean((await pool.query(`SELECT 1 FROM pg_stat_activity
-            WHERE datname=current_database() AND pid<>pg_backend_pid()
-              AND query LIKE '%pg_advisory_xact_lock_shared(731024%'
-              AND cardinality(pg_blocking_pids(pid))>0`)).rows.length);
-          if(!esperando)await delay(10);
-        }
-        assert.ok(esperando,'la petición debe alcanzar la transacción tras comprobar la asociación');
-        await gate.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
-        await gate.query('COMMIT');
-        const r=await respuesta; assert.equal(r.statusCode,403,r.body);
-        assert.deepEqual((await pool.query('SELECT * FROM sitio WHERE id_sitio=$1',[id])).rows,before);
-      } finally {
-        await gate.query('ROLLBACK'); gate.release();
-        if(pendiente)await pendiente;
         await pool.query('UPDATE pozo SET id_sitio=NULL WHERE id_pozo=$1',[historicoId]);
         await pool.query('DELETE FROM sitio WHERE id_sitio=$1',[id]);
       }

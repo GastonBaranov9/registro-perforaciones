@@ -54,7 +54,8 @@ for (const [caso, propietario] of [
     // en reporte-pozo.test.ts, sin reproducir COALESCE dentro del mock.
     const fila = historico({ propietario });
     const db = { async query(sql: string, params: unknown[]) {
-      assert.deepEqual(params, [idPozo]);
+      if (sql.includes('SELECT origen FROM pozo')) return {rows:[{origen:'historico'}]};
+    assert.deepEqual(params, [idPozo]);
       return { rows: sql.includes("FROM public.pozo p") ? [fila] : [] };
     } };
     const reporte = await getReportePozo(idPozo, db as never);
@@ -197,6 +198,7 @@ test("endpoint PDF principal responde 200 con un histórico parcial y SQL simula
   t.mock.method(myPool, "query", async (sql: string, params: unknown[]) => {
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo: true, version_sesion: 1 }] };
     if (sql.includes('SELECT r.nombre FROM rol r')) { assert.deepEqual(params, [7]); return { rows: [{ nombre: rol }] }; }
+    if (sql.includes('SELECT origen FROM pozo')) return {rows:[{origen:'historico'}]};
     assert.deepEqual(params, [idPozo]);
     if (sql.includes("FROM public.pozo p")) {
       for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro"]) assert.ok(sql.includes(campo));

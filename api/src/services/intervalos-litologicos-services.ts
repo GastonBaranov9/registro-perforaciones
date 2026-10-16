@@ -1,3 +1,4 @@
+import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes } from './litologia-provisional.ts';
 import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
@@ -7,17 +8,19 @@ type DatoLitologico = typeof bodyIntervaloLitologico.static;
 
 export async function createIntervaloLitologico(idPozo:number,data:DatoLitologico){
   return conEscrituraSesion(async (dbEscritura) => {
+    const provisional = provisionalParaIntervaloNuevo(data);
+    await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
     await validarRangoContraPozo(idPozo,data,dbEscritura);
     let fila:Record<string,unknown>|undefined;
     try{
-      const {rows}=await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($1::integer,606)), catalogo AS (SELECT c.id_litologia,c.nombre FROM catalogo_litologia c WHERE c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND c.nombre_normalizado=litologia_normalizar($4))) FOR SHARE)
-        INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
-        SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia FROM bloqueo JOIN pozo p ON p.id_pozo=$1
+      const {rows}=await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($1::integer,606)), catalogo AS (SELECT c.id_litologia,c.nombre FROM catalogo_litologia c WHERE c.activo AND (($5::bigint IS NOT NULL AND c.id_litologia=$5) OR ($5::bigint IS NULL AND $6::text IS NULL AND c.nombre_normalizado=litologia_normalizar($4))) FOR SHARE)
+        INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia,litologia_provisional)
+        SELECT $1,$2,$3,COALESCE(c.nombre,$6,$4),c.id_litologia,$6 FROM bloqueo JOIN pozo p ON p.id_pozo=$1
         LEFT JOIN catalogo c ON TRUE
         WHERE (p.profundidad_final_m IS NULL OR $3<=p.profundidad_final_m)
         AND ($5::bigint IS NULL OR c.id_litologia IS NOT NULL)
         AND NOT EXISTS (SELECT 1 FROM intervalo_litologico i WHERE i.id_pozo=$1 AND i.desde_m<$3 AND i.hasta_m>$2)
-        RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_activa`,[idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
+        RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia,litologia_provisional,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=intervalo_litologico.id_litologia) AS litologia_activa`,[idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null,provisional]);
       fila=rows[0];
     }catch(error:unknown){throw traducirErrorPostgres(error);}
     if(!fila)throw new err.T05DatosIncorrectos("El intervalo se solapa o excede la profundidad final.");
@@ -27,16 +30,22 @@ export async function createIntervaloLitologico(idPozo:number,data:DatoLitologic
 
 export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number,data:DatoLitologico){
   return conEscrituraSesion(async (dbEscritura) => {
+    const provisional = normalizarLitologiaProvisional(data);
+    await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
+    if (data.id_litologia != null) {
+      const { rows } = await dbEscritura.query('SELECT litologia_provisional FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2 FOR UPDATE',[idIntervalo,idPozo]);
+      exigirVinculacionDesdePendientes(rows[0]?.litologia_provisional,data.id_litologia);
+    }
     await validarRangoContraPozo(idPozo,data,dbEscritura);
     let fila:Record<string,unknown>|undefined;
     try{
-      const {rows}=await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($2::integer,606)), vigente AS (SELECT id_litologia FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2 FOR UPDATE), elegida AS (SELECT c.id_litologia,c.nombre FROM vigente v JOIN catalogo_litologia c ON $6::bigint IS NOT NULL AND c.id_litologia=$6 AND (c.activo OR c.id_litologia=v.id_litologia) FOR SHARE)
-        UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,material=CASE WHEN $6::bigint IS NULL AND vigente.id_litologia IS NOT NULL THEN (SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=vigente.id_litologia) ELSE COALESCE(e.nombre,$5) END,id_litologia=CASE WHEN $6::bigint IS NULL THEN actual.id_litologia ELSE e.id_litologia END FROM bloqueo CROSS JOIN pozo p CROSS JOIN vigente LEFT JOIN elegida e ON TRUE
+      const {rows}=await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($2::integer,606)), vigente AS (SELECT id_litologia,litologia_provisional FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2 FOR UPDATE), elegida AS (SELECT c.id_litologia,c.nombre FROM vigente v JOIN catalogo_litologia c ON $6::bigint IS NOT NULL AND c.id_litologia=$6 AND (c.activo OR c.id_litologia=v.id_litologia) FOR SHARE)
+        UPDATE intervalo_litologico actual SET desde_m=$3,hasta_m=$4,litologia_provisional=CASE WHEN $6::bigint IS NOT NULL THEN NULL ELSE COALESCE($7,vigente.litologia_provisional) END,material=CASE WHEN $7::text IS NOT NULL THEN $7 WHEN $6::bigint IS NULL AND vigente.id_litologia IS NOT NULL THEN (SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=vigente.id_litologia) ELSE COALESCE(e.nombre,$5) END,id_litologia=CASE WHEN $7::text IS NOT NULL THEN NULL WHEN $6::bigint IS NULL THEN actual.id_litologia ELSE e.id_litologia END FROM bloqueo CROSS JOIN pozo p CROSS JOIN vigente LEFT JOIN elegida e ON TRUE
         WHERE actual.id_intervalo_litologico=$1 AND actual.id_pozo=$2 AND p.id_pozo=$2
         AND ($6::bigint IS NULL OR e.id_litologia IS NOT NULL)
         AND (p.profundidad_final_m IS NULL OR $4<=p.profundidad_final_m)
         AND NOT EXISTS (SELECT 1 FROM intervalo_litologico otro WHERE otro.id_pozo=$2 AND otro.id_intervalo_litologico<>$1 AND otro.desde_m<$4 AND otro.hasta_m>$3)
-        RETURNING actual.id_intervalo_litologico,actual.id_pozo,actual.desde_m,actual.hasta_m,actual.material,actual.id_litologia,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_activa`,[idIntervalo,idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null]);
+        RETURNING actual.id_intervalo_litologico,actual.id_pozo,actual.desde_m,actual.hasta_m,actual.material,actual.id_litologia,actual.litologia_provisional,(SELECT c.nombre FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_nombre,(SELECT c.color FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_color,(SELECT c.patron FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_patron,(SELECT c.activo FROM catalogo_litologia c WHERE c.id_litologia=actual.id_litologia) AS litologia_activa`,[idIntervalo,idPozo,data.desde_m,data.hasta_m,data.material,data.id_litologia??null,provisional]);
       fila=rows[0];
     }catch(error:unknown){throw traducirErrorPostgres(error);}
     if(!fila){
@@ -50,11 +59,12 @@ export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number
 
 export async function deleteIntervaloLitologico(idPozo:number,idIntervalo:number){
   return conEscrituraSesion(async (dbEscritura) => {
+    await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
     const {rowCount}=await dbEscritura.query("DELETE FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2",[idIntervalo,idPozo]);return(rowCount??0)>0;
   }, myPool, false);
 }
-export async function getIntervaloLitologicoById(idPozo:number,idIntervalo:number){const {rows}=await myPool.query("SELECT i.id_intervalo_litologico,i.id_pozo,i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa FROM intervalo_litologico i LEFT JOIN catalogo_litologia c ON c.id_litologia=i.id_litologia WHERE i.id_intervalo_litologico=$1 AND i.id_pozo=$2",[idIntervalo,idPozo]);return rows[0] ? normalizarIntervalo(rows[0]) : null;}
-export async function listIntervalosLitologicosByPozo(idPozo:number){const {rows}=await myPool.query("SELECT i.id_intervalo_litologico,i.id_pozo,i.desde_m,i.hasta_m,i.material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa FROM intervalo_litologico i LEFT JOIN catalogo_litologia c ON c.id_litologia=i.id_litologia WHERE i.id_pozo=$1 ORDER BY i.desde_m",[idPozo]);return rows.map(normalizarIntervalo);}
+export async function getIntervaloLitologicoById(idPozo:number,idIntervalo:number){const {rows}=await myPool.query("SELECT i.id_intervalo_litologico,i.id_pozo,i.desde_m,i.hasta_m,i.material,i.id_litologia,i.litologia_provisional,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa FROM intervalo_litologico i LEFT JOIN catalogo_litologia c ON c.id_litologia=i.id_litologia WHERE i.id_intervalo_litologico=$1 AND i.id_pozo=$2",[idIntervalo,idPozo]);return rows[0] ? normalizarIntervalo(rows[0]) : null;}
+export async function listIntervalosLitologicosByPozo(idPozo:number){const {rows}=await myPool.query("SELECT i.id_intervalo_litologico,i.id_pozo,i.desde_m,i.hasta_m,i.material,i.id_litologia,i.litologia_provisional,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa FROM intervalo_litologico i LEFT JOIN catalogo_litologia c ON c.id_litologia=i.id_litologia WHERE i.id_pozo=$1 ORDER BY i.desde_m",[idPozo]);return rows.map(normalizarIntervalo);}
 
 function normalizarIntervalo(fila: Record<string, unknown>): IntervaloLitologico {
   return {
@@ -62,7 +72,8 @@ function normalizarIntervalo(fila: Record<string, unknown>): IntervaloLitologico
     id_pozo: Number(fila.id_pozo),
     desde_m: Number(fila.desde_m),
     hasta_m: Number(fila.hasta_m),
-    material: String(fila.material),
+    material: String(fila.litologia_nombre ?? fila.litologia_provisional ?? fila.material),
+    litologia_provisional: fila.litologia_provisional == null ? null : String(fila.litologia_provisional),
     id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
     litologia_nombre: fila.litologia_nombre == null ? null : String(fila.litologia_nombre),
     litologia_color: fila.litologia_color == null ? null : String(fila.litologia_color),

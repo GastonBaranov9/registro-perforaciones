@@ -39,20 +39,18 @@ describe('PozosListPage', () => {
     expect(component).toBeTruthy();
   });
 
-  it('operador ve todos los pozos, edita normales e históricos y exporta, sin eliminación', async () => {
+  it('operador edita históricos sin acceso a edición normal ajena ni KML global', async () => {
     spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'operador_administrativo');
     const navegar = spyOn(TestBed.inject(Router), 'navigate');
     component.pozos.set([{ ...pozos[0], origen: 'historico' }, { ...pozos[1], origen: 'normal' }]);
     fixture.detectChanges();
     const botones = fixture.nativeElement.querySelectorAll('[aria-label="Editar pozo"]');
-    expect(botones.length).toBe(2);
+    expect(botones.length).toBe(1);
     botones[0].click();
     expect(navegar).toHaveBeenCalledWith(['/pozos-historicos', 8, 'editar']);
-    botones[1].click();
-    expect(navegar).toHaveBeenCalledWith(['/pozo-edit', 9]);
-    expect(fixture.nativeElement.querySelector('#exportar-kml')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#exportar-kml')).toBeNull();
     await component.exportarKml();
-    expect(exportador.descargar).toHaveBeenCalledTimes(1);
+    expect(exportador.descargar).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('[aria-label="Eliminar pozo"]')).toBeNull();
     await component.borrarPozo(pozos[0]);
     expect(servicio.deletePozo).not.toHaveBeenCalled();

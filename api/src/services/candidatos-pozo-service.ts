@@ -37,7 +37,7 @@ export async function validarPersonaPozo(
      FROM usuario u
      JOIN usuario_rol ur ON ur.id_usuario = u.id_usuario
      JOIN rol r ON r.id_rol = ur.id_rol
-     WHERE u.id_usuario = $1 AND u.activo = true AND r.nombre = $2
+     WHERE u.id_usuario = $1 AND u.activo = true AND (lower(r.nombre) = $2 OR ($2='perforador' AND lower(r.nombre)='operador_administrativo'))
      LIMIT 1 FOR KEY SHARE OF u`,
     [idUsuario, rol],
   );
@@ -144,7 +144,7 @@ async function candidatosPorRol(rol: string, db: Consultable, idUsuario?: number
      FROM usuario u
      WHERE u.activo = true AND EXISTS (
        SELECT 1 FROM usuario_rol ur JOIN rol r ON r.id_rol = ur.id_rol
-       WHERE ur.id_usuario = u.id_usuario AND r.nombre = $1
+       WHERE ur.id_usuario = u.id_usuario AND (lower(r.nombre) = $1 OR ($1='perforador' AND lower(r.nombre)='operador_administrativo'))
      )
        AND ($2::integer IS NULL OR u.id_usuario = $2)
        AND ($3::integer IS NULL OR u.id_usuario = $3)

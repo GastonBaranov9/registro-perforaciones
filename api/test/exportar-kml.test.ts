@@ -177,7 +177,7 @@ test('endpoint real: autenticación, permiso administrativo, descarga fresca, he
   await t.test('sin sesión recibe 401', async () => {
     assert.equal((await app.inject({ method: 'GET', url: peticion.url })).statusCode, 401);
   });
-  for (const caso of [['perforador'], ['propietario'], ['perforador', 'propietario'], []]) {
+  for (const caso of [['operador_administrativo'], ['perforador'], ['propietario'], ['perforador', 'propietario'], []]) {
     await t.test(`${caso.join('+') || 'sin rol'} recibe 403 sin leer perforaciones`, async () => {
       roles = caso;
       const respuesta = await app.inject(peticion);
@@ -187,7 +187,7 @@ test('endpoint real: autenticación, permiso administrativo, descarga fresca, he
       assert.ok(!respuesta.body.includes('José'));
     });
   }
-  for (const caso of [['operador_administrativo'], ['administracion'], ['administracion', 'perforador', 'propietario']]) {
+  for (const caso of [['administracion'], ['administracion', 'perforador', 'propietario']]) {
     await t.test(`${caso.join('+')} descarga KML con contadores`, async () => {
       roles = caso;
       const respuesta = await app.inject(peticion);

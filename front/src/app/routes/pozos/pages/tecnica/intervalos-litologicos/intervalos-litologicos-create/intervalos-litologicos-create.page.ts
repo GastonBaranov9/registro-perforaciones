@@ -8,6 +8,7 @@ import { IntervaloLitFormComponent } from '../components/intervalo-lit-form/inte
 import { PozosEditService } from '../../../../../../shared/services/pozos-edit.service';
 import { IntervaloLitologicoListService } from '../../../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
 import { sugerirInicioSiguienteIntervalo } from '../../../../../../shared/utils/datos-tecnicos-borrador';
+import { huellaIntervaloLitologico } from '../../../../../../shared/utils/estado-intervalo-litologico';
 
 @Component({
   providers: [PermisosTecnicosService],
@@ -34,13 +35,18 @@ export class IntervalosLitologicosCreatePage implements OnInit {
     hasta_m: 0,
     material: "",
   });
+  private base = huellaIntervaloLitologico(this.intervaloLitologico());
+  tieneCambiosSinGuardar() { return huellaIntervaloLitologico(this.intervaloLitologico()) !== this.base; }
 
   async ngOnInit() {
     try {
       const [intervalos, pozo] = await Promise.all([this.lista.getIntervalosLitologicos(this.id_pozo()), this.pozos.getPozoById(this.id_pozo())]);
       const sugerencia = sugerirInicioSiguienteIntervalo(intervalos, pozo.profundidad_final_m);
-      if (sugerencia.permitido) this.intervaloLitologico.update((actual) => ({ ...actual, desde_m: sugerencia.desde_m }));
-      else this.errorMessage.set(sugerencia.mensaje);
+      if (!sugerencia.permitido) this.errorMessage.set(sugerencia.mensaje);
+      if (!this.tieneCambiosSinGuardar()) {
+        if (sugerencia.permitido) this.intervaloLitologico.update((actual) => ({ ...actual, desde_m: sugerencia.desde_m }));
+        this.base = huellaIntervaloLitologico(this.intervaloLitologico());
+      }
     } catch (error: unknown) { this.errorMessage.set(error instanceof Error ? error.message : 'No se pudo sugerir la continuidad.'); }
   }
 
@@ -50,10 +56,12 @@ export class IntervalosLitologicosCreatePage implements OnInit {
     const id_pozo = this.id_pozo();
     try {
       this.disabled.set(true);
+      const enviado = huellaIntervaloLitologico(body);
       await this.createService.createIntervaloLit(
         id_pozo,
         body
       );
+      this.base = enviado;
       this.router.navigate([`/pozos/${id_pozo}/intervalos-litologicos-list`]);
     } catch (error: unknown) {
       const respuesta = error as { error?: { message?: string }; message?: string };

@@ -234,7 +234,7 @@ export async function isPerf(id_perforador: number): Promise<boolean> {
   const rolesIdPerf = await getRoles(id_perforador);
 
   for (const rol of rolesIdPerf) {
-    if (rol.nombre === "perforador") {
+    if (["perforador", "operador_administrativo"].includes(rol.nombre.toLowerCase())) {
       return true;
     }
   }

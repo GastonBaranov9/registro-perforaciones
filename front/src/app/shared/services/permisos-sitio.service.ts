@@ -13,7 +13,7 @@ export class PermisosSitioService {
   puedeEditar(idSitio: number) {
     if (this.auth.tieneRol('administracion')) return true;
     const vinculados = this.registros.hasValue() ? this.registros.value().filter(p => p.id_sitio === idSitio) : [];
-    return vinculados.length > 0 && vinculados.every(p => this.permisos.puedeEditar(p));
+    return vinculados.length > 0 && vinculados.every(p => p.origen !== 'historico' && this.permisos.puedeEditar(p));
   }
   recargar() { this.registros.reload(); }
 }

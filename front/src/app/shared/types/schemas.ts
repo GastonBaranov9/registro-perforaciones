@@ -54,6 +54,7 @@ export type Pozo = {
   id_pozo: number;
   id_propietario: number | null;
   propietario_provisional?: string | null;
+  perforador_provisional?: string | null;
   id_sitio: number | null;
   empresa?: string;
   id_perforador: number | null;
@@ -91,6 +92,7 @@ export type NuevoPozo = {
   numero_perforacion?: number | null;
   id_propietario: number | null;
   propietario_provisional?: string | null;
+  perforador_provisional?: string | null;
   id_sitio: number;
   empresa?: string;
   id_perforador: number;
@@ -155,6 +157,7 @@ export type IntervaloLitologico = {
   id_pozo: number;
   desde_m: number;
   hasta_m: number;
+  litologia_provisional?: string | null;
   material: string;
   id_litologia: number | null;
   litologia_nombre?: string | null;
@@ -169,8 +172,9 @@ export type IntervaloLitologicoBody = {
   id_intervalo_litologico?: number;
   desde_m: number;
   hasta_m: number;
+  litologia_provisional?: string | null;
   material: string;
-  id_litologia?: number;
+  id_litologia?: number | null;
 };
 
 export const familiasLitologia = ['basalto','suelo','arenisca','arcilla_arena','tosca','gravilla','granito','otro'] as const;

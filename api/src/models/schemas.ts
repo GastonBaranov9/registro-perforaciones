@@ -137,6 +137,7 @@ export const Pozo = Type.Object({
   numero_perforacion: Type.Optional(Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1, maximum: 2147483647 })),
   id_pozo: Type.Integer(),
   id_propietario: Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1 }),
+  perforador_provisional: Type.Optional(Type.Union([Type.String({ maxLength: 160 }), Type.Null()])),
   propietario_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160 }), Type.Null()])),
   id_sitio: Type.Unsafe<number | null>({ type: ['integer', 'null'], minimum: 1 }),
   empresa: Type.Optional(Type.String()),
@@ -165,6 +166,7 @@ export const IntervaloLitologico = Type.Object({
   id_pozo: Type.Integer(),
   desde_m: Type.Number(),
   hasta_m: Type.Number(),
+  litologia_provisional: Type.Optional(Type.Union([Type.String(),Type.Null()])),
   material: Type.String(),
   id_litologia: Type.Union([Type.Integer(), Type.Null()]),
   litologia_nombre: Type.Union([Type.String(), Type.Null()]),
@@ -239,8 +241,9 @@ export const bodyIntervaloLitologico = Type.Object({
   id_intervalo_litologico: Type.Optional(Type.Integer({ minimum: 1 })),
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  litologia_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' }),Type.Null()])),
   material: Type.String({ minLength: 1 }),
-  id_litologia: Type.Optional(Type.Integer({ minimum: 1 })),
+  id_litologia: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
 });
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
@@ -325,7 +328,7 @@ export const SitioNuevoPozoBody = Type.Object({
 });
 export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
 
-export const NuevoPozo = Type.Object({ ...Type.Omit(Pozo, ['id_pozo', 'fecha_creado', 'origen', 'id_sitio', 'id_perforador']).properties,
+export const NuevoPozo = Type.Object({ ...Type.Omit(Pozo, ['id_pozo', 'fecha_creado', 'origen', 'id_sitio', 'id_perforador', 'perforador_provisional']).properties,
   id_sitio: Type.Integer({ minimum: 1 }), id_perforador: Type.Integer({ minimum: 1 }) });
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
