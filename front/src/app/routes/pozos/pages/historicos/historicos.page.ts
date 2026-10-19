@@ -1,4 +1,5 @@
 import { tecnicosPersistidos } from '../../../../shared/utils/tecnicos-persistidos';
+import { DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { huellaFormulario } from '../../../../shared/utils/estado-formulario-perforacion';
 import { EstadoPerforacion, reconciliarPerforacion } from '../../../../shared/utils/reconciliar-perforacion';
 import { fotoHistoricaPendiente } from '../../../../shared/services/historico-foto-pendiente';
@@ -39,7 +40,7 @@ export class HistoricosPage {
   error = signal(''); ocupado = signal(false); retirada = signal(false);
   resultado = signal<{ id_pozo: number; numero_perforacion: number } | null>(null);
   readonly id_pozo=input<string>();
-  readonly pozo=signal<NuevoPozo>({id_propietario:null,id_perforador:0,id_sitio:0});
+  readonly pozo=signal<NuevoPozo>({id_propietario:null,id_perforador:0,id_sitio:0,...DATOS_TECNICOS_ESTANDAR});
   readonly sitio=signal<SitioBody>({departamento:'',localidad:'',latitud:'',longitud:''});
   readonly tecnicos=signal<DatosTecnicosBorrador>(tecnicosVacios());
   readonly inicial=signal<DatosTecnicosBorrador>(tecnicosVacios());
@@ -126,7 +127,7 @@ export class HistoricosPage {
     if(this.ocupado()||(!this.resultado()&&!this.envio?.rechazada))return;
     if(this.envio?.fotoKey)void fotoHistoricaPendiente(this.envio.fotoKey,'borrar').catch(()=>{});
     sessionStorage.removeItem(this.storageKey());this.envio=undefined;this.resultado.set(null);this.retirada.set(false);this.error.set('');
-    this.pozo.set({id_propietario:null,id_perforador:0,id_sitio:0});this.sitio.set({departamento:'',localidad:'',latitud:'',longitud:''});
+    this.pozo.set({id_propietario:null,id_perforador:0,id_sitio:0,...DATOS_TECNICOS_ESTANDAR});this.sitio.set({departamento:'',localidad:'',latitud:'',longitud:''});
     this.inicial.set(tecnicosVacios());this.tecnicos.set(tecnicosVacios());this.formulario?.cancelarCambioFoto();
   }
   private async cargarEdicion(){

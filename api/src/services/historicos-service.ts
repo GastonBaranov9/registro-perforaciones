@@ -40,10 +40,10 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
       if (previo.rows[0].epoca !== generacion || previo.rows[0].huella !== huella) throw new T05ConflictoNumeracion('La clave histórica ya pertenece a otra operación.');
       await client.query('COMMIT'); return previo.rows[0].resultado;
     }
-    // No permitir históricos antes de habilitar el corte ni elevar un contador
-    // que todavía esté debajo del límite histórico. Comparte el lock del trigger.
+    // El trigger conserva proximo=NULL al reservar un histórico. Sólo impedir
+    // elevar un contador configurado debajo del corte; compartir su bloqueo.
     const estado = await client.query('SELECT proximo FROM numeracion_perforacion WHERE singleton=TRUE FOR UPDATE');
-    if (!estado.rows[0]?.proximo || Number(estado.rows[0].proximo) < 3282)
+    if (!estado.rows[0] || (estado.rows[0].proximo != null && Number(estado.rows[0].proximo) < 3282))
       throw new T05ConflictoNumeracion('Habilite primero la numeración desde 3282.');
     if (data.id_propietario) await validarPersonaPozo(data.id_propietario, 'propietario', client);
     if (data.id_perforador) await validarPersonaPozo(data.id_perforador, 'perforador', client);

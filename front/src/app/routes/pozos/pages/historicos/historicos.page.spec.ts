@@ -21,6 +21,7 @@ import { DatosTecnicosBorradorComponent } from '../../components/datos-tecnicos-
 import { ProtectedResourceService } from '../../../../core/resources/protected-resource.service';
 import { of } from 'rxjs';
 import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { Pozo } from '../../../../shared/types/schemas';
 
 describe('Carga histórica separada',()=>{
   let page:HistoricosPage,http:HttpTestingController;
@@ -54,14 +55,14 @@ describe('Carga histórica separada',()=>{
     expect(crear).not.toHaveBeenCalled(); expect(actualizar).not.toHaveBeenCalled();
   });
 
-  async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string>> = {}) {
+  async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string | null>> = {}) {
     const fixture = TestBed.createComponent(HistoricosPage);
     fixture.componentRef.setInput('id_pozo', '18'); page = fixture.componentInstance;
     spyOn(TestBed.inject(PozosEditService), 'getPozoById').and.resolveTo({
       id_pozo: 18, numero_perforacion: 3281, origen: 'historico', id_sitio: null,
       id_propietario: null, id_perforador: null, fecha_creado: '2026-10-06',
       ...textos,
-    });
+    } as Pozo); // La API puede devolver null aunque Pozo sólo declare string opcional.
     spyOn(TestBed.inject(IntervaloLitologicoListService), 'getIntervalosLitologicos').and.resolveTo([]);
     spyOn(TestBed.inject(IntervaloDiametroListService), 'getIntervalosDiametros').and.resolveTo([]);
     spyOn(TestBed.inject(IntervalosFiltroService), 'listar').and.resolveTo([]);
@@ -70,11 +71,49 @@ describe('Carga histórica separada',()=>{
     return fixture;
   }
 
-  it('el histórico nuevo inicia vacío y sólo aplica los cuatro estándares mediante el botón', async () => {
+  it('el histórico nuevo inicia con los cuatro estándares sin cambios pendientes', async () => {
     const fixture = TestBed.createComponent(HistoricosPage); page = fixture.componentInstance;
+    expect(page.pozo()).toEqual(jasmine.objectContaining(DATOS_TECNICOS_ESTANDAR));
     await page.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
-    for (const campo of Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[]) expect(page.pozo()[campo]).toBeUndefined();
+    expect(page.pozo()).toEqual(jasmine.objectContaining(DATOS_TECNICOS_ESTANDAR));
+    expect(page.formulario!.pozo()).toBe(page.pozo());
     expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('ion-button.aplicar-estandares').disabled).toBeTrue();
+  });
+
+  it('otra inicia un nuevo histórico con los cuatro estándares después de guardar', async () => {
+    const fixture = TestBed.createComponent(HistoricosPage); page = fixture.componentInstance;
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(false);
+    await page.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
+    page.numero = 3281;
+    Object.assign(page.pozo(), { metodo_sedimentario: 'Personalizado', metodo_rocoso: '', cementacion: null, desarrollo: undefined });
+    const guardar = page.guardar();
+    http.expectOne(`${environment.apiURL}pozos/epoca-datos`).flush({ epoca: epoch });
+    await Promise.resolve();
+    http.expectOne(`${environment.apiURL}pozos/historicos`).flush({ id_pozo: 18, numero_perforacion: 3281 });
+    await guardar;
+    expect(page.resultado()?.id_pozo).toBe(18);
+    page.otra(); fixture.detectChanges(); await fixture.whenStable();
+    expect(page.pozo()).toEqual({ id_propietario: null, id_perforador: 0, id_sitio: 0, ...DATOS_TECNICOS_ESTANDAR });
+    expect(page.formulario!.pozo()).toBe(page.pozo());
+    expect(page.resultado()).toBeNull(); expect(page.envio).toBeUndefined();
+    expect(page.tieneCambiosSinGuardar()).toBeFalse();
+  });
+
+  for (const vacio of [null, undefined, '', '  ']) {
+    it(`cargar y reabrir una edición conserva los cuatro campos en ${JSON.stringify(vacio)} sin quedar dirty`, async () => {
+      const textos = { metodo_sedimentario: vacio, metodo_rocoso: vacio, cementacion: vacio, desarrollo: vacio };
+      const fixture = await cargarEdicionPrueba(textos);
+      expect(page.pozo()).toEqual(jasmine.objectContaining(textos));
+      expect(page.tieneCambiosSinGuardar()).toBeFalse();
+      await page.ionViewWillEnter(); fixture.detectChanges(); await fixture.whenStable();
+      expect(page.pozo()).toEqual(jasmine.objectContaining(textos));
+      expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    });
+  }
+
+  it('aplicar estándares manualmente conserva los demás datos del histórico', async () => {
+    const fixture = await cargarEdicionPrueba();
     page.pozo().profundidad_final_m = 30; page.pozo().nivel_estatico_m = 0; page.pozo().revestimiento = 'Original';
     const datos = page.tecnicos();
     datos.intervalosLitologicos.push({ idLocal: 'l', dato: { desde_m: 0, hasta_m: 30, material: 'Basalto', id_litologia: 1 } });
@@ -394,18 +433,18 @@ describe('Carga histórica separada',()=>{
   it('rechaza >=3282 y no envía solicitud',async()=>{
     page.numero=3282;await page.guardar();expect(page.error()).toContain('3281');http.expectNone(`${environment.apiURL}pozos/historicos`);
   });
-  it('datos desconocidos ausentes; recarga y reintento mantienen UUID, época y payload',async()=>{
+  it('envía estándares y omite otros datos desconocidos; recarga y reintento mantienen UUID, época y payload',async()=>{
     page.numero=3281;const save=page.guardar();
     http.expectOne(`${environment.apiURL}pozos/epoca-datos`).flush({epoca:epoch});
     await new Promise(r=>setTimeout(r,0));
     const req=http.expectOne(`${environment.apiURL}pozos/historicos`);
-    expect(req.request.body).toEqual({numero_perforacion:3281});
+    expect(req.request.body).toEqual({numero_perforacion:3281,...DATOS_TECNICOS_ESTANDAR});
     const key=req.request.headers.get('Idempotency-Key');
     req.error(new ProgressEvent('network'));await save;
     page=TestBed.createComponent(HistoricosPage).componentInstance;await page.ionViewWillEnter();
     const retry=page.guardar();const again=http.expectOne(`${environment.apiURL}pozos/historicos`);
     expect(again.request.headers.get('Idempotency-Key')).toBe(key);expect(again.request.headers.get('X-Epoca-Datos')).toBe(epoch);
-    expect(again.request.body).toEqual({numero_perforacion:3281});
+    expect(again.request.body).toEqual({numero_perforacion:3281,...DATOS_TECNICOS_ESTANDAR});
     again.flush({id_pozo:40,numero_perforacion:3281});await retry;expect(page.resultado()?.id_pozo).toBe(40);
     page.otra();expect(sessionStorage.getItem(storage)).toBeNull();
   });

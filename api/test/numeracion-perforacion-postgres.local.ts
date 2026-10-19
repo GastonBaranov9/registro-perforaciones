@@ -94,10 +94,40 @@ try {
       assert.equal((await pool.query("SELECT contype FROM pg_constraint WHERE conrelid='pozo'::regclass AND conname='pozo_numero_perforacion_positivo'")).rows[0].contype, "c");
       if (previo) {
         const after = (await pool.query("SELECT row_to_json(p) AS pozo FROM pozo p")).rows[0].pozo;
-        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null, propietario_provisional_original: null, origen: "normal" });
+        assert.deepEqual(after, { ...previo, numero_perforacion: null, propietario_provisional: null, propietario_provisional_original: null, perforador_provisional: null, origen: "normal" });
         assert.equal((await pool.query("SELECT id_pozo FROM intervalo_litologico")).rows[0].id_pozo, "1");
       } else await pool.query(seed);
-      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 1, agotado: false });
+      // Cargar históricos no requiere habilitar antes la numeración automática.
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      // Fixture legado inconsistente: no permitir que un histórico lo adelante.
+      await pool.query('UPDATE numeracion_perforacion SET proximo=2000');
+      await assert.rejects(historico(2100), status(409));
+      assert.equal((await obtenerNumeracion(1, pool)).proximo, 2000);
+      assert.deepEqual(await consultarNumero(1, 2100, pool), { utilizado: false });
+      await pool.query('UPDATE numeracion_perforacion SET proximo=NULL');
+      const inicial = await historico(2100);
+      assert.equal(inicial.pozo.numero_perforacion, 2100);
+      assert.equal(inicial.pozo.origen, 'historico');
+      assert.deepEqual(await consultarNumero(1, 2100, pool), { utilizado: true });
+      assert.equal((await pool.query('SELECT id_pozo_original FROM numero_perforacion_reservado WHERE numero_perforacion=2100')).rows[0].id_pozo_original, String(inicial.pozo.id_pozo));
+      await assert.rejects(historico(2100), status(409));
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      assert.equal((await pool.query('SELECT mayor_asignado FROM numeracion_perforacion')).rows[0].mayor_asignado, 2100);
+      // El mínimo no puede depender del mayor histórico ni invadir su rango.
+      for (const numero of [1, 2101, 3281])
+        await assert.rejects(configurarNumeracion(1, numero, null, pool), status(409));
+      for (const numero of [0, -1, 1.5, 3282])
+        await assert.rejects(historico(numero), status(400));
+      await assert.rejects(crearHistorico(2, { numero_perforacion: 2099 }, randomUUID(), epoca, pool), status(403));
+      assert.deepEqual(await consultarNumero(1, 2099, pool), { utilizado: false });
+      const simultaneos = await Promise.allSettled([historico(2098), historico(2098)]);
+      assert.equal(simultaneos.filter(r => r.status === 'fulfilled').length, 1);
+      assert.ok(simultaneos.some(r => r.status === 'rejected' && status(409)(r.reason)));
+      await pool.query('DELETE FROM pozo WHERE id_pozo=$1', [inicial.pozo.id_pozo]);
+      await assert.rejects(historico(2100), status(409));
+      await historico(3281);
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      assert.equal((await pool.query('SELECT count(*) FROM numeracion_perforacion_configuracion')).rows[0].count, '0');
       await assert.rejects(crearPozoCompleto(2, body(), root, pool), status(409));
       await assert.rejects(configurarNumeracion(2, 3282, null, pool), status(403));
       await assert.rejects(crearPozoCompleto(2, body(1850), root, pool), status(400));
@@ -123,6 +153,7 @@ try {
       assert.deepEqual(primeros.map(p => p.pozo.numero_perforacion).sort(), [3282, 3283]);
       assert.notEqual(primeros[0].pozo.id_pozo, primeros[1].pozo.id_pozo);
       assert.equal((await historico(1850)).pozo.numero_perforacion, 1850);
+      assert.equal((await obtenerNumeracion(1, pool)).proximo, 3284);
       assert.equal((await crearPozoCompleto(2, body(null), root, pool)).pozo.numero_perforacion, 3284);
       assert.equal((await historico(1990)).pozo.numero_perforacion, 1990);
       assert.equal((await crearPozoCompleto(2, body(), root, pool)).pozo.numero_perforacion, 3285);
@@ -146,10 +177,9 @@ try {
       await assert.rejects(configurarNumeracion(1, 4000, 3285, pool), status(409));
       // Hist?rico y alta autom?tica concurrentes ocupan rangos separados.
       const race = await Promise.allSettled([historico(3001), crearPozoCompleto(2, body(), root, pool)]);
-      assert.equal(race[1].status, "fulfilled");
+      assert.ok(race.every(r => r.status === 'fulfilled'));
       const numeros = race.filter(r => r.status === "fulfilled").map(r => r.value.pozo.numero_perforacion);
       assert.equal(new Set(numeros).size, numeros.length);
-      if (race[0].status === "rejected") assert.ok(status(409)(race[0].reason));
       const sameHistory = await Promise.allSettled([historico(1700), historico(1700)]);
       assert.equal(sameHistory.filter(r => r.status === "fulfilled").length, 1);
       assert.ok(sameHistory.some(r => r.status === "rejected" && status(409)(r.reason)));
@@ -179,7 +209,7 @@ try {
       const app = Fastify();
       app.decorate("authenticate", async req => { req.user = { sub: Number(req.headers["x-test-user"] ?? 2) } as typeof req.user; });
       app.decorate("userIsAdmin", async req => { if (req.user.sub !== 1) throw new T05SinPermiso(); });
-      for (const name of ["userIsAdminOrPerforador", "pozoIsFromUser", "userIsPropietarioOrPerforadorOrAdmin"]) app.decorate(name, async () => {});
+      for (const name of ["puedeOperarTodosLosPozos", "puedeOperarPozos", "pozoIsFromUser", "puedeConsultarRecursos"]) app.decorate(name, async () => {});
       app.decorate("notifyClient", () => {});
       try {
         await app.register(numeracionRoutes); await app.register(pozoRoutes);

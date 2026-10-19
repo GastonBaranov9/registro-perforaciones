@@ -29,7 +29,7 @@ test('carga historica en PostgreSQL aislada', async t=>{
     const archivos=(await fs.readdir(DIRECTORIO_MIGRACIONES)).filter(f=>/^\d{3}_.*\.sql$/.test(f)).sort();
     for(const file of archivos.filter(f=>f<'018_')) await fs.copyFile(path.join(DIRECTORIO_MIGRACIONES,file),path.join(previas,file));
     assert.equal((await ejecutarMigraciones(pool,{directorio:previas})).aplicadas.length,18);
-    await pool.query("INSERT INTO usuario(id_usuario,nombre,email,password) VALUES(1,'Admin','admin@test.local','test'),(2,'Owner','owner@test.local','test'),(3,'Perf','perf@test.local','test'); INSERT INTO usuario_rol VALUES(1,1),(2,3),(3,2); UPDATE numeracion_perforacion SET proximo=3282");
+    await pool.query("INSERT INTO usuario(id_usuario,nombre,email,password) VALUES(1,'Admin','admin@test.local','test'),(2,'Owner','owner@test.local','test'),(3,'Perf','perf@test.local','test'); INSERT INTO usuario_rol VALUES(1,1),(2,3),(3,2)");
     await t.test('migración 018 registra sólo el rol, sin cambiar cuentas, asignaciones ni contador; reintento idempotente',async()=>{
       const snapshot=async()=>Promise.all(['usuario','usuario_rol','numeracion_perforacion'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1,2`)).rows));
       const before=await snapshot();
@@ -86,6 +86,26 @@ test('carga historica en PostgreSQL aislada', async t=>{
     await app.register((await import('../src/routes/historicos.ts')).default); await app.ready();
     const {SESSION_COOKIE}=await import('../src/plugins/cookies.ts');
     const call=(actor:number,method:'POST'|'GET'|'PATCH'|'PUT'|'DELETE',url:string,payload?:unknown,version=1)=>app.inject({method,url,...(payload?{payload}:{}),cookies:{[SESSION_COOKIE]:app.jwt.sign({sub:actor,version_sesion:version},{expiresIn:'1h'})},headers:{'idempotency-key':randomUUID(),'x-epoca-datos':epoca}});
+    await t.test('HTTP con contador NULL: operador carga 2100, normal falla 409 y sólo administración habilita desde 3282',async()=>{
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,null);
+      const creado=await call(4,'POST','/pozos/historicos',{numero_perforacion:2100});
+      assert.equal(creado.statusCode,201,creado.body);
+      assert.equal(creado.json().numero_perforacion,2100);
+      assert.equal((await pool.query('SELECT id_pozo_original FROM numero_perforacion_reservado WHERE numero_perforacion=2100')).rows[0].id_pozo_original,String(creado.json().id_pozo));
+      const duplicado=await call(1,'POST','/pozos/historicos',{numero_perforacion:2100});
+      assert.equal(duplicado.statusCode,409,duplicado.body);
+      for(const actor of [2,3]) assert.equal((await call(actor,'POST','/pozos/historicos',{numero_perforacion:2099})).statusCode,403);
+      assert.equal((await call(4,'POST','/pozos/historicos',{numero_perforacion:3282})).statusCode,400);
+      const normal=await call(3,'POST','/usuarios/3/pozos/completo',body);
+      assert.equal(normal.statusCode,409,normal.body);
+      assert.equal(normal.json().code,'ERR_NUMERACION_T05');
+      assert.equal((await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,null);
+      assert.equal((await call(4,'PUT','/pozos/numeracion',{proximo:3282,esperado:null})).statusCode,403);
+      assert.equal((await call(1,'PUT','/pozos/numeracion',{proximo:3281,esperado:null})).statusCode,409);
+      const habilitado=await call(1,'PUT','/pozos/numeracion',{proximo:3282,esperado:null});
+      assert.equal(habilitado.statusCode,200,habilitado.body);
+      assert.equal(habilitado.json().proximo,3282);
+    });
     await t.test('roles: renombrar mayúsculas revoca sesión anterior, conserva capacidades y permite revertir',async()=>{
       const admin=(await pool.query("SELECT * FROM rol WHERE nombre='administracion'")).rows[0];
       const op=(await pool.query("SELECT * FROM rol WHERE nombre='operador_administrativo'")).rows[0];

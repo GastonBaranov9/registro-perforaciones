@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFArray, PDFContentStream } from "pdf-lib";
-import { validarNumeroPerforacion, traducirErrorNumeracion } from "../src/services/numeracion-perforacion-service.ts";
+import { validarNumeroPerforacion, traducirErrorNumeracion, obtenerNumeracion } from "../src/services/numeracion-perforacion-service.ts";
 import { crearPDF } from "../src/pdf/pdf-generate.ts";
 import type { ReportePozo } from "../src/services/generar-informe-consultas.ts";
 
@@ -18,6 +18,19 @@ test("duplicados reales y contador sin configurar producen conflictos identifica
   ]) assert.equal((traducirErrorNumeracion(error) as { statusCode: number }).statusCode, 409);
   const ajeno = { code: "23505", constraint: "usuario_email_key" };
   assert.equal(traducirErrorNumeracion(ajeno), ajeno);
+});
+
+test('mínimo automático respeta el corte histórico, el mayor reservado y el contador', async () => {
+  for (const [proximo, mayor_asignado, minimo] of [
+    [null, 0, 3282], [null, 2100, 3282], [null, 3281, 3282],
+    [2101, 2100, 3282], [3282, 3281, 3282], [5000, 3282, 5000],
+    [null, 5000, 5001], [2147483648, 2147483647, 2147483648],
+  ] as const) {
+    const db = { query: async () => ({ rows: [{ proximo, mayor_asignado }] }) };
+    assert.deepEqual(await obtenerNumeracion(1, db as never), {
+      proximo, minimo, agotado: minimo > 2147483647,
+    });
+  }
 });
 
 function reporte(numero?: number | null): ReportePozo {

@@ -33,7 +33,8 @@ export function traducirErrorNumeracion(error: unknown): unknown {
 
 function estado(fila: { proximo: string | number | null; mayor_asignado: number }): EstadoNumeracion {
   const proximo = fila.proximo == null ? null : Number(fila.proximo);
-  const minimo = Math.max(fila.mayor_asignado + 1, proximo ?? 1);
+  // El rango 1..3281 es histórico, aunque todavía no tenga reservas cargadas.
+  const minimo = Math.max(3282, fila.mayor_asignado + 1, proximo ?? 3282);
   return { proximo, minimo, agotado: minimo > MAX_NUMERO_PERFORACION };
 }
 
