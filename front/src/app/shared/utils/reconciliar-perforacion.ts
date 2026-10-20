@@ -8,12 +8,18 @@ export function reconciliarPerforacion(enviado: EstadoPerforacion, actual: Estad
   return {
     pozo: { ...conservarEdiciones(enviado.pozo, actual.pozo, canonico.pozo), foto_url: canonico.pozo.foto_url },
     sitio: conservarEdiciones(enviado.sitio, actual.sitio, canonico.sitio),
-    tecnicos: {
-      intervalosLitologicos: reconciliarFilas(enviado.tecnicos.intervalosLitologicos, actual.tecnicos.intervalosLitologicos, canonico.tecnicos.intervalosLitologicos),
-      intervalosDiametro: reconciliarFilas(enviado.tecnicos.intervalosDiametro, actual.tecnicos.intervalosDiametro, canonico.tecnicos.intervalosDiametro),
-      intervalosFiltro: reconciliarFilas(enviado.tecnicos.intervalosFiltro, actual.tecnicos.intervalosFiltro, canonico.tecnicos.intervalosFiltro),
-      nivelesAporte: reconciliarFilas(enviado.tecnicos.nivelesAporte, actual.tecnicos.nivelesAporte, canonico.tecnicos.nivelesAporte),
-    },
+    tecnicos: reconciliarDatosTecnicos(enviado.tecnicos, actual.tecnicos, canonico.tecnicos),
+  };
+}
+
+export function reconciliarDatosTecnicos(enviado: DatosTecnicosBorrador, actual: DatosTecnicosBorrador, canonico: DatosTecnicosBorrador): DatosTecnicosBorrador {
+  return {
+    sello_sanitario_constructivo: JSON.stringify(actual.sello_sanitario_constructivo ?? null) === JSON.stringify(enviado.sello_sanitario_constructivo ?? null)
+      ? structuredClone(canonico.sello_sanitario_constructivo ?? null) : structuredClone(actual.sello_sanitario_constructivo ?? null),
+    intervalosLitologicos: reconciliarFilas(enviado.intervalosLitologicos, actual.intervalosLitologicos, canonico.intervalosLitologicos),
+    intervalosDiametro: reconciliarFilas(enviado.intervalosDiametro, actual.intervalosDiametro, canonico.intervalosDiametro),
+    intervalosFiltro: reconciliarFilas(enviado.intervalosFiltro, actual.intervalosFiltro, canonico.intervalosFiltro),
+    nivelesAporte: reconciliarFilas(enviado.nivelesAporte, actual.nivelesAporte, canonico.nivelesAporte),
   };
 }
 

@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
+import { huellaDatosTecnicos } from '../../../../shared/utils/estado-formulario-perforacion';
 
 @Component({
   selector: 'app-datos-tecnicos-borrador',
@@ -22,6 +23,7 @@ export class DatosTecnicosBorradorComponent {
   private readonly injector = inject(Injector);
   readonly filasDinamicas = viewChildren<ElementRef<HTMLElement>>('filaDinamica');
   readonly dirty = signal(false);
+  private baseDatos = huellaDatosTecnicos(this.datos());
   private ultimoInicial: DatosTecnicosBorrador | null = null;
   private ultimaVersionDescartar = 0;
   readonly errorAgregar = signal('');
@@ -36,8 +38,9 @@ export class DatosTecnicosBorradorComponent {
       if (inicial && (!this.dirty() || descarteConfirmado)) {
         this.ultimoInicial = inicial;
         this.ultimaVersionDescartar = version;
-        this.datos.set(ordenarDatosTecnicos(inicial));
-        const ids = Object.values(inicial).flat().map(item => Number(String(item.idLocal).replace(/^local-/, ''))).filter(Number.isFinite);
+        this.datos.set(structuredClone(ordenarDatosTecnicos(inicial)));
+        this.baseDatos = huellaDatosTecnicos(this.datos());
+        const ids = [...inicial.intervalosLitologicos, ...inicial.intervalosDiametro, ...inicial.intervalosFiltro, ...inicial.nivelesAporte].map(item => Number(String(item.idLocal).replace(/^local-/, ''))).filter(Number.isFinite);
         this.siguienteId = Math.max(this.siguienteId, ...ids.map(id => id + 1));
         this.cambiado.emit(this.datos());
         this.dirty.set(false);
@@ -54,6 +57,15 @@ export class DatosTecnicosBorradorComponent {
     const nueva = this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' });
     this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, nueva] });
     this.enfocarNueva(nueva.idLocal);
+  }
+  agregarSello() {
+    if (this.guardando() || this.datos().sello_sanitario_constructivo != null) return;
+    this.actualizar({ ...this.datos(), sello_sanitario_constructivo: { desde_m: Number.NaN, hasta_m: Number.NaN } });
+    this.enfocarNueva('sello-sanitario');
+  }
+  quitarSello() {
+    if (this.guardando()) return;
+    this.actualizar({ ...this.datos(), sello_sanitario_constructivo: null });
   }
   private enfocarNueva(idLocal: string) {
     afterNextRender(() => {
@@ -112,7 +124,8 @@ export class DatosTecnicosBorradorComponent {
     const actualizado = { ...datos };
     this.datos.set(actualizado);
     this.cambiado.emit(actualizado);
-    this.dirty.set(true);
-    this.estadoSucio.emit(true);
+    const dirty = huellaDatosTecnicos(actualizado) !== this.baseDatos;
+    this.dirty.set(dirty);
+    this.estadoSucio.emit(dirty);
   }
 }

@@ -82,6 +82,16 @@ function draft(): BorradorLocal {
 }
 
 describe('Repositorio offline persistente', () => {
+  for (const sello of [undefined, null, { desde_m: 1.125, hasta_m: 9.875 }]) {
+    it('conserva el sello al cerrar/reabrir sin inferir ausencia: ' + JSON.stringify(sello), async () => {
+      const disk = new Files(); const original = draft();
+      if (sello !== undefined) original.tecnicos.sello_sanitario_constructivo = sello;
+      const repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
+      await repo.write(original);
+      const reiniciado = new OfflineRepository(Files.restart(disk.diskSnapshot()).plugin, 'offline-v1/server/7', 7);
+      expect((await reiniciado.read(original.id)).tecnicos.sello_sanitario_constructivo).toEqual(sello);
+    });
+  }
   it('una APK nueva no añade ni cambia la época de revisiones antiguas y conserva la foto', async () => {
     const disk = new Files(); const repo = new OfflineRepository(disk.plugin, 'offline-v1/server/7', 7);
     const legacy = draft(); delete legacy.epoca;
@@ -230,6 +240,35 @@ describe('Cola offline del perforador', () => {
     service = TestBed.inject(OfflineService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  for (const sello of [undefined, null, { desde_m: 1.125, hasta_m: 9.875 }]) {
+    it('sincroniza el sello guardado separado de los intervalos: ' + JSON.stringify(sello), async () => {
+      const original = draft(); original.pozo.profundidad_final_m = 20;
+      original.tecnicos.sello_sanitario_constructivo = sello;
+      original.tecnicos.intervalosLitologicos = [{ idLocal: 'real', dato: { desde_m: 0, hasta_m: 20, material: 'Basalto', id_litologia: 1 } }];
+      await service.guardar(original); await service.cargar();
+      const guardar = service.sincronizar(); const req = await request();
+      expect(req.request.body.sello_sanitario_constructivo).toEqual(sello ?? null);
+      expect(req.request.body.intervalos_litologicos).toEqual([{ desde_m: 0, hasta_m: 20, material: 'Basalto', id_litologia: 1 }]);
+      req.flush({ pozo: { id_pozo: 40, numero_perforacion: 8500 }, sello_sanitario_constructivo: sello ?? null }); await guardar;
+      expect(service.borradores()[0].estado).toBe('sincronizado');
+    });
+  }
+  it('no transforma un sello litológico viejo: conserva el borrador ante rechazo normal del backend', async () => {
+    const original = draft();
+    original.tecnicos.intervalosLitologicos = [{ idLocal: 'viejo', dato: { desde_m: 0, hasta_m: 10, material: 'Sello sanitario', id_litologia: 987 } }];
+    await service.guardar(original);
+    const guardar = service.sincronizar(); const req = await request();
+    expect(req.request.body.sello_sanitario_constructivo).toBeNull();
+    expect(req.request.body.intervalos_litologicos[0].id_litologia).toBe(987);
+    req.flush({ message: 'Sello sanitario es un elemento constructivo' }, { status: 400, statusText: 'Bad Request' });
+    const cerrar = await request(`${environment.apiURL}pozos/offline/${original.id}/cerrar`);
+    cerrar.flush({ estado: 'cerrado_sin_creacion', clave: original.id }); await guardar;
+    const guardado = service.borradores()[0];
+    expect(guardado.id).toBe(original.id); expect(guardado.estado).toBe('conflicto');
+    expect(guardado.tecnicos.intervalosLitologicos).toEqual(original.tecnicos.intervalosLitologicos);
+    expect(guardado.tecnicos.sello_sanitario_constructivo).toBeUndefined();
+    expect(guardado.error).toContain('elemento constructivo');
+  });
   it('HTTP 410 retira definitivamente sin cerrar ni cambiar UUID y conserva binario', async () => {
     const d = draft(); await service.guardar(d, new File(['photo'], 'foto.png', { type: 'image/png' }));
     const run = service.sincronizar(); const req = await request();

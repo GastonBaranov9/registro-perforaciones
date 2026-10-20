@@ -2,6 +2,7 @@ import { myPool } from "../db/pool.ts";
 import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 export interface ReportePozo {
+  sello_sanitario_constructivo?: import('../models/schemas.ts').SelloSanitarioConstructivo | null;
   id_pozo: number;
   numero_perforacion?: number | null;
   origen?: "normal" | "historico";
@@ -57,6 +58,8 @@ export async function getReportePozo(
   const sql = `
     SELECT
       p.id_pozo, p.numero_perforacion, p.origen,
+      (SELECT json_build_object('desde_m',ss.desde_m,'hasta_m',ss.hasta_m)
+       FROM public.sello_sanitario_pozo ss WHERE ss.id_pozo=p.id_pozo) AS sello_sanitario_constructivo,
       COALESCE(prop.nombre, p.propietario_provisional) AS propietario,
       prop.documento_rut AS propietario_documento_rut,
       prop.telefono AS propietario_telefono,
@@ -99,7 +102,7 @@ export async function getReportePozo(
   const pozo = rows[0];
 
   const litologiaSql = `
-    SELECT i.desde_m,i.hasta_m,COALESCE(c.nombre,i.litologia_provisional,i.material) AS material,i.id_litologia,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
+    SELECT i.desde_m,i.hasta_m,COALESCE(c.nombre,i.litologia_provisional,i.material) AS material,i.id_litologia,c.codigo AS litologia_codigo,c.nombre AS litologia_nombre,c.color AS litologia_color,c.patron AS litologia_patron,c.activo AS litologia_activa
     FROM public.intervalo_litologico i LEFT JOIN public.catalogo_litologia c ON c.id_litologia=i.id_litologia
     WHERE i.id_pozo = $1 ORDER BY i.desde_m;
   `;
@@ -135,6 +138,7 @@ export async function getReportePozo(
       desde_m: Number(l.desde_m),
       hasta_m: Number(l.hasta_m),
       material: String(l.material),
+      litologia_codigo: l.litologia_codigo == null ? null : String(l.litologia_codigo),
       id_litologia:l.id_litologia==null?null:Number(l.id_litologia),litologia_nombre:l.litologia_nombre==null?null:String(l.litologia_nombre),litologia_color:l.litologia_color==null?null:String(l.litologia_color),litologia_patron:l.litologia_patron==null?null:String(l.litologia_patron) as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia|null,litologia_activa:l.litologia_activa==null?null:Boolean(l.litologia_activa),
     })),
     diametros: (diamRows as Record<string, unknown>[]).map((d) => ({

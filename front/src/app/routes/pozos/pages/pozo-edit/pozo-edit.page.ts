@@ -1,4 +1,6 @@
 import { tecnicosPersistidos } from '../../../../shared/utils/tecnicos-persistidos';
+import { huellaDatosTecnicos } from '../../../../shared/utils/estado-formulario-perforacion';
+import { reconciliarDatosTecnicos } from '../../../../shared/utils/reconciliar-perforacion';
 import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
 import { VincularPropietarioComponent } from '../../components/vincular-propietario/vincular-propietario.component';
 import { CandidatoPozo } from '../../../../shared/types/schemas';
@@ -96,7 +98,8 @@ export class PozoEditPage {
         propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
         perforadores: perforador ? [perforador, ...personasBase.perforadores] : personasBase.perforadores,
       };
-      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes);
+      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes,pozo.sello_sanitario_constructivo);
+      this.tecnicosGuardados = structuredClone(tecnicos);
       return { pozo: { ...pozo, id_sitio: pozo.id_sitio, id_perforador: pozo.id_perforador, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
   });
@@ -115,6 +118,13 @@ export class PozoEditPage {
   public sitiosActualizados = signal<Sitio[] | null>(null);
   public profundidadBorrador = signal<number | undefined>(undefined);
   public borradorDirty = signal(false);
+  private tecnicosGuardados?: DatosTecnicosBorrador;
+  tieneCambiosSinGuardar(): boolean {
+    return (this.tecnicosGuardados
+      ? huellaDatosTecnicos(this.datosTecnicos()) !== huellaDatosTecnicos(this.tecnicosGuardados)
+      : this.borradorDirty()) || !!this.formulario?.fotoFile || !!this.formulario?.eliminarFotoPendiente?.()
+      || !!this.formulario?.tieneCambiosPropietario?.();
+  }
   public versionDescartar = signal(0);
   mensajeErrorCarga() { return mensajeHumano(this.pozoResource.error(), 'No fue posible cargar los datos del pozo.'); }
 
@@ -137,16 +147,25 @@ export class PozoEditPage {
     try {
       this.disabled.set(true);
       this.errorMessage.set('');
-      const resultado = await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, this.datosTecnicos(), data.foto, data.fotoAccion);
+      const enviado = structuredClone(this.datosTecnicos());
+      const resultado = await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, enviado, data.foto, data.fotoAccion, this.tecnicosGuardados);
+      const canonico = tecnicosPersistidos(resultado.intervalos_litologicos, resultado.intervalos_diametro, resultado.intervalos_filtro, resultado.niveles_aporte, resultado.sello_sanitario_constructivo);
+      const actualizados = reconciliarDatosTecnicos(enviado, this.datosTecnicos(), canonico);
+      this.tecnicosGuardados = canonico;
+      this.datosTecnicos.set(actualizados);
+      if (this.pozoResource.hasValue()) this.pozoResource.update(editor => editor ? { ...editor, tecnicos: actualizados } : editor);
+      this.versionDescartar.update(version => version + 1);
       if (resultado.pozo) this.formulario?.confirmarFotoGuardada(resultado.pozo.foto_url);
-      this.borradorDirty.set(false);
+      if (this.formulario && this.formulario.fotoFile === data.foto
+        && this.formulario.eliminarFotoPendiente() === (data.fotoAccion === 'eliminar')) this.formulario.cancelarCambioFoto();
+      this.borradorDirty.set(huellaDatosTecnicos(actualizados) !== huellaDatosTecnicos(canonico));
       await this.router.navigate(['/pozos-detail', this.id_pozo()]);
     } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la perforación.') + ' Los cambios y la fotografía siguen pendientes de guardar.'); }
     finally { this.disabled.set(false); }
   }
   recargar(): void {
     if (this.disabled() || this.vinculando() || this.sitioEnEdicion()) return;
-    if ((this.borradorDirty() || this.formulario?.fotoVistaPrevia() || this.formulario?.eliminarFotoPendiente()) && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
+    if (this.tieneCambiosSinGuardar() && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
     this.formulario?.cancelarCambioFoto();
     this.borradorDirty.set(false);
     this.versionDescartar.update((version) => version + 1);

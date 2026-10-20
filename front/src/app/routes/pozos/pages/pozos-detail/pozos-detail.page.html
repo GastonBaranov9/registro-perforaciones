@@ -112,6 +112,13 @@
       />
       <section>
         <h2>Resumen técnico</h2>
+        <section aria-label="Sello sanitario">
+          <h3>Sello sanitario</h3>
+          @if (pozo()?.sello_sanitario_constructivo; as sello) {
+            <p>Desde: {{ sello.desde_m }} m</p>
+            <p>Hasta: {{ sello.hasta_m }} m</p>
+          } @else { <p>No registrado</p> }
+        </section>
         <h3>Litología</h3>
         @for (item of litologia(); track item.id_intervalo_litologico) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.material }}</p> } @empty { <p>Sin intervalos litológicos.</p> }
         <h3>Diámetros</h3>

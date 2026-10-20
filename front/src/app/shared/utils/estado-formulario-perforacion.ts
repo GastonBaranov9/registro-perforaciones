@@ -4,9 +4,7 @@ import { ordenarDatosTecnicos } from './datos-tecnicos-borrador';
 // Se lee al intentar salir: ngModel también modifica objetos sin emitir señales.
 // Vacío/null/undefined representan el mismo campo sin completar.
 export function huellaFormulario(pozo: NuevoPozo, sitio: SitioBody, tecnicos: DatosTecnicosBorrador, historico = false): string {
-  const ordenados = ordenarDatosTecnicos(tecnicos);
-  const datos = Object.fromEntries(Object.entries(ordenados).map(([nombre, filas]) =>
-    [nombre, filas.map(fila => fila.dato)]));
+  const { sello_sanitario_constructivo: _sello, ...cabecera } = pozo as NuevoPozo & Pick<DatosTecnicosBorrador, 'sello_sanitario_constructivo'>;
   // Sólo estos campos convierten espacios vacíos a ausencia en la persistencia.
   // Los textos del alta normal (empresa, métodos, etc.) se guardan sin trim.
   const camposPozo = historico
@@ -14,8 +12,20 @@ export function huellaFormulario(pozo: NuevoPozo, sitio: SitioBody, tecnicos: Da
     : ['propietario_provisional'];
   const camposSitio = historico ? ['departamento', 'localidad', 'padron', 'latitud', 'longitud'] : ['localidad', 'padron'];
   return JSON.stringify(normalizar({
-    pozo: vaciosPersistidos(pozo, camposPozo), sitio: vaciosPersistidos(sitio, camposSitio), tecnicos: datos,
+    pozo: vaciosPersistidos(cabecera, camposPozo), sitio: vaciosPersistidos(sitio, camposSitio), tecnicos: datosComparables(tecnicos),
   }));
+}
+
+function datosComparables(tecnicos: DatosTecnicosBorrador) {
+  const { sello_sanitario_constructivo, ...intervalos } = ordenarDatosTecnicos(tecnicos);
+  return {
+    ...Object.fromEntries(Object.entries(intervalos).map(([nombre, filas]) => [nombre, filas.map(fila => fila.dato)])),
+    sello_sanitario_constructivo,
+  };
+}
+
+export function huellaDatosTecnicos(tecnicos: DatosTecnicosBorrador): string {
+  return JSON.stringify(normalizar(datosComparables(tecnicos)));
 }
 
 export function huellaPropietario(datos: PropietarioOperativoActualizarBody): string {

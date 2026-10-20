@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { PozosEditService } from './pozos-edit.service';
 import { AuthService } from './auth-service/auth.service';
+import { tecnicosPersistidos } from '../utils/tecnicos-persistidos';
 
 describe('PozosEditService', () => {
   let service: PozosEditService;
@@ -19,6 +20,21 @@ describe('PozosEditService', () => {
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
+  for (const nuevo of [undefined, null, { desde_m: 3.125, hasta_m: 8.875 }]) {
+    it('edición del sello omite si no cambió, null elimina y objeto actualiza: ' + JSON.stringify(nuevo), async () => {
+      spyOn(TestBed.inject(AuthService), 'userId').and.returnValue(9);
+      const originales = tecnicosPersistidos([], [], [], [], { desde_m: 1.125, hasta_m: 9.875 });
+      const actual = structuredClone(originales);
+      if (nuevo !== undefined) actual.sello_sanitario_constructivo = nuevo;
+      const guardar = service.editPozoCompleto(5, { id_propietario: 2, id_perforador: 9, id_sitio: 3 }, actual, null, 'conservar', originales);
+      const http = TestBed.inject(HttpTestingController);
+      const req = http.expectOne(request => request.method === 'PUT');
+      const cuerpo = JSON.parse(JSON.stringify(req.request.body));
+      expect(cuerpo.sello_sanitario_constructivo).toEqual(nuevo);
+      if (nuevo === undefined) expect(Object.hasOwn(cuerpo, 'sello_sanitario_constructivo')).toBeFalse();
+      req.flush({ pozo: { id_pozo: 5 } }); await guardar; http.verify();
+    });
+  }
 
   it('envía la edición completa sin IDs locales y con acción de foto', async () => {
     spyOn(TestBed.inject(AuthService), 'userId').and.returnValue(9);

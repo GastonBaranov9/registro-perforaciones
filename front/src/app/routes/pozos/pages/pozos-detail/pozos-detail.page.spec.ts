@@ -69,7 +69,8 @@ describe('PozosDetailPage', () => {
     });
     fixture.detectChanges();
     const texto = fixture.nativeElement.textContent as string;
-    expect(texto).not.toContain('Sello sanitario');
+    expect(fixture.nativeElement.querySelector('[aria-label="Sello sanitario"]').textContent).toContain('No registrado');
+    expect(texto).not.toContain('Desde:');
     expect(texto).not.toContain('Prefiltro histórico');
   });
 
@@ -80,5 +81,12 @@ describe('PozosDetailPage', () => {
     expect(component.versionPerfil()).toBe(2);
     expect(component.pozo()).toBeUndefined();
     expect(component.errorMessage()).toContain('detalle actualizado');
+  });
+  it('muestra el rango constructivo decimal en su sección independiente', () => {
+    component.pozo.set({ id_pozo: 8, id_propietario: 1, id_sitio: 2, id_perforador: 3, fecha_creado: '2026-08-12',
+      sello_sanitario_constructivo: { desde_m: 1.125, hasta_m: 9.875 }, sello_sanitario: false });
+    fixture.detectChanges();
+    const texto = fixture.nativeElement.querySelector('[aria-label="Sello sanitario"]').textContent;
+    expect(texto).toContain('Desde: 1.125 m'); expect(texto).toContain('Hasta: 9.875 m');
   });
 });

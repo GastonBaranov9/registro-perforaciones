@@ -47,6 +47,7 @@ export class HistoricosPage {
   readonly cargado=signal(false);
   readonly versionTecnicos = signal(0);
   readonly recargaPendiente = signal(false);
+  private tecnicosGuardados?: DatosTecnicosBorrador;
   private guardadoPendiente?: { enviado: EstadoPerforacion; foto: File | null; accion: AccionFotoEdicion };
   @ViewChild(PozosFormComponent) formulario?:PozosFormComponent;
   private baseFormulario = this.huellaActual();
@@ -139,7 +140,7 @@ export class HistoricosPage {
     if(p.id_perforador&&!this.perforadores().some(x=>x.id_usuario===p.id_perforador)){const persona=await this.candidatos.obtenerPorId('perforador',p.id_perforador,true);if(persona)this.perforadores.update(xs=>[persona,...xs]);}
     this.pozo.set({...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)});
     if(p.sitio)this.sitio.set({...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''});
-    const technical=tecnicosPersistidos(l,d,f,a);this.inicial.set(technical);this.tecnicos.set(technical);
+    const technical=tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo);this.tecnicosGuardados=structuredClone(technical);this.inicial.set(technical);this.tecnicos.set(structuredClone(technical));
     this.baseFormulario = this.huellaActual();
   }
   async editar(data:{pozo:NuevoPozo;foto:File|null;fotoAccion:AccionFotoEdicion}){
@@ -150,7 +151,7 @@ export class HistoricosPage {
       const enviado = structuredClone({ pozo: data.pozo, sitio: this.sitio(), tecnicos: this.tecnicos() });
       const fotoEnviada = data.foto, accionEnviada = data.fotoAccion;
       const id = Number(this.id_pozo()), rutaAlEnviar = this.router.url;
-      const body=cuerpoHistorico(enviado.pozo,enviado.sitio,enviado.tecnicos,true);
+      const body=cuerpoHistorico(enviado.pozo,enviado.sitio,enviado.tecnicos,true,this.tecnicosGuardados);
       body['foto_accion']=accionEnviada;
       if(fotoEnviada)body['foto']=await convertirFoto(fotoEnviada);
       await firstValueFrom(this.http.patch(environment.apiURL+'pozos/historicos/'+id,body).pipe(timeout(90000)));
@@ -180,9 +181,10 @@ export class HistoricosPage {
     const canonico: EstadoPerforacion = {
       pozo: {...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)},
       sitio: p.sitio ? {...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''} : {departamento:'',localidad:'',latitud:'',longitud:''},
-      tecnicos: tecnicosPersistidos(l,d,f,a),
+      tecnicos: tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo),
     };
     const actual = reconciliarPerforacion(pendiente.enviado, {pozo:this.pozo(),sitio:this.sitio(),tecnicos:this.tecnicos()}, canonico);
+    this.tecnicosGuardados = structuredClone(canonico.tecnicos);
     this.pozo.set(actual.pozo); this.sitio.set(actual.sitio);
     this.tecnicos.set(actual.tecnicos); this.inicial.set(actual.tecnicos); this.versionTecnicos.update(v => v + 1);
     const formulario = this.formulario;

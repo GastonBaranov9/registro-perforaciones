@@ -22,6 +22,9 @@ svg { display: block; width: 100%; max-width: 100%; height: auto; }
 .tuberia-exterior { stroke-width: 2; }
 .tuberia-interior { stroke-width: 1; stroke-dasharray: 3 2; }
 .constructivo { stroke: #111; stroke-width: 1.5; fill-opacity: .72; }
+.sello-sanitario { stroke: #333; stroke-width: 1; }
+.etiqueta-sello_sanitario { font-weight: 700; }
+.leyenda-constructiva { margin: .5rem 0; font-size: .88rem; }
 .constructivo.material-pvc { fill: #429bc1; }
 .constructivo.material-acero { fill: #858b91; }
 .constructivo.material-no-especificado { fill: #b8b8b8; }

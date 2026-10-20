@@ -102,7 +102,7 @@ test("histórico sin profundidad ni litología conserva NULL y explica la ausenc
   const texto = textoPDF(doc);
   assert.equal(doc.getPageCount(), 3);
   assert.match(texto.replace(/\n/g, " "), /No se puede representar el perfil litológico por falta de profundidad final/);
-  for (const etiqueta of ["Profundidad final", "Nivel estático:", "Nivel dinámico:", "Caudal estimado:", "Sello sanitario:", "Prefiltro:"]) {
+  for (const etiqueta of ["Profundidad final", "Nivel estático:", "Nivel dinámico:", "Caudal estimado:", "Prefiltro:"]) {
     assert.ok(texto.includes(`${etiqueta}\nNo especificado`), etiqueta);
   }
   assert.match(texto, /Fecha de inicio\nNo especificada/);
@@ -153,15 +153,33 @@ test("foto ausente, referencia sin archivo y archivo ilegible tienen mensajes co
   }
 });
 
-for (const [valor, etiqueta] of [[true, "Sí"], [false, "No"], [null, "No especificado"]] as const) {
+for (const valor of [true, false, null] as const) {
   test(`sello sanitario ${valor} y prefiltro se muestran desde sus propios campos`, async () => {
     const doc = await generar(historico({
       sello_sanitario: valor, pre_filtro: "Grava seleccionada", profundidad_final_m: 20,
-      litologia: [{ desde_m: 0, hasta_m: 2, material: "Sello sanitario" }],
+      litologia: [{ desde_m: 0, hasta_m: 20, material: "Basalto" }],
     }));
     const texto = textoPDF(doc);
-    assert.ok(texto.includes(`Sello sanitario:\n${etiqueta}`));
+    if (valor === true) assert.match(texto.replace(/\s+/g, ' '), /Sello sanitario: Registrado en formato legado, sin profundidad especificada/);
+    else assert.doesNotMatch(texto, /Sello sanitario/);
+    assert.doesNotMatch(texto, /Elemento constructivo/);
     assert.match(texto, /Prefiltro:\nGrava seleccionada/);
+  });
+}
+
+for (const profundidad of [null,20]) {
+  test(`PDF muestra rango constructivo exacto con profundidad ${profundidad}`,async()=>{
+    const doc=await generar(historico({profundidad_final_m:profundidad,sello_sanitario:true,sello_sanitario_constructivo:{desde_m:2.5,hasta_m:8.75}}));
+    const texto=textoPDF(doc).replace(/\s+/g,' ');
+    assert.match(texto,/Sello sanitario: Desde 2.5 m hasta 8.75 m/);
+    assert.doesNotMatch(texto,/formato legado/);
+    if(profundidad===null) {
+      assert.doesNotMatch(texto,/Elemento constructivo/);
+      assert.match(texto,/falta de profundidad final/);
+    } else {
+      assert.match(texto,/Elemento constructivo/);
+      assert.match(texto,/Sello sanitario 2.5-8.75 m/);
+    }
   });
 }
 
@@ -199,9 +217,10 @@ test("endpoint PDF principal responde 200 con un histórico parcial y SQL simula
     if (sql.includes('SELECT activo, version_sesion')) return { rows: [{ activo: true, version_sesion: 1 }] };
     if (sql.includes('SELECT r.nombre FROM rol r')) { assert.deepEqual(params, [7]); return { rows: [{ nombre: rol }] }; }
     if (sql.includes('SELECT origen FROM pozo')) return {rows:[{origen:'historico'}]};
+    if (sql.includes('FROM catalogo_litologia WHERE id_litologia = ANY')) return {rows:[{id_litologia:30,codigo:'sello_sanitario',nombre:'Identidad reservada',color:'#999999',patron:'concrete',activo:false}]};
     assert.deepEqual(params, [idPozo]);
     if (sql.includes("FROM public.pozo p")) {
-      for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro"]) assert.ok(sql.includes(campo));
+      for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro", "public.sello_sanitario_pozo", "AS sello_sanitario_constructivo"]) assert.ok(sql.includes(campo));
       return { rows: [fila] };
     }
     if (sql.includes("FROM public.intervalo_litologico")) return { rows: fila.litologia };
@@ -222,5 +241,28 @@ test("endpoint PDF principal responde 200 con un histórico parcial y SQL simula
     assert.equal((await PDFDocument.load(respuesta.rawPayload)).getPageCount(), 3);
     rol = 'administracion';
     assert.equal((await app.inject({ method: 'GET', url: `/usuarios/1/pozos/${idPozo}/informe-pdf`, cookies: credenciales })).statusCode, 200);
+    fila.profundidad_final_m = 20;
+    fila.litologia = [{desde_m:0,hasta_m:20,material:'Basalto'}];
+    fila.sello_sanitario_constructivo = {desde_m:2.5,hasta_m:8.75};
+    const urlPerfil = `/usuarios/1/pozos/${idPozo}/perfil-litologico`;
+    const persistido = await app.inject({method:'GET',url:urlPerfil,cookies:credenciales});
+    assert.equal(persistido.statusCode,200,persistido.body);
+    assert.equal(persistido.json().sello_sanitario_constructivo.texto,'Sello sanitario 2.5-8.75 m');
+    for (const sello of [{desde_m:0,hasta_m:10},{desde_m:2.5,hasta_m:8.75},null]) {
+      const preview = await app.inject({method:'POST',url:`${urlPerfil}/vista-previa`,cookies:credenciales,payload:{
+        profundidad_final_m:20,intervalos_litologicos:fila.litologia,sello_sanitario_constructivo:sello,
+      }});
+      assert.equal(preview.statusCode,200,preview.body);
+      assert.deepEqual(preview.json().tramos,persistido.json().tramos);
+      if(sello) {
+        assert.equal(preview.json().sello_sanitario_constructivo.desde_m,sello.desde_m);
+        assert.equal(preview.json().sello_sanitario_constructivo.hasta_m,sello.hasta_m);
+      } else assert.equal(preview.json().sello_sanitario_constructivo,null);
+    }
+    const invalido = await app.inject({method:'POST',url:`${urlPerfil}/vista-previa`,cookies:credenciales,payload:{profundidad_final_m:20,sello_sanitario_constructivo:{desde_m:0,hasta_m:21}}});
+    assert.equal(invalido.statusCode,400,invalido.body);
+    const reservado = await app.inject({method:'POST',url:`${urlPerfil}/vista-previa`,cookies:credenciales,payload:{profundidad_final_m:20,intervalos_litologicos:[{desde_m:0,hasta_m:10,material:'Identidad reservada',id_litologia:30}]}});
+    assert.equal(reservado.statusCode,422,reservado.body);
+    assert.match(reservado.body,/elemento constructivo/);
   } finally { await app.close(); }
 });

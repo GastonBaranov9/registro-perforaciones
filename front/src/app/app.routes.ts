@@ -167,6 +167,7 @@ export const routes: Routes = [
   },
   {
     path: 'pozo-edit/:id_pozo',
+    canDeactivate: [cambiosPerforacionGuard],
     canActivate: [isloggedGuard, puedeOperarPozosGuard, edicionPozoGuard],
     loadComponent: async () =>
       (await import('../app/routes/pozos/pages/pozo-edit/pozo-edit.page')).PozoEditPage,

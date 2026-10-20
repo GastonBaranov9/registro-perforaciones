@@ -84,6 +84,7 @@ const informeRoutes = async function (
           reporte.niveles_aporte,
           reporte.diametros,
           reporte.filtros ?? [],
+          reporte.sello_sanitario_constructivo,
         ),
       );
     },
@@ -114,7 +115,7 @@ const informeRoutes = async function (
       const porId = new Map(metadatos.map((x) => [Number(x.id_litologia), x]));
       const intervalos = borrador.intervalos_litologicos.map((x) => {
         const catalogo = x.id_litologia == null ? undefined : porId.get(x.id_litologia);
-        return catalogo ? { ...x, material: catalogo.nombre, litologia_nombre: catalogo.nombre, litologia_color: catalogo.color, litologia_patron: catalogo.patron as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia, litologia_activa: catalogo.activo } : { ...x, material: x.litologia_provisional?.trim() ?? x.material };
+        return catalogo ? { ...x, material: catalogo.nombre, litologia_codigo: catalogo.codigo, litologia_nombre: catalogo.nombre, litologia_color: catalogo.color, litologia_patron: catalogo.patron as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia, litologia_activa: catalogo.activo } : { ...x, material: x.litologia_provisional?.trim() ?? x.material };
       });
       return rep.code(200).send(crearPerfilLitologico(
         intervalos,
@@ -122,6 +123,7 @@ const informeRoutes = async function (
         borrador.niveles_aporte,
         borrador.intervalos_diametro,
         borrador.intervalos_filtro,
+        borrador.sello_sanitario_constructivo,
       ));
     },
   );

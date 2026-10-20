@@ -1,8 +1,19 @@
 import { cuerpoHistorico, tecnicosVacios } from './historicos-form';
 import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../constants/datos-tecnicos-estandar';
 import { NuevoPozo } from '../types/schemas';
+import { tecnicosPersistidos } from './tecnicos-persistidos';
 
 describe('Payload histórico completo',()=>{
+  it('transporta sello histórico decimal, conserva por omisión y elimina sólo con null', () => {
+    const pozo = { id_propietario: null, id_perforador: 0, id_sitio: 0, ...DATOS_TECNICOS_ESTANDAR };
+    const sitio = { departamento: '' };
+    const originales = tecnicosPersistidos([], [], [], [], { desde_m: 1.125, hasta_m: 9.875 });
+    expect(cuerpoHistorico(pozo, sitio, originales, false)['sello_sanitario_constructivo']).toEqual(originales.sello_sanitario_constructivo);
+    expect(cuerpoHistorico(pozo, sitio, structuredClone(originales), true, originales)['sello_sanitario_constructivo']).toBeUndefined();
+    expect(cuerpoHistorico(pozo, sitio, { ...originales, sello_sanitario_constructivo: { desde_m: 2, hasta_m: 8 } }, true, originales)['sello_sanitario_constructivo']).toEqual({ desde_m: 2, hasta_m: 8 });
+    expect(cuerpoHistorico(pozo, sitio, { ...originales, sello_sanitario_constructivo: null }, true, originales)['sello_sanitario_constructivo']).toBeNull();
+    expect(cuerpoHistorico(pozo, sitio, tecnicosVacios(), false)['sello_sanitario_constructivo']).toBeUndefined();
+  });
   for (const valor of [undefined, null, '', '   ']) {
     it(`conserva desconocidos (${JSON.stringify(valor)}) como omisión al crear y NULL al editar`, () => {
       const pozo: NuevoPozo = { id_propietario: null, id_perforador: 0, id_sitio: 0 };

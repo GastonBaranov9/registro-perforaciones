@@ -1,6 +1,8 @@
 import { rgb, type PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
 import { closePath, clip, endPath, lineTo, moveTo, popGraphicsState, pushGraphicsState } from "pdf-lib";
 import { PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from "./litologia-patrones.ts";
+import { validarSelloSanitario } from "../services/sello-sanitario-service.ts";
+import { exigirTextoLitologico } from "../services/litologia-provisional.ts";
 
 export interface IntervaloPerfilLitologico {
   desde_m: number;
@@ -9,6 +11,7 @@ export interface IntervaloPerfilLitologico {
   descripcion?: string | null;
   id_litologia?: number | null;
   litologia_nombre?: string | null;
+  litologia_codigo?: string | null;
   litologia_color?: string | null;
   litologia_patron?: PatronCatalogoLitologia | null;
   litologia_activa?: boolean | null;
@@ -21,7 +24,15 @@ export type MaterialTuberia = "PVC" | "Acero";
 export interface IntervaloConstructivo { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:MaterialTuberia|null; }
 export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"; material_texto:string; carril_etiqueta:number; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
 
-export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte";
+export interface SelloSanitarioRepresentado {
+  desde_m: number;
+  hasta_m: number;
+  texto: string;
+  estilo: EstiloLitologico;
+  geometria: { bandas: Array<{ x_inicio: number; x_fin: number }> };
+}
+
+export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte" | "sello_sanitario";
 export interface EtiquetaPerfil {
   clave: string;
   tipo: TipoEtiquetaPerfil;
@@ -76,6 +87,7 @@ export interface PerfilLitologico {
   aportes: AporteRepresentado[];
   tuberias: TramoConstructivo[];
   filtros: TramoConstructivo[];
+  sello_sanitario_constructivo: SelloSanitarioRepresentado | null;
   etiquetas: EtiquetaPerfil[];
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   geometria: GeometriaCanonicaPerfil;
@@ -215,6 +227,7 @@ function crearEtiquetas(
   tuberias: readonly TramoConstructivo[],
   filtros: readonly TramoConstructivo[],
   aportes: readonly AporteRepresentado[],
+  sello: SelloSanitarioRepresentado | null,
 ): EtiquetaPerfil[] {
   const resultado: EtiquetaPerfil[] = [];
   for (const rango of rangos) {
@@ -234,6 +247,10 @@ function crearEtiquetas(
     }
     for (const aporte of aportes.filter((item) => item.profundidad_m >= rango.desde_m && item.profundidad_m <= rango.hasta_m)) {
       candidatas.push({ clave:`apo-${aporte.profundidad_m}`,tipo:"aporte",texto:`Aporte de agua ${formatearMetros(aporte.profundidad_m)} m`,profundidad_anclaje_m:aporte.profundidad_m,rango_desde_m:rango.desde_m,carril:3,x_anclaje_normalizado:aporte.geometria.x_fin,preferida:(aporte.profundidad_m-rango.desde_m)/amplitud });
+    }
+    if (sello && sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
+      const anclaje = (Math.max(sello.desde_m, rango.desde_m) + Math.min(sello.hasta_m, rango.hasta_m)) / 2;
+      candidatas.push({ clave:"sello-sanitario",tipo:"sello_sanitario",texto:sello.texto,profundidad_anclaje_m:anclaje,rango_desde_m:rango.desde_m,carril:1,x_anclaje_normalizado:sello.geometria.bandas[1].x_fin,preferida:(anclaje-rango.desde_m)/amplitud });
     }
     resultado.push(...resolverColisionesEtiquetas(candidatas).map(({ preferida: _preferida, posicion, ...etiqueta }) => {
       const geometria = GEOMETRIA_CANONICA_PERFIL;
@@ -264,12 +281,17 @@ export function crearPerfilLitologico(
   aportes: readonly AportePerfilLitologico[] = [],
   tuberias: readonly IntervaloConstructivo[] = [],
   filtros: readonly IntervaloConstructivo[] = [],
+  selloSanitario: { desde_m: number; hasta_m: number } | null = null,
 ): PerfilLitologico | null {
   const errores: string[] = [];
+  validarSelloSanitario(selloSanitario, profundidadFinal_m);
   const ordenados = [...intervalos].sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
   const profundidadDeclarada = profundidadFinal_m != null && Number.isFinite(profundidadFinal_m) && profundidadFinal_m > 0 ? profundidadFinal_m : 0;
   if (ordenados.length > 0 && profundidadDeclarada === 0) errores.push("La profundidad oficial del pozo es obligatoria para representar la litología.");
   for (const [indice, tramo] of ordenados.entries()) {
+    if (tramo.litologia_codigo === "sello_sanitario") errores.push("Sello sanitario es un elemento constructivo, no una litología.");
+    try { exigirTextoLitologico(tramo.litologia_nombre ?? tramo.material); }
+    catch (error) { errores.push((error as Error).message); }
     if (!Number.isFinite(tramo.desde_m) || tramo.desde_m < 0) errores.push(`Intervalo ${indice + 1}: desdeM debe ser mayor o igual a 0.`);
     if (!Number.isFinite(tramo.hasta_m) || tramo.hasta_m <= tramo.desde_m) errores.push(`Intervalo ${indice + 1}: hastaM debe ser mayor que desdeM.`);
     if (!tramo.material.trim()) errores.push(`Intervalo ${indice + 1}: material es obligatorio.`);
@@ -314,6 +336,15 @@ export function crearPerfilLitologico(
   const tramos = asignarCarriles(base, profundidad_m);
   const tuberiasConstruidas = construir(tuberias, "tuberia");
   const filtrosConstruidos = construir(filtros, "filtro");
+  const construccionesDelSello = selloSanitario ? [...tuberiasConstruidas, ...filtrosConstruidos].filter((tramo) => tramo.desde_m < selloSanitario.hasta_m && tramo.hasta_m > selloSanitario.desde_m) : [];
+  const izquierda = Math.min(.36, ...construccionesDelSello.map((tramo) => tramo.geometria.x_inicio));
+  const derecha = Math.max(.64, ...construccionesDelSello.map((tramo) => tramo.geometria.x_fin));
+  const sello: SelloSanitarioRepresentado | null = selloSanitario ? {
+    ...selloSanitario,
+    texto: `Sello sanitario ${selloSanitario.desde_m}-${selloSanitario.hasta_m} m`,
+    estilo: { color: "#999999", gris: .6, patron: "concrete" },
+    geometria: { bandas: [{ x_inicio: izquierda - .07, x_fin: izquierda - .01 }, { x_inicio: derecha + .01, x_fin: derecha + .07 }] },
+  } : null;
   const rangos = calcularRangos(profundidad_m, ordenados);
   return {
     titulo: "Perfil litológico del pozo",
@@ -323,7 +354,8 @@ export function crearPerfilLitologico(
     aportes: aportesValidos,
     tuberias: tuberiasConstruidas,
     filtros: filtrosConstruidos,
-    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos),
+    sello_sanitario_constructivo: sello,
+    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos, sello),
     seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
     geometria: GEOMETRIA_CANONICA_PERFIL,
     rangos,
@@ -423,6 +455,20 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       const [r, g, b] = hexARgb(tramo.estilo.color);
       page.drawRectangle({ x: xColumna, y, width: anchoColumna, height: h, color: rgb(r, g, b), borderWidth: 0.6, borderColor: rgb(0.15, 0.15, 0.15) });
       dibujarPatron(page, tramo.estilo.patron, xColumna, y, anchoColumna, h);
+    }
+
+    const sello = perfil.sello_sanitario_constructivo;
+    if (sello && sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
+      const desde = Math.max(sello.desde_m, rango.desde_m), hasta = Math.min(sello.hasta_m, rango.hasta_m);
+      const [rojo, verde, azul] = hexARgb(sello.estilo.color);
+      for (const banda of sello.geometria.bandas) {
+        const inicioX = xColumna + anchoColumna * banda.x_inicio, ancho = anchoColumna * (banda.x_fin - banda.x_inicio);
+        const baseY = yDe(hasta), altura = yDe(desde) - baseY;
+        page.drawRectangle({ x: inicioX, y: baseY, width: ancho, height: altura, color: rgb(rojo, verde, azul), borderColor: rgb(.15,.15,.15), borderWidth: .6 });
+        dibujarPatron(page, sello.estilo.patron, inicioX, baseY, ancho, altura);
+      }
+      page.drawText("Elemento constructivo", { x: 45, y: 74, size: 7, font: bold });
+      dibujarEntradaLeyenda(page, { clave: "sello", nombre: sello.texto, estilo: sello.estilo }, 0, 0, font, 45, 60);
     }
 
     const primerTick = Math.ceil(rango.desde_m / perfil.paso_escala_m) * perfil.paso_escala_m;

@@ -1,4 +1,5 @@
-import { conEscrituraSesion } from "./escritura-sesion.ts";
+import { conEscrituraSesion, contextoEscritura, iniciarEscrituraSesion } from "./escritura-sesion.ts";
+import { obtenerSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
 import { myPool } from "../db/pool.ts";
 import type { Pozo, PozoDetalle, PozoListado, Estado, NuevoPozo } from "../models/schemas.ts";
 import { datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
@@ -65,7 +66,24 @@ export async function updatePozo(
   data: PozoUpdate,
   db: Pick<typeof myPool, "query"> = myPool,
 ): Promise<Pozo | void> {
+  if (db === myPool && !contextoEscritura.getStore()) {
+    const client = await myPool.connect();
+    let descartar = false;
+    try {
+      await iniciarEscrituraSesion(client, false);
+      const resultado = await updatePozo(id_pozo, data, client);
+      await client.query('COMMIT');
+      return resultado;
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { descartar = true; }
+      throw error;
+    } finally { client.release(descartar); }
+  }
   return conEscrituraSesion(async (dbEscritura) => {
+    await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)', [id_pozo]);
+    await dbEscritura.query('SELECT id_pozo FROM pozo WHERE id_pozo=$1 FOR UPDATE', [id_pozo]);
+    if (data.profundidad_final_m != null)
+      validarSelloSanitario(await obtenerSelloSanitario(dbEscritura, id_pozo), data.profundidad_final_m);
     if (Object.hasOwn(data, "numero_perforacion")) {
       const actual = await dbEscritura.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1", [id_pozo]);
       if (actual.rows[0] && data.numero_perforacion !== actual.rows[0].numero_perforacion)
@@ -126,6 +144,8 @@ export async function updatePozo(
 export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> {
   const { rows } = await myPool.query<PozoDetalle>(
     `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.perforador_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
+      (SELECT json_build_object('desde_m',ss.desde_m,'hasta_m',ss.hasta_m)
+       FROM public.sello_sanitario_pozo ss WHERE ss.id_pozo=p.id_pozo) AS sello_sanitario_constructivo,
       p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
       p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
       p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,

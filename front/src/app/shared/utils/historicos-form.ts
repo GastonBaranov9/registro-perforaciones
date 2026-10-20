@@ -1,11 +1,13 @@
 import { DatosTecnicosBorrador, NuevoPozo, SitioBody } from '../types/schemas';
-import { validarDatosTecnicos } from './datos-tecnicos-borrador';
+import { validarDatosTecnicos, selloSanitarioParaEnvio } from './datos-tecnicos-borrador';
 
 export const tecnicosVacios=():DatosTecnicosBorrador=>({intervalosLitologicos:[],intervalosDiametro:[],intervalosFiltro:[],nivelesAporte:[]});
-export function cuerpoHistorico(pozo:NuevoPozo,sitio:SitioBody,tecnicos:DatosTecnicosBorrador,edicion:boolean):Record<string,unknown>{
+export function cuerpoHistorico(pozo:NuevoPozo,sitio:SitioBody,tecnicos:DatosTecnicosBorrador,edicion:boolean,originales?:DatosTecnicosBorrador):Record<string,unknown>{
   const errors=validarDatosTecnicos(tecnicos,pozo.profundidad_final_m);
   if(errors.length)throw Error(errors.join(' '));
   const body:Record<string,unknown>={};
+  const sello = selloSanitarioParaEnvio(tecnicos, edicion ? originales : undefined);
+  if (sello !== undefined && (edicion || sello !== null)) body['sello_sanitario_constructivo'] = sello;
   for(const key of ['empresa','fecha_inicio','fecha_fin','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento','propietario_provisional','perforador_provisional'] as const){
     const value=pozo[key]?.trim();if(value)body[key]=value;else if(edicion)body[key]=null;
   }

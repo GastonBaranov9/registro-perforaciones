@@ -7,6 +7,41 @@ describe('DatosTecnicosBorradorComponent', () => {
   let fixture: ComponentFixture<DatosTecnicosBorradorComponent>;
   let component: DatosTecnicosBorradorComponent;
 
+  it('agrega sello sin precargar límites, permite completarlo y quitarlo sin falso dirty', async () => {
+    expect(fixture.nativeElement.querySelector('[aria-label="Sello sanitario desde (m)"]')).toBeNull();
+    const original = component.datos();
+    component.agregarSello(); fixture.detectChanges(); await fixture.whenStable();
+    expect(Number.isNaN(component.datos().sello_sanitario_constructivo!.desde_m)).toBeTrue();
+    expect(Number.isNaN(component.datos().sello_sanitario_constructivo!.hasta_m)).toBeTrue();
+    const inputs = fixture.nativeElement.querySelectorAll('[aria-label^="Sello sanitario "]') as NodeListOf<HTMLInputElement>;
+    expect(Array.from(inputs, input => input.value)).toEqual(['', '']);
+    expect(component.errores().join(' ')).toContain('complete Desde y Hasta');
+    inputs[0].value = '0'; inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = '10'; inputs[1].dispatchEvent(new Event('input'));
+    fixture.detectChanges(); await fixture.whenStable();
+    expect(component.datos().sello_sanitario_constructivo).toEqual({ desde_m: 0, hasta_m: 10 });
+    expect(component.errores()).toEqual([]);
+    expect(component.dirty()).toBeTrue();
+    expect(component.datos().intervalosLitologicos).toEqual(original.intervalosLitologicos);
+    component.quitarSello(); fixture.detectChanges();
+    expect(component.datos().sello_sanitario_constructivo).toBeNull();
+    expect(component.dirty()).toBeFalse();
+  });
+
+  it('hidrata decimales sin dirty, clona el original y reconoce la reversión exacta', () => {
+    const inicial = { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [],
+      sello_sanitario_constructivo: { desde_m: 1.125, hasta_m: 9.875 } };
+    fixture.componentRef.setInput('inicial', inicial); fixture.detectChanges(); TestBed.flushEffects();
+    expect(component.datos().sello_sanitario_constructivo).toEqual(inicial.sello_sanitario_constructivo);
+    expect(component.dirty()).toBeFalse();
+    component.datos().sello_sanitario_constructivo!.hasta_m = 10; component.notificarEdicion();
+    expect(component.dirty()).toBeTrue(); expect(inicial.sello_sanitario_constructivo.hasta_m).toBe(9.875);
+    component.datos().sello_sanitario_constructivo!.hasta_m = 9.875; component.notificarEdicion();
+    expect(component.dirty()).toBeFalse();
+    fixture.componentRef.setInput('profundidad', 9); fixture.detectChanges();
+    expect(component.errores().join(' ')).toContain('excede la profundidad final');
+  });
+
   function simularMovimientoReducido(reduced: boolean) {
     const matchMedia = window.matchMedia.bind(window);
     spyOn(window, 'matchMedia').and.callFake(query => query === '(prefers-reduced-motion: reduce)'

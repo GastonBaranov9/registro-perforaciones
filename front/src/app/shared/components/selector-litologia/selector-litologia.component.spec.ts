@@ -38,17 +38,18 @@ describe('SelectorLitologiaComponent', () => {
     expect(selector.opcionesFiltradas().map((x) => x.id_litologia)).toEqual([1]);
     expect(selector.opcionesFiltradas().every((x) => x.activo)).toBeTrue();
   });
-  it('permite seleccionar Sello sanitario como litología activa del catálogo', async () => {
+  it('no ofrece ni permite seleccionar Sello sanitario si llega inactivo', async () => {
     const fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     http.expectOne((r) => r.url.endsWith('/litologias')).flush([
-      { id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#999999', patron: 'concrete', activo: true, orden: 30 },
+      { id_litologia: 30, codigo: 'sello_sanitario', nombre: 'Sello sanitario', familia: 'otro', color: '#999999', patron: 'concrete', activo: false, orden: 30 },
     ]);
     await fixture.whenStable();
     const selector = fixture.debugElement.query(By.directive(SelectorLitologiaComponent)).componentInstance as SelectorLitologiaComponent;
     const cambio = spyOn(selector.seleccionadoChange, 'emit');
     selector.seleccionar('30');
-    expect(cambio).toHaveBeenCalledWith(30);
+    expect(selector.opcionesFiltradas()).toEqual([]);
+    expect(cambio).not.toHaveBeenCalled();
   });
   it('comparte una sola carga activa entre diez selectores y no recarga al cambiar', async () => {
     const many = TestBed.createComponent(ManyHostComponent);

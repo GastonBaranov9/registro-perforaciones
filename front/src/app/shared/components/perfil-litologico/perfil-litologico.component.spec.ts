@@ -81,16 +81,37 @@ describe('PerfilLitologicoComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No hay profundidad ni litología');
   });
 
-  it('dibuja el patrón de concreto gris con agregados finos para Sello sanitario', async () => {
-    fixture.componentRef.setInput('modelo', { ...perfil, tramos: [{ ...perfil.tramos[0], material: 'Sello sanitario', hasta_m: 3.5, estilo: { color: '#999999', gris: .6, patron: 'concrete' } }] });
+  it('dibuja la envolvente decimal superpuesta sin recortar la litología', async () => {
+    const sello = { desde_m: 2.5, hasta_m: 8.75, texto: 'Sello sanitario 2.5-8.75 m', estilo: { color: '#999999', gris: .6, patron: 'concrete' as const }, geometria: { bandas: [{x_inicio:.23,x_fin:.29},{x_inicio:.71,x_fin:.77}] } };
+    fixture.componentRef.setInput('modelo', { ...perfil, sello_sanitario_constructivo: sello, tramos: [{ ...perfil.tramos[0], material: 'Basalto', hasta_m: 20 }] });
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
-    expect(root.querySelector('rect.capa')?.getAttribute('fill')).toBe('#999999');
+    expect(root.querySelector('rect.capa')?.getAttribute('height')).toBe('700');
+    const bandas = root.querySelectorAll('.sello-sanitario');
+    expect(bandas.length).toBe(2);
+    expect(bandas[0].getAttribute('fill')).toBe('#999999');
+    expect(Number(bandas[0].getAttribute('y'))).toBeCloseTo(157.5);
+    expect(Number(bandas[0].getAttribute('height'))).toBeCloseTo(218.75);
     const patron = root.querySelector(`pattern#${fixture.componentInstance.patronId('concrete')}`);
     expect(patron?.querySelector('circle')).not.toBeNull();
     expect(patron?.querySelector('ellipse')).not.toBeNull();
-    expect(root.querySelector('.trama-capa')?.getAttribute('fill')).toContain('concrete');
-    expect(root.textContent).toContain('Sello sanitario');
+    expect(root.querySelector('.trama-sello')?.getAttribute('fill')).toContain('concrete');
+    expect(root.querySelector('.leyenda-constructiva')?.textContent).toContain(sello.texto);
+    expect(root.querySelector('.leyenda-litologias')?.textContent ?? '').not.toContain('Sello sanitario');
+    expect(root.querySelector('table')?.textContent).not.toContain('Sello sanitario');
+    fixture.componentRef.setInput('modelo', { ...perfil, sello_sanitario_constructivo: null });
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(root.querySelector('.sello-sanitario')).toBeNull();
+    expect(root.querySelector('.leyenda-constructiva')).toBeNull();
+  });
+
+  it('hidrata el sello persistido y lo recorta sólo al límite de página gráfica', async () => {
+    obtener.and.resolveTo({ ...perfil, rangos:[{desde_m:0,hasta_m:10},{desde_m:10,hasta_m:20}], sello_sanitario_constructivo: {desde_m:0,hasta_m:15,texto:'Sello sanitario 0-15 m',estilo:{color:'#999999',gris:.6,patron:'concrete'},geometria:{bandas:[{x_inicio:.23,x_fin:.29},{x_inicio:.71,x_fin:.77}]}} });
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const bandas = fixture.nativeElement.querySelectorAll('.sello-sanitario');
+    expect(bandas.length).toBe(4);
+    expect(bandas[0].getAttribute('height')).toBe('700');
+    expect(bandas[2].getAttribute('height')).toBe('350');
   });
 
   it('muestra error sin conservar un perfil anterior', async () => {

@@ -1,5 +1,6 @@
 import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
+import { exigirTextoLitologico, exigirLitologiaNoConstructiva } from './litologia-provisional.ts';
 import * as err from "../models/errors.ts";
 import type { LitologiaActualizarBody, LitologiaCrearBody, LitologiaCatalogo, LitologiaPublica } from "../models/schemas.ts";
 
@@ -21,13 +22,15 @@ export async function obtenerLitologia(id: number): Promise<LitologiaPublica | n
 }
 
 export async function obtenerMetadatosLitologias(ids: number[]) {
-  if (!ids.length) return [] as Array<{ id_litologia: number; nombre: string; color: string; patron: string; activo: boolean }>;
-  const { rows } = await myPool.query("SELECT id_litologia,nombre,color,patron,activo FROM catalogo_litologia WHERE id_litologia = ANY($1::bigint[])", [ids]);
-  return rows as Array<{ id_litologia: number; nombre: string; color: string; patron: string; activo: boolean }>;
+  if (!ids.length) return [] as Array<{ id_litologia: number; codigo: string; nombre: string; color: string; patron: string; activo: boolean }>;
+  const { rows } = await myPool.query("SELECT id_litologia,codigo,nombre,color,patron,activo FROM catalogo_litologia WHERE id_litologia = ANY($1::bigint[])", [ids]);
+  return rows as Array<{ id_litologia: number; codigo: string; nombre: string; color: string; patron: string; activo: boolean }>;
 }
 
 export async function crearLitologia(data: LitologiaCrearBody): Promise<LitologiaCatalogo> {
   return conEscrituraSesion(async (dbEscritura) => {
+    exigirTextoLitologico(data.codigo);
+    exigirTextoLitologico(data.nombre);
     if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
     try {
       const { rows } = await dbEscritura.query<LitologiaCatalogo>(`INSERT INTO catalogo_litologia (codigo,nombre,familia,color,patron,orden,es_inicial) VALUES ($1,btrim($2),$3,$4,$5,$6,FALSE) RETURNING ${columnasAdmin}`,[data.codigo,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
@@ -38,6 +41,8 @@ export async function crearLitologia(data: LitologiaCrearBody): Promise<Litologi
 
 export async function actualizarLitologia(id: number, data: LitologiaActualizarBody): Promise<LitologiaCatalogo | null> {
   return conEscrituraSesion(async (dbEscritura) => {
+    exigirTextoLitologico(data.nombre);
+    await exigirLitologiaNoConstructiva(dbEscritura, id);
     if (nombreNormalizadoVacio(data.nombre)) throw new err.T05DatosIncorrectos();
     try {
       const { rows } = await dbEscritura.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET nombre=btrim($2),familia=$3,color=$4,patron=$5,orden=$6,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,data.nombre,data.familia,data.color.toUpperCase(),data.patron,data.orden]);
@@ -48,6 +53,7 @@ export async function actualizarLitologia(id: number, data: LitologiaActualizarB
 
 export async function cambiarEstadoLitologia(id: number, activo: boolean): Promise<LitologiaCatalogo | null> {
   return conEscrituraSesion(async (dbEscritura) => {
+    if (activo) await exigirLitologiaNoConstructiva(dbEscritura, id);
     const { rows } = await dbEscritura.query<LitologiaCatalogo>(`UPDATE catalogo_litologia SET activo=$2,actualizado_en=now() WHERE id_litologia=$1 RETURNING ${columnasAdmin}`,[id,activo]);
     return rows[0] ?? null;
   }, myPool, false);

@@ -3,6 +3,20 @@
   <p>Puede preparar, revisar y corregir estos datos antes de guardar el pozo.</p>
   @if (errorAgregar()) { <p class="error" role="alert">{{ errorAgregar() }}</p> }
 
+  <div class="seccion" aria-label="Sello sanitario">
+    <h3>Sello sanitario</h3>
+    @if (datos().sello_sanitario_constructivo; as sello) {
+      <div class="fila" #filaDinamica data-capa="sello-sanitario">
+        <label>Desde (m)<input aria-label="Sello sanitario desde (m)" [disabled]="guardando()" type="number" min="0" step="any" required [(ngModel)]="sello.desde_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Hasta (m)<input aria-label="Sello sanitario hasta (m)" [disabled]="guardando()" type="number" min="0" step="any" required [(ngModel)]="sello.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
+        <button class="destructive" type="button" (click)="quitarSello()" [disabled]="guardando()">Quitar sello sanitario</button>
+      </div>
+    } @else {
+      <p>No registrado.</p>
+      <button type="button" (click)="agregarSello()" [disabled]="guardando()">Agregar sello sanitario</button>
+    }
+  </div>
+
   <div class="seccion">
     <h3>Intervalos litológicos</h3>
     @for (item of datos().intervalosLitologicos; track item.idLocal) {

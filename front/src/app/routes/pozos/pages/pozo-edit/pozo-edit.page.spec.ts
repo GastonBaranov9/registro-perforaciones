@@ -6,6 +6,18 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PozoEditPage } from './pozo-edit.page';
 import { Sitio } from '../../../../shared/types/schemas';
 import { SitiosEditService } from '../../../../shared/services/sitios-edit.service';
+import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
+import { CandidatosPozoService } from '../../../../shared/services/candidatos-pozo.service';
+import { IntervaloLitologicoListService } from '../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
+import { IntervaloDiametroListService } from '../../../../shared/services/intervalo-diametro-service/intervalo-diemtro-list/intervalo-diametro-list.service';
+import { IntervalosFiltroService } from '../../../../shared/services/intervalos-filtro.service';
+import { AporteListService } from '../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { HttpTestingController } from '@angular/common/http/testing';
+
+function respuestaGuardada() {
+  return { pozo: { id_pozo: 1 }, sello_sanitario_constructivo: null, intervalos_litologicos: [], intervalos_diametro: [], intervalos_filtro: [], niveles_aporte: [] };
+}
 
 describe('PozoEditPage', () => {
   let component: PozoEditPage;
@@ -124,9 +136,10 @@ describe('PozoEditPage', () => {
   it('confirma el estado de la foto solo después de guardar correctamente', async () => {
     const confirmar = jasmine.createSpy('confirmarFotoGuardada');
     component.formulario = { confirmarFotoGuardada: confirmar } as never;
-    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({ pozo: { foto_url: '/usuarios/1/pozos/1/foto' } } as never);
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({ ...respuestaGuardada(), pozo: { foto_url: '/usuarios/1/pozos/1/foto' } } as never);
     spyOn(component.router, 'navigate').and.resolveTo(true);
     await component.handleEdit({ pozo: { id_propietario: 1, id_perforador: 1, id_sitio: 1 }, foto: new File(['foto'], 'nueva.jpg'), fotoAccion: 'reemplazar' });
+    expect(component.errorMessage()).toBe('');
     expect(confirmar).toHaveBeenCalledOnceWith('/usuarios/1/pozos/1/foto');
   });
 
@@ -136,7 +149,7 @@ describe('PozoEditPage', () => {
     const editar = spyOn(component.pozoEditService, 'editPozoCompleto').and.returnValue(pendiente as never);
     const dato = { pozo: { id_propietario: 2, id_perforador: 3, id_sitio: 4 }, foto: null, fotoAccion: 'conservar' as const };
     const primero = component.handleEdit(dato); await component.handleEdit(dato);
-    expect(editar).toHaveBeenCalledTimes(1); resolver({}); await primero;
+    expect(editar).toHaveBeenCalledTimes(1); resolver(respuestaGuardada()); await primero;
   });
 
   it('un error mantiene cambios técnicos en memoria', async () => {
@@ -148,9 +161,10 @@ describe('PozoEditPage', () => {
   });
 
   it('después de actualizar navega al detalle reutilizable que invalida el perfil', async () => {
-    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo({} as never);
+    spyOn(component.pozoEditService, 'editPozoCompleto').and.resolveTo(respuestaGuardada() as never);
     const navegar = spyOn(component.router, 'navigate').and.resolveTo(true);
     await component.handleEdit({ pozo: { id_propietario:2,id_perforador:3,id_sitio:4,profundidad_final_m:20 }, foto:null, fotoAccion:'conservar' });
+    expect(component.errorMessage()).toBe('');
     expect(navegar).toHaveBeenCalledOnceWith(['/pozos-detail', 1]);
   });
 
@@ -197,4 +211,34 @@ describe('PozoEditPage', () => {
     component.sitioReturn.sitioCreado.set(sitioC); component.ionViewWillEnter();
     expect(component.sitiosActualizados()).toEqual([sitioC]);
   });
+});
+
+describe('Edición normal del sello sanitario constructivo', () => {
+  for (const sello of [null, { desde_m: 1.125, hasta_m: 9.875 }]) {
+    it('hidrata exactamente sin dirty ni usar el booleano y detecta reversiones: ' + JSON.stringify(sello), async () => {
+      TestBed.configureTestingModule({ imports: [PozoEditPage], providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
+      const auth = TestBed.inject(AuthService);
+      spyOn(auth, 'tieneRol').and.returnValue(true); spyOn(auth, 'userId').and.returnValue(9);
+      spyOn(TestBed.inject(PozosEditService), 'getPozoById').and.resolveTo({ id_pozo: 1, id_propietario: null, propietario_provisional: 'Campo',
+        id_perforador: 3, id_sitio: 4, fecha_creado: new Date().toISOString(), profundidad_final_m: 30,
+        sello_sanitario: true, sello_sanitario_constructivo: sello } as never);
+      spyOn(TestBed.inject(CandidatosPozoService), 'obtener').and.resolveTo({ propietarios: [], perforadores: [{ id_usuario: 3, nombre: 'Perforador', roles: ['perforador'] }] });
+      spyOn(TestBed.inject(IntervaloLitologicoListService), 'getIntervalosLitologicos').and.resolveTo([]);
+      spyOn(TestBed.inject(IntervaloDiametroListService), 'getIntervalosDiametros').and.resolveTo([]);
+      spyOn(TestBed.inject(IntervalosFiltroService), 'listar').and.resolveTo([]);
+      spyOn(TestBed.inject(AporteListService), 'getNivelesAporte').and.resolveTo([]);
+      const fixture = TestBed.createComponent(PozoEditPage); fixture.componentRef.setInput('id_pozo', 1);
+      fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+      const component = fixture.componentInstance;
+      expect(component.datosTecnicos().sello_sanitario_constructivo).toEqual(sello);
+      expect(component.tieneCambiosSinGuardar()).toBeFalse();
+      if (sello) {
+        component.datosTecnicos().sello_sanitario_constructivo!.hasta_m = 10;
+        expect(component.tieneCambiosSinGuardar()).toBeTrue();
+        component.datosTecnicos().sello_sanitario_constructivo!.hasta_m = 9.875;
+        expect(component.tieneCambiosSinGuardar()).toBeFalse();
+      }
+      TestBed.inject(HttpTestingController).match(() => true).forEach(req => req.flush(null));
+    });
+  }
 });

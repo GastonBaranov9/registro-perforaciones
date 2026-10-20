@@ -38,7 +38,7 @@ test('provisionales, permisos, migración y numeración en PostgreSQL desechable
       UPDATE numeracion_perforacion SET proximo=3282`);
     await pool.query("INSERT INTO pozo(origen,numero_perforacion,creado_por,propietario_provisional) VALUES('historico',2099,1,'Propietario anterior a 019')");
     const migraciones=await ejecutarMigraciones(pool);
-    assert.deepEqual(migraciones.aplicadas,['019_datos_provisionales.sql']);
+    assert.deepEqual(migraciones.aplicadas,['019_datos_provisionales.sql','020_sello_sanitario_constructivo.sql']);
     assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,[]);
     assert.ok((await listarPendientes(1,false,pool)).some(g=>g.texto==='Propietario anterior a 019'));
     const epoca=(await pool.query('SELECT epoca FROM epoca_datos')).rows[0].epoca;

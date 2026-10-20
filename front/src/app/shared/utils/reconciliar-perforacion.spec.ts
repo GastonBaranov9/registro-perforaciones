@@ -16,6 +16,15 @@ describe('Reconciliación de una perforación guardada', () => {
     expect(resultado.sitio.padron).toBe('123'); expect(resultado.sitio.departamento).toBe('Salto');
     expect(enviado.pozo.empresa).toBe('Enviada');
   });
+  it('reconcilia sello canónico y conserva modificaciones o eliminación posteriores al envío', () => {
+    const enviado = estado(); enviado.tecnicos.sello_sanitario_constructivo = { desde_m: 1.125, hasta_m: 9.875 };
+    const canonico = structuredClone(enviado); canonico.tecnicos.sello_sanitario_constructivo = { desde_m: 2, hasta_m: 8 };
+    expect(reconciliarPerforacion(enviado, structuredClone(enviado), canonico).tecnicos.sello_sanitario_constructivo).toEqual({ desde_m: 2, hasta_m: 8 });
+    const actual = structuredClone(enviado); actual.tecnicos.sello_sanitario_constructivo = { desde_m: 3, hasta_m: 7 };
+    expect(reconciliarPerforacion(enviado, actual, canonico).tecnicos.sello_sanitario_constructivo).toEqual({ desde_m: 3, hasta_m: 7 });
+    actual.tecnicos.sello_sanitario_constructivo = null;
+    expect(reconciliarPerforacion(enviado, actual, canonico).tecnicos.sello_sanitario_constructivo).toBeNull();
+  });
 
   it('reemplaza IDs por los canónicos aun con filas reordenadas, modificadas, nuevas o eliminadas', () => {
     const enviado = estado();

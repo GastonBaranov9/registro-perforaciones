@@ -114,7 +114,7 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
     flujo.titulo("Perfil litológico", 45);
     flujo.texto("No se puede representar el perfil litológico por falta de profundidad final. Se conservan los datos registrados en las tablas.");
   } else {
-    const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[]);
+    const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[],reporte.sello_sanitario_constructivo);
     if(perfil) dibujarPerfilLitologico(doc,perfil,font,bold);
   }
   return { documento:doc, diagnostico:flujo.diagnostico };
@@ -151,7 +151,8 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
     ["Caudal estimado",unidad(r.caudal_estimado_lh,"l/h")],["Revestimiento",valorTexto(r.revestimiento)],
     ["Método sedimentario",valorTexto(r.metodo_sedimentario)],["Método rocoso",valorTexto(r.metodo_rocoso)],
     ["Cementación",valorTexto(r.cementacion)],["Desarrollo",valorTexto(r.desarrollo)],
-    ["Sello sanitario",r.sello_sanitario == null ? "No especificado" : r.sello_sanitario ? "Sí" : "No"],
+    ...(r.sello_sanitario_constructivo ? [["Sello sanitario",`Desde ${r.sello_sanitario_constructivo.desde_m} m hasta ${r.sello_sanitario_constructivo.hasta_m} m`] as [string,string]]
+      : r.sello_sanitario === true ? [["Sello sanitario","Registrado en formato legado, sin profundidad especificada"] as [string,string]] : []),
     ["Prefiltro",valorTexto(r.pre_filtro)],
   ];
   const tablas: Array<{titulo:string;columnas:ColumnaTecnica[];filas:Record<string,unknown>[]}> = [

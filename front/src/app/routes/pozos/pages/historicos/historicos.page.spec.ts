@@ -55,13 +55,13 @@ describe('Carga histórica separada',()=>{
     expect(crear).not.toHaveBeenCalled(); expect(actualizar).not.toHaveBeenCalled();
   });
 
-  async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string | null>> = {}) {
+  async function cargarEdicionPrueba(textos: Partial<Record<CampoTecnicoEstandar, string | null>> = {}, sello?: Pozo['sello_sanitario_constructivo']) {
     const fixture = TestBed.createComponent(HistoricosPage);
     fixture.componentRef.setInput('id_pozo', '18'); page = fixture.componentInstance;
     spyOn(TestBed.inject(PozosEditService), 'getPozoById').and.resolveTo({
       id_pozo: 18, numero_perforacion: 3281, origen: 'historico', id_sitio: null,
       id_propietario: null, id_perforador: null, fecha_creado: '2026-10-06',
-      ...textos,
+      ...textos, sello_sanitario_constructivo: sello,
     } as Pozo); // La API puede devolver null aunque Pozo sólo declare string opcional.
     spyOn(TestBed.inject(IntervaloLitologicoListService), 'getIntervalosLitologicos').and.resolveTo([]);
     spyOn(TestBed.inject(IntervaloDiametroListService), 'getIntervalosDiametros').and.resolveTo([]);
@@ -78,7 +78,37 @@ describe('Carga histórica separada',()=>{
     expect(page.pozo()).toEqual(jasmine.objectContaining(DATOS_TECNICOS_ESTANDAR));
     expect(page.formulario!.pozo()).toBe(page.pozo());
     expect(page.tieneCambiosSinGuardar()).toBeFalse();
+    expect(page.tecnicos().sello_sanitario_constructivo ?? null).toBeNull();
     expect(fixture.nativeElement.querySelector('ion-button.aplicar-estandares').disabled).toBeTrue();
+  });
+  for (const sello of [null, { desde_m: 1.125, hasta_m: 9.875 }]) {
+    it('hidrata el sello histórico sin inventar valores ni dejar cambios: ' + JSON.stringify(sello), async () => {
+      const fixture = await cargarEdicionPrueba({}, sello);
+      expect(page.tecnicos().sello_sanitario_constructivo).toEqual(sello);
+      expect(page.tieneCambiosSinGuardar()).toBeFalse();
+      if (sello) {
+        page.tecnicos().sello_sanitario_constructivo!.hasta_m = 10;
+        expect(page.tieneCambiosSinGuardar()).toBeTrue();
+        page.tecnicos().sello_sanitario_constructivo!.hasta_m = 9.875;
+        expect(page.tieneCambiosSinGuardar()).toBeFalse();
+      }
+      fixture.destroy();
+    });
+  }
+  it('PATCH conserva, actualiza y elimina el sello; la recarga canónica deja el formulario limpio', async () => {
+    const fixture = await cargarEdicionPrueba({}, { desde_m: 1.125, hasta_m: 9.875 });
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(false);
+    const leer = TestBed.inject(PozosEditService).getPozoById as jasmine.Spy;
+    for (const cambio of [undefined, { desde_m: 2.25, hasta_m: 8.75 }, null]) {
+      if (cambio !== undefined) page.tecnicos.update(datos => ({ ...datos, sello_sanitario_constructivo: cambio }));
+      leer.and.resolveTo({ ...page.pozo(), sello_sanitario_constructivo: page.tecnicos().sello_sanitario_constructivo });
+      const guardar = page.editar({ pozo: page.pozo(), foto: null, fotoAccion: 'conservar' });
+      const req = http.expectOne(`${environment.apiURL}pozos/historicos/18`);
+      expect(req.request.body.sello_sanitario_constructivo).toEqual(cambio);
+      req.flush({ id_pozo: 18 }); await guardar; fixture.detectChanges(); await fixture.whenStable();
+      expect(page.tieneCambiosSinGuardar()).toBeFalse();
+      expect(page.tecnicos().sello_sanitario_constructivo).toEqual(cambio === undefined ? { desde_m: 1.125, hasta_m: 9.875 } : cambio);
+    }
   });
 
   it('otra inicia un nuevo histórico con los cuatro estándares después de guardar', async () => {

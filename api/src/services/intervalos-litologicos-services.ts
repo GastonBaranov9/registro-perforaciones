@@ -1,4 +1,4 @@
-import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes } from './litologia-provisional.ts';
+import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes, exigirTextoLitologico, exigirLitologiaNoConstructiva } from './litologia-provisional.ts';
 import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
@@ -8,8 +8,10 @@ type DatoLitologico = typeof bodyIntervaloLitologico.static;
 
 export async function createIntervaloLitologico(idPozo:number,data:DatoLitologico){
   return conEscrituraSesion(async (dbEscritura) => {
+    exigirTextoLitologico(data.material);
     const provisional = provisionalParaIntervaloNuevo(data);
     await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
+    await exigirLitologiaNoConstructiva(dbEscritura, data.id_litologia);
     await validarRangoContraPozo(idPozo,data,dbEscritura);
     let fila:Record<string,unknown>|undefined;
     try{
@@ -30,6 +32,7 @@ export async function createIntervaloLitologico(idPozo:number,data:DatoLitologic
 
 export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number,data:DatoLitologico){
   return conEscrituraSesion(async (dbEscritura) => {
+    exigirTextoLitologico(data.material);
     const provisional = normalizarLitologiaProvisional(data);
     await dbEscritura.query('SELECT pg_advisory_xact_lock($1::integer,606)',[idPozo]);
     if (data.id_litologia != null) {
@@ -37,6 +40,7 @@ export async function updateIntervaloLitologico(idPozo:number,idIntervalo:number
       exigirVinculacionDesdePendientes(rows[0]?.litologia_provisional,data.id_litologia);
     }
     await validarRangoContraPozo(idPozo,data,dbEscritura);
+    await exigirLitologiaNoConstructiva(dbEscritura, data.id_litologia);
     let fila:Record<string,unknown>|undefined;
     try{
       const {rows}=await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($2::integer,606)), vigente AS (SELECT id_litologia,litologia_provisional FROM intervalo_litologico WHERE id_intervalo_litologico=$1 AND id_pozo=$2 FOR UPDATE), elegida AS (SELECT c.id_litologia,c.nombre FROM vigente v JOIN catalogo_litologia c ON $6::bigint IS NOT NULL AND c.id_litologia=$6 AND (c.activo OR c.id_litologia=v.id_litologia) FOR SHARE)

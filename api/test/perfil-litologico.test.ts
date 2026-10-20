@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFPage, StandardFonts } from "pdf-lib";
 import {
   calcularPasoEscala,
   crearPerfilLitologico,
@@ -143,6 +143,71 @@ test("modelo canónico define lienzo columna carriles y conectores para ambos ad
   }
   assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:0,y_normalizada:0}),{x:45,y:795});
   assert.deepEqual(transformarPuntoCanonicoPdf({x_normalizada:1,y_normalizada:1}),{x:550,y:45});
+});
+
+test("sello constructivo opcional no altera suelo, escala ni geometría existente", () => {
+  const capas = [{desde_m:0,hasta_m:20,material:"Basalto"}];
+  const sinSello = crearPerfilLitologico(capas,20)!;
+  const explicito = crearPerfilLitologico(capas,20,[],[],[],null)!;
+  assert.deepEqual(sinSello,explicito);
+  const conSello = crearPerfilLitologico(capas,20,[],[],[],{desde_m:0,hasta_m:10})!;
+  for (const campo of ["tramos","rangos","geometria","profundidad_m","seccion_pozo"] as const) assert.deepEqual(conSello[campo],sinSello[campo]);
+  assert.equal(conSello.tramos.length,1);
+  assert.equal(conSello.sello_sanitario_constructivo?.texto,"Sello sanitario 0-10 m");
+  assert.equal(conSello.etiquetas.filter(etiqueta=>etiqueta.tipo==="sello_sanitario").length,1);
+  assert.equal(sinSello.etiquetas.some(etiqueta=>etiqueta.tipo==="sello_sanitario"),false);
+});
+
+test("sello decimal rodea tubería/filtro sin ocupar las franjas exteriores del terreno", () => {
+  const perfil=crearPerfilLitologico([{desde_m:0,hasta_m:20,material:"Basalto"}],20,[{profundidad_m:5.625}],
+    [{desde_m:0,hasta_m:20,diametro_pulg:8,material_tuberia:"PVC"}],
+    [{desde_m:2.5,hasta_m:8.75,diametro_pulg:6,material_tuberia:"Acero"}],{desde_m:2.5,hasta_m:8.75})!;
+  const sello=perfil.sello_sanitario_constructivo!;
+  assert.equal(sello.desde_m,2.5); assert.equal(sello.hasta_m,8.75);
+  assert.equal(sello.estilo.patron,"concrete");
+  assert.equal(sello.texto,"Sello sanitario 2.5-8.75 m");
+  const [izquierda,derecha]=sello.geometria.bandas;
+  assert.ok(izquierda.x_inicio>0 && derecha.x_fin<1);
+  for (const tramo of [...perfil.tuberias,...perfil.filtros]) {
+    assert.ok(izquierda.x_fin<tramo.geometria.x_inicio);
+    assert.ok(derecha.x_inicio>tramo.geometria.x_fin);
+  }
+  const posiciones=[...perfil.etiquetas].sort((anterior,siguiente)=>anterior.posicion_y_normalizada-siguiente.posicion_y_normalizada);
+  assert.ok(posiciones.slice(1).every((actual,indice)=>actual.posicion_y_normalizada-posiciones[indice].posicion_y_normalizada>=.054));
+  for (const etiqueta of perfil.etiquetas) for (const otra of perfil.etiquetas.filter(item=>item.clave!==etiqueta.clave)) {
+    for (let indice=1;indice<etiqueta.conector.puntos.length;indice++) assert.equal(segmentoCruzaCaja(etiqueta.conector.puntos[indice-1],etiqueta.conector.puntos[indice],otra.caja_texto),false);
+  }
+});
+
+for (const sello of [{desde_m:0,hasta_m:10},{desde_m:2.5,hasta_m:8.75},{desde_m:95.25,hasta_m:205.75}]) {
+  test(`PDF proyecta exactamente bandas ${sello.desde_m}-${sello.hasta_m} y conserva paginación`,async(contexto)=>{
+    const perfil=crearPerfilLitologico([{desde_m:0,hasta_m:240,material:"Basalto"}],240,[],[],[],sello)!;
+    const dibujar=contexto.mock.method(PDFPage.prototype,"drawRectangle");
+    const doc=await PDFDocument.create(), font=await doc.embedFont(StandardFonts.Helvetica), bold=await doc.embedFont(StandardFonts.HelveticaBold);
+    dibujarPerfilLitologico(doc,perfil,font,bold);
+    assert.equal(doc.getPageCount(),perfil.rangos.length);
+    const geometria=perfil.geometria;
+    const xPdf=(valor:number)=>transformarPuntoCanonicoPdf({x_normalizada:valor,y_normalizada:0}).x;
+    const yPdf=(metros:number,rango:typeof perfil.rangos[number])=>transformarPuntoCanonicoPdf({x_normalizada:0,y_normalizada:(geometria.columna.y+(metros-rango.desde_m)/(rango.hasta_m-rango.desde_m)*geometria.columna.alto)/geometria.alto_logico}).y;
+    for (const rango of perfil.rangos.filter(rango=>sello.desde_m<rango.hasta_m && sello.hasta_m>rango.desde_m)) {
+      for (const banda of perfil.sello_sanitario_constructivo!.geometria.bandas) {
+        const inicioX=xPdf((geometria.columna.x+banda.x_inicio*geometria.columna.ancho)/geometria.ancho_logico);
+        const baseY=yPdf(Math.min(sello.hasta_m,rango.hasta_m),rango);
+        const alto=yPdf(Math.max(sello.desde_m,rango.desde_m),rango)-baseY;
+        assert.ok(dibujar.mock.calls.some(llamada=>{
+          const rectangulo=llamada.arguments[0]!;
+          return Math.abs(rectangulo.x!-inicioX)<1e-8 && Math.abs(rectangulo.y!-baseY)<1e-8 && Math.abs(rectangulo.height!-alto)<1e-8;
+        }));
+      }
+    }
+    assert.ok((await doc.save()).length>1000);
+  });
+}
+
+test("sello no deduce profundidad ni acepta antiguas litologías reservadas",()=>{
+  assert.equal(crearPerfilLitologico([],null,[],[],[],{desde_m:2.5,hasta_m:8.75}),null);
+  assert.throws(()=>crearPerfilLitologico([{desde_m:0,hasta_m:20,material:"Nombre cualquiera",litologia_codigo:"sello_sanitario"}],20),/elemento constructivo/);
+  assert.throws(()=>crearPerfilLitologico([],20,[],[],[],{desde_m:0,hasta_m:21}),/excede/);
 });
 
 function segmentoCruzaCaja(a:{x_normalizada:number;y_normalizada:number},b:{x_normalizada:number;y_normalizada:number},caja:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}) {

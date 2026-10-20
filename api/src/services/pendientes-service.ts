@@ -65,7 +65,7 @@ export async function vincularPendientes(actor: number, data: VinculacionPendien
       if (!r || Number(r.id_pozo) !== x.id_pozo || r.version !== x.version || r.texto !== x.texto || r.vinculado != null) conflicto();
     }
     if (tipo === 'litologia') {
-      const { rows } = await client.query('SELECT nombre FROM catalogo_litologia WHERE id_litologia=$1 AND activo FOR SHARE', [destino]);
+      const { rows } = await client.query("SELECT nombre FROM catalogo_litologia WHERE id_litologia=$1 AND activo AND codigo<>'sello_sanitario' FOR SHARE", [destino]);
       if (!rows[0]) throw new T05DatosIncorrectos('Seleccione una litología activa.');
       await client.query('UPDATE intervalo_litologico SET id_litologia=$1,litologia_provisional=NULL,material=$3 WHERE id_intervalo_litologico=ANY($2::bigint[])', [destino,ids,rows[0].nombre]);
     } else {

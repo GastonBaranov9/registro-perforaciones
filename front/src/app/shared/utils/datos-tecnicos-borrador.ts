@@ -87,6 +87,15 @@ export function sugerirInicioSiguienteIntervalo(
 
 export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?: number): string[] {
   const errores: string[] = [];
+  const sello = datos.sello_sanitario_constructivo;
+  if (sello != null) {
+    if (!Number.isFinite(sello.desde_m) || !Number.isFinite(sello.hasta_m))
+      errores.push('Sello sanitario: complete Desde y Hasta con números finitos.');
+    else if (sello.desde_m < 0 || sello.desde_m >= sello.hasta_m)
+      errores.push('Sello sanitario: Desde debe ser mayor o igual a 0 y menor que Hasta.');
+    else if (profundidad != null && sello.hasta_m > profundidad)
+      errores.push('El sello sanitario constructivo excede la profundidad final.');
+  }
   datos.intervalosLitologicos.forEach((item, indice) => {
     if (item.dato.litologia_provisional != null && (!item.dato.litologia_provisional.trim() || item.dato.litologia_provisional.trim().length > 160 || item.dato.id_litologia != null)) errores.push('Indique un nombre provisional de 1 a 160 caracteres o una litología catalogada.');
     const persistido = item.dato.id_intervalo_litologico != null;
@@ -133,9 +142,17 @@ function validarIntervalos(
 
 export function ordenarDatosTecnicos(datos: DatosTecnicosBorrador): DatosTecnicosBorrador {
   return {
+    ...datos,
     intervalosLitologicos: [...datos.intervalosLitologicos].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     intervalosDiametro: [...datos.intervalosDiametro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     intervalosFiltro: [...datos.intervalosFiltro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     nivelesAporte: [...datos.nivelesAporte].sort((a, b) => a.dato.profundidad_m - b.dato.profundidad_m),
   };
+}
+
+export function selloSanitarioParaEnvio(datos: DatosTecnicosBorrador, originales?: DatosTecnicosBorrador) {
+  const sello = datos.sello_sanitario_constructivo ?? null;
+  const original = originales?.sello_sanitario_constructivo ?? null;
+  if (originales && sello?.desde_m === original?.desde_m && sello?.hasta_m === original?.hasta_m) return undefined;
+  return sello == null ? null : { ...sello };
 }

@@ -34,7 +34,7 @@ test('carga historica en PostgreSQL aislada', async t=>{
       const snapshot=async()=>Promise.all(['usuario','usuario_rol','numeracion_perforacion'].map(async tabla=>(await pool.query(`SELECT * FROM ${tabla} ORDER BY 1,2`)).rows));
       const before=await snapshot();
       const rolesBefore=(await pool.query('SELECT * FROM rol ORDER BY id_rol')).rows;
-      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,['018_operador_administrativo.sql','019_datos_provisionales.sql']);
+      assert.deepEqual((await ejecutarMigraciones(pool)).aplicadas,['018_operador_administrativo.sql','019_datos_provisionales.sql','020_sello_sanitario_constructivo.sql']);
       assert.deepEqual(await snapshot(),before);
       assert.deepEqual((await pool.query("SELECT * FROM rol WHERE nombre<>'operador_administrativo' ORDER BY id_rol")).rows,rolesBefore);
       assert.equal((await pool.query("SELECT count(*) FROM rol WHERE nombre='operador_administrativo'")).rows[0].count,'1');

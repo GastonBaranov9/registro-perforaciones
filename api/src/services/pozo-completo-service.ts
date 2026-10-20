@@ -1,4 +1,5 @@
-import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes } from './litologia-provisional.ts';
+import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes, exigirTextoLitologico, exigirLitologiaNoConstructiva } from './litologia-provisional.ts';
+import { guardarSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
 import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { exigirEpoca } from './epoca-datos-service.ts';
 import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
@@ -16,6 +17,7 @@ import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 import { DATOS_TECNICOS_ESTANDAR, datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 
 export interface PozoCompletoResultado {
+  sello_sanitario_constructivo: import('../models/schemas.ts').SelloSanitarioConstructivo | null;
   pozo: Pozo;
   sitio: import("../models/schemas.ts").Sitio;
   intervalos_litologicos: Array<{ id_intervalo_litologico: number; id_pozo: number; desde_m: number; hasta_m: number; material: string; id_litologia:number|null; litologia_provisional?:string|null }>;
@@ -46,6 +48,8 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
     intervalos_filtro: data.intervalos_filtro,
     niveles_aporte: data.niveles_aporte,
   });
+  try { validarSelloSanitario(data.sello_sanitario_constructivo, data.pozo.profundidad_final_m); }
+  catch (error) { errores.push((error as Error).message); }
   for (const [campo, valor] of Object.entries(data.pozo).filter(([campo]) => campo in DATOS_TECNICOS_ESTANDAR)) {
     if (typeof valor === "string" && !valor.trim()) errores.push(`El campo ${campo} no puede estar vacío.`);
   }
@@ -63,7 +67,7 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
 export function validarDatosTecnicosPozo(data: Omit<PerfilLitologicoVistaPreviaBody, 'profundidad_final_m'> & { profundidad_final_m?: number }): string[] {
   const errores: string[] = [];
   for (const i of data.intervalos_litologicos) {
-    try { normalizarLitologiaProvisional(i); } catch (e) { errores.push((e as Error).message); }
+    try { exigirTextoLitologico(i.material); normalizarLitologiaProvisional(i); } catch (e) { errores.push((e as Error).message); }
   }
   const profundidad = data.profundidad_final_m;
   validarIntervalos(data.intervalos_litologicos, "litológico", profundidad, errores);
@@ -144,6 +148,7 @@ export async function crearPozoCompleto(
     const sitio = await insertarSitio(client, data.sitio_nuevo);
     const pozo = await insertarPozo(client, creadoPor, data, sitio.id_sitio);
     const idPozo = pozo.id_pozo;
+    const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo ?? null, pozo.profundidad_final_m);
     const litologia = [] as PozoCompletoResultado["intervalos_litologicos"];
     const diametros = [] as PozoCompletoResultado["intervalos_diametro"];
     const aportes = [] as PozoCompletoResultado["niveles_aporte"];
@@ -187,7 +192,7 @@ export async function crearPozoCompleto(
       pozo.foto_url = `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`;
     }
 
-    const resultado = { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    const resultado = { pozo, sitio, sello_sanitario_constructivo: sello, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
     if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado,epoca) VALUES($1,$2,$3,$4,$5)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado), epoca]);
     commitIntentado = true;
     await client.query("COMMIT");
@@ -252,6 +257,7 @@ export async function actualizarPozoCompleto(
     if ((bloqueado[0].id_propietario == null ? null : Number(bloqueado[0].id_propietario)) !== data.pozo.id_propietario)
       throw new err.T05DatosIncorrectos("La vinculación del propietario requiere la operación administrativa específica. Recargue si cambió.");
 
+    const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo, data.pozo.profundidad_final_m);
     const hijos = await reemplazarHijosPozo(client, idPozo, data);
     const p = data.pozo;
     const { rows } = await client.query(
@@ -290,7 +296,7 @@ export async function actualizarPozoCompleto(
     }
     const sitio = await obtenerSitioTransaccional(client, Number(bloqueado[0].id_sitio));
     await client.query("COMMIT");
-    resultado = { pozo, sitio, ...hijos };
+    resultado = { pozo, sitio, sello_sanitario_constructivo: sello, ...hijos };
   } catch (error) {
     const compensacion = await compensarFalloTransaccionalFotos({
       idPozo,
@@ -468,6 +474,8 @@ async function insertarIntervaloLitologico(
 ): Promise<PozoCompletoResultado["intervalos_litologicos"][number]> {
   const provisional = originalId === undefined ? provisionalParaIntervaloNuevo(intervalo) : normalizarLitologiaProvisional(intervalo);
   const idEnviado = provisional ? null : intervalo.id_litologia ?? (originalId == null ? null : originalId);
+  exigirTextoLitologico(intervalo.material);
+  await exigirLitologiaNoConstructiva(client, idEnviado);
   const esCreacion = originalId === undefined && !provisional;
   const { rows } = await client.query(
     `WITH elegida AS (SELECT id_litologia,nombre FROM catalogo_litologia c

@@ -58,7 +58,8 @@ function body(numero?: number | null, perforador = 2): PozoCompletoBody {
   return {
     pozo: { id_propietario: 4, id_perforador: perforador, profundidad_final_m: 30, ...(numero === undefined ? {} : { numero_perforacion: numero }) },
     sitio_nuevo: { departamento: "Salto", localidad: "Ensayo", latitud: "-31.3", longitud: "-57.9" },
-    intervalos_litologicos: [{ desde_m: 0, hasta_m: 5, material: "Sello sanitario", id_litologia: 30 }, { desde_m: 5, hasta_m: 30, material: "Basalto marrón", id_litologia: 1 }],
+    sello_sanitario_constructivo: { desde_m: 0, hasta_m: 5 },
+    intervalos_litologicos: [{ desde_m: 0, hasta_m: 30, material: "Basalto marrón", id_litologia: 1 }],
     intervalos_diametro: [], intervalos_filtro: [], niveles_aporte: [],
   };
 }
@@ -185,7 +186,8 @@ try {
       assert.ok(sameHistory.some(r => r.status === "rejected" && status(409)(r.reason)));
       const reporte = await getReportePozo(primeros[0].pozo.id_pozo, pool);
       assert.equal(reporte?.numero_perforacion, primeros[0].pozo.numero_perforacion);
-      assert.deepEqual(reporte?.litologia.map(l => [l.desde_m, l.hasta_m, l.id_litologia]), [[0, 5, 30], [5, 30, 1]]);
+      assert.deepEqual(reporte?.litologia.map(l => [l.desde_m, l.hasta_m, l.id_litologia]), [[0, 30, 1]]);
+      assert.deepEqual(reporte?.sello_sanitario_constructivo, { desde_m: 0, hasta_m: 5 });
       if (previo) {
         await assert.rejects(asignarNumeroPendiente(2, 1, 1800, pool), status(403));
         const before = await obtenerNumeracion(1, pool);
