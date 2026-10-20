@@ -42,6 +42,33 @@ describe('PerfilLitologicoComponent', () => {
     fixture.componentRef.setInput('idPozo', 22);
   });
 
+  it('corta contornos instalados en el tramo abierto y conserva geometría segmentada del sello', async () => {
+    const modelo:PerfilLitologico={...perfil,profundidad_m:50,rangos:[{desde_m:0,hasta_m:50}],
+      filtros:[],aportes:[],etiquetas:[],tuberias:[{...perfil.tuberias[0],hasta_m:20}],
+      perforaciones_abiertas:[{...perfil.tuberias[0],tipo:'perforacion_abierta',desde_m:20,hasta_m:50,material_tuberia:null,material_texto:'Sin cañería'}],
+      contornos_tuberia:[{desde_m:0,hasta_m:20,x_inicio:.3,x_fin:.7,x_interior_inicio:.4,x_interior_fin:.6}],
+      sobresaliente:{x_inicio:.3,x_fin:.7,alto_logico:18,material_tuberia:'PVC'},
+      sello_sanitario_constructivo:{desde_m:0,hasta_m:12,texto:'Sello sanitario 0-12 m',estilo:{color:'#999999',gris:.6,patron:'concrete'},
+        geometria:{bandas:[],segmentos:[
+          {desde_m:0,hasta_m:5,bandas:[{x_inicio:.06,x_fin:.3},{x_inicio:.7,x_fin:.94}]},
+          {desde_m:5,hasta_m:12,bandas:[{x_inicio:.06,x_fin:.34},{x_inicio:.66,x_fin:.94}]},
+        ]}}};
+    fixture.componentRef.setInput('modelo',modelo);fixture.detectChanges();await fixture.whenStable();
+    const el:HTMLElement=fixture.nativeElement;
+    expect(el.querySelector('.tuberia-exterior')!.getAttribute('height')).toBe('280');
+    expect(el.querySelector('.perforacion-abierta')!.getAttribute('y')).toBe('350');
+    expect(el.querySelector('.perforacion-abierta')!.getAttribute('height')).toBe('420');
+    expect(el.querySelectorAll('.sello-sanitario').length).toBe(4);
+    expect(Number(el.querySelector('.sello-sanitario')!.getAttribute('width'))).toBeCloseTo(43.2);
+    expect(el.querySelector('.sobresaliente')!.getAttribute('y')).toBe('52');
+    expect(el.querySelector('table:last-child')!.textContent).toContain('Perforación sin cañería');
+    fixture.componentRef.setInput('modelo',{...modelo,rangos:[{desde_m:0,hasta_m:20},{desde_m:20,hasta_m:50}]});
+    fixture.detectChanges();expect(el.querySelectorAll('.sobresaliente').length).toBe(1);
+    expect(el.querySelectorAll('.rotulo-terreno').length).toBe(1);
+    fixture.componentRef.setInput('modelo',{...modelo,sobresaliente:null});
+    fixture.detectChanges();expect(el.querySelector('.sobresaliente')).toBeNull();
+  });
+
   it('renderiza el SVG, tabla accesible, patrón y aporte desde el modelo de API', async () => {
     fixture.detectChanges();
     await fixture.whenStable();

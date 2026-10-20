@@ -105,7 +105,14 @@ export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?:
   validarIntervalos(datos.intervalosLitologicos.map((item) => item.dato), 'litológico', profundidad, errores);
   validarIntervalos(datos.intervalosDiametro.map((item) => item.dato), 'de diámetro', profundidad, errores);
   validarIntervalos(datos.intervalosFiltro.map((item) => item.dato), 'de filtro', profundidad, errores);
-  datos.intervalosDiametro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`); });
+  datos.intervalosDiametro.forEach(({ dato }, indice) => {
+    if (dato.sin_tuberia === true) {
+      if (dato.material_tuberia !== null) errores.push(`Intervalo ${indice + 1}: sin cañería no admite material de tubería.`);
+      if (datos.intervalosFiltro.some(({ dato: filtro }) => filtro.desde_m < dato.hasta_m && filtro.hasta_m > dato.desde_m))
+        errores.push(`Intervalo ${indice + 1}: un filtro no puede solaparse con una perforación sin cañería.`);
+    } else if (dato.material_tuberia !== 'PVC' && dato.material_tuberia !== 'Acero')
+      errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`);
+  });
   datos.intervalosFiltro.forEach((item, indice) => {
     if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`);
     if (item.dato.ranura_mm == null && item.dato.id_intervalo_filtro == null) errores.push(`Filtro ${indice + 1}: ranura obligatoria.`);

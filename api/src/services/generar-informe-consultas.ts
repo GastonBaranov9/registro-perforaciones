@@ -40,6 +40,7 @@ export interface ReportePozo {
     hasta_m: number;
     diametro_pulg: number;
     material_tuberia: "PVC" | "Acero" | null;
+    sin_tuberia?: boolean;
   }[];
   filtros?: { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:"PVC"|"Acero"; ranura_mm?:number|null }[];
   niveles_aporte: { profundidad_m: number }[];
@@ -110,7 +111,7 @@ export async function getReportePozo(
   const { rows: litRows } = await db.query(litologiaSql, [id_pozo]);
 
   const diamSql = `
-    SELECT desde_m, hasta_m, diametro_pulg, material_tuberia
+    SELECT desde_m, hasta_m, diametro_pulg, material_tuberia, sin_tuberia
     FROM public.intervalo_diametro_perforacion
     WHERE id_pozo = $1
     ORDER BY desde_m;
@@ -146,6 +147,7 @@ export async function getReportePozo(
       hasta_m: Number(d.hasta_m),
       diametro_pulg: Number(d.diametro_pulg),
       material_tuberia: d.material_tuberia == null ? null : String(d.material_tuberia) as "PVC" | "Acero",
+      sin_tuberia: d.sin_tuberia === true,
     })),
     filtros: (filtroRows as Record<string, unknown>[]).map((f) => ({ desde_m:Number(f.desde_m),hasta_m:Number(f.hasta_m),diametro_pulg:Number(f.diametro_pulg),material_tuberia:String(f.material_tuberia) as "PVC"|"Acero",ranura_mm:f.ranura_mm==null?null:Number(f.ranura_mm) })),
 

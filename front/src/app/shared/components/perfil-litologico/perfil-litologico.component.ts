@@ -88,6 +88,23 @@ export class PerfilLitologicoComponent {
     return perfil.aportes.filter((aporte) => aporte.profundidad_m >= rango.desde_m && aporte.profundidad_m <= rango.hasta_m);
   }
   construccionEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return [...perfil.tuberias, ...perfil.filtros].filter((t) => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m); }
+  abiertosEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
+    return (perfil.perforaciones_abiertas ?? []).filter(t => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m);
+  }
+  bandasSelloEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
+    const sello = perfil.sello_sanitario_constructivo;
+    if (!sello) return [];
+    const segmentos = sello.geometria.segmentos ?? [{desde_m:sello.desde_m,hasta_m:sello.hasta_m,bandas:sello.geometria.bandas}];
+    return segmentos.filter(s => s.desde_m < rango.hasta_m && s.hasta_m > rango.desde_m)
+      .flatMap(s => s.bandas.map(b => ({...b,desde_m:s.desde_m,hasta_m:s.hasta_m})));
+  }
+  contornosEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
+    const seccion = perfil.seccion_pozo;
+    const contornos = perfil.contornos_tuberia ?? [{desde_m:0,hasta_m:perfil.profundidad_m,
+      x_inicio:seccion.tuberia_exterior_inicio,x_fin:seccion.tuberia_exterior_fin,
+      x_interior_inicio:seccion.tuberia_interior_inicio,x_interior_fin:seccion.tuberia_interior_fin}];
+    return contornos.filter(t => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m);
+  }
   etiquetasEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) { return perfil.etiquetas.filter((etiqueta) => etiqueta.rango_desde_m === rango.desde_m); }
 
   xAporte(fraccion: number) { const columna=this.perfil()!.geometria.columna; return columna.x + fraccion * columna.ancho; }

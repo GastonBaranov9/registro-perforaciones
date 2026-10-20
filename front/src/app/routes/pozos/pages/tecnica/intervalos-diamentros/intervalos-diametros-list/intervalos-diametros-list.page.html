@@ -36,7 +36,7 @@
           <dt>Diámetro (mm)</dt>
           <dd>{{ intervaloDiam.diametro_pulg }}</dd>
         </dl>
-        <dl class="data-row"><dt>Material de tubería</dt><dd>{{ intervaloDiam.material_tuberia || 'No especificado' }}</dd></dl>
+        <dl class="data-row"><dt>Cañería / material</dt><dd>{{ intervaloDiam.sin_tuberia === true ? 'Sin cañería' : (intervaloDiam.material_tuberia || 'No especificado') }}</dd></dl>
       </ion-list>
 
       <ion-button [disabled]="!permisosTecnicos.puedeEditar()" fill="outline" (click)="irAEditar(intervaloDiam)"> Editar </ion-button>

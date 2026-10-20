@@ -30,10 +30,12 @@
       ></ion-input>
     </ion-item>
     <ion-item>
-      <ion-select label="Material de tubería" name="material_tuberia" [(ngModel)]="intervaloDiametro().material_tuberia" required>
+      <ion-select label="Cañería" name="material_tuberia" [ngModel]="opcionTuberia(intervaloDiametro())" (ngModelChange)="seleccionarTuberia(intervaloDiametro(), $event)" required>
         <ion-select-option value="PVC">PVC</ion-select-option><ion-select-option value="Acero">Acero</ion-select-option>
+        <ion-select-option value="sin_tuberia">Sin cañería</ion-select-option>
       </ion-select>
     </ion-item>
+    @if (intervaloDiametro().sin_tuberia) { <p>Perforación abierta, sin entubamiento.</p> }
   </ion-list>
 
   <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid">

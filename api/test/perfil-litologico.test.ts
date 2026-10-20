@@ -169,8 +169,8 @@ test("sello decimal rodea tubería/filtro sin ocupar las franjas exteriores del 
   const [izquierda,derecha]=sello.geometria.bandas;
   assert.ok(izquierda.x_inicio>0 && derecha.x_fin<1);
   for (const tramo of [...perfil.tuberias,...perfil.filtros]) {
-    assert.ok(izquierda.x_fin<tramo.geometria.x_inicio);
-    assert.ok(derecha.x_inicio>tramo.geometria.x_fin);
+    assert.ok(izquierda.x_fin<=tramo.geometria.x_inicio);
+    assert.ok(derecha.x_inicio>=tramo.geometria.x_fin);
   }
   const posiciones=[...perfil.etiquetas].sort((anterior,siguiente)=>anterior.posicion_y_normalizada-siguiente.posicion_y_normalizada);
   assert.ok(posiciones.slice(1).every((actual,indice)=>actual.posicion_y_normalizada-posiciones[indice].posicion_y_normalizada>=.054));

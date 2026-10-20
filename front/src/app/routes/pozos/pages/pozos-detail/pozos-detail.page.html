@@ -122,7 +122,7 @@
         <h3>Litología</h3>
         @for (item of litologia(); track item.id_intervalo_litologico) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.material }}</p> } @empty { <p>Sin intervalos litológicos.</p> }
         <h3>Diámetros</h3>
-        @for (item of diametros(); track item.id_intervalo_diametro_perforacion) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.diametro_pulg }} pulg · {{ item.material_tuberia || 'No especificado' }}</p> } @empty { <p>Sin intervalos de diámetro.</p> }
+        @for (item of diametros(); track item.id_intervalo_diametro_perforacion) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.diametro_pulg }} pulg · {{ item.sin_tuberia === true ? 'Sin cañería' : (item.material_tuberia || 'No especificado') }}</p> } @empty { <p>Sin intervalos de diámetro.</p> }
         <h3>Intervalos de filtro</h3>
         @for (item of filtros(); track item.id_intervalo_filtro) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.diametro_pulg }} pulg · {{ item.material_tuberia }} · ranura {{ item.ranura_mm == null ? 'No especificada' : (item.ranura_mm === 0.5 ? '0.50 mm' : item.ranura_mm + ' mm') }}</p> } @empty { <p>Este pozo no tiene intervalos de filtro registrados.</p> }
         <h3>Aportes de agua</h3>

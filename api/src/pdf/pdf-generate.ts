@@ -159,8 +159,8 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
     { titulo:"Intervalos litológicos", filas:r.litologia, columnas:[
       {titulo:"Desde",ancho:90,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:90,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Material",ancho:319,valor:x=>String(x.material)},
     ]},
-    { titulo:"Tuberías y diámetros", filas:r.diametros, columnas:[
-      {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:214,valor:x=>String(x.material_tuberia??"No especificado")},
+    { titulo:"Perforación y cañerías", filas:r.diametros, columnas:[
+      {titulo:"Desde",ancho:85,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:85,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:115,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Cañería / material",ancho:214,valor:x=>x.sin_tuberia === true ? "Sin cañería" : String(x.material_tuberia??"No especificado")},
     ]},
     { titulo:"Intervalos de filtro", filas:r.filtros??[], columnas:[
       {titulo:"Desde",ancho:75,valor:x=>`${numero(x.desde_m)} m`},{titulo:"Hasta",ancho:75,valor:x=>`${numero(x.hasta_m)} m`},{titulo:"Diámetro",ancho:100,valor:x=>`${numero(x.diametro_pulg)} pulg`},{titulo:"Material",ancho:145,valor:x=>String(x.material_tuberia)},{titulo:"Ranura",ancho:104,valor:x=>formatearRanuraFiltro(x.ranura_mm)},

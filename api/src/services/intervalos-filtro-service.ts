@@ -2,25 +2,29 @@ import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type { IntervaloFiltro, IntervaloFiltroBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
+import { exigirCompatibilidadEntubamiento } from "./compatibilidad-entubamiento.ts";
 interface ConsultasFiltro { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }
 
 export async function listarFiltros(idPozo: number): Promise<IntervaloFiltro[]> {
   const { rows } = await myPool.query("SELECT id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m,hasta_m", [idPozo]);
   return rows.map(normalizar);
 }
-export async function crearFiltro(idPozo: number, dato: IntervaloFiltroBody): Promise<IntervaloFiltro> {
+export async function crearFiltro(idPozo: number, dato: IntervaloFiltroBody, db: ConsultasFiltro = myPool): Promise<IntervaloFiltro> {
   return conEscrituraSesion(async (dbEscritura) => {
+    validarDatoFiltro(dato);
     if (dato.ranura_mm == null) throw new err.T05DatosIncorrectos("La ranura del filtro es obligatoria.");
+    await exigirCompatibilidadEntubamiento(dbEscritura, idPozo, dato, 'filtro');
     const { rows } = await dbEscritura.query(`WITH bloqueo AS (SELECT pg_advisory_xact_lock($1::integer,607)) INSERT INTO intervalo_filtro (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm) SELECT $1,$2,$3,$4,$5,$6 FROM bloqueo JOIN pozo p ON p.id_pozo=$1 WHERE (p.profundidad_final_m IS NULL OR $3<=p.profundidad_final_m) AND NOT EXISTS (SELECT 1 FROM intervalo_filtro f WHERE f.id_pozo=$1 AND f.desde_m<$3 AND f.hasta_m>$2) RETURNING id_intervalo_filtro,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,ranura_mm`, [idPozo,dato.desde_m,dato.hasta_m,dato.diametro_pulg,dato.material_tuberia,dato.ranura_mm]);
     if (!rows[0]) throw new err.T05DatosIncorrectos("El filtro se solapa o excede la profundidad final.");
     return normalizar(rows[0]);
-  }, myPool, false);
+  }, db, false);
 }
 export async function actualizarFiltro(idPozo: number, idFiltro: number, dato: IntervaloFiltroBody, db: ConsultasFiltro = myPool): Promise<IntervaloFiltro | null> {
   return conEscrituraSesion(async (dbEscritura) => {
     validarDatoFiltro(dato);
     const existente = await dbEscritura.query("SELECT id_intervalo_filtro FROM intervalo_filtro WHERE id_intervalo_filtro=$1 AND id_pozo=$2", [idFiltro,idPozo]);
     if (!existente.rows[0]) return null;
+    await exigirCompatibilidadEntubamiento(dbEscritura, idPozo, dato, 'filtro');
     const pozo = await dbEscritura.query("SELECT profundidad_final_m FROM pozo WHERE id_pozo=$1", [idPozo]);
     if (!pozo.rows[0]) return null;
     const profundidad = pozo.rows[0].profundidad_final_m == null ? null : Number(pozo.rows[0].profundidad_final_m);

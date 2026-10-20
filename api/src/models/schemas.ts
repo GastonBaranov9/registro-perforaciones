@@ -187,6 +187,7 @@ export const IntervaloDiametroPerforacion = Type.Object({
   hasta_m: Type.Number(),
   diametro_pulg: Type.Number(),
   material_tuberia: Type.Union([MaterialTuberia, Type.Null()]),
+  sin_tuberia: Type.Optional(Type.Boolean()),
 });
 
 export type IntervaloDiametroPerforacion = Static<
@@ -281,7 +282,9 @@ export const IntervaloDiametroPerforacionBody = Type.Object({
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   diametro_pulg: Type.Number({ exclusiveMinimum: 0 }),
-  material_tuberia: MaterialTuberia,
+  material_tuberia: Type.Union([MaterialTuberia, Type.Null()]),
+  // Sin default: no modificar solicitudes antiguas antes de huellaOffline().
+  sin_tuberia: Type.Optional(Type.Boolean()),
 });
 
 export type IntervaloDiametroPerforacionBody = Static<

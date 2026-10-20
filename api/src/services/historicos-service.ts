@@ -121,7 +121,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
     }
     const children={
       intervalos_litologicos:data.intervalos_litologicos??(await client.query('SELECT id_intervalo_litologico,desde_m::float8,hasta_m::float8,material,id_litologia,litologia_provisional FROM intervalo_litologico WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows.map(r=>({...r,id_intervalo_litologico:Number(r.id_intervalo_litologico),id_litologia:r.id_litologia==null?undefined:Number(r.id_litologia)})),
-      intervalos_diametro:data.intervalos_diametro??(await client.query('SELECT desde_m::float8,hasta_m::float8,diametro_pulg::float8,material_tuberia FROM intervalo_diametro_perforacion WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows,
+      intervalos_diametro:data.intervalos_diametro??(await client.query('SELECT desde_m::float8,hasta_m::float8,diametro_pulg::float8,material_tuberia,sin_tuberia FROM intervalo_diametro_perforacion WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows,
       intervalos_filtro:data.intervalos_filtro??(await client.query('SELECT id_intervalo_filtro,desde_m::float8,hasta_m::float8,diametro_pulg::float8,material_tuberia,ranura_mm::float8 FROM intervalo_filtro WHERE id_pozo=$1 ORDER BY desde_m',[idPozo])).rows.map(r=>({...r,id_intervalo_filtro:Number(r.id_intervalo_filtro)})),
       niveles_aporte:data.niveles_aporte??(await client.query('SELECT profundidad_m::float8 FROM nivel_aporte WHERE id_pozo=$1 ORDER BY profundidad_m',[idPozo])).rows,
     };

@@ -1,3 +1,4 @@
+import { opcionTuberia, seleccionarTuberia } from '../../../../shared/utils/intervalo-diametro';
 import { afterNextRender, Component, ElementRef, effect, inject, Injector, input, output, signal, viewChildren } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
@@ -83,6 +84,11 @@ export class DatosTecnicosBorradorComponent {
   provisional(item: IntervaloLitologicoBody, texto: string | null) {
     item.litologia_provisional = texto;
     if (texto != null) { item.id_litologia = undefined; item.material = texto.trim(); }
+    this.notificarEdicion();
+  }
+  readonly opcionTuberia = opcionTuberia;
+  cambiarTuberia(dato: IntervaloDiametroPerforacionBody, opcion: string) {
+    seleccionarTuberia(dato, opcion);
     this.notificarEdicion();
   }
   agregarDiametro() {

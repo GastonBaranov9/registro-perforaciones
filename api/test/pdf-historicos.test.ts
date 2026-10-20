@@ -44,6 +44,16 @@ async function generar(reporte: ReportePozo) {
   return crearPDF(reporte, idPozo, { mapa: {}, directorioFotos: tmpdir() });
 }
 
+test('tabla PDF distingue Sin cañería del material nulo histórico y conserva medidas',async()=>{
+  const doc=await generar(historico({diametros:[
+    {desde_m:0,hasta_m:20,diametro_pulg:6,material_tuberia:null},
+    {desde_m:20,hasta_m:50,diametro_pulg:8,material_tuberia:null,sin_tuberia:true},
+  ]}));
+  const texto=textoPDF(doc);
+  for(const valor of ['Perforación y cañerías','No especificado','Sin cañería','20 m','50 m','8 pulg'])
+    assert.ok(texto.includes(valor),valor);
+});
+
 for (const [caso, propietario] of [
   ["vinculado", "Ana Vinculada"],
   ["provisional", "José Provisional"],
@@ -123,7 +133,7 @@ test("litología sin profundidad conserva todas las tablas y omite únicamente e
   const original = structuredClone(entrada);
   const doc = await generar(entrada);
   const texto = textoPDF(doc);
-  for (const esperado of ["Intervalos litológicos", "Arena sintética", "12 m", "Tuberías y diámetros", "6 pulg", "Intervalos de filtro", "0.50 mm", "Niveles de aporte", "9 m"])
+  for (const esperado of ["Intervalos litológicos", "Arena sintética", "12 m", "Perforación y cañerías", "6 pulg", "Intervalos de filtro", "0.50 mm", "Niveles de aporte", "9 m"])
     assert.ok(texto.includes(esperado), esperado);
   assert.match(texto, /Profundidad final\nNo especificado/);
   assert.match(texto, /falta de profundidad final/);

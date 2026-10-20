@@ -82,6 +82,21 @@ function draft(): BorradorLocal {
 }
 
 describe('Repositorio offline persistente', () => {
+  it('reabre y edita sin cañería sin añadir defaults a intervalos antiguos', async () => {
+    const disk=new Files(),d=draft();
+    d.tecnicos.intervalosDiametro=[
+      {idLocal:'viejo',dato:{desde_m:0,hasta_m:20,diametro_pulg:8,material_tuberia:'PVC'}},
+      {idLocal:'abierto',dato:{desde_m:20,hasta_m:50,diametro_pulg:8,material_tuberia:null,sin_tuberia:true}},
+    ];
+    const repo=new OfflineRepository(disk.plugin,'offline-v1/server/7',7);await repo.write(d);
+    const next=new OfflineRepository(Files.restart(disk.diskSnapshot()).plugin,'offline-v1/server/7',7);
+    const abierto=await next.read(d.id);
+    expect(abierto.tecnicos).toEqual(d.tecnicos);
+    abierto.tecnicos.intervalosDiametro[1].dato.hasta_m=55;await next.write(abierto);
+    const final=await next.read(d.id);
+    expect(final.tecnicos.intervalosDiametro[1].dato).toEqual({...d.tecnicos.intervalosDiametro[1].dato,hasta_m:55});
+    expect(Object.hasOwn(final.tecnicos.intervalosDiametro[0].dato,'sin_tuberia')).toBeFalse();
+  });
   for (const sello of [undefined, null, { desde_m: 1.125, hasta_m: 9.875 }]) {
     it('conserva el sello al cerrar/reabrir sin inferir ausencia: ' + JSON.stringify(sello), async () => {
       const disk = new Files(); const original = draft();
@@ -240,6 +255,24 @@ describe('Cola offline del perforador', () => {
     service = TestBed.inject(OfflineService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('sincroniza sin cañería y reintenta el mismo cuerpo sin defaults en intervalos antiguos', async () => {
+    const d=draft();d.pozo.profundidad_final_m=50;
+    d.tecnicos.intervalosDiametro=[
+      {idLocal:'viejo',dato:{desde_m:0,hasta_m:20,diametro_pulg:8,material_tuberia:'PVC'}},
+      {idLocal:'abierto',dato:{desde_m:20,hasta_m:50,diametro_pulg:8,material_tuberia:null,sin_tuberia:true}},
+    ];
+    await service.guardar(d);await service.cargar();
+    let run=service.sincronizar();let req=await request();
+    const body=JSON.stringify(req.request.body),key=req.request.headers.get('Idempotency-Key');
+    expect(req.request.body.intervalos_diametro[1]).toEqual(d.tecnicos.intervalosDiametro[1].dato);
+    expect(Object.hasOwn(req.request.body.intervalos_diametro[0],'sin_tuberia')).toBeFalse();
+    req.flush('timeout',{status:500,statusText:'Timeout'});await run;
+    await service.cargar();run=service.sincronizar();req=await request();
+    expect(JSON.stringify(req.request.body)).toBe(body);expect(req.request.headers.get('Idempotency-Key')).toBe(key);
+    req.flush({pozo:{id_pozo:99,numero_perforacion:900001},intervalos_diametro:req.request.body.intervalos_diametro});await run;
+    expect(service.borradores()[0].estado).toBe('sincronizado');
+    expect(service.borradores()[0].tecnicos.intervalosDiametro[1].dato.sin_tuberia).toBeTrue();
+  });
   for (const sello of [undefined, null, { desde_m: 1.125, hasta_m: 9.875 }]) {
     it('sincroniza el sello guardado separado de los intervalos: ' + JSON.stringify(sello), async () => {
       const original = draft(); original.pozo.profundidad_final_m = 20;

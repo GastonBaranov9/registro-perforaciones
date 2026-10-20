@@ -7,6 +7,18 @@ describe('DatosTecnicosBorradorComponent', () => {
   let fixture: ComponentFixture<DatosTecnicosBorradorComponent>;
   let component: DatosTecnicosBorradorComponent;
 
+  it('permite elegir Sin cañería en el formulario compartido normal, histórico y offline', async () => {
+    component.agregarDiametro();fixture.detectChanges();await fixture.whenStable();
+    const select:HTMLSelectElement=fixture.nativeElement.querySelector('select[aria-label="Material de tubería"]');
+    expect(Array.from(select.options).map(o=>o.textContent?.trim())).toContain('Sin cañería');
+    select.value='sin_tuberia';select.dispatchEvent(new Event('change'));fixture.detectChanges();
+    expect(component.datos().intervalosDiametro[0].dato.sin_tuberia).toBeTrue();
+    expect(component.datos().intervalosDiametro[0].dato.material_tuberia).toBeNull();
+    select.value='Acero';select.dispatchEvent(new Event('change'));fixture.detectChanges();
+    expect(component.datos().intervalosDiametro[0].dato.sin_tuberia).toBeFalse();
+    expect(component.datos().intervalosDiametro[0].dato.material_tuberia).toBe('Acero');
+  });
+
   it('agrega sello sin precargar límites, permite completarlo y quitarlo sin falso dirty', async () => {
     expect(fixture.nativeElement.querySelector('[aria-label="Sello sanitario desde (m)"]')).toBeNull();
     const original = component.datos();
@@ -101,7 +113,7 @@ describe('DatosTecnicosBorradorComponent', () => {
     expect(texto).toContain('Intervalos litológicos');
     expect(texto).toContain('Intervalos de diámetro');
     expect(texto).toContain('Diámetro');
-    expect(texto).toContain('Material de tubería');
+    expect(texto).toContain('Cañería');
   });
 
   it('agrega, edita y quita las tres categorías en memoria', () => {

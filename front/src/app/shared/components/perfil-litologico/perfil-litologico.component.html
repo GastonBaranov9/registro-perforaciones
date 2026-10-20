@@ -57,12 +57,12 @@
         }
         @if (perfil()!.sello_sanitario_constructivo; as sello) {
           @if (sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
-            @for (banda of sello.geometria.bandas; track banda.x_inicio) {
-              <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(sello.desde_m < rango.desde_m ? rango.desde_m : sello.desde_m, rango)"
-                [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(sello.desde_m, sello.hasta_m, rango)"
+            @for (banda of bandasSelloEnRango(perfil()!, rango); track $index) {
+              <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(banda.desde_m < rango.desde_m ? rango.desde_m : banda.desde_m, rango)"
+                [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(banda.desde_m, banda.hasta_m, rango)"
                 [attr.fill]="sello.estilo.color" class="sello-sanitario" />
-              <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(sello.desde_m < rango.desde_m ? rango.desde_m : sello.desde_m, rango)"
-                [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(sello.desde_m, sello.hasta_m, rango)"
+              <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(banda.desde_m < rango.desde_m ? rango.desde_m : banda.desde_m, rango)"
+                [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(banda.desde_m, banda.hasta_m, rango)"
                 [attr.fill]="patron(sello.estilo.patron)" class="trama-sello" />
             }
           }
@@ -77,10 +77,32 @@
               fill="url(#perfil-ranuras)" class="ranurado-filtro" />
           }
         }
-        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" [attr.y]="perfil()!.geometria.columna.y"
-          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_exterior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_exterior_inicio)" [attr.height]="perfil()!.geometria.columna.alto" class="tuberia-exterior" />
-        <rect [attr.x]="xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" [attr.y]="perfil()!.geometria.columna.y"
-          [attr.width]="xAporte(perfil()!.seccion_pozo.tuberia_interior_fin) - xAporte(perfil()!.seccion_pozo.tuberia_interior_inicio)" [attr.height]="perfil()!.geometria.columna.alto" class="tuberia-interior" />
+        @for (contorno of contornosEnRango(perfil()!, rango); track contorno.desde_m) {
+          <rect [attr.x]="xAporte(contorno.x_inicio)" [attr.y]="y(contorno.desde_m < rango.desde_m ? rango.desde_m : contorno.desde_m, rango)"
+            [attr.width]="xAporte(contorno.x_fin) - xAporte(contorno.x_inicio)" [attr.height]="alto(contorno.desde_m, contorno.hasta_m, rango)" class="tuberia-exterior" />
+          <rect [attr.x]="xAporte(contorno.x_interior_inicio)" [attr.y]="y(contorno.desde_m < rango.desde_m ? rango.desde_m : contorno.desde_m, rango)"
+            [attr.width]="xAporte(contorno.x_interior_fin) - xAporte(contorno.x_interior_inicio)" [attr.height]="alto(contorno.desde_m, contorno.hasta_m, rango)" class="tuberia-interior" />
+        }
+        @for (abierto of abiertosEnRango(perfil()!, rango); track abierto.desde_m) {
+          <rect [attr.x]="xAporte(abierto.geometria.x_inicio)" [attr.y]="y(abierto.desde_m < rango.desde_m ? rango.desde_m : abierto.desde_m, rango)"
+            [attr.width]="xAporte(abierto.geometria.x_fin) - xAporte(abierto.geometria.x_inicio)"
+            [attr.height]="alto(abierto.desde_m, abierto.hasta_m, rango)" class="contraste-perforacion-abierta" />
+          <rect [attr.x]="xAporte(abierto.geometria.x_inicio)" [attr.y]="y(abierto.desde_m < rango.desde_m ? rango.desde_m : abierto.desde_m, rango)"
+            [attr.width]="xAporte(abierto.geometria.x_fin) - xAporte(abierto.geometria.x_inicio)"
+            [attr.height]="alto(abierto.desde_m, abierto.hasta_m, rango)" class="perforacion-abierta" />
+        }
+        @if (rango.desde_m === 0) {
+          <line [attr.x1]="perfil()!.geometria.columna.x - 10" [attr.x2]="xAporte(perfil()!.sobresaliente?.x_inicio ?? 0.5)"
+            [attr.y1]="y(0, rango)" [attr.y2]="y(0, rango)" class="nivel-terreno" />
+          <line [attr.x1]="xAporte(perfil()!.sobresaliente?.x_fin ?? 0.5)" [attr.x2]="xAporte(1) + 10"
+            [attr.y1]="y(0, rango)" [attr.y2]="y(0, rango)" class="nivel-terreno" />
+          <text [attr.x]="xAporte(1) + 30" [attr.y]="y(0, rango) - 8" class="rotulo-terreno">Nivel de terreno · 0 m</text>
+          @if (perfil()!.sobresaliente; as cabeza) {
+            <rect [attr.x]="xAporte(cabeza.x_inicio)" [attr.y]="y(0, rango) - cabeza.alto_logico"
+              [attr.width]="xAporte(cabeza.x_fin) - xAporte(cabeza.x_inicio)" [attr.height]="cabeza.alto_logico"
+              [class]="'sobresaliente constructivo material-' + (cabeza.material_tuberia === 'PVC' ? 'pvc' : cabeza.material_tuberia === 'Acero' ? 'acero' : 'no-especificado')" />
+          }
+        }
         @for (aporte of aportesEnRango(perfil()!, rango); track aporte.profundidad_m) {
           <rect [attr.x]="xAporte(aporte.geometria.x_inicio)" [attr.y]="yBandaAporte(aporte.profundidad_m, rango, aporte.geometria.espesor_min_px)"
             [attr.width]="xAporte(aporte.geometria.x_fin) - xAporte(aporte.geometria.x_inicio)" [attr.height]="aporte.geometria.espesor_min_px" class="banda-aporte" />
@@ -98,7 +120,7 @@
       </svg>
     </div>
     }
-    <p id="perfil-descripcion" class="leyenda"><span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos.</p>
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos. Contorno discontinuo marrón: perforación sin cañería. El ancho del sello y el sobresaliente son esquemáticos.</p>
     @if (perfil()!.sello_sanitario_constructivo; as sello) {
       <div class="leyenda-constructiva" aria-label="Leyenda constructiva">
         <span class="entrada-leyenda"><svg class="muestra-litologia" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="16" [attr.fill]="sello.estilo.color" /><rect width="24" height="16" [attr.fill]="patron(sello.estilo.patron)" /></svg>{{ sello.texto }} · envolvente constructiva</span>
@@ -129,6 +151,7 @@
       <table><caption>Diseño del pozo</caption><thead><tr><th>Tipo</th><th>Intervalo</th><th>Diámetro</th><th>Material</th></tr></thead><tbody>
         @if (perfil()!.sello_sanitario_constructivo; as sello) { <tr><td>Sello sanitario</td><td>{{ sello.desde_m }}–{{ sello.hasta_m }} m</td><td>No corresponde</td><td>Elemento constructivo</td></tr> }
         @for (tramo of perfil()!.tuberias; track tramo.desde_m) { <tr><td>Tubería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
+        @for (tramo of perfil()!.perforaciones_abiertas ?? []; track tramo.desde_m) { <tr><td>Perforación sin cañería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>Sin cañería</td></tr> }
         @for (tramo of perfil()!.filtros; track tramo.desde_m) { <tr><td>Filtro</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
       </tbody></table>
     </div>

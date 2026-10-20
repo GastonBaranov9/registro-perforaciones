@@ -21,18 +21,22 @@ export interface AportePerfilLitologico {
   profundidad_m: number;
 }
 export type MaterialTuberia = "PVC" | "Acero";
-export interface IntervaloConstructivo { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:MaterialTuberia|null; }
-export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"; material_texto:string; carril_etiqueta:number; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
+export interface IntervaloConstructivo { desde_m:number; hasta_m:number; diametro_pulg:number; material_tuberia:MaterialTuberia|null; sin_tuberia?:boolean; }
+export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia"|"filtro"|"perforacion_abierta"; material_texto:string; carril_etiqueta:number; geometria:{x_inicio:number;x_fin:number;patron:"liso"|"metal"|"ranuras"}; }
+export interface ContornoTuberia extends RangoPerfilLitologico {
+  x_inicio: number; x_fin: number; x_interior_inicio: number; x_interior_fin: number;
+}
+type BandasSello = Array<{ x_inicio: number; x_fin: number }>;
 
 export interface SelloSanitarioRepresentado {
   desde_m: number;
   hasta_m: number;
   texto: string;
   estilo: EstiloLitologico;
-  geometria: { bandas: Array<{ x_inicio: number; x_fin: number }> };
+  geometria: { bandas: BandasSello; segmentos: Array<RangoPerfilLitologico & { bandas: BandasSello }> };
 }
 
-export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte" | "sello_sanitario";
+export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte" | "sello_sanitario" | "perforacion_abierta";
 export interface EtiquetaPerfil {
   clave: string;
   tipo: TipoEtiquetaPerfil;
@@ -87,6 +91,9 @@ export interface PerfilLitologico {
   aportes: AporteRepresentado[];
   tuberias: TramoConstructivo[];
   filtros: TramoConstructivo[];
+  perforaciones_abiertas: TramoConstructivo[];
+  contornos_tuberia: ContornoTuberia[];
+  sobresaliente: { x_inicio:number; x_fin:number; alto_logico:number; material_tuberia:MaterialTuberia|null } | null;
   sello_sanitario_constructivo: SelloSanitarioRepresentado | null;
   etiquetas: EtiquetaPerfil[];
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
@@ -228,6 +235,7 @@ function crearEtiquetas(
   filtros: readonly TramoConstructivo[],
   aportes: readonly AporteRepresentado[],
   sello: SelloSanitarioRepresentado | null,
+  abiertas: readonly TramoConstructivo[] = [],
 ): EtiquetaPerfil[] {
   const resultado: EtiquetaPerfil[] = [];
   for (const rango of rangos) {
@@ -240,6 +248,12 @@ function crearEtiquetas(
     for (const tramo of tuberias.filter((item) => item.desde_m < rango.hasta_m && item.hasta_m > rango.desde_m)) {
       const anclaje = (Math.max(tramo.desde_m, rango.desde_m) + Math.min(tramo.hasta_m, rango.hasta_m)) / 2;
       candidatas.push({ clave:`tub-${tramo.desde_m}-${tramo.hasta_m}`,tipo:"tuberia",texto:textoTuberia(tramo),profundidad_anclaje_m:anclaje,rango_desde_m:rango.desde_m,carril:1,x_anclaje_normalizado:tramo.geometria.x_fin,preferida:(anclaje-rango.desde_m)/amplitud });
+    }
+    for (const tramo of abiertas.filter((item) => item.desde_m < rango.hasta_m && item.hasta_m > rango.desde_m)) {
+      const anclaje = (Math.max(tramo.desde_m, rango.desde_m) + Math.min(tramo.hasta_m, rango.hasta_m)) / 2;
+      candidatas.push({ clave:`abierto-${tramo.desde_m}-${tramo.hasta_m}`,tipo:"perforacion_abierta",
+        texto:`Perforación sin cañería · Ø ${formatearMetros(tramo.diametro_pulg)} pulg · ${formatearMetros(tramo.desde_m)}-${formatearMetros(tramo.hasta_m)} m`,
+        profundidad_anclaje_m:anclaje,rango_desde_m:rango.desde_m,carril:1,x_anclaje_normalizado:tramo.geometria.x_fin,preferida:(anclaje-rango.desde_m)/amplitud });
     }
     for (const tramo of filtros.filter((item) => item.desde_m < rango.hasta_m && item.hasta_m > rango.desde_m)) {
       const anclaje = (Math.max(tramo.desde_m, rango.desde_m) + Math.min(tramo.hasta_m, rango.hasta_m)) / 2;
@@ -326,25 +340,48 @@ export function crearPerfilLitologico(
   if (aportesValidos.length !== aportes.length) advertencias.push("Se omitieron aportes fuera de la profundidad representada.");
 
   const maxDiametro = Math.max(1, ...tuberias.map((i) => i.diametro_pulg), ...filtros.map((i) => i.diametro_pulg));
-  const construir = (items: readonly IntervaloConstructivo[], tipo: "tuberia"|"filtro") => [...items]
+  const construir = (items: readonly IntervaloConstructivo[], tipo: TramoConstructivo['tipo']) => [...items]
     .sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m)
     .map((item, indice): TramoConstructivo => {
     const mitad = 0.08 + 0.12 * item.diametro_pulg / maxDiametro;
-    return { ...item, tipo, material_texto:item.material_tuberia ?? "No especificado", carril_etiqueta: tipo === "filtro" ? indice % 3 : 0, geometria:{x_inicio:0.5-mitad,x_fin:0.5+mitad,patron:tipo === "filtro" ? "ranuras" : item.material_tuberia === "Acero" ? "metal" : "liso"} };
+    return { ...item, tipo, material_texto:tipo === "perforacion_abierta" ? "Sin cañería" : item.material_tuberia ?? "No especificado", carril_etiqueta: tipo === "filtro" ? indice % 3 : 0, geometria:{x_inicio:0.5-mitad,x_fin:0.5+mitad,patron:tipo === "filtro" ? "ranuras" : item.material_tuberia === "Acero" ? "metal" : "liso"} };
     });
 
   const tramos = asignarCarriles(base, profundidad_m);
-  const tuberiasConstruidas = construir(tuberias, "tuberia");
+  const tuberiasConstruidas = construir(tuberias.filter(t => t.sin_tuberia !== true), "tuberia");
+  const abiertas = construir(tuberias.filter(t => t.sin_tuberia === true), "perforacion_abierta");
   const filtrosConstruidos = construir(filtros, "filtro");
-  const construccionesDelSello = selloSanitario ? [...tuberiasConstruidas, ...filtrosConstruidos].filter((tramo) => tramo.desde_m < selloSanitario.hasta_m && tramo.hasta_m > selloSanitario.desde_m) : [];
-  const izquierda = Math.min(.36, ...construccionesDelSello.map((tramo) => tramo.geometria.x_inicio));
-  const derecha = Math.max(.64, ...construccionesDelSello.map((tramo) => tramo.geometria.x_fin));
+  const construcciones = [...tuberiasConstruidas, ...filtrosConstruidos];
+  // Los límites verticales son siempre profundidades registradas. El ancho del
+  // hormigón y el sobresaliente son convenciones gráficas, no medidas físicas.
+  const segmentos = (desde: number, hasta: number, items: readonly TramoConstructivo[]) => {
+    const limites = [...new Set([desde, hasta, ...items.flatMap(t => [t.desde_m,t.hasta_m]).filter(m => m > desde && m < hasta)])].sort((a,b) => a-b);
+    return limites.slice(0,-1).map((m,i) => ({desde_m:m,hasta_m:limites[i+1]}));
+  };
+  const bordes = (rango: RangoPerfilLitologico, items: readonly TramoConstructivo[]) => {
+    const activos = items.filter(t => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m);
+    return activos.length
+      ? { x_inicio:Math.min(...activos.map(t=>t.geometria.x_inicio)), x_fin:Math.max(...activos.map(t=>t.geometria.x_fin)) }
+      : { x_inicio:.36, x_fin:.64 };
+  };
+  const segmentosSello = selloSanitario ? segmentos(selloSanitario.desde_m, selloSanitario.hasta_m, [...construcciones,...abiertas]).map(rango => {
+    const borde = bordes(rango, [...construcciones,...abiertas]);
+    return { ...rango, bandas:[{x_inicio:.06,x_fin:borde.x_inicio},{x_inicio:borde.x_fin,x_fin:.94}] };
+  }) : [];
   const sello: SelloSanitarioRepresentado | null = selloSanitario ? {
     ...selloSanitario,
     texto: `Sello sanitario ${selloSanitario.desde_m}-${selloSanitario.hasta_m} m`,
     estilo: { color: "#999999", gris: .6, patron: "concrete" },
-    geometria: { bandas: [{ x_inicio: izquierda - .07, x_fin: izquierda - .01 }, { x_inicio: derecha + .01, x_fin: derecha + .07 }] },
+    geometria: { bandas: segmentosSello[0].bandas, segmentos: segmentosSello },
   } : null;
+  const contornos = segmentos(0, profundidad_m, [...construcciones,...abiertas])
+    .filter(r => !abiertas.some(t => t.desde_m < r.hasta_m && t.hasta_m > r.desde_m))
+    .map(r => {
+      const b = bordes(r, construcciones), cuarto = (b.x_fin-b.x_inicio)/4;
+      return { ...r, ...b, x_interior_inicio:b.x_inicio+cuarto, x_interior_fin:b.x_fin-cuarto };
+    });
+  const cañoSuperficie = construcciones.filter(t => t.desde_m === 0)
+    .sort((a,b) => a.geometria.x_inicio-b.geometria.x_inicio)[0];
   const rangos = calcularRangos(profundidad_m, ordenados);
   return {
     titulo: "Perfil litológico del pozo",
@@ -354,8 +391,11 @@ export function crearPerfilLitologico(
     aportes: aportesValidos,
     tuberias: tuberiasConstruidas,
     filtros: filtrosConstruidos,
+    perforaciones_abiertas: abiertas,
+    contornos_tuberia: contornos,
+    sobresaliente: cañoSuperficie ? { ...cañoSuperficie.geometria, alto_logico:18, material_tuberia:cañoSuperficie.material_tuberia } : null,
     sello_sanitario_constructivo: sello,
-    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos, sello),
+    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos, sello, abiertas),
     seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
     geometria: GEOMETRIA_CANONICA_PERFIL,
     rangos,
@@ -459,13 +499,16 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
 
     const sello = perfil.sello_sanitario_constructivo;
     if (sello && sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
-      const desde = Math.max(sello.desde_m, rango.desde_m), hasta = Math.min(sello.hasta_m, rango.hasta_m);
       const [rojo, verde, azul] = hexARgb(sello.estilo.color);
-      for (const banda of sello.geometria.bandas) {
+      for (const segmento of sello.geometria.segmentos) {
+        const desde = Math.max(segmento.desde_m, rango.desde_m), hasta = Math.min(segmento.hasta_m, rango.hasta_m);
+        if (hasta <= desde) continue;
+        for (const banda of segmento.bandas) {
         const inicioX = xColumna + anchoColumna * banda.x_inicio, ancho = anchoColumna * (banda.x_fin - banda.x_inicio);
         const baseY = yDe(hasta), altura = yDe(desde) - baseY;
         page.drawRectangle({ x: inicioX, y: baseY, width: ancho, height: altura, color: rgb(rojo, verde, azul), borderColor: rgb(.15,.15,.15), borderWidth: .6 });
         dibujarPatron(page, sello.estilo.patron, inicioX, baseY, ancho, altura);
+        }
       }
       page.drawText("Elemento constructivo", { x: 45, y: 74, size: 7, font: bold });
       dibujarEntradaLeyenda(page, { clave: "sello", nombre: sello.texto, estilo: sello.estilo }, 0, 0, font, 45, 60);
@@ -493,12 +536,33 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
         page.drawLine({start:{x:x+w-1.5-ranura,y:py},end:{x:x+w-1.5,y:py},thickness:1.5,color:rgb(.05,.05,.05)});
       }
     }
-    const extX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_exterior_inicio;
-    const extW = anchoColumna * (perfil.seccion_pozo.tuberia_exterior_fin - perfil.seccion_pozo.tuberia_exterior_inicio);
-    const intX = xColumna + anchoColumna * perfil.seccion_pozo.tuberia_interior_inicio;
-    const intW = anchoColumna * (perfil.seccion_pozo.tuberia_interior_fin - perfil.seccion_pozo.tuberia_interior_inicio);
-    page.drawRectangle({ x: extX, y: ySuperior - alto, width: extW, height: alto, borderWidth: 1, borderColor: rgb(0.18, 0.18, 0.18), opacity: 0 });
-    page.drawRectangle({ x: intX, y: ySuperior - alto, width: intW, height: alto, borderWidth: 0.7, borderColor: rgb(0.35, 0.35, 0.35), opacity: 0 });
+    for (const contorno of perfil.contornos_tuberia) {
+      const desde=Math.max(contorno.desde_m,rango.desde_m), hasta=Math.min(contorno.hasta_m,rango.hasta_m);
+      if (hasta <= desde) continue;
+      const y=yDe(hasta), height=yDe(desde)-y;
+      page.drawRectangle({x:xColumna+anchoColumna*contorno.x_inicio,y,width:anchoColumna*(contorno.x_fin-contorno.x_inicio),height,borderWidth:1,borderColor:rgb(.18,.18,.18),opacity:0});
+      page.drawRectangle({x:xColumna+anchoColumna*contorno.x_interior_inicio,y,width:anchoColumna*(contorno.x_interior_fin-contorno.x_interior_inicio),height,borderWidth:.7,borderColor:rgb(.35,.35,.35),opacity:0});
+    }
+    for (const abierto of perfil.perforaciones_abiertas) {
+      const desde=Math.max(abierto.desde_m,rango.desde_m), hasta=Math.min(abierto.hasta_m,rango.hasta_m);
+      if (hasta <= desde) continue;
+      const contornoAbierto={x:xColumna+anchoColumna*abierto.geometria.x_inicio,y:yDe(hasta),
+        width:anchoColumna*(abierto.geometria.x_fin-abierto.geometria.x_inicio),height:yDe(desde)-yDe(hasta),
+        borderDashArray:[4,3],opacity:0};
+      page.drawRectangle({...contornoAbierto,borderWidth:3,borderColor:rgb(1,1,1)});
+      page.drawRectangle({...contornoAbierto,borderWidth:1,borderColor:rgb(.3,.22,.12)});
+    }
+    if (rango.desde_m === 0) {
+      const cabeza=perfil.sobresaliente;
+      const izquierda=cabeza ? xColumna+anchoColumna*cabeza.x_inicio : (xColumna+xFinColumna)/2;
+      const derecha=cabeza ? xColumna+anchoColumna*cabeza.x_fin : izquierda;
+      for (const [inicio,fin] of [[xColumna-8,izquierda],[derecha,xFinColumna+8]])
+        page.drawLine({start:{x:inicio,y:ySuperior},end:{x:fin,y:ySuperior},thickness:1.5,color:rgb(.2,.16,.1)});
+      page.drawText("Nivel de terreno - 0 m",{x:xFinColumna+20,y:ySuperior+5,size:8,font:bold});
+      if (cabeza) page.drawRectangle({x:izquierda,y:ySuperior,width:derecha-izquierda,
+        height:cabeza.alto_logico/geometria.alto_logico*750,borderWidth:1.2,borderColor:rgb(.12,.12,.12),
+        color:cabeza.material_tuberia==="PVC"?rgb(.25,.61,.76):rgb(.55,.57,.59)});
+    }
     for (const aporte of perfil.aportes.filter((a) => a.profundidad_m >= rango.desde_m && a.profundidad_m <= rango.hasta_m)) {
       const y = yDe(aporte.profundidad_m);
       const x1 = xColumna + anchoColumna * aporte.geometria.x_inicio;
@@ -522,7 +586,7 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawText("Litologías presentes", { x: 45, y: 42, size: 6.2, font: bold, color: rgb(.12, .12, .12) });
       entradasLeyenda.slice(0, 6).forEach((entrada, posicion) => dibujarEntradaLeyenda(page, entrada, posicion % 3, Math.floor(posicion / 3), font));
     }
-    page.drawText("PVC celeste | Acero gris tramado | Filtro ranurado | banda azul ondulada = Aporte de agua", { x: 45, y: 8, size: 6.5, font });
+    page.drawText("PVC celeste | Acero gris | Filtro ranurado | Discontinuo: sin cañería | Azul: aporte | Sello/sobresaliente esquemáticos", { x: 45, y: 8, size: 6.5, font });
     return page;
   });
   const paginasLeyenda: PDFPage[] = [];
