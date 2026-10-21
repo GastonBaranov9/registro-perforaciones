@@ -1,4 +1,4 @@
-param([string]$ProjectName = "rsp07f-r8-smoke-$PID")
+param([string]$ProjectName = "rsp07f-r8-smoke-$PID", [string]$RealJqPath='')
 
 $ErrorActionPreference = "Stop"
 if ($ProjectName -notmatch '^rsp07f-r8-smoke-[A-Za-z0-9-]+$') { throw "ProjectName inseguro." }
@@ -11,10 +11,13 @@ $envFile = Join-Path $tempRoot "production.env"
 $stateFile = Join-Path $tempRoot "deployment.env"
 $passwordFile = Join-Path $tempRoot "admin-password"
 $utf8 = [Text.UTF8Encoding]::new($false)
-[IO.File]::WriteAllText($envFile, "PUBLIC_ORIGIN=https://rsp-smoke.test:9443/`nPUBLIC_HOST=rsp-smoke.test`n", $utf8)
+[IO.File]::WriteAllText($envFile, "PUBLIC_ORIGIN=https://rsp-smoke.test:9443/`nPUBLIC_HOST=rsp-smoke.test`nHTTPS_PORT=8443`n", $utf8)
 [IO.File]::WriteAllText($stateFile, "RSP_R8_FIXTURE=1`n", $utf8)
 [IO.File]::WriteAllText($passwordFile, "fixture-only", $utf8)
 $global:R8SmokeScenario = ""
+$global:R8ExpectedConnect='rsp-smoke.test:9443:127.0.0.1:8443'
+$global:R8ExpectedOrigin='https://rsp-smoke.test:9443'
+$global:R8ConnectOverride=0
 
 function Write-FixtureBody([string]$Path, [byte[]]$Bytes) {
   [IO.File]::WriteAllBytes($Path, $Bytes)
@@ -22,6 +25,8 @@ function Write-FixtureBody([string]$Path, [byte[]]$Bytes) {
 
 function Invoke-R8FakeCurl {
   $items = @($args | ForEach-Object { [string]$_ })
+  if($items -contains '--insecure' -or $items -notcontains '--connect-to' -or $items -notcontains $global:R8ExpectedConnect){throw 'Transporte TLS/Host/puerto incorrecto'}
+  foreach($item in $items){if($item -like 'Origin:*' -and $item -ne "Origin: $global:R8ExpectedOrigin"){throw 'Origin incorrecta'}}
   $outPath = ""; $headersPath = ""; $cookieJar = ""; $cookie = ""; $method = "GET"; $url = ""; $csrf = $false
   for ($index = 0; $index -lt $items.Count; $index++) {
     switch ($items[$index]) {
@@ -31,7 +36,7 @@ function Invoke-R8FakeCurl {
       { $_ -in @("-b", "--cookie") } { $cookie = $items[++$index]; break }
       { $_ -in @("-X", "--request") } { $method = $items[++$index]; break }
       { $_ -in @("-H", "--header") } { if ($items[++$index] -like "X-CSRF-Token:*") { $csrf = $true }; break }
-      { $_ -in @("--resolve", "--data-binary", "-w", "--write-out", "--max-time") } { $index++; break }
+      { $_ -in @("--connect-to", "--noproxy", "--cacert", "--resolve", "--data-binary", "-w", "--write-out", "--max-time") } { $index++; break }
       { $_ -match '^https?://' } { $url = $_; break }
     }
   }
@@ -60,7 +65,9 @@ function Invoke-R8FakeCurl {
   }
   elseif ($url.EndsWith('/api/logout')) { $status = if ($csrf) { "204" } else { "403" }; $bodyText = "" }
   elseif ($url.EndsWith('/api/usuarios/0/pozos')) {
-    switch ($global:R8SmokeScenario) {
+    $ownerCases=Get-Content (Join-Path $repo 'scripts/fixtures/smoke/owner-cases.json') -Raw | ConvertFrom-Json
+    if($ownerCases.PSObject.Properties[$global:R8SmokeScenario]){$status='200';$bodyText=ConvertTo-Json -InputObject @($ownerCases.($global:R8SmokeScenario)) -Compress}
+    else {switch ($global:R8SmokeScenario) {
       "empty" { $status = "200"; $bodyText = '[]' }
       "no_photo" { $status = "200"; $bodyText = '[{"id_pozo":1,"id_propietario":2,"foto_url":null}]' }
       { $_ -in @("valid_photo", "missing_photo") } { $status = "200"; $bodyText = '[{"id_pozo":1,"id_propietario":2,"foto_url":"/api/usuarios/2/pozos/1/foto"}]' }
@@ -69,6 +76,7 @@ function Invoke-R8FakeCurl {
       "malformed_json" { $status = "200"; $bodyText = '[{"id_pozo":' }
       default { throw "Escenario fixture desconocido: $global:R8SmokeScenario" }
     }
+  }
   }
   elseif ($url -match '/api/usuarios/\d+/pozos/\d+/foto$') {
     if (-not $cookie) { $status = "401"; $bodyText = '{"error":"auth"}' }
@@ -114,7 +122,7 @@ function Invoke-PowerShellScenario([string]$Scenario, [bool]$ShouldPass) {
   $global:R8SmokeScenario = $Scenario
   $captured = @(); $failed = $false
   try {
-    $captured = @(& (Join-Path $repo 'ops/smoke.ps1') -EnvFile $envFile -DeploymentStateFile $stateFile -ProjectName $ProjectName -AdminEmail 'fixture@example.test' -AdminPasswordFile $passwordFile 2>&1)
+    $captured = @(& (Join-Path $repo 'ops/smoke.ps1') -EnvFile $envFile -DeploymentStateFile $stateFile -ProjectName $ProjectName -AdminEmail 'fixture@example.test' -AdminPasswordFile $passwordFile -ConnectPort $global:R8ConnectOverride 2>&1)
   } catch {
     $failed = $true; $captured += $_.Exception.Message
   }
@@ -134,6 +142,8 @@ function Convert-GitBashPath([string]$Value) {
 }
 
 function Invoke-PosixScenario([string]$Scenario, [bool]$ShouldPass) {
+  $env:RSP_EXPECTED_CONNECT=$global:R8ExpectedConnect
+  $env:RSP_EXPECTED_ORIGIN=$global:R8ExpectedOrigin
   $bash = (Get-Command bash.exe -ErrorAction Stop).Source
   $repoUnix = Convert-GitBashPath $repo
   $tempUnix = Convert-GitBashPath $tempRoot
@@ -153,8 +163,18 @@ try {
     [IO.File]::WriteAllText($target, ([IO.File]::ReadAllText($source).Replace("`r`n", "`n")), $utf8)
   }
   $jqWrapper = "#!/bin/sh`nexec node `"`$RSP_R8_JQ_JS`" `"`$@`"`n"
+  if($RealJqPath){$jqWrapper="#!/bin/sh`nexec $(Quote-Bash (Convert-GitBashPath (Resolve-Path -LiteralPath $RealJqPath).Path)) `"`$@`"`n"}
   [IO.File]::WriteAllText((Join-Path $bin 'jq'), $jqWrapper, $utf8)
 
+  $ownerCases=Get-Content (Join-Path $repo 'scripts/fixtures/smoke/owner-cases.json') -Raw | ConvertFrom-Json
+  foreach($property in $ownerCases.PSObject.Properties){
+    $caseFile=Join-Path $tempRoot 'owner-case.json'
+    [IO.File]::WriteAllText($caseFile,(ConvertTo-Json -InputObject @($property.Value) -Compress),$utf8)
+    $env:RSP_SMOKE_WELLS_FILE=$caseFile
+    Invoke-PowerShellScenario $property.Name (-not $property.Name.StartsWith('invalid'))
+    Invoke-PosixScenario $property.Name (-not $property.Name.StartsWith('invalid'))
+  }
+  Remove-Item Env:\RSP_SMOKE_WELLS_FILE
   foreach ($case in @(
     @{ Name = 'empty'; Pass = $true },
     @{ Name = 'no_photo'; Pass = $true },
@@ -168,6 +188,22 @@ try {
     Invoke-PosixScenario $case.Name $case.Pass
   }
 
+  foreach($transportCase in @(
+    @{Origin='https://rsp-smoke.test';Logical=443;Configured=8443;Override=0;Actual=8443},
+    @{Origin='https://rsp-smoke.test';Logical=443;Configured=$null;Override=0;Actual=443},
+    @{Origin='https://rsp-smoke.test';Logical=443;Configured=8443;Override=18443;Actual=18443}
+  )){
+    $text="PUBLIC_ORIGIN=$($transportCase.Origin)`nPUBLIC_HOST=rsp-smoke.test`n"
+    if($transportCase.Configured){$text+="HTTPS_PORT=$($transportCase.Configured)`n"}
+    [IO.File]::WriteAllText($envFile,$text,$utf8)
+    $global:R8ExpectedOrigin=$transportCase.Origin
+    $global:R8ExpectedConnect="rsp-smoke.test:$($transportCase.Logical):127.0.0.1:$($transportCase.Actual)"
+    $global:R8ConnectOverride=$transportCase.Override
+    if($transportCase.Override){$env:SMOKE_CONNECT_PORT=[string]$transportCase.Override}else{Remove-Item Env:\SMOKE_CONNECT_PORT -ErrorAction SilentlyContinue}
+    Invoke-PowerShellScenario 'no_photo' $true
+    Invoke-PosixScenario 'no_photo' $true
+  }
+  Remove-Item Env:\SMOKE_CONNECT_PORT -ErrorAction SilentlyContinue
   $deploySh = [IO.File]::ReadAllText((Join-Path $repo 'ops/deploy.sh'))
   $rollbackSh = [IO.File]::ReadAllText((Join-Path $repo 'ops/rollback.sh'))
   $deployPs = [IO.File]::ReadAllText((Join-Path $repo 'ops/deploy.ps1'))
@@ -176,6 +212,7 @@ try {
   if ($deployPs -notmatch '-notcontains' -or $deployPs -notmatch 'SMOKE_OK' -or $rollbackPs -notmatch '-notcontains' -or $rollbackPs -notmatch 'SMOKE_OK') { throw 'Deploy/rollback PowerShell no consumen SMOKE_OK entre PASS/SKIP.' }
 
   [pscustomobject]@{
+    owner_cases_per_platform = 13; transport_checks = '4 variants per platform: 9443/8443, 443/8443, 443/443, 443/18443; Host/SNI/Origin preserved, TLS enforced'
     empty_dataset = 'pass_with_skips'; well_without_photo = 'pass_with_photo_skip'
     valid_photo = 'verified'; photo_not_on_first_well = 'verified'; missing_referenced_photo = 'rejected'
     wells_api_500 = 'rejected'; malformed_wells_json = 'rejected'

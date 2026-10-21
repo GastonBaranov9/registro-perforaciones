@@ -1,0 +1,33 @@
+# Temporary operational endpoint. Never publish this port on a public interface.
+# Compose resolves these paths relative to the first (production) Compose file.
+services:
+  smoke-proxy:
+    profiles: [ops]
+    image: nginx:1.30.4-alpine3.24@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: "no"
+    ports:
+      - "127.0.0.1:${SMOKE_INTERNAL_PORT:-18443}:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST}}
+      HSTS_ENABLED: ${HSTS_ENABLED:-false}
+    entrypoint: ["/bin/sh", "/opt/rsp/start.sh"]
+    volumes:
+      - ./proxy/https.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./proxy/start.sh:/opt/rsp/start.sh:ro
+      - type: bind
+        source: ${TLS_CERT_FILE:?Falta TLS_CERT_FILE}
+        target: /etc/nginx/tls/tls.crt
+        read_only: true
+      - type: bind
+        source: ${TLS_KEY_FILE:?Falta TLS_KEY_FILE}
+        target: /etc/nginx/tls/tls.key
+        read_only: true
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+    networks: [edge]

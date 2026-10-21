@@ -10,9 +10,11 @@ while [ "$#" -gt 0 ];do
     -c|--cookie-jar) cookie_jar=$2;shift 2;;
     -b|--cookie) cookie=$2;shift 2;;
     -X|--request) method=$2;shift 2;;
-    -H|--header) case "$2" in X-CSRF-Token:*) csrf=true;;esac;shift 2;;
+    -H|--header) case "$2" in X-CSRF-Token:*) csrf=true;; Origin:*) [ "$2" = "Origin: $RSP_EXPECTED_ORIGIN" ] || exit 9;;esac;shift 2;;
     --data-binary) method=POST;shift 2;;
-    --resolve|-w|--write-out|--max-time) shift 2;;
+    --connect-to) [ "$2" = "$RSP_EXPECTED_CONNECT" ] || exit 9;shift 2;;
+    --insecure) exit 9;;
+    --cacert|--noproxy|--resolve|-w|--write-out|--max-time) shift 2;;
     --insecure|--silent|--show-error|--include) shift;;
     http://*|https://*) url=$1;shift;;
     *) shift;;
@@ -48,6 +50,7 @@ case "$url" in
     if [ "$csrf" = true ];then status=204;body='';else status=403;body='{"error":"csrf"}';fi
     ;;
   */api/usuarios/0/pozos)
+    if [ -n "${RSP_SMOKE_WELLS_FILE:-}" ];then status=200;body=$(cat "$RSP_SMOKE_WELLS_FILE");else
     case "$scenario" in
       empty) status=200;body='[]';;
       no_photo) status=200;body='[{"id_pozo":1,"id_propietario":2,"foto_url":null}]';;
@@ -57,6 +60,7 @@ case "$url" in
       malformed_json) status=200;body='[{"id_pozo":';;
       *) echo "fixture curl: escenario desconocido $scenario" >&2;exit 2;;
     esac
+    fi
     ;;
   */api/usuarios/*/pozos/*/foto)
     if [ -z "$cookie" ];then status=401;body='{"error":"auth"}'
