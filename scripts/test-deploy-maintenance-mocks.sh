@@ -59,6 +59,7 @@ case "$*" in
     if [ "$MOCK_FAILURE" = public-unverified ] && [ "$last" = proxy-id ];then echo 'Mock inspect unavailable' >&2;exit 9;fi
     s=$(cat "$MOCK_ROOT/${last%-id}-state")
     case "$*" in *State.Health*) printf '%s/healthy\n' "$s";;*) echo "$s";;esac;;
+  inspect*State.Running*) [ "$(cat "$MOCK_ROOT/${last%-id}-state")" = exited ];echo false;;
   stop*)
     if [ "$last" = proxy-id ];then
       case "$MOCK_FAILURE:$*" in public-stop-all:*|public-first-stop:*'--time 10'*) echo 'Mock stop failed' >&2;exit 9;;public-unverified:*) exit 0;;esac
@@ -80,7 +81,11 @@ case "$*" in
   compose*'up '*smoke-proxy) [ "$MOCK_FAILURE" != private-proxy ];echo running > "$MOCK_ROOT/smoke-proxy-state";;
   compose*'up '*front) [ "$MOCK_FAILURE" != services ];echo running > "$MOCK_ROOT/api-state";;
   compose*'up '*proxy) [ -f "$MOCK_ROOT/critical" ];echo running > "$MOCK_ROOT/proxy-state";;
-  compose*'run --rm backup') [ -f "$MOCK_ROOT/maintenance" ];echo BACKUP_BUNDLE=rsp-backup-20261021T000000Z;;
+  compose*'run --rm backup')
+    [ -f "$MOCK_ROOT/maintenance" ];[ "$(cat "$MOCK_ROOT/api-state")" = exited ]
+    case "$MOCK_FAILURE" in backup-dump|backup-copy|backup-integrity|backup-missing) echo 'Backup failed' >&2;exit 23;;esac
+    echo BACKUP_BUNDLE=rsp-backup-20261021T000000Z
+    if [ "$MOCK_FAILURE" != backup-unverified ];then echo BACKUP_VERIFIED_FULL=rsp-backup-20261021T000000Z;fi;;
   compose*'run --rm migrate') [ -f "$MOCK_ROOT/maintenance" ];[ "$MOCK_FAILURE" != migrate ];;
   *) echo "Unexpected/forbidden Docker command" >&2;exit 9;;
 esac
@@ -96,7 +101,9 @@ export ADMIN_EMAIL=fixture@example.test ADMIN_PASSWORD_FILE="$tmp/password" SMOK
 . "$tmp/ops/deployment-state.sh"
 . "$tmp/ops/deployment-audit.sh"
 count=0
-for scenario in success maintenance photo_storage backup images migrate services private-proxy health smoke persist_state public public-audit audit-space audit-permission public-first-stop public-stop-all public-unverified public-maintenance-fail;do
+scenarios='success maintenance photo_storage backup images migrate services private-proxy health smoke persist_state public public-audit audit-space audit-permission public-first-stop public-stop-all public-unverified public-maintenance-fail'
+[ "${BACKUP_ONLY:-false}" != true ] || scenarios=success
+for scenario in $scenarios backup-dump backup-copy backup-integrity backup-missing backup-unverified;do
   rm -f "$tmp/maintenance" "$tmp/critical"
   : > "$MOCK_LOG"
   for service in proxy api;do echo running > "$tmp/$service-state";done
@@ -106,6 +113,10 @@ for scenario in success maintenance photo_storage backup images migrate services
   case "$scenario" in maintenance|photo_storage|backup|images|health|persist_state) TEST_FAIL_AFTER_PHASE=$scenario;;*) TEST_FAIL_AFTER_PHASE=;;esac
   export TEST_FAIL_AFTER_PHASE
   if sh "$tmp/ops/deploy.sh" > "$tmp/output" 2>&1;then result=success;exit_code=0;else exit_code=$?;result=failed;fi
+  case "$scenario" in backup-*)
+    if grep -q 'run --rm migrate' "$MOCK_LOG";then echo 'Backup failure allowed migration';exit 1;fi
+    [ "$(cat "$MOCK_ROOT/api-state")" = exited ];;
+  esac
   if [ "$scenario" = success ];then
     [ "$result" = success ] && [ ! -f "$tmp/maintenance" ] && grep -q public-smoke "$MOCK_LOG" || { cat "$tmp/output";exit 1; }
   else

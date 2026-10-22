@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 umask 077
+. "$(dirname "$0")/persistence.sh"
 
 case "${APP_VERSION:-unknown}" in
   *[!A-Za-z0-9._-]*) echo "APP_VERSION contiene caracteres no permitidos" >&2; exit 1 ;;
@@ -14,12 +15,40 @@ final="/backups/$bundle_id"
 temporal="/backups/.$bundle_id.$$.tmp"
 [ ! -e "$final" ] || { echo "Ya existe un backup con el mismo timestamp" >&2; exit 1; }
 mkdir "$temporal"
-trap 'rm -rf "$temporal"' EXIT HUP INT TERM
+verification=""
+trap 'rm -rf "$temporal"; if [ -n "$verification" ]; then rm -rf "$verification"; fi' EXIT
+trap 'exit 130' HUP INT TERM
 
 dump_name="database.dump"
-photos_name="photos.tar.gz"
+photos_name="persistent-files.tar.gz"
+assert_quiet() {
+  clients=$(psql -XAt --set=ON_ERROR_STOP=1 --command="SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend'")
+  prepared=$(psql -XAt --set=ON_ERROR_STOP=1 --command="SELECT count(*) FROM pg_prepared_xacts WHERE database=current_database()")
+  [ "$clients" = 0 ] && [ "$prepared" = 0 ] || { echo "No se puede confirmar pausa de escrituras PostgreSQL" >&2; exit 1; }
+}
+assert_quiet
+window_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+persistence_inventory /data "$temporal/persistence.inventory"
+psql -XqAt --file="$(dirname "$0")/backup-state.sql" > "$temporal/database.state"
 pg_dump --format=custom --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --file="$temporal/$dump_name"
-tar -C /data -czf "$temporal/$photos_name" fotos
+tar -C /data -czf "$temporal/$photos_name" .
+# Read the entire dump, including compressed data blocks (not just its TOC).
+pg_restore --exit-on-error --file=/dev/null "$temporal/$dump_name"
+# Extract on the container filesystem: Windows backup bind mounts cannot
+# faithfully reproduce the volume's POSIX ownership and permissions.
+verification=$(mktemp -d)
+persistence_extract "$temporal/$photos_name" "$verification"
+persistence_inventory "$verification" "$temporal/restored.inventory"
+cmp -s "$temporal/persistence.inventory" "$temporal/restored.inventory" || { echo "Persistencia incompleta o alterada" >&2; exit 1; }
+persistence_inventory /data "$temporal/after.inventory"
+cmp -s "$temporal/persistence.inventory" "$temporal/after.inventory" || { echo "La persistencia cambio durante el respaldo" >&2; exit 1; }
+psql -XqAt --file="$(dirname "$0")/backup-state.sql" > "$temporal/database.after"
+cmp -s "$temporal/database.state" "$temporal/database.after" || { echo "PostgreSQL cambio durante el respaldo" >&2; exit 1; }
+assert_quiet
+window_end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+rm -rf "$verification"
+verification=""
+rm "$temporal/restored.inventory" "$temporal/after.inventory" "$temporal/database.after"
 
 ledger_exists="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT CASE WHEN to_regclass('public.schema_migrations') IS NULL THEN 'false' ELSE 'true' END")"
 if [ "$ledger_exists" = true ]; then
@@ -55,7 +84,12 @@ for metadata in "$db_collate" "$db_ctype" "$schemas" "$extensions";do
 done
 
 cat > "$temporal/manifest.txt" <<EOF
-RSP_BACKUP_FORMAT=1
+RSP_BACKUP_FORMAT=2
+PERSISTENCE_SCOPE=entire-volume
+VERIFICATION=full-extraction-source-match
+CONSISTENCY=quiescent-source-unchanged
+WINDOW_START_UTC=$window_start
+WINDOW_END_UTC=$window_end
 STATUS=complete
 BUNDLE_ID=$bundle_id
 CREATED_AT_UTC=$created_at
@@ -70,13 +104,15 @@ DATABASE_COLLATE=$db_collate
 DATABASE_CTYPE=$db_ctype
 SCHEMAS=$schemas
 EXTENSIONS=$extensions
-PHOTOS_FILE=$photos_name
-PHOTOS_SHA256=$photos_sha
-PHOTOS_SIZE=$photos_size
+PERSISTENCE_FILE=$photos_name
+PERSISTENCE_SHA256=$photos_sha
+PERSISTENCE_SIZE=$photos_size
 MIGRATIONS=$migrations
 EOF
 
+(cd "$temporal" && sha256sum database.dump persistent-files.tar.gz persistence.inventory database.state manifest.txt > SHA256SUMS && sha256sum -c SHA256SUMS >/dev/null)
 sync
 mv "$temporal" "$final"
 trap - EXIT HUP INT TERM
 echo "BACKUP_BUNDLE=$bundle_id"
+echo "BACKUP_VERIFIED_FULL=$bundle_id"

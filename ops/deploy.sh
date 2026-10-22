@@ -117,7 +117,9 @@ case "$BUILD_IMAGES" in true) compose build api front;;false) compose pull api f
 database_recovery=operator_assessment_required
 phase_start maintenance;compose stop proxy;compose --profile ops up -d --wait --wait-timeout 60 maintenance;compose stop api;phase_complete maintenance
 phase_start photo_storage;photo_output=$(ENV_FILE="$ENV_FILE" DEPLOYMENT_STATE_FILE="$DEPLOYMENT_STATE_FILE" PROJECT_NAME="$PROJECT_NAME" COMPOSE_FILE="$COMPOSE_FILE" "$(dirname "$0")/prepare-photo-storage.sh");printf '%s\n' "$photo_output"|grep -q 'PHOTO_STORAGE_READY';ledger=$(printf '%s\n' "$photo_output"|sed -n 's/.* DB_LEDGER=\(present\|absent\).*/\1/p'|tail -1);case "$ledger" in present) legacy_schema=false;;absent) legacy_schema=true;;*) echo "Evidencia de storage inválida" >&2;exit 1;;esac;phase_complete photo_storage
-phase_start backup;backup_output=$(BACKUP_DIR="$BACKUP_DIR" compose --profile ops run --rm backup);bundle=$(printf '%s\n' "$backup_output"|sed -n 's/^BACKUP_BUNDLE=\(rsp-backup-[0-9]\{8\}T[0-9]\{6\}Z\)$/\1/p'|tail -1);[ -n "$bundle" ]||{ echo "Backup invalido" >&2;exit 1;};phase_complete backup
+phase_start backup
+[ "$(docker inspect --format '{{.State.Running}}' "$api_id")" = false ] || { echo "API no esta detenida" >&2;exit 1; }
+backup_output=$(BACKUP_DIR="$BACKUP_DIR" compose --profile ops run --rm backup);bundle=$(printf '%s\n' "$backup_output"|sed -n 's/^BACKUP_BUNDLE=\(rsp-backup-[0-9]\{8\}T[0-9]\{6\}Z\)$/\1/p'|tail -1);[ -n "$bundle" ]||{ echo "Backup invalido" >&2;exit 1;};printf '%s\n' "$backup_output" | grep -Fxq "BACKUP_VERIFIED_FULL=$bundle" || { echo "Falta verificacion del respaldo completo; migraciones bloqueadas" >&2;exit 1; };phase_complete backup
 phase_start images
 compose config --quiet
 phase_complete images;database_recovery=operator_assessment_required;phase_start migrate;if [ "$legacy_schema" = true ];then compose --profile ops run --rm migrate npm run db:migrate -- --adopt-current-schema;else compose --profile ops run --rm migrate;fi;phase_complete migrate

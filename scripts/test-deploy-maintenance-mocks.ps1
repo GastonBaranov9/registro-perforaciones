@@ -1,4 +1,5 @@
 # Executes only temporary copies with fail-closed Docker and smoke mocks.
+param([switch]$BackupOnly)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $root=Join-Path ([IO.Path]::GetTempPath()) ('rsp-deploy-mocks-'+[guid]::NewGuid().ToString('N'))
@@ -23,7 +24,12 @@ function Write-DeploymentAuditAtomic($Path,$Audit){
 [IO.File]::WriteAllText($auditCopy,$auditSource,$utf8)
 foreach($name in @('production.env','docker-compose.production.yaml','password')){[IO.File]::WriteAllText((Join-Path $root $name),'fixture-only',$utf8)}
 [IO.File]::WriteAllText((Join-Path $ops 'prepare-photo-storage.ps1'),"'PHOTO_STORAGE_READY DB_LEDGER=present'",$utf8)
-[IO.File]::WriteAllText((Join-Path $ops 'backup.ps1'),"'BACKUP_BUNDLE=rsp-backup-20261021T000000Z'",$utf8)
+[IO.File]::WriteAllText((Join-Path $ops 'backup.ps1'),@'
+if(-not $global:DeployMockMaintenance -or $global:DeployMockStates['api-id'] -ne 'exited'){throw 'Backup without paused writes'}
+if($global:DeployMockFailure -in @('backup-dump','backup-copy','backup-integrity','backup-missing')){throw "Backup failure: $global:DeployMockFailure"}
+'BACKUP_BUNDLE=rsp-backup-20261021T000000Z'
+if($global:DeployMockFailure -ne 'backup-unverified'){'BACKUP_VERIFIED_FULL=rsp-backup-20261021T000000Z'}
+'@,$utf8)
 [IO.File]::WriteAllText((Join-Path $ops 'smoke.ps1'),@'
 param($EnvFile,$DeploymentStateFile,$ProjectName,$AdminEmail,$AdminPasswordFile,$ComposeFile,$ConnectPort,$TlsCaFile,[switch]$PublicOnly)
 if($PublicOnly){
@@ -106,6 +112,8 @@ function docker {
 try{
   $cases=@('success','maintenance','photo_storage','backup','images','migrate','services','private-proxy','health','smoke','persist_state','public',
     'public-audit','audit-space','audit-permission','public-first-stop','public-stop-all','public-unverified','public-maintenance-fail')
+  $backupCases=@('backup-dump','backup-copy','backup-integrity','backup-missing','backup-unverified')
+  if($BackupOnly){$cases=@('success')+$backupCases}else{$cases+=$backupCases}
   foreach($case in $cases){
     Write-DeploymentStateAtomic $state "fixture-api:$oldSha" "fixture-front:$oldSha" old $oldSha|Out-Null
     $global:DeployMockEvents=[Collections.Generic.List[string]]::new()
@@ -122,6 +130,7 @@ try{
     $audit=Read-DeploymentAuditForRollback (Join-Path $root 'state/deploy-rsp07f-r3-mock.json') 'rsp07f-r3-mock' $state
     if($audit.rollback_noop){throw "Recovery incorrectly classified as no-op: $case"}
     $events=$global:DeployMockEvents -join "`n"
+    if($case -in $backupCases -and ($events -match 'run --rm migrate' -or $global:DeployMockStates['api-id'] -ne 'exited')){throw "Backup failure allowed migration/writes: $case"}
     if($case -notlike 'public*' -and $case -notin @('success','audit-space','audit-permission') -and $events -match 'stop maintenance|up .*180 proxy'){throw "Premature reopening: $case"}
     if($case -eq 'success' -and ($global:DeployMockMaintenance -or $events -notmatch 'public-smoke')){throw 'Success did not complete'}
     if($case -in @('smoke','health','persist_state') -and $events -notmatch 'stop --time 10 smoke-proxy-id'){throw 'Private proxy not stopped'}

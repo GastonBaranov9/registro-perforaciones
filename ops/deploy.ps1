@@ -143,6 +143,7 @@ try{
   Log "backup_start"
   $backupOutput=(& (Join-Path $PSScriptRoot "backup.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -BackupDir $backupPath -ComposeFile $ComposeFile|Out-String)
   $match=[regex]::Match($backupOutput,'BACKUP_BUNDLE=(rsp-backup-\d{8}T\d{6}Z)');if(-not $match.Success){throw "El backup previo no produjo un bundle valido."};$audit.backup_bundle=$match.Groups[1].Value
+  if($backupOutput -notmatch ('(?m)^BACKUP_VERIFIED_FULL='+[regex]::Escape($audit.backup_bundle)+'\r?$')){throw "Falta verificacion del respaldo completo; migraciones bloqueadas."}
   Complete-DeploymentAuditPhase $audit 'backup' $auditFile;Log "backup_ok" "bundle=$($audit.backup_bundle)";Test-PhaseFailure 'backup'
 
   Start-DeploymentAuditPhase $audit 'images' $auditFile
