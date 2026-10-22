@@ -51,6 +51,7 @@ set -eu
 echo "$*" >> "$MOCK_LOG"
 last=;for arg in "$@";do last=$arg;done
 case "$*" in
+  image\ inspect*) printf 'sha256:%064d\n' 0;;
   ps*'label=com.docker.compose.service='*)
     case "$*" in *'label=com.docker.compose.project=rsp07f-r3-mock '*) ;;*) exit 9;;esac
     printf '%s-id\n' "${last#label=com.docker.compose.service=}";;

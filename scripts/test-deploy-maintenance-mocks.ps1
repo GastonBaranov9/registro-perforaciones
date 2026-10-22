@@ -46,6 +46,7 @@ function docker {
   $a=@($args|ForEach-Object{[string]$_});$line=$a -join ' '
   $global:LASTEXITCODE=0
   $global:DeployMockEvents.Add($line)
+  if($a[0] -eq 'image' -and $a[1] -eq 'inspect'){'sha256:'+('c'*64);return}
   if($a[0] -eq 'inspect'){
     $target=$a[-1]
     if($line.Contains('.State.Status')){

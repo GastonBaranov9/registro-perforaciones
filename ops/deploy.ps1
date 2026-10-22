@@ -42,6 +42,13 @@ function Clear-DeploymentEnvironment{foreach($name in @('API_IMAGE_REF','FRONT_I
 function Set-DeploymentEnvironment([string]$Api,[string]$Front,[string]$Version,[string]$Sha){$env:API_IMAGE_REF=$Api;$env:FRONT_IMAGE_REF=$Front;$env:APP_VERSION=$Version;$env:GIT_SHA=$Sha}
 function Restore-DeploymentEnvironment{foreach($name in $savedEnvironment.Keys){[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}}
 function ContainerValue([string]$Service,[string]$Format){$id=(& docker compose @compose ps -q $Service|Out-String).Trim();if(-not $id){throw "No hay contenedor previo para $Service."};$value=(& docker inspect --format $Format $id|Out-String).Trim();if($LASTEXITCODE-ne 0-or-not $value){throw "No se pudo inspeccionar $Service."};return $value}
+function Assert-RuntimeImage([string]$Service,[string]$Reference){
+  $expected=(& docker image inspect --format '{{.Id}}' $Reference|Out-String).Trim()
+  if($LASTEXITCODE-ne 0-or $expected-cnotmatch '^sha256:[a-f0-9]{64}$'){throw "No se pudo resolver la imagen registrada de $Service."}
+  $running=ContainerValue $Service '{{.Image}}'
+  if($running-cnotmatch '^sha256:[a-f0-9]{64}$'-or $running-cne $expected){throw "La identidad de imagen de $Service no coincide con deployment state."}
+  return $running
+}
 function EnvVersion([string]$Service){$id=(& docker compose @compose ps -q $Service|Out-String).Trim();$line=(& docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' $id|Select-String '^APP_VERSION='|Select-Object -First 1).Line;return $(if($line){($line-split '=',2)[1]}else{'unknown'})}
 function Assert-ComposeState([object]$Expected){
   $json=(& docker compose @compose config --format json|Out-String);if($LASTEXITCODE-ne 0){throw "No se pudo renderizar Compose desde deployment state."}
@@ -102,11 +109,13 @@ try{
   Clear-DeploymentEnvironment
   Log "deploy_start" "target=$TargetVersion config=$($audit.target_config_hash)"
   Assert-ComposeState $previous;Compose @("config","--quiet")
-  $runningApi=ContainerValue "api" '{{.Config.Image}}';$runningFront=ContainerValue "front" '{{.Config.Image}}';$runningVersion=EnvVersion "api"
-  if($runningApi-ne $previous.ApiImage-or $runningFront-ne $previous.FrontImage-or $runningVersion-ne $previous.AppVersion){throw "El runtime no coincide con el deployment state previo; reconciliar antes de desplegar."}
+  # Aliases are accepted only when both resolve to the container's exact image ID.
+  $audit.previous_api_id=Assert-RuntimeImage 'api' $previous.ApiImage
+  $audit.previous_front_id=Assert-RuntimeImage 'front' $previous.FrontImage
+  $runningVersion=EnvVersion "api"
+  if($runningVersion-ne $previous.AppVersion){throw "El runtime no coincide con el deployment state previo; reconciliar antes de desplegar."}
   $previousApiContainerId=(& docker compose @compose ps -a -q api|Out-String).Trim();$previousProxyContainerId=(& docker compose @compose ps -a -q proxy|Out-String).Trim()
   if(-not $previousApiContainerId-or-not $previousProxyContainerId){throw "Faltan containers previos necesarios para una recuperación sin recreate."}
-  $audit.previous_api_id=ContainerValue "api" '{{.Image}}';$audit.previous_front_id=ContainerValue "front" '{{.Image}}'
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
 
   Set-DeploymentEnvironment $TargetApiImage $TargetFrontImage $TargetVersion $GitSha

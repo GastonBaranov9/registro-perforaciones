@@ -26,6 +26,14 @@ target_hash=$(deployment_state_hash "$TARGET_API_IMAGE" "$TARGET_FRONT_IMAGE" "$
 mkdir -p "$BACKUP_DIR" "$STATE_DIR";audit="$STATE_DIR/deploy-$PROJECT_NAME.env";deploy_ok=false;bundle=;previous_api_id=;previous_front_id=;previous_api_container=;previous_proxy_container=;legacy_schema=false;status=started;phase_started=preflight;phase_completed=none;database_recovery=not_required;state_persisted=false;started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 compose(){ docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$DEPLOYMENT_STATE_FILE" -f "$COMPOSE_FILE" "$@"; }
 compose_smoke(){ docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$DEPLOYMENT_STATE_FILE" -f "$COMPOSE_FILE" -f "$(dirname "$0")/smoke-proxy.compose.yaml" "$@"; }
+runtime_image(){
+  ri_container=$1;ri_reference=$2
+  ri_expected=$(docker image inspect --format '{{.Id}}' "$ri_reference") || return 1
+  printf '%s\n' "$ri_expected" | grep -Eq '^sha256:[a-f0-9]{64}$' || return 1
+  ri_running=$(docker inspect --format '{{.Image}}' "$ri_container") || return 1
+  [ "$ri_running" = "$ri_expected" ] || { echo 'Identidad de imagen no coincide con deployment state' >&2;return 1; }
+  printf '%s\n' "$ri_running"
+}
 write_audit(){ temp="$audit.$$.tmp";umask 077;printf 'FORMAT=2\nPROJECT=%s\nSTATUS=%s\nPHASE_STARTED=%s\nPHASE_COMPLETED=%s\nDATABASE_RECOVERY=%s\nLEGACY_SCHEMA_WITHOUT_LEDGER=%s\nSTARTED_AT_UTC=%s\nUPDATED_AT_UTC=%s\nDEPLOYMENT_STATE=%s\nDEPLOYMENT_STATE_PERSISTED=%s\nPREVIOUS_API_REF=%s\nPREVIOUS_API_ID=%s\nPREVIOUS_FRONT_REF=%s\nPREVIOUS_FRONT_ID=%s\nPREVIOUS_VERSION=%s\nPREVIOUS_GIT_SHA=%s\nPREVIOUS_CONFIG_HASH=%s\nTARGET_API_REF=%s\nTARGET_FRONT_REF=%s\nTARGET_VERSION=%s\nTARGET_GIT_SHA=%s\nTARGET_CONFIG_HASH=%s\nBACKUP_BUNDLE=%s\n' "$PROJECT_NAME" "$status" "$phase_started" "$phase_completed" "$database_recovery" "$legacy_schema" "$started_at" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DEPLOYMENT_STATE_FILE" "$state_persisted" "$previous_api" "$previous_api_id" "$previous_front" "$previous_front_id" "$previous_version" "$previous_sha" "$previous_hash" "$TARGET_API_IMAGE" "$TARGET_FRONT_IMAGE" "$TARGET_VERSION" "$TARGET_GIT_SHA" "$target_hash" "$bundle" > "$temp" || return $?;mv -f "$temp" "$audit"; }
 phase_start(){ phase_started=$1;write_audit; }
 phase_complete(){ phase_completed=$1;write_audit;if [ "$TEST_FAIL_AFTER_PHASE" = "$1" ];then echo "Fallo controlado RSP-07F-R2 despues de $1" >&2;exit 1;fi; }
@@ -99,9 +107,10 @@ trap on_exit EXIT;trap 'exit 130' HUP INT TERM
 write_audit
 echo "deploy_start target=$TARGET_VERSION config=$target_hash";compose config --quiet
 api_id=$(compose ps -q api);front_id=$(compose ps -q front);[ -n "$api_id" ]&&[ -n "$front_id" ]
-running_api=$(docker inspect --format '{{.Config.Image}}' "$api_id");running_front=$(docker inspect --format '{{.Config.Image}}' "$front_id");running_version=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$api_id"|awk -F= '$1=="APP_VERSION"{print $2;exit}')
-[ "$running_api" = "$previous_api" ]&&[ "$running_front" = "$previous_front" ]&&[ "$running_version" = "$previous_version" ]||{ echo "Runtime no coincide con deployment state" >&2;exit 1;}
-previous_api_container=$api_id;previous_proxy_container=$(compose ps -a -q proxy);[ -n "$previous_proxy_container" ];previous_api_id=$(docker inspect --format '{{.Image}}' "$api_id");previous_front_id=$(docker inspect --format '{{.Image}}' "$front_id");phase_complete preflight
+previous_api_id=$(runtime_image "$api_id" "$previous_api");previous_front_id=$(runtime_image "$front_id" "$previous_front")
+running_version=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$api_id"|awk -F= '$1=="APP_VERSION"{print $2;exit}')
+[ "$running_version" = "$previous_version" ]||{ echo "Runtime no coincide con deployment state" >&2;exit 1;}
+previous_api_container=$api_id;previous_proxy_container=$(compose ps -a -q proxy);[ -n "$previous_proxy_container" ];phase_complete preflight
 export API_IMAGE_REF=$TARGET_API_IMAGE FRONT_IMAGE_REF=$TARGET_FRONT_IMAGE APP_VERSION=$TARGET_VERSION GIT_SHA=$TARGET_GIT_SHA
 compose config --quiet
 case "$BUILD_IMAGES" in true) compose build api front;;false) compose pull api front;;*) echo "BUILD_IMAGES invalido" >&2;exit 2;;esac
