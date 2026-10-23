@@ -7,7 +7,7 @@ import { Pozo } from '../../../../shared/types/schemas';
 import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { ExportarKmlService } from '../../../../shared/services/exportar-kml.service';
 import { formatearInstanteComoFecha } from '../../../../shared/utils/fechas';
-import { ToastController } from '@ionic/angular';
+import { AlertController, ToastController } from '@ionic/angular';
 import { FormsModule } from '@angular/forms';
 import { WebsocketService } from '../../../../shared/services/websocket.service';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
@@ -51,6 +51,10 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   }
   public pozosListService = inject(PozosListService);
   public toastController = inject(ToastController);
+  readonly alertController = inject(AlertController);
+  readonly eliminando = signal(false);
+  private confirmacionEliminar?: HTMLIonAlertElement;
+  private intentoEliminar = 0;
   public webSocketService = inject(WebsocketService);
   public authService = inject(AuthService);
   private readonly exportarKmlService = inject(ExportarKmlService);
@@ -175,21 +179,55 @@ export class PozosListPage implements OnInit, ViewWillEnter {
   }
 
   public async borrarPozo(pozo: Pozo) {
-    if (!this.authService.tieneRol('administracion')) return;
+    if (!this.authService.tieneRol('administracion') || this.eliminando()) return;
+    this.eliminando.set(true);
+    const intento = ++this.intentoEliminar;
+    const id = pozo.id_pozo;
+    let textoConfirmado = false;
     try {
-      await this.pozosListService.deletePozo(pozo.id_pozo);
-      await this.ionViewWillEnter();
+      const alert = await this.alertController.create({
+        header: 'Eliminar perforación definitivamente',
+        subHeader: `Perforación ${pozo.numero_perforacion == null ? 'sin número asignado' : 'N.º ' + pozo.numero_perforacion} · ID interno: ${id}`,
+        message: 'Se eliminarán los datos y fotografías asociados a esta perforación. Esta acción no se puede deshacer. Borrar no libera automáticamente el número. Para confirmar, escribí ELIMINAR.',
+        inputs: [{ name: 'confirmacion', type: 'text', placeholder: 'ELIMINAR', attributes: { 'aria-label': 'Escribí ELIMINAR para confirmar', autocomplete: 'off', autocapitalize: 'characters' } }],
+        buttons: [
+          { text: 'Cancelar', role: 'cancel' },
+          { text: 'Eliminar definitivamente', role: 'confirm', handler: (datos) => {
+            textoConfirmado = datos?.confirmacion === 'ELIMINAR';
+            if (!textoConfirmado) alert.message = 'Confirmación incorrecta. Escribí exactamente ELIMINAR. Se eliminarán los datos y fotografías; el número seguirá reservado.';
+            return textoConfirmado;
+          } },
+        ],
+      });
+      if (intento !== this.intentoEliminar) { alert.remove(); return; }
+      this.confirmacionEliminar = alert;
+      const cierre = alert.onDidDismiss();
+      await alert.present();
+      const { role } = await cierre;
+      if (role !== 'confirm' || !textoConfirmado || intento !== this.intentoEliminar || !this.authService.tieneRol('administracion')) return;
+      await this.pozosListService.deletePozo(id);
+      // La eliminación ya terminó: un error de recarga no debe invitar a repetirla.
+      this.pozos.update(actuales => actuales.filter(actual => actual.id_pozo !== id));
     } catch (err: any) {
       const toast = await this.toastController.create({
-        message: err.error.message,
-        duration: 1000,
+        message: err?.error?.message || 'No se pudo confirmar la eliminación. Actualizá el listado antes de volver a intentar.',
+        duration: 6000,
         position: 'bottom',
         color: 'danger',
         animated: true,
       });
 
       await toast.present();
+    } finally {
+      this.confirmacionEliminar = undefined;
+      this.eliminando.set(false);
     }
+  }
+
+  ionViewWillLeave() {
+    ++this.intentoEliminar;
+    // Retroceder o navegar nunca equivale a confirmar la eliminación.
+    void this.confirmacionEliminar?.dismiss(undefined, 'cancel');
   }
 
 }

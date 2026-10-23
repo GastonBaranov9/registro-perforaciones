@@ -150,7 +150,7 @@
           ></ion-button>
           }
           @if (authService.tieneRol('administracion')) {
-          <ion-button aria-label="Eliminar pozo" fill="clear" color="danger" (click)="borrarPozo(pozo)">
+          <ion-button aria-label="Eliminar pozo" fill="clear" color="danger" [disabled]="eliminando()" (click)="borrarPozo(pozo)">
             <ion-icon slot="icon-only" name="trash"> </ion-icon>
           </ion-button>
           }

@@ -1,5 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -37,6 +37,141 @@ describe('PozosListPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  describe('confirmación de eliminación definitiva', () => {
+    let opciones: any;
+    let cerrar: (detalle: { role: string }) => void;
+    let alerta: any;
+    let autorizado: jasmine.Spy;
+    const pozo = { ...pozos[0], numero_perforacion: 2047 };
+
+    beforeEach(() => {
+      autorizado = spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
+      const cierre = new Promise<{ role: string }>(resolve => cerrar = resolve);
+      alerta = {
+        present: jasmine.createSpy().and.resolveTo(),
+        remove: jasmine.createSpy(),
+        onDidDismiss: () => cierre,
+        dismiss: jasmine.createSpy().and.callFake((_data: unknown, role: string) => { cerrar({ role }); return Promise.resolve(true); }),
+      };
+      spyOn(component.alertController, 'create').and.callFake(async config => { opciones = config; return alerta; });
+      spyOn(component.toastController, 'create').and.resolveTo({ present: async () => {} } as any);
+      servicio.deletePozo.and.resolveTo();
+    });
+
+    async function abrir() {
+      const tarea = component.borrarPozo(pozo);
+      await fixture.whenStable();
+      return { tarea };
+    }
+    function escribir(texto: string) {
+      return opciones.buttons.find((b: any) => b.role === 'confirm').handler({ confirmacion: texto });
+    }
+
+    it('identifica número e ID, advierte datos, fotos y reserva; no borra al abrir', async () => {
+      const { tarea } = await abrir();
+      expect(opciones.subHeader).toContain('2047');
+      expect(opciones.subHeader).toContain('ID interno: 8');
+      expect(opciones.message).toContain('datos y fotografías');
+      expect(opciones.message).toContain('no libera automáticamente el número');
+      expect(opciones.inputs[0].attributes['aria-label']).toContain('ELIMINAR');
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+      cerrar({ role: 'cancel' }); await tarea;
+    });
+
+    for (const role of ['cancel', 'backdrop', 'escape', '']) {
+      it(`cancelar/cerrar (${role}) nunca elimina`, async () => {
+        const { tarea } = await abrir();
+        cerrar({ role }); await tarea;
+        expect(servicio.deletePozo).not.toHaveBeenCalled();
+        expect(component.eliminando()).toBeFalse();
+      });
+    }
+
+    it('exige el texto exacto y no acepta sólo el rol confirm', async () => {
+      const { tarea } = await abrir();
+      for (const texto of ['', 'eliminar', ' ELIMINAR', 'ELIMINAR ']) expect(escribir(texto)).toBeFalse();
+      expect(alerta.message).toContain('Confirmación incorrecta');
+      cerrar({ role: 'confirm' }); await tarea;
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+    });
+
+    it('confirmación válida elimina una vez y actualiza el listado', async () => {
+      const { tarea } = await abrir();
+      expect(escribir('ELIMINAR')).toBeTrue();
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+      cerrar({ role: 'confirm' }); await tarea;
+      expect(servicio.deletePozo).toHaveBeenCalledOnceWith(8);
+      expect(component.pozos().map(p => p.id_pozo)).toEqual([9]);
+      expect(component.eliminando()).toBeFalse();
+    });
+
+    it('retroceder cancela incluso con texto válido', async () => {
+      const { tarea } = await abrir();
+      escribir('ELIMINAR'); component.ionViewWillLeave(); await tarea;
+      expect(alerta.dismiss).toHaveBeenCalledWith(undefined, 'cancel');
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+    });
+
+    it('salir antes de terminar de crear el diálogo tampoco lo abre ni elimina', async () => {
+      const tarea = component.borrarPozo(pozo);
+      component.ionViewWillLeave(); await tarea;
+      expect(alerta.present).not.toHaveBeenCalled();
+      expect(alerta.remove).toHaveBeenCalled();
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+    });
+
+    it('revalida el rol administrativo antes de enviar la eliminación', async () => {
+      const { tarea } = await abrir();
+      escribir('ELIMINAR'); autorizado.and.returnValue(false);
+      cerrar({ role: 'confirm' }); await tarea;
+      expect(servicio.deletePozo).not.toHaveBeenCalled();
+    });
+
+    it('evita doble diálogo y doble petición mientras está pendiente', async () => {
+      let terminar!: () => void;
+      servicio.deletePozo.and.returnValue(new Promise<void>(resolve => terminar = resolve));
+      const { tarea } = await abrir();
+      await component.borrarPozo(pozos[1]);
+      expect(component.alertController.create).toHaveBeenCalledTimes(1);
+      escribir('ELIMINAR'); cerrar({ role: 'confirm' }); await fixture.whenStable();
+      fixture.detectChanges();
+      for (const boton of fixture.nativeElement.querySelectorAll('[aria-label="Eliminar pozo"]')) expect(boton.disabled).toBeTrue();
+      await component.borrarPozo(pozo);
+      expect(servicio.deletePozo).toHaveBeenCalledTimes(1);
+      terminar(); await tarea;
+    });
+
+    for (const error of [new Error('conexión'), { error: { message: 'No autorizado' } }]) {
+      it('conserva el listado y muestra error sin reintentar automáticamente', async () => {
+        servicio.deletePozo.and.rejectWith(error);
+        const { tarea } = await abrir();
+        escribir('ELIMINAR'); cerrar({ role: 'confirm' }); await tarea;
+        expect(servicio.deletePozo).toHaveBeenCalledTimes(1);
+        expect(component.pozos().map(p => p.id_pozo)).toEqual([8, 9]);
+        expect(component.toastController.create).toHaveBeenCalledWith(jasmine.objectContaining({ color: 'danger', message: jasmine.any(String) }));
+        expect(component.eliminando()).toBeFalse();
+      });
+    }
+
+    it('HttpClient no emite DELETE antes de la confirmación; después emite sólo uno', async () => {
+      spyOn(component.authService, 'userId').and.returnValue(7);
+      const real = TestBed.runInInjectionContext(() => new PozosListService());
+      servicio.deletePozo.and.callFake(id => real.deletePozo(id));
+      const http = TestBed.inject(HttpTestingController);
+      const { tarea } = await abrir();
+      http.expectNone(req => req.method === 'DELETE');
+      escribir('incorrecto');
+      http.expectNone(req => req.method === 'DELETE');
+      escribir('ELIMINAR');
+      http.expectNone(req => req.method === 'DELETE');
+      cerrar({ role: 'confirm' }); await fixture.whenStable();
+      const req = http.expectOne(req => req.method === 'DELETE');
+      expect(req.request.url).toContain('usuarios/7/pozos/8');
+      req.flush(null, { status: 204, statusText: 'No Content' });
+      await tarea; http.verify();
+    });
   });
 
   it('operador edita históricos sin acceso a edición normal ajena ni KML global', async () => {

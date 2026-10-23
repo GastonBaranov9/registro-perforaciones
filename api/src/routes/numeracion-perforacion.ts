@@ -3,6 +3,7 @@ import { Type } from "@fastify/type-provider-typebox";
 import { NumeroPerforacion } from "../models/schemas.ts";
 import { ErrorSchema } from "../models/errors.ts";
 import { validarNumeroPerforacion, asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../services/numeracion-perforacion-service.ts";
+import { previsualizarRectificacion, rectificarNumeracion, type SolicitudRectificacion } from '../services/rectificacion-numeracion-service.ts';
 
 export default async function numeracionRoutes(fastify: FastifyInstance) {
   const seguridad = { onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin] };
@@ -11,6 +12,21 @@ export default async function numeracionRoutes(fastify: FastifyInstance) {
     minimo: Type.Integer(), agotado: Type.Boolean(),
   });
   const errores = { 400: ErrorSchema, 403: ErrorSchema, 409: ErrorSchema };
+  fastify.get('/pozos/numeracion/rectificacion/:desde', {
+    ...seguridad, schema: { params: Type.Object({ desde: Type.Integer({ minimum: 3282, maximum: 2147483647 }) }) },
+  }, async req => previsualizarRectificacion(Number(req.user.sub), (req.params as { desde: number }).desde));
+  fastify.post('/pozos/numeracion/rectificacion', {
+    ...seguridad, schema: { body: Type.Object({
+      desde: Type.Integer({ minimum: 3282, maximum: 2147483647 }),
+      esperado: Type.Integer({ minimum: 3283, maximum: 2147483648 }),
+      mayor_esperado: NumeroPerforacion,
+      motivo: Type.String({ minLength: 10, maxLength: 1000 }),
+      sin_referencias_externas: Type.Literal(true),
+      reservas: Type.Array(Type.Object({ numero_perforacion: NumeroPerforacion,
+        id_pozo_original: Type.String({ pattern: '^[1-9][0-9]*$' }), asignado_en: Type.String({ minLength: 1, maxLength: 100 }),
+      }, { additionalProperties: false }), { minItems: 1, maxItems: 100 }),
+    }, { additionalProperties: false }) },
+  }, async req => rectificarNumeracion(Number(req.user.sub), req.body as SolicitudRectificacion));
   fastify.get("/pozos/numeracion", {
     ...seguridad, schema: { tags: ["pozos"], response: { 200: estado, ...errores } },
   }, async (req) => obtenerNumeracion(Number(req.user.sub)));

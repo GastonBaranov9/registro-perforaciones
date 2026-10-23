@@ -12,6 +12,16 @@ describe('NumeracionPerforacionService', () => {
     service = TestBed.inject(NumeracionPerforacionService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('rectifica sólo con motivo, declaración y estado completo de la vista previa', async () => {
+    const reserva={numero_perforacion:4001,id_pozo_original:'99',asignado_en:'2026-01-01 12:00:00+00',bloqueada:false};
+    const pending=service.rectificar(4001,{proximo:4002,mayor_asignado:4001,reservas:[reserva]},'Prueba eliminada',true);
+    const req=http.expectOne(environment.apiURL+'pozos/numeracion/rectificacion');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({desde:4001,esperado:4002,mayor_esperado:4001,motivo:'Prueba eliminada',sin_referencias_externas:true,
+      reservas:[{numero_perforacion:4001,id_pozo_original:'99',asignado_en:reserva.asignado_en}]});
+    req.flush({proximo:4001,minimo:4001,agotado:false,rectificacion_id:'7'});
+    expect((await pending).rectificacion_id).toBe('7');
+  });
   it('configura el contador con el valor anterior para detectar cambios concurrentes', async () => {
     const pending = service.configurar(2047, null);
     const req = http.expectOne(environment.apiURL + 'pozos/numeracion');
