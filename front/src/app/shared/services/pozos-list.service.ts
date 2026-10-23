@@ -5,6 +5,7 @@ import { Pozo } from '../types/schemas';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
 import { WebsocketService } from './websocket.service';
+import { ConfirmacionEliminacion, VistaEliminacion } from './administracion-eliminaciones.service';
 
 @Injectable({
   providedIn: 'root',
@@ -39,9 +40,12 @@ export class PozosListService {
     return await firstValueFrom(this.httpClient.get<Pozo[]>(this.baseURL(id_usuario), { params }));
   }
 
-  public async deletePozo(id_pozo: number): Promise<void> {
+  public confirmarEliminacion(id:number,prueba=false) {
+    return firstValueFrom(this.httpClient.get<VistaEliminacion>(environment.apiURL+`pozos/${id}/confirmacion-eliminacion`,{params:prueba?{prueba:'true'}:{}}));
+  }
+  public async deletePozo(id_pozo: number, body:ConfirmacionEliminacion): Promise<void> {
     const id_usuario = this.getUserIdOrThrow();
 
-    await firstValueFrom(this.httpClient.delete(`${this.baseURL(id_usuario)}/${id_pozo}`));
+    await firstValueFrom(this.httpClient.delete(`${this.baseURL(id_usuario)}/${id_pozo}`,{body}));
   }
 }

@@ -14,7 +14,9 @@ import { isPerf, isProp } from "../services/roles-services.ts";
 import fs from "fs/promises";
 import { clientConnections } from "../plugins/websocket.ts";
 import { actualizarPozoCompleto, crearPozoCompleto } from "../services/pozo-completo-service.ts";
-import { eliminarFotoPersistida, eliminarPozoPersistido, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
+import { eliminarFotoPersistida, reemplazarFotoPersistida } from "../services/foto-pozo-service.ts";
+import { ejecutarEliminacion, type ConfirmacionEliminacion } from '../services/administracion-eliminaciones-service.ts';
+import { ConfirmacionEliminacionBody } from './administracion-eliminaciones.ts';
 import { actualizarPropietarioOperativo, crearPropietarioOperativo, listarCandidatosPozo, obtenerPropietarioOperativo } from "../services/candidatos-pozo-service.ts";
 import { leerFotoPozo, validarFotoBuffer } from "../services/foto-archivo-service.ts";
 import { FOTO_JSON_BODY_LIMIT_BYTES, MAX_FOTO_BYTES } from "../constants/fotos.ts";
@@ -396,6 +398,7 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
     {
       schema: {
         summary: "Borrar un pozo",
+        body: ConfirmacionEliminacionBody,
         description: "Rol: Administración",
         tags: ["pozos"],
         params: Type.Object({
@@ -420,7 +423,8 @@ const pozoRoutes = async function (fastify: FastifyInstance, options: object) {
 
       const pozo = await funcPozo.getPozoById(id_pozo)
       if (!pozo) throw new err.T05PozoNoEncontrado();
-      await eliminarPozoPersistido(id_pozo, fotosDir, undefined, { logger: req.log });
+      const confirmacion = req.body as ConfirmacionEliminacion;
+      await ejecutarEliminacion(Number(req.user.sub), confirmacion.prueba_confirmada ? 'eliminar_prueba' : 'eliminar', id_pozo, confirmacion, fotosDir);
       if (pozo.id_propietario !== null) fastify.notifyClient(pozo.id_propietario, { type: "deletepozo" })
 
       return rep.code(204).send();

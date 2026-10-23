@@ -124,6 +124,32 @@ export class HistoricosPage {
     } finally { this.ocupado.set(false); }
   }
   ver(id: number) { void this.router.navigate(['/pozos-detail', id]); }
+  async comprobarReintento() {
+    const e=this.envio;
+    if(this.ocupado() || !e?.rechazada || e.actor!==this.auth.userId())return;
+    this.ocupado.set(true);this.error.set('');
+    try {
+      const numero=e.body['numero_perforacion'];
+      if(!Number.isInteger(numero) || Number(numero)<1 || Number(numero)>3281)throw Error('El intento no contiene un número histórico válido.');
+      const [disponibilidad,actual]=await Promise.all([
+        firstValueFrom(this.http.get<{utilizado:boolean}>(environment.apiURL+'pozos/numeracion/disponibilidad/'+numero).pipe(timeout(15000))),
+        firstValueFrom(this.http.get<{epoca:string}>(environment.apiURL+'pozos/epoca-datos').pipe(timeout(15000))),
+      ]);
+      if(this.envio!==e || e.actor!==this.auth.userId())throw Error('La sesión cambió.');
+      if(disponibilidad.utilizado)throw Error('El número sigue reservado. El intento y su fotografía se conservan; administración debe revisar la reserva.');
+      if(actual.epoca!==e.epoca)throw Error('Los datos del servidor cambiaron. Se conserva el intento para revisión; no se enviará con otra identidad.');
+      if(e.fotoKey && !e.body['foto']) {
+        const foto=await fotoHistoricaPendiente(e.fotoKey,'leer');
+        if(!foto)throw Error('Falta la fotografía pendiente. No se enviará una carga incompleta.');
+        e.body['foto']=foto;
+      }
+      // Misma clave, época, fotografía y payload. Consultar NO crea ni libera nada.
+      sessionStorage.setItem(this.storageKey(),JSON.stringify({...e,rechazada:false,body:{...e.body,foto:undefined}}));
+      e.rechazada=false;this.retirada.set(false);
+      this.error.set('Número disponible. Podés reintentar exactamente la carga conservada.');
+    } catch(error) {this.error.set(error instanceof Error?error.message:'No se pudo comprobar el intento. Se conserva completo.');}
+    finally {this.ocupado.set(false);}
+  }
   otra() {
     if(this.ocupado()||(!this.resultado()&&!this.envio?.rechazada))return;
     if(this.envio?.fotoKey)void fotoHistoricaPendiente(this.envio.fotoKey,'borrar').catch(()=>{});

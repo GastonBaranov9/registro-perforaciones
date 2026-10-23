@@ -156,6 +156,9 @@
           }
         </ion-buttons>
       </ion-toolbar>
+      @if (authService.tieneRol('administracion')) {
+        <ion-button expand="block" fill="clear" color="danger" [disabled]="eliminando()" (click)="borrarPozo(pozo,true)">Eliminar prueba y liberar número</ion-button>
+      }
     </ion-card-content>
   </ion-card>
   }

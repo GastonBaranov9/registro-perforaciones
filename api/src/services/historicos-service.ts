@@ -40,6 +40,9 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     const previo = await client.query('SELECT epoca,huella,resultado FROM creacion_historica WHERE actor=$1 AND clave=$2', [actor, clave]);
     if (previo.rows[0]) {
       if (previo.rows[0].epoca !== generacion || previo.rows[0].huella !== huella) throw new T05ConflictoNumeracion('La clave histórica ya pertenece a otra operación.');
+      const original=previo.rows[0].resultado;
+      const existe=await client.query('SELECT 1 FROM pozo WHERE id_pozo=$1 AND numero_perforacion=$2',[original.id_pozo,original.numero_perforacion]);
+      if(!existe.rowCount) throw new T05ConflictoNumeracion('La creación original fue eliminada. Se conserva su referencia; administración debe revisar su recuperación. No se creará una copia automáticamente.');
       await client.query('COMMIT'); return previo.rows[0].resultado;
     }
     // El trigger conserva proximo=NULL al reservar un histórico. Sólo impedir

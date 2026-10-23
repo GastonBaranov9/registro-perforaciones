@@ -19,8 +19,9 @@ describe('PozosListPage', () => {
   ];
 
   beforeEach(async () => {
-    servicio = jasmine.createSpyObj('PozosListService', ['getListaPozos', 'deletePozo']);
+    servicio = jasmine.createSpyObj('PozosListService', ['getListaPozos', 'deletePozo', 'confirmarEliminacion']);
     servicio.getListaPozos.and.resolveTo(pozos);
+    servicio.confirmarEliminacion.and.resolveTo({numero:2047,id_original:8,asignado_en:null,existe:true,reservada:true,proximo:3282,bloqueos:[],elegible:true,token:'desafio'});
     exportador = jasmine.createSpyObj('ExportarKmlService', ['descargar']);
     exportador.descargar.and.resolveTo({ exportadas: 12, omitidas: 3 });
     await TestBed.configureTestingModule({
@@ -43,14 +44,17 @@ describe('PozosListPage', () => {
     let opciones: any;
     let cerrar: (detalle: { role: string }) => void;
     let alerta: any;
+    let presentada: Promise<void>;
     let autorizado: jasmine.Spy;
     const pozo = { ...pozos[0], numero_perforacion: 2047 };
 
     beforeEach(() => {
       autorizado = spyOn(component.authService, 'tieneRol').and.callFake(rol => rol === 'administracion');
       const cierre = new Promise<{ role: string }>(resolve => cerrar = resolve);
+      let mostrar!:()=>void;
+      presentada=new Promise<void>(resolve=>mostrar=resolve);
       alerta = {
-        present: jasmine.createSpy().and.resolveTo(),
+        present: jasmine.createSpy().and.callFake(async()=>mostrar()),
         remove: jasmine.createSpy(),
         onDidDismiss: () => cierre,
         dismiss: jasmine.createSpy().and.callFake((_data: unknown, role: string) => { cerrar({ role }); return Promise.resolve(true); }),
@@ -60,13 +64,14 @@ describe('PozosListPage', () => {
       servicio.deletePozo.and.resolveTo();
     });
 
-    async function abrir() {
-      const tarea = component.borrarPozo(pozo);
+    async function abrir(prueba=false) {
+      const tarea = component.borrarPozo(pozo,prueba);
+      await presentada;
       await fixture.whenStable();
       return { tarea };
     }
     function escribir(texto: string) {
-      return opciones.buttons.find((b: any) => b.role === 'confirm').handler({ confirmacion: texto });
+      return opciones.buttons.find((b: any) => b.role === 'confirm').handler({ confirmacion: texto, motivo:'Corrección administrativa de prueba' });
     }
 
     it('identifica número e ID, advierte datos, fotos y reserva; no borra al abrir', async () => {
@@ -74,7 +79,7 @@ describe('PozosListPage', () => {
       expect(opciones.subHeader).toContain('2047');
       expect(opciones.subHeader).toContain('ID interno: 8');
       expect(opciones.message).toContain('datos y fotografías');
-      expect(opciones.message).toContain('no libera automáticamente el número');
+      expect(opciones.message).toContain('El número seguirá reservado');
       expect(opciones.inputs[0].attributes['aria-label']).toContain('ELIMINAR');
       expect(servicio.deletePozo).not.toHaveBeenCalled();
       cerrar({ role: 'cancel' }); await tarea;
@@ -92,7 +97,7 @@ describe('PozosListPage', () => {
     it('exige el texto exacto y no acepta sólo el rol confirm', async () => {
       const { tarea } = await abrir();
       for (const texto of ['', 'eliminar', ' ELIMINAR', 'ELIMINAR ']) expect(escribir(texto)).toBeFalse();
-      expect(alerta.message).toContain('Confirmación incorrecta');
+      expect(alerta.message).toContain('Completá ELIMINAR');
       cerrar({ role: 'confirm' }); await tarea;
       expect(servicio.deletePozo).not.toHaveBeenCalled();
     });
@@ -102,7 +107,7 @@ describe('PozosListPage', () => {
       expect(escribir('ELIMINAR')).toBeTrue();
       expect(servicio.deletePozo).not.toHaveBeenCalled();
       cerrar({ role: 'confirm' }); await tarea;
-      expect(servicio.deletePozo).toHaveBeenCalledOnceWith(8);
+      expect(servicio.deletePozo).toHaveBeenCalledOnceWith(8,jasmine.objectContaining({token:'desafio',confirmacion:'ELIMINAR',prueba_confirmada:false}));
       expect(component.pozos().map(p => p.id_pozo)).toEqual([9]);
       expect(component.eliminando()).toBeFalse();
     });
@@ -113,12 +118,25 @@ describe('PozosListPage', () => {
       expect(alerta.dismiss).toHaveBeenCalledWith(undefined, 'cancel');
       expect(servicio.deletePozo).not.toHaveBeenCalled();
     });
+    it('eliminar prueba exige declaración expresa además del motivo',async()=>{
+      const {tarea}=await abrir(true);
+      const confirmar=opciones.buttons.find((b:any)=>b.role==='confirm').handler;
+      expect(confirmar({confirmacion:'ELIMINAR',motivo:'Prueba ficticia'})).toBeFalse();
+      expect(confirmar({confirmacion:'ELIMINAR',motivo:'Prueba ficticia',declaracion:'PRUEBA SIN REFERENCIAS'})).toBeTrue();
+      expect(servicio.deletePozo).not.toHaveBeenCalled();cerrar({role:'confirm'});await tarea;
+      expect(servicio.deletePozo).toHaveBeenCalledOnceWith(8,jasmine.objectContaining({prueba_confirmada:true,sin_referencias_externas:true}));
+    });
+    it('un bloqueo del servidor no abre confirmación ni permite borrar',async()=>{
+      servicio.confirmarEliminacion.and.resolveTo({numero:2047,id_original:8,asignado_en:null,existe:true,reservada:true,proximo:3282,bloqueos:['Referencia histórica'],elegible:false,token:null});
+      await component.borrarPozo(pozo,true);
+      expect(component.alertController.create).not.toHaveBeenCalled();expect(servicio.deletePozo).not.toHaveBeenCalled();
+    });
 
     it('salir antes de terminar de crear el diálogo tampoco lo abre ni elimina', async () => {
       const tarea = component.borrarPozo(pozo);
       component.ionViewWillLeave(); await tarea;
       expect(alerta.present).not.toHaveBeenCalled();
-      expect(alerta.remove).toHaveBeenCalled();
+      expect(component.alertController.create).not.toHaveBeenCalled();
       expect(servicio.deletePozo).not.toHaveBeenCalled();
     });
 
@@ -158,7 +176,7 @@ describe('PozosListPage', () => {
     it('HttpClient no emite DELETE antes de la confirmación; después emite sólo uno', async () => {
       spyOn(component.authService, 'userId').and.returnValue(7);
       const real = TestBed.runInInjectionContext(() => new PozosListService());
-      servicio.deletePozo.and.callFake(id => real.deletePozo(id));
+      servicio.deletePozo.and.callFake((id,body) => real.deletePozo(id,body));
       const http = TestBed.inject(HttpTestingController);
       const { tarea } = await abrir();
       http.expectNone(req => req.method === 'DELETE');
@@ -166,7 +184,8 @@ describe('PozosListPage', () => {
       http.expectNone(req => req.method === 'DELETE');
       escribir('ELIMINAR');
       http.expectNone(req => req.method === 'DELETE');
-      cerrar({ role: 'confirm' }); await fixture.whenStable();
+      cerrar({ role: 'confirm' }); await Promise.resolve(); await fixture.whenStable();
+      expect(servicio.deletePozo).toHaveBeenCalledTimes(1);
       const req = http.expectOne(req => req.method === 'DELETE');
       expect(req.request.url).toContain('usuarios/7/pozos/8');
       req.flush(null, { status: 204, statusText: 'No Content' });

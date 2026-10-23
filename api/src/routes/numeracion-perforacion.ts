@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { Type } from "@fastify/type-provider-typebox";
 import { NumeroPerforacion } from "../models/schemas.ts";
-import { ErrorSchema } from "../models/errors.ts";
+import { ErrorSchema, T05ConflictoNumeracion } from "../models/errors.ts";
 import { validarNumeroPerforacion, asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../services/numeracion-perforacion-service.ts";
-import { previsualizarRectificacion, rectificarNumeracion, type SolicitudRectificacion } from '../services/rectificacion-numeracion-service.ts';
+import { previsualizarRectificacion } from '../services/rectificacion-numeracion-service.ts';
 
 export default async function numeracionRoutes(fastify: FastifyInstance) {
   const seguridad = { onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin] };
@@ -26,7 +26,7 @@ export default async function numeracionRoutes(fastify: FastifyInstance) {
         id_pozo_original: Type.String({ pattern: '^[1-9][0-9]*$' }), asignado_en: Type.String({ minLength: 1, maxLength: 100 }),
       }, { additionalProperties: false }), { minItems: 1, maxItems: 100 }),
     }, { additionalProperties: false }) },
-  }, async req => rectificarNumeracion(Number(req.user.sub), req.body as SolicitudRectificacion));
+  }, async () => { throw new T05ConflictoNumeracion('Usá Administrar números de perforaciones eliminadas. La liberación ahora es individual y requiere una confirmación nueva.'); });
   fastify.get("/pozos/numeracion", {
     ...seguridad, schema: { tags: ["pozos"], response: { 200: estado, ...errores } },
   }, async (req) => obtenerNumeracion(Number(req.user.sub)));

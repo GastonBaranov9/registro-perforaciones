@@ -20,7 +20,7 @@
   @if (envio && !resultado()) {
     <p>Solicitud P-{{ envio.body['numero_perforacion'] }} conservada con sus datos y foto para reintentar la misma operación.</p>
     @if (!retirada()) { <ion-button [disabled]="ocupado()" (click)="guardar()">Reintentar la misma carga</ion-button> }
-    @if (envio.rechazada) { <ion-button [disabled]="ocupado()" (click)="otra()">Descartar intento rechazado</ion-button> }
+    @if (envio.rechazada) { <p>El intento y su fotografía están conservados. No lo descartes si necesitás recuperarlos.</p><ion-button [disabled]="ocupado()" (click)="comprobarReintento()">Comprobar número para reintentar esta carga</ion-button><ion-button [disabled]="ocupado()" (click)="otra()">Descartar intento rechazado</ion-button> }
   }
   @if (resultado(); as r) { <p role="status">P-{{ r.numero_perforacion }} guardada.</p><ion-button (click)="ver(r.id_pozo)">Ver perforación</ion-button><ion-button (click)="otra()">Cargar otra perforación</ion-button> }
 </ion-content>

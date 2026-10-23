@@ -1,5 +1,10 @@
 # Rectificación excepcional de numeración
 
+> Esta página describe la implementación anterior (022). La operación vigente en
+> desarrollo se documenta en [Administración de eliminaciones](ADMINISTRACION_ELIMINACIONES.md),
+> requiere 023 y recupera reservas individualmente. El POST anterior por rangos
+> se rechaza sin cambios. Su auditoría histórica permanece intacta.
+
 La eliminación de una perforación no libera su número. La reserva permanente
 conserva el ID original y la fecha de asignación; el contador avanza dentro de
 la misma transacción que crea la perforación. Eliminar tampoco revierte los
