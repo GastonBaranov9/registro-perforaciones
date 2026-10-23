@@ -6,6 +6,9 @@ import { CandidatoPozo, PropietarioOperativo, PropietarioOperativoActualizarBody
 
 @Injectable({ providedIn: 'root' })
 export class PropietariosOperativosService {
+  async vincular(idPozo: number, idPropietario: number, esperado: number | null): Promise<void> {
+    await firstValueFrom(this.http.put(environment.apiURL + 'pozos/' + idPozo + '/propietario', { id_propietario: idPropietario, id_propietario_esperado: esperado }));
+  }
   private http = inject(HttpClient);
   crear(body: PropietarioOperativoCrearBody): Promise<CandidatoPozo> {
     return firstValueFrom(this.http.post<CandidatoPozo>(`${environment.apiURL}pozos/propietarios`, body));

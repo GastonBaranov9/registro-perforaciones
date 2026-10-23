@@ -1,0 +1,43 @@
+import type { FastifyInstance } from "fastify";
+import { Type } from "@fastify/type-provider-typebox";
+import { NumeroPerforacion } from "../models/schemas.ts";
+import { ErrorSchema } from "../models/errors.ts";
+import { validarNumeroPerforacion, asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../services/numeracion-perforacion-service.ts";
+
+export default async function numeracionRoutes(fastify: FastifyInstance) {
+  const seguridad = { onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin] };
+  const estado = Type.Object({
+    proximo: Type.Union([Type.Integer(), Type.Null()]),
+    minimo: Type.Integer(), agotado: Type.Boolean(),
+  });
+  const errores = { 400: ErrorSchema, 403: ErrorSchema, 409: ErrorSchema };
+  fastify.get("/pozos/numeracion", {
+    ...seguridad, schema: { tags: ["pozos"], response: { 200: estado, ...errores } },
+  }, async (req) => obtenerNumeracion(Number(req.user.sub)));
+  fastify.put("/pozos/numeracion", {
+    preValidation: async (req) => validarNumeroPerforacion((req.body as { proximo?: unknown } | undefined)?.proximo),
+    ...seguridad, schema: {
+      tags: ["pozos"],
+      body: Type.Object({ proximo: NumeroPerforacion, esperado: Type.Union([Type.Integer({ minimum: 1, maximum: 2147483648 }), Type.Null()]) }, { additionalProperties: false }),
+      response: { 200: estado, ...errores },
+    },
+  }, async (req) => {
+    const body = req.body as { proximo: number; esperado: number | null };
+    return configurarNumeracion(Number(req.user.sub), body.proximo, body.esperado);
+  });
+  fastify.get("/pozos/numeracion/disponibilidad/:numero", {
+    ...seguridad, schema: {
+      tags: ["pozos"], params: Type.Object({ numero: NumeroPerforacion }),
+      response: { 200: Type.Object({ utilizado: Type.Boolean() }), ...errores },
+    },
+  }, async (req) => consultarNumero(Number(req.user.sub), (req.params as { numero: number }).numero));
+  fastify.patch("/pozos/:id_pozo/numero-perforacion", {
+    preValidation: async (req) => validarNumeroPerforacion((req.body as { numero_perforacion?: unknown } | undefined)?.numero_perforacion),
+    ...seguridad, schema: {
+      tags: ["pozos"], params: Type.Object({ id_pozo: Type.Integer({ minimum: 1 }) }),
+      body: Type.Object({ numero_perforacion: NumeroPerforacion }, { additionalProperties: false }),
+      response: { 200: Type.Object({ numero_perforacion: NumeroPerforacion }), 404: ErrorSchema, ...errores },
+    },
+  }, async (req) => asignarNumeroPendiente(Number(req.user.sub),
+    (req.params as { id_pozo: number }).id_pozo, (req.body as { numero_perforacion: number }).numero_perforacion));
+}

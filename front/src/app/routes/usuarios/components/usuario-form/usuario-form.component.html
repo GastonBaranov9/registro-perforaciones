@@ -1,13 +1,16 @@
-<form #usuarioForm="ngForm" (ngSubmit)="handleSubmit()">
+<form #usuarioForm="ngForm" (ngSubmit)="handleSubmit(usuarioForm)">
   <ion-list>
+    <h3>Datos de la persona</h3>
     
     <ion-item>
       <ion-label position="stacked">Nombre</ion-label>
       <ion-input type="text" name="nombre" [(ngModel)]="this.user().nombre" required></ion-input>
     </ion-item>
 
+    <h3>Cuenta de acceso / permisos</h3>
+    <p>El email de acceso identifica la cuenta. Cambiar la contraseña, desactivar la cuenta o modificar sus roles revoca las sesiones existentes.</p>
     <ion-item>
-      <ion-label position="stacked">Email</ion-label>
+      <ion-label position="stacked">Email de acceso</ion-label>
       <ion-input type="email" name="email" [(ngModel)]="this.user().email" required></ion-input>
     </ion-item>
 
@@ -31,6 +34,24 @@
     "
   ></ion-input>
 </ion-item>
+
+    @if (!passwordRequired() && user().password.length > 0) {
+      <ion-item>
+        <ion-label position="stacked">Confirmar nueva contraseña</ion-label>
+        <ion-input
+          type="password"
+          name="passwordConfirmation"
+          autocomplete="new-password"
+          [(ngModel)]="passwordConfirmation"
+          #confirmation="ngModel"
+          required
+          aria-describedby="password-confirmation-error"
+        ></ion-input>
+      </ion-item>
+      @if (passwordConfirmationInvalid() && (confirmation.touched || passwordConfirmation.length > 0)) {
+        <p id="password-confirmation-error" role="alert">Las contraseñas no coinciden.</p>
+      }
+    }
 
     <ion-item lines="none">
       <ion-label>Activo</ion-label>
@@ -56,7 +77,9 @@
 </ion-item>
   </ion-list>
 
-  <ion-button type="submit" expand="block" [disabled]="usuarioForm.invalid">
-    GUARDAR CAMBIOS
+  <ion-button type="submit" expand="block"
+    [disabled]="usuarioForm.invalid || passwordConfirmationInvalid() || saving()"
+    [attr.aria-busy]="saving()">
+    {{ saving() ? 'GUARDANDO…' : 'GUARDAR CAMBIOS' }}
   </ion-button>
 </form>

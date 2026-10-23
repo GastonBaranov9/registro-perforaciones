@@ -1,7 +1,10 @@
+import { validarIdsRolesCompatibles } from './capacidades.ts';
+import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import { Rol, RolBody, Usuario } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
+import { exigirAdministradorActivo } from './proteccion-admin-service.ts';
 export async function changeRol(
   id_usuario: number,
   id_rol: number
@@ -10,7 +13,7 @@ export async function changeRol(
   let discardClient = false;
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const { rows: cuentas } = await client.query(
       `SELECT id_usuario FROM usuario
        WHERE id_usuario = $1 AND cuenta_acceso = TRUE
@@ -34,6 +37,8 @@ export async function changeRol(
         [id_usuario, id_rol]
       );
     } else {
+      const actuales = await client.query('SELECT id_rol FROM usuario_rol WHERE id_usuario=$1', [id_usuario]);
+      await validarIdsRolesCompatibles([...actuales.rows.map(r => Number(r.id_rol)), id_rol], client);
       await client.query(
         `INSERT INTO usuario_rol (id_usuario, id_rol) VALUES ($1, $2)`,
         [id_usuario, id_rol]
@@ -45,6 +50,7 @@ export async function changeRol(
       [id_usuario]
     );
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     cerrarConexionesUsuario(id_usuario);
   } catch (error) {
@@ -74,18 +80,20 @@ export async function getRoles(id_usuario: number): Promise<Rol[]> {
 }
 
 export async function createRol(data: RolBody): Promise<Rol> {
-  const sql = `
-        INSERT INTO rol
-          (nombre, descr)
-        VALUES ($1, $2)
-        RETURNING id_rol, nombre, descr;
-      `;
-  try {
-    const { rows } = await myPool.query(sql, [data.nombre, data.descr]);
-    return rows[0] as Rol;
-  } catch (e: any) {
-    throw e;
-  }
+  return conEscrituraSesion(async (dbEscritura) => {
+    const sql = `
+          INSERT INTO rol
+            (nombre, descr)
+          VALUES ($1, $2)
+          RETURNING id_rol, nombre, descr;
+        `;
+    try {
+      const { rows } = await dbEscritura.query(sql, [data.nombre, data.descr]);
+      return rows[0] as Rol;
+    } catch (e: any) {
+      throw e;
+    }
+  }, myPool, true);
 }
 
 export async function updateRol(
@@ -94,7 +102,7 @@ export async function updateRol(
 ): Promise<Rol | null> {
   const client = await myPool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const usuariosAfectados: number[] = [];
     const { rows: actuales } = await client.query<{ nombre: string }>(
       `SELECT nombre FROM rol WHERE id_rol = $1 FOR UPDATE`,
@@ -116,6 +124,10 @@ export async function updateRol(
     );
 
     if (actuales[0].nombre !== data.nombre) {
+      const conflicto = await client.query(`SELECT ur.id_usuario FROM usuario_rol ur JOIN rol r ON r.id_rol=ur.id_rol
+        WHERE lower(r.nombre) IN ('administracion','operador_administrativo')
+        GROUP BY ur.id_usuario HAVING count(DISTINCT lower(r.nombre))=2 LIMIT 1`);
+      if (conflicto.rows.length) throw new err.T05DatosIncorrectos('El cambio combina administración y operador administrativo.');
       const { rows: vinculados } = await client.query<{ id_usuario: string | number }>(
         `SELECT id_usuario FROM usuario_rol WHERE id_rol = $1`,
         [id_rol],
@@ -133,6 +145,7 @@ export async function updateRol(
       );
     }
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return rows[0] ?? null;
@@ -147,7 +160,7 @@ export async function updateRol(
 export async function deleteRol(id_rol: number): Promise<Boolean> {
   const client = await myPool.connect();
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
     const usuariosAfectados: number[] = [];
     const { rows } = await client.query(
       `SELECT id_rol FROM rol WHERE id_rol = $1 FOR UPDATE`,
@@ -172,6 +185,7 @@ export async function deleteRol(id_rol: number): Promise<Boolean> {
       [id_rol]
     );
     await client.query(`DELETE FROM rol WHERE id_rol = $1`, [id_rol]);
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     for (const idUsuario of usuariosAfectados) cerrarConexionesUsuario(idUsuario);
     return true;
@@ -220,7 +234,7 @@ export async function isPerf(id_perforador: number): Promise<boolean> {
   const rolesIdPerf = await getRoles(id_perforador);
 
   for (const rol of rolesIdPerf) {
-    if (rol.nombre === "perforador") {
+    if (["perforador", "operador_administrativo"].includes(rol.nombre.toLowerCase())) {
       return true;
     }
   }

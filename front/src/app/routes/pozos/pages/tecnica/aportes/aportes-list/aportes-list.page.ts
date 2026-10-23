@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, OnInit, signal } from '@angular/core';
 import { AporteListService } from '../../../../../../shared/services/aportes-service/aporte-list-service/aporte-list.service';
 import { NivelAporte } from '../../../../../../shared/types/schemas';
@@ -11,14 +12,13 @@ import {
   IonCardTitle,
   IonCardContent,
   IonList,
-  IonItem,
-  IonLabel,
   IonButtons,
   IonToolbar,
   IonBackButton,
 } from '@ionic/angular/standalone';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-aportes-list',
   imports: [
     IonContent,
@@ -28,8 +28,6 @@ import {
     IonCardTitle,
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
     IonButtons,
     IonToolbar,
     IonBackButton,
@@ -38,6 +36,7 @@ import {
   styleUrl: './aportes-list.page.css',
 })
 export class AportesListPage implements OnInit, ViewWillEnter {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public aporteListService = inject(AporteListService);
   public toastController = inject(ToastController);
   public ruta = inject(ActivatedRoute);
@@ -57,9 +56,9 @@ export class AportesListPage implements OnInit, ViewWillEnter {
     if (!this.id_pozo) throw new Error('Pozo no encontrado');
     const nivelAporte = await this.aporteListService.getNivelesAporte(this.id_pozo);
     this.nivelesAporte.set(nivelAporte);
-    this.ionViewWillEnter();
   }
   public async borrarNivelAporte(nivelAporte: NivelAporte) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       if (!this.id_pozo) throw new Error('Pozo no encontrado');
       await this.aporteListService.deleteNivelAporte(this.id_pozo, nivelAporte);

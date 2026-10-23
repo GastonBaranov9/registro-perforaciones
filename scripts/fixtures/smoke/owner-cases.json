@@ -1,0 +1,88 @@
+{
+  "numeric": [
+    {
+      "id_pozo": 1,
+      "id_propietario": 2
+    }
+  ],
+  "provisional": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "propietario_provisional": "Nombre observado",
+      "origen": "operativo",
+      "foto_url": "/foto"
+    }
+  ],
+  "historical_unknown": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "origen": "historico"
+    }
+  ],
+  "invalid_null": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "origen": "operativo"
+    }
+  ],
+  "invalid_double": [
+    {
+      "id_pozo": 1,
+      "id_propietario": 2,
+      "propietario_provisional": "Nombre"
+    }
+  ],
+  "invalid_blank": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "propietario_provisional": "   "
+    }
+  ],
+  "invalid_type": [
+    {
+      "id_pozo": 1,
+      "id_propietario": "2"
+    }
+  ],
+  "invalid_fraction": [
+    {
+      "id_pozo": 1,
+      "id_propietario": 1.5
+    }
+  ],
+  "invalid_zero": [
+    {
+      "id_pozo": 1,
+      "id_propietario": 0
+    }
+  ],
+  "invalid_missing": [
+    {
+      "id_pozo": 1
+    }
+  ],
+  "invalid_well": [
+    {
+      "id_pozo": true,
+      "id_propietario": 2
+    }
+  ],
+  "invalid_long": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "propietario_provisional": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "invalid_origin": [
+    {
+      "id_pozo": 1,
+      "id_propietario": null,
+      "origen": "HISTORICO"
+    }
+  ]
+}

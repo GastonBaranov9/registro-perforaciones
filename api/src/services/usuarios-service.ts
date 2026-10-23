@@ -1,3 +1,5 @@
+import { validarIdsRolesCompatibles } from './capacidades.ts';
+import { conEscrituraSesion, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type {
   Rol,
@@ -8,6 +10,7 @@ import type {
 import * as err from "../models/errors.ts";
 import { hashPassword } from "./password-service.ts";
 import { cerrarConexionesUsuario } from "../plugins/websocket.ts";
+import { exigirAdministradorActivo } from './proteccion-admin-service.ts';
 
 type UsuarioPublicoSinRoles = Omit<UsuarioPublico, "roles">;
 
@@ -42,7 +45,8 @@ export async function createUsuario(
   const client = await myPool.connect();
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
+    await validarIdsRolesCompatibles(data.roles.map(r => r.id_rol), client);
 
     const passwordHash = await hashPassword(data.password);
 
@@ -115,7 +119,8 @@ export async function updateUsuario(
   const client = await myPool.connect();
 
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, true);
+    await validarIdsRolesCompatibles(data.roles.map(r => r.id_rol), client);
 
     const { rows: estados } = await client.query<{ activo: boolean }>(
       `SELECT activo FROM usuario
@@ -190,6 +195,7 @@ export async function updateUsuario(
       [id_usuario]
     );
 
+    await exigirAdministradorActivo(client);
     await client.query("COMMIT");
     if (debeRevocar) cerrarConexionesUsuario(id_usuario);
 
@@ -206,16 +212,27 @@ export async function updateUsuario(
 }
 
 export async function deleteUsuario(id_usuario: number): Promise<Boolean> {
-  const { rowCount } = await myPool.query(
-    `
-    DELETE FROM usuario
-    WHERE id_usuario = $1 AND cuenta_acceso = TRUE
-    `,
-    [id_usuario]
-  );
-  if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
-  cerrarConexionesUsuario(id_usuario);
-  return (rowCount ?? 0) > 0;
+  const dbEscritura = await myPool.connect();
+  try {
+    await iniciarEscrituraSesion(dbEscritura, true);
+    const { rowCount } = await dbEscritura.query(
+      `
+      UPDATE usuario SET activo=FALSE, cuenta_acceso=FALSE, email=NULL,
+        password=NULL, version_sesion=version_sesion+1
+      WHERE id_usuario = $1 AND cuenta_acceso = TRUE
+      `,
+      [id_usuario]
+    );
+    if (rowCount === 0) throw new err.T05UsuarioNoEncontrado();
+    // Conservar la identidad y sus relaciones, quitando únicamente permisos de acceso.
+    await dbEscritura.query("DELETE FROM usuario_rol WHERE id_usuario=$1 AND id_rol IN (SELECT id_rol FROM rol WHERE nombre <> 'propietario')", [id_usuario]);
+    await dbEscritura.query("UPDATE sesion_nativa SET revoked_at=COALESCE(revoked_at,clock_timestamp()), revocation_reason=COALESCE(revocation_reason,'user_logout') WHERE id_usuario=$1", [id_usuario]);
+    await exigirAdministradorActivo(dbEscritura);
+    await dbEscritura.query('COMMIT');
+    cerrarConexionesUsuario(id_usuario);
+    return true;
+  } catch (error) { await dbEscritura.query('ROLLBACK'); throw error; }
+  finally { dbEscritura.release(); }
 }
 
 export async function getUsuarioById(

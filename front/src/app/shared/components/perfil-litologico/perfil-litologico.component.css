@@ -21,7 +21,15 @@ svg { display: block; width: 100%; max-width: 100%; height: auto; }
 .tuberia-exterior, .tuberia-interior { fill: none; stroke: #222; pointer-events: none; }
 .tuberia-exterior { stroke-width: 2; }
 .tuberia-interior { stroke-width: 1; stroke-dasharray: 3 2; }
+.perforacion-abierta { fill: none; stroke: #4d381f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.contraste-perforacion-abierta { fill: none; stroke: #fff; stroke-width: 4; stroke-dasharray: 6 4; }
+.nivel-terreno { stroke: #332919; stroke-width: 2; }
+.rotulo-terreno { font-size: 12px; font-weight: 700; }
+.constructivo.sobresaliente { fill-opacity: 1; }
 .constructivo { stroke: #111; stroke-width: 1.5; fill-opacity: .72; }
+.sello-sanitario { stroke: #333; stroke-width: 1; }
+.etiqueta-sello_sanitario { font-weight: 700; }
+.leyenda-constructiva { margin: .5rem 0; font-size: .88rem; }
 .constructivo.material-pvc { fill: #429bc1; }
 .constructivo.material-acero { fill: #858b91; }
 .constructivo.material-no-especificado { fill: #b8b8b8; }

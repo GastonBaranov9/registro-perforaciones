@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { MAX_FOTO_BASE64_CHARS } from "../constants/fotos.ts";
 import { DEPARTAMENTOS_URUGUAY } from "../constants/departamentos-uruguay.ts";
+import { PASSWORD_MIN_LENGTH, PASSWORD_NON_BLANK, BCRYPT_MAX_BYTES } from '../constants/password.ts';
 
 export const RevestimientoValores = {
   PVC_6: "PVC: 6",
@@ -23,9 +24,12 @@ export const Rol = Type.Object({
 
 export type Rol = Static<typeof Rol>;
 
+// Login and account creation share validation. No trimming: whitespace is invalid.
+// PostgreSQL CITEXT UNIQUE supplies case-insensitive equality and uniqueness.
+export const EmailLoginSchema = Type.String({ format: 'email' });
 export const Usuario = Type.Object({
   id_usuario: Type.Integer(),
-  email: Type.String({ format: "email" }),
+  email: EmailLoginSchema,
   nombre: Type.String(),
   password: Type.String(),
   activo: Type.Boolean(),
@@ -39,9 +43,10 @@ export type Usuario = Static<typeof Usuario>;
 export const UsuarioPublico = Type.Omit(Usuario, ["password", "version_sesion"]);
 export type UsuarioPublico = Static<typeof UsuarioPublico>;
 
-const PasswordPlanoSchema = Type.String({
-  minLength: 8,
-  pattern: "\\S",
+export const PasswordPlanoSchema = Type.String({
+  minLength: PASSWORD_MIN_LENGTH,
+  maxLength: BCRYPT_MAX_BYTES,
+  pattern: PASSWORD_NON_BLANK,
 });
 
 export const UsuarioCrearBody = Type.Object({
@@ -125,12 +130,18 @@ export const Sitio = Type.Object({
 
 export type Sitio = Static<typeof Sitio>;
 
+export const NumeroPerforacion = Type.Integer({ minimum: 1, maximum: 2147483647 });
+
 export const Pozo = Type.Object({
+  origen: Type.Optional(Type.Union([Type.Literal('normal'), Type.Literal('historico')])),
+  numero_perforacion: Type.Optional(Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1, maximum: 2147483647 })),
   id_pozo: Type.Integer(),
-  id_propietario: Type.Integer(),
-  id_sitio: Type.Integer(),
+  id_propietario: Type.Unsafe<number | null>({ type: ["integer", "null"], minimum: 1 }),
+  perforador_provisional: Type.Optional(Type.Union([Type.String({ maxLength: 160 }), Type.Null()])),
+  propietario_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160 }), Type.Null()])),
+  id_sitio: Type.Unsafe<number | null>({ type: ['integer', 'null'], minimum: 1 }),
   empresa: Type.Optional(Type.String()),
-  id_perforador: Type.Integer(),
+  id_perforador: Type.Unsafe<number | null>({ type: ['integer', 'null'], minimum: 1 }),
   fecha_inicio: Type.Optional(Type.String({ format: "date" })),
   fecha_fin: Type.Optional(Type.String({ format: "date" })),
   profundidad_final_m: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
@@ -155,6 +166,7 @@ export const IntervaloLitologico = Type.Object({
   id_pozo: Type.Integer(),
   desde_m: Type.Number(),
   hasta_m: Type.Number(),
+  litologia_provisional: Type.Optional(Type.Union([Type.String(),Type.Null()])),
   material: Type.String(),
   id_litologia: Type.Union([Type.Integer(), Type.Null()]),
   litologia_nombre: Type.Union([Type.String(), Type.Null()]),
@@ -175,6 +187,7 @@ export const IntervaloDiametroPerforacion = Type.Object({
   hasta_m: Type.Number(),
   diametro_pulg: Type.Number(),
   material_tuberia: Type.Union([MaterialTuberia, Type.Null()]),
+  sin_tuberia: Type.Optional(Type.Boolean()),
 });
 
 export type IntervaloDiametroPerforacion = Static<
@@ -225,32 +238,19 @@ export const Documento = Type.Object({
 
 export type Documento = Static<typeof Documento>;
 
-export const InformeAntes = Type.Object({
-  id_informe: Type.Integer(),
-  id_pozo: Type.Integer(),
-  titulo: Type.String(),
-  descripcion: Type.Optional(Type.String()),
-  generado_por: Type.Integer(),
-  generado_en: Type.String({ format: "date-time" }),
-});
-
-export type InformeAntes = Static<typeof Informe>;
-
-export const InformeBody = Type.Omit(InformeAntes, ["id_informe", "id_pozo"]);
-export type InformeBody = Static<typeof InformeBody>;
-
 export const bodyIntervaloLitologico = Type.Object({
   id_intervalo_litologico: Type.Optional(Type.Integer({ minimum: 1 })),
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+  litologia_provisional: Type.Optional(Type.Union([Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' }),Type.Null()])),
   material: Type.String({ minLength: 1 }),
-  id_litologia: Type.Optional(Type.Integer({ minimum: 1 })),
+  id_litologia: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
 });
 
 export type bodyIntervaloLitologico = Static<typeof bodyIntervaloLitologico>;
 
 export const FamiliasLitologia = ["basalto", "suelo", "arenisca", "arcilla_arena", "tosca", "gravilla", "granito", "otro"] as const;
-export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite"] as const;
+export const PatronesLitologia = ["basalt", "basalt_fractured", "organic", "sandstone_fine", "sandstone_medium", "sandstone_coarse", "clay", "sandy_clay", "tosca", "gravel_fine", "gravel_coarse", "granite", "concrete"] as const;
 export const FamiliaLitologia = Type.Union(FamiliasLitologia.map((valor) => Type.Literal(valor)));
 export type FamiliaLitologia = Static<typeof FamiliaLitologia>;
 export const PatronCatalogoLitologia = Type.Union(PatronesLitologia.map((valor) => Type.Literal(valor)));
@@ -282,7 +282,9 @@ export const IntervaloDiametroPerforacionBody = Type.Object({
   desde_m: Type.Number({ minimum: 0 }),
   hasta_m: Type.Number({ exclusiveMinimum: 0 }),
   diametro_pulg: Type.Number({ exclusiveMinimum: 0 }),
-  material_tuberia: MaterialTuberia,
+  material_tuberia: Type.Union([MaterialTuberia, Type.Null()]),
+  // Sin default: no modificar solicitudes antiguas antes de huellaOffline().
+  sin_tuberia: Type.Optional(Type.Boolean()),
 });
 
 export type IntervaloDiametroPerforacionBody = Static<
@@ -329,7 +331,8 @@ export const SitioNuevoPozoBody = Type.Object({
 });
 export type SitioNuevoPozoBody = Static<typeof SitioNuevoPozoBody>;
 
-export const NuevoPozo = Type.Omit(Pozo, ["id_pozo", "fecha_creado"]);
+export const NuevoPozo = Type.Object({ ...Type.Omit(Pozo, ['id_pozo', 'fecha_creado', 'origen', 'id_sitio', 'id_perforador', 'perforador_provisional']).properties,
+  id_sitio: Type.Integer({ minimum: 1 }), id_perforador: Type.Integer({ minimum: 1 }) });
 
 export type NuevoPozo = Static<typeof NuevoPozo>;
 export const PozoModerno = Type.Omit(NuevoPozo, ["sello_sanitario", "pre_filtro"]);
@@ -340,9 +343,17 @@ export const FotoNuevaPozo = Type.Object({
   base64: Type.String({ minLength: 1, maxLength: MAX_FOTO_BASE64_CHARS }),
 });
 
+export const SelloSanitarioConstructivo = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }),
+  hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+}, { additionalProperties: false });
+export type SelloSanitarioConstructivo = Static<typeof SelloSanitarioConstructivo>;
+export const SelloSanitarioOpcional = Type.Optional(Type.Union([SelloSanitarioConstructivo, Type.Null()]));
+
 export const PozoCompletoBody = Type.Object({
   pozo: Type.Omit(PozoModerno, ["id_sitio"]),
   sitio_nuevo: SitioNuevoPozoBody,
+  sello_sanitario_constructivo: SelloSanitarioOpcional,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
   intervalos_filtro: Type.Array(IntervaloFiltroCreateBody, { default: [] }),
@@ -354,6 +365,7 @@ export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
 
 export const PerfilLitologicoVistaPreviaBody = Type.Object({
   profundidad_final_m: Type.Number({ exclusiveMinimum: 0 }),
+  sello_sanitario_constructivo: SelloSanitarioOpcional,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
   intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
@@ -364,6 +376,7 @@ export type PerfilLitologicoVistaPreviaBody = Static<typeof PerfilLitologicoVist
 export const PozoCompletoUpdateBody = Type.Intersect([
   Type.Object({
     pozo: PozoModerno,
+    sello_sanitario_constructivo: SelloSanitarioOpcional,
     intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
     intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
     intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
@@ -408,6 +421,8 @@ export const PropietarioOperativoActualizarBody = Type.Partial(PropietarioOperat
 export type PropietarioOperativoActualizarBody = Static<typeof PropietarioOperativoActualizarBody>;
 
 export const PropietarioOperativo = Type.Object({
+  cuenta_acceso: Type.Optional(Type.Boolean()),
+  activo: Type.Optional(Type.Boolean()),
   id_usuario: Type.Integer(),
   nombre: Type.String(),
   documento_rut: Type.Union([Type.String(), Type.Null()]),
@@ -423,7 +438,8 @@ export type PropietarioOperativo = Static<typeof PropietarioOperativo>;
 export const PozoDetalle = Type.Intersect([
   Pozo,
   Type.Object({
-    propietario_nombre: Type.String(),
+    sello_sanitario_constructivo: SelloSanitarioOpcional,
+    propietario_nombre: Type.Union([Type.String(), Type.Null()]),
     propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
     propietario_documento_rut: Type.Union([Type.String(), Type.Null()]),
     propietario_telefono: Type.Union([Type.String(), Type.Null()]),
@@ -431,12 +447,18 @@ export const PozoDetalle = Type.Intersect([
     propietario_localidad: Type.Union([Type.String(), Type.Null()]),
     propietario_departamento: Type.Union([...DEPARTAMENTOS_URUGUAY.map((valor) => Type.Literal(valor)), Type.Null()]),
     propietario_observaciones: Type.Union([Type.String(), Type.Null()]),
-    perforador_nombre: Type.String(),
-    perforador_email: Type.String({ format: "email" }),
-    sitio: Sitio,
+    perforador_nombre: Type.Union([Type.String(), Type.Null()]),
+    perforador_email: Type.Union([Type.String({ format: "email" }), Type.Null()]),
+    sitio: Type.Optional(Sitio),
   }),
 ]);
 export type PozoDetalle = Static<typeof PozoDetalle>;
+
+export const PozoListado = Type.Intersect([
+  Pozo,
+  Type.Object({ propietario_nombre: Type.String(), sitio_nombre: Type.String() }),
+]);
+export type PozoListado = Static<typeof PozoListado>;
 
 export const PozoUpdate = Type.Omit(Pozo, [
   "id_pozo",
@@ -445,52 +467,3 @@ export const PozoUpdate = Type.Omit(Pozo, [
 ]);
 
 export type PozoUpdate = Static<typeof PozoUpdate>;
-
-export const Informe = Type.Object({
-  id_perforacion: Type.Integer(),
-  propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
-  propietario_nombre: Type.String(),
-  ubicacion: Type.String(),
-  empresa: Type.Optional(Type.String()),
-  perforador: Type.String(),
-  fecha_inicio: Type.Optional(Type.String({ format: "date" })),
-  fecha_fin: Type.Optional(Type.String({ format: "date" })),
-  profundidad_final_m: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
-  sello_sanitario: Type.Optional(Type.Boolean()),
-  pre_filtro: Type.Optional(Type.String()),
-  nivel_estatico_m: Type.Optional(Type.Number()),
-  nivel_dinamico_m: Type.Optional(Type.Number()),
-  caudal_estimado_lh: Type.Optional(Type.Integer()),
-  metodo_sedimentario: Type.Optional(Type.String()),
-  metodo_rocoso: Type.Optional(Type.String()),
-  cementacion: Type.Optional(Type.String()),
-  desarrollo: Type.Optional(Type.String()),
-  diametro_perforacion: Type.Optional(Type.Number()),
-  nivel_aporte_m: Type.Optional(Type.Number()),
-  filtros: Type.Optional(Type.String()),
-  diametro_tuberia: Type.Optional(Type.Number()),
-  fecha_creado: Type.String({ format: "date-time" }),
-});
-
-export type Informe = Static<typeof Informe>;
-
-export const CaracteristicasConstructivas = Type.Object({
-  id_pozo: Type.Integer(),
-  metodo_sedimentario: Type.String(),
-  metodo_rocoso: Type.String(),
-  cementacion: Type.String(),
-  desarrollo: Type.String(),
-  revestimiento: Type.Array(
-    Type.Object({
-      material: Type.String(),
-      diametro_pulg: Type.Number(),
-    })
-  ),
-  diametro_desde: Type.Number(),
-  diametro_hasta: Type.Number(),
-  diametro_tuberia: Type.Number(),
-});
-
-export type CaracteristicasConstructivas = Static<
-  typeof CaracteristicasConstructivas
->;

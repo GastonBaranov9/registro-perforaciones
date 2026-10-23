@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 umask 077
+. "$(dirname "$0")/persistence.sh"
 
 case "${RESTORE_CONFIRM:-}" in
   RESTORE_EMPTY_TARGET) restore_mode="empty" ;;
@@ -30,7 +31,8 @@ manifest_value_optional() {
   ' "$manifest"
 }
 
-[ "$(manifest_value RSP_BACKUP_FORMAT)" = "1" ] || { echo "Formato de backup no soportado" >&2; exit 1; }
+format=$(manifest_value RSP_BACKUP_FORMAT)
+case "$format" in 1|2) :;; *) echo "Formato de backup no soportado" >&2; exit 1;; esac
 [ "$(manifest_value STATUS)" = "complete" ] || { echo "El backup no está completo" >&2; exit 1; }
 [ "$(manifest_value BUNDLE_ID)" = "$RESTORE_BUNDLE" ] || { echo "El manifest no corresponde al bundle" >&2; exit 1; }
 schema_state="$(manifest_value_optional SCHEMA_STATE)"
@@ -46,18 +48,31 @@ else
   [ "$manifest_migrations" = legacy-unmanaged ] || { echo "Manifest legacy incoherente" >&2; exit 1; }
 fi
 db_file="$(manifest_value DATABASE_FILE)"
-photos_file="$(manifest_value PHOTOS_FILE)"
+persistence_prefix=PHOTOS
+if [ "$format" = 2 ]; then
+  persistence_prefix=PERSISTENCE
+  [ "$(manifest_value PERSISTENCE_SCOPE)" = entire-volume ]
+  [ "$(manifest_value VERIFICATION)" = full-extraction-source-match ]
+  # Fixed filenames: checksum entries cannot refer outside this bundle.
+  [ "$(wc -l < "$bundle/SHA256SUMS" | tr -d ' ')" = 5 ]
+  for name in database.dump persistent-files.tar.gz persistence.inventory database.state manifest.txt; do
+    expected=$(awk -v n="$name" '$2==n {count++; print $1} END {if(count!=1)exit 1}' "$bundle/SHA256SUMS")
+    actual=$(sha256sum < "$bundle/$name"); actual=${actual%% *}
+    [ "$actual" = "$expected" ] || { echo "Checksum de bundle invalido" >&2; exit 1; }
+  done
+fi
+photos_file="$(manifest_value ${persistence_prefix}_FILE)"
 [ "$db_file" = "database.dump" ] || { echo "Nombre de dump no permitido" >&2; exit 1; }
-[ "$photos_file" = "photos.tar.gz" ] || { echo "Nombre de archivo de fotos no permitido" >&2; exit 1; }
+[ "$format:$photos_file" = "1:photos.tar.gz" ] || [ "$format:$photos_file" = "2:persistent-files.tar.gz" ] || { echo "Nombre de persistencia no permitido" >&2; exit 1; }
 [ -f "$bundle/$db_file" ] || { echo "Falta database.dump" >&2; exit 1; }
 [ -f "$bundle/$photos_file" ] || { echo "Falta photos.tar.gz" >&2; exit 1; }
 
 db_sha="$(sha256sum "$bundle/$db_file" | awk '{print $1}')"
 photos_sha="$(sha256sum "$bundle/$photos_file" | awk '{print $1}')"
 [ "$db_sha" = "$(manifest_value DATABASE_SHA256)" ] || { echo "Checksum inválido para PostgreSQL" >&2; exit 1; }
-[ "$photos_sha" = "$(manifest_value PHOTOS_SHA256)" ] || { echo "Checksum inválido para fotografías" >&2; exit 1; }
+[ "$photos_sha" = "$(manifest_value ${persistence_prefix}_SHA256)" ] || { echo "Checksum inválido para fotografías" >&2; exit 1; }
 [ "$(wc -c < "$bundle/$db_file" | tr -d ' ')" = "$(manifest_value DATABASE_SIZE)" ] || { echo "Tamaño inválido para PostgreSQL" >&2; exit 1; }
-[ "$(wc -c < "$bundle/$photos_file" | tr -d ' ')" = "$(manifest_value PHOTOS_SIZE)" ] || { echo "Tamaño inválido para fotografías" >&2; exit 1; }
+[ "$(wc -c < "$bundle/$photos_file" | tr -d ' ')" = "$(manifest_value ${persistence_prefix}_SIZE)" ] || { echo "Tamaño inválido para fotografías" >&2; exit 1; }
 pg_restore --list "$bundle/$db_file" >/dev/null || { echo "Dump PostgreSQL inválido" >&2; exit 1; }
 
 printf '%s\n' "$PGDATABASE" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]{0,62}$' || { echo "PGDATABASE no es un identificador seguro" >&2; exit 1; }
@@ -78,10 +93,38 @@ marker_previous_preserved=false
 photos_new_active=false
 marker_new_active=false
 db_committed=false
+database_staged=false
 connections_disabled=false
 lock_acquired=false
 staging_created=false
 preserve_staging=false
+previous_volume="/data/.rsp-previous-volume-$bundle_key"
+volume_switch_started=false
+volume_preserved=false
+volume_entries() {
+  for entry in /data/* /data/.[!.]* /data/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case "$entry" in "$staging"|"$lock_dir"|"$previous_volume") continue;; esac
+    printf '%s\n' "$entry"
+  done
+}
+rollback_volume() {
+  rollback_ok=true
+  if [ "$volume_preserved" = true ]; then
+    volume_entries > "$staging/current.list" || rollback_ok=false
+    while IFS= read -r entry; do mv "$entry" "$staging/failed/" || rollback_ok=false; done < "$staging/current.list"
+  fi
+  if [ "$volume_switch_started" = true ]; then
+    for entry in "$previous_volume"/* "$previous_volume"/.[!.]* "$previous_volume"/..?*; do
+      [ -e "$entry" ] || continue
+      mv "$entry" /data/ || rollback_ok=false
+    done
+    rmdir "$previous_volume" || rollback_ok=false
+    chown "$target_root_owner" /data || rollback_ok=false
+    chmod "$target_root_mode" /data || rollback_ok=false
+  fi
+  [ "$rollback_ok" = true ]
+}
 
 fail_if_requested() {
   [ "${RESTORE_TEST_FAIL_AT:-}" != "$1" ] || {
@@ -95,6 +138,7 @@ database_exists() {
 }
 
 rollback_photos() {
+  if [ "$format" = 2 ]; then rollback_volume; return $?; fi
   rollback_ok=true
   if [ "$marker_new_active" = true ] && [ -f "$layout_marker" ]; then
     mv "$layout_marker" "$staging/layout-marker.failed" || rollback_ok=false
@@ -127,7 +171,7 @@ on_exit() {
       if [ "$connections_disabled" = true ] && database_exists "$PGDATABASE"; then
         psql --no-psqlrc --quiet --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname=postgres --command="ALTER DATABASE \"$PGDATABASE\" WITH ALLOW_CONNECTIONS true" >/dev/null 2>&1 || true
       fi
-      if database_exists "$restore_db"; then
+      if [ "$database_staged" = true ] && database_exists "$restore_db"; then
         dropdb --if-exists --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --maintenance-db=postgres "$restore_db" >/dev/null 2>&1 || true
       fi
     fi
@@ -141,14 +185,24 @@ on_exit() {
 trap on_exit EXIT
 trap 'exit 130' HUP INT TERM
 
+if [ "$format" = 1 ]; then
 tar -tzf "$bundle/$photos_file" > "$listing"
 while IFS= read -r item; do
   printf '%s\n' "$item" | grep -Eq '(^/|(^|/)\.\.(/|$))' && exit 1
   printf '%s\n' "$item" | grep -Eq '^fotos(/.*)?$' || exit 1
 done < "$listing" || { echo "El archivo de fotos contiene rutas no permitidas" >&2; exit 1; }
 
+fi
 mkdir -p /data
+if [ "$format" = 2 ]; then
+  persistence_inventory /data "$listing"
+  target_root_owner=$(stat -c '%u:%g' /data)
+  target_root_mode=$(stat -c '%a' /data)
+fi
 if [ "$restore_mode" = empty ]; then
+  if [ "$format" = 2 ]; then
+    [ -z "$(find /data -mindepth 1 -maxdepth 1 ! -name fotos ! -name .rsp-photo-storage-layout -print -quit)" ] || { echo "El volumen destino no esta vacio" >&2; exit 1; }
+  fi
   table_count="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
   [ "$table_count" = 0 ] || { echo "Restore rechazado: la base destino no está vacía" >&2; exit 1; }
   if [ -d /data/fotos ]; then
@@ -163,6 +217,13 @@ mkdir "$staging"
 staging_created=true
 if [ -d "$previous_photos" ]; then rm -rf "$previous_photos"; fi
 if [ -f "$previous_marker" ]; then rm -f "$previous_marker"; fi
+if [ "$format" = 2 ]; then
+  mkdir "$staging/payload" "$staging/failed"
+  persistence_extract "$bundle/$photos_file" "$staging/payload"
+  persistence_inventory "$staging/payload" "$staging/verified.inventory"
+  cmp -s "$bundle/persistence.inventory" "$staging/verified.inventory" || { echo "Persistencia restaurada incompleta" >&2; exit 1; }
+  [ -d "$staging/payload/fotos" ]
+else
 tar -xzf "$bundle/$photos_file" -C "$staging"
 [ -d "$staging/fotos" ] || { echo "El archivo no contiene fotos/" >&2; exit 1; }
 [ -z "$(find "$staging/fotos" -type l -print -quit)" ] || { echo "El archivo de fotos contiene symlinks no permitidos" >&2; exit 1; }
@@ -170,6 +231,7 @@ chown -R 1000:1000 "$staging/fotos"
 printf 'RSP_PHOTO_STORAGE_LAYOUT=1\n' > "$staging/layout-marker"
 chown 1000:1000 "$staging/layout-marker"
 chmod 0640 "$staging/layout-marker"
+fi
 
 current_owner="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()")"
 current_encoding="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --command="SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname=current_database()")"
@@ -192,6 +254,7 @@ if database_exists "$previous_db"; then
   dropdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --maintenance-db=postgres "$previous_db"
 fi
 createdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --maintenance-db=postgres --owner="$db_owner" --encoding="$db_encoding" --lc-collate="$db_collate" --lc-ctype="$db_ctype" --template=template0 "$restore_db"
+database_staged=true
 if ! fail_if_requested db_restore || ! pg_restore --exit-on-error --single-transaction --no-owner --no-acl --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$restore_db" "$bundle/$db_file"; then
   echo "No se pudo restaurar la DB de staging" >&2
   exit 1
@@ -220,9 +283,28 @@ if [ -n "$expected_extensions" ]; then
   restored_extensions="$(psql --no-psqlrc --tuples-only --no-align --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$restore_db" --command="SELECT COALESCE(string_agg(extname || ':' || extversion,',' ORDER BY extname),'') FROM pg_extension")"
   [ "$restored_extensions" = "$expected_extensions" ] || { echo "Extensions restauradas no coinciden con el manifest" >&2; exit 1; }
 fi
+if [ "$format" = 2 ]; then
+  PGDATABASE="$restore_db" psql -XqAt --file="$(dirname "$0")/backup-state.sql" > "$staging/database.state"
+  cmp -s "$bundle/database.state" "$staging/database.state" || { echo "Datos o secuencias restaurados no coinciden" >&2; exit 1; }
+fi
 echo "RESTORE_DB_STAGED=$RESTORE_BUNDLE"
 
 fail_if_requested before_current_move
+if [ "$format" = 2 ]; then
+  mkdir "$previous_volume"
+  volume_switch_started=true
+  volume_entries > "$staging/current.list"
+  while IFS= read -r entry; do mv "$entry" "$previous_volume/"; done < "$staging/current.list"
+  volume_preserved=true
+  fail_if_requested after_current_preserved
+  fail_if_requested before_staged_switch
+  for entry in "$staging/payload"/* "$staging/payload"/.[!.]* "$staging/payload"/..?*; do
+    [ -e "$entry" ] || continue
+    mv "$entry" /data/
+  done
+  chown "$(stat -c '%u:%g' "$staging/payload")" /data
+  chmod "$(stat -c '%a' "$staging/payload")" /data
+else
 if [ -d /data/fotos ]; then mv /data/fotos "$previous_photos"; photos_previous_preserved=true; fi
 fail_if_requested after_current_preserved
 fail_if_requested before_staged_switch
@@ -231,6 +313,7 @@ photos_new_active=true
 if [ -f "$layout_marker" ]; then mv "$layout_marker" "$previous_marker"; marker_previous_preserved=true; fi
 mv "$staging/layout-marker" "$layout_marker"
 marker_new_active=true
+fi
 fail_if_requested after_photo_switch
 
 fail_if_requested before_db_swap
@@ -257,6 +340,7 @@ if [ "${RESTORE_TEST_FAIL_AT:-}" = after_db_swap ] || [ "${RESTORE_TEST_FAIL_AT:
   cleanup_pending=true
 else
   dropdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --maintenance-db=postgres "$previous_db" || cleanup_pending=true
+  if [ "$format" = 2 ] && [ -d "$previous_volume" ]; then rm -rf "$previous_volume" || cleanup_pending=true; fi
   if [ -d "$previous_photos" ]; then rm -rf "$previous_photos" || cleanup_pending=true; fi
   if [ -f "$previous_marker" ]; then rm -f "$previous_marker" || cleanup_pending=true; fi
 fi
@@ -265,7 +349,7 @@ if [ "$cleanup_pending" = true ]; then
 fi
 
 rm -f "$listing"
-rmdir "$staging"
+if [ "$format" = 2 ]; then rm -rf "$staging"; else rmdir "$staging"; fi
 rmdir "$lock_dir"
 lock_acquired=false
 trap - EXIT HUP INT TERM

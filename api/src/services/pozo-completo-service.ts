@@ -1,4 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { errorMaterialDiametro, hayFiltroSinTuberia } from "./compatibilidad-entubamiento.ts";
+import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes, exigirTextoLitologico, exigirLitologiaNoConstructiva } from './litologia-provisional.ts';
+import { guardarSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
+import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
+import { exigirEpoca } from './epoca-datos-service.ts';
+import { normalizarPropiedad, validarPropiedad } from "./propietario-pozo-service.ts";
+import { traducirErrorNumeracion } from "./numeracion-perforacion-service.ts";
+import { randomUUID, createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolClient } from "pg";
@@ -11,10 +18,11 @@ import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 import { DATOS_TECNICOS_ESTANDAR, datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 
 export interface PozoCompletoResultado {
+  sello_sanitario_constructivo: import('../models/schemas.ts').SelloSanitarioConstructivo | null;
   pozo: Pozo;
   sitio: import("../models/schemas.ts").Sitio;
-  intervalos_litologicos: Array<{ id_intervalo_litologico: number; id_pozo: number; desde_m: number; hasta_m: number; material: string; id_litologia:number|null }>;
-  intervalos_diametro: Array<{ id_intervalo_diametro_perforacion: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero" | null }>;
+  intervalos_litologicos: Array<{ id_intervalo_litologico: number; id_pozo: number; desde_m: number; hasta_m: number; material: string; id_litologia:number|null; litologia_provisional?:string|null }>;
+  intervalos_diametro: Array<{ id_intervalo_diametro_perforacion: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero" | null; sin_tuberia?: boolean }>;
   intervalos_filtro: Array<{ id_intervalo_filtro: number; id_pozo: number; desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero"; ranura_mm: 0.5 | 0.75 | 1 | null }>;
   niveles_aporte: Array<{ id_nivel_aporte: number; id_pozo: number; profundidad_m: number }>;
 }
@@ -27,11 +35,13 @@ type IntervaloOriginal = {
   hasta_m: number;
   material: string;
   id_litologia: number | null;
+  litologia_provisional?: string | null;
 };
 type FiltroOriginal = { id_intervalo_filtro: number; ranura_mm: 0.5 | 0.75 | 1 | null };
 type FiltroEntrada = { desde_m: number; hasta_m: number; diametro_pulg: number; material_tuberia: "PVC" | "Acero"; id_intervalo_filtro?: number; ranura_mm?: 0.5 | 0.75 | 1 | null };
 
 export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
+  normalizarPropiedad(data.pozo);
   const errores = validarDatosTecnicosPozo({
     profundidad_final_m: data.pozo.profundidad_final_m,
     intervalos_litologicos: data.intervalos_litologicos,
@@ -39,6 +49,8 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
     intervalos_filtro: data.intervalos_filtro,
     niveles_aporte: data.niveles_aporte,
   });
+  try { validarSelloSanitario(data.sello_sanitario_constructivo, data.pozo.profundidad_final_m); }
+  catch (error) { errores.push((error as Error).message); }
   for (const [campo, valor] of Object.entries(data.pozo).filter(([campo]) => campo in DATOS_TECNICOS_ESTANDAR)) {
     if (typeof valor === "string" && !valor.trim()) errores.push(`El campo ${campo} no puede estar vacío.`);
   }
@@ -53,13 +65,18 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   return errores;
 }
 
-export function validarDatosTecnicosPozo(data: PerfilLitologicoVistaPreviaBody): string[] {
+export function validarDatosTecnicosPozo(data: Omit<PerfilLitologicoVistaPreviaBody, 'profundidad_final_m'> & { profundidad_final_m?: number }): string[] {
   const errores: string[] = [];
+  for (const i of data.intervalos_litologicos) {
+    try { exigirTextoLitologico(i.material); normalizarLitologiaProvisional(i); } catch (e) { errores.push((e as Error).message); }
+  }
   const profundidad = data.profundidad_final_m;
   validarIntervalos(data.intervalos_litologicos, "litológico", profundidad, errores);
   validarIntervalos(data.intervalos_diametro, "de diámetro", profundidad, errores);
   validarIntervalos(data.intervalos_filtro ?? [], "de filtro", profundidad, errores);
-  data.intervalos_diametro.forEach((i, n) => { if (i.material_tuberia !== "PVC" && i.material_tuberia !== "Acero") errores.push(`Tubería ${n + 1}: material inválido.`); });
+  data.intervalos_diametro.forEach((i, n) => { const error = errorMaterialDiametro(i); if (error) errores.push(`Intervalo de diámetro ${n + 1}: ${error}`); });
+  if (hayFiltroSinTuberia(data.intervalos_diametro, data.intervalos_filtro ?? []))
+    errores.push("Un filtro no puede solaparse con una perforación sin cañería.");
   (data.intervalos_filtro ?? []).forEach((i, n) => {
     if (i.material_tuberia !== "PVC" && i.material_tuberia !== "Acero") errores.push(`Filtro ${n + 1}: material inválido.`);
     if (i.ranura_mm == null && i.id_intervalo_filtro == null) errores.push(`Filtro ${n + 1}: la ranura es obligatoria.`);
@@ -93,20 +110,48 @@ export async function crearPozoCompleto(
   data: PozoCompletoBody,
   directorioFotos: string,
   pool: Pick<Pool, "connect"> = myPool,
+  claveOffline?: string,
+  epoca?: unknown,
 ): Promise<PozoCompletoResultado> {
   const errores = validarPozoCompleto(data);
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
 
   const client = await pool.connect();
+  let descartar = false;
   let archivoFinal: string | null = null;
   let archivoTemporal: string | null = null;
+  let commitIntentado = false;
   try {
-    await client.query("BEGIN");
-    await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
+    await iniciarEscrituraSesion(client, false);
+    if (claveOffline !== undefined) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claveOffline))
+        throw new err.T05DatosIncorrectos("Identificador local inválido.");
+      if (data.pozo.numero_perforacion != null) throw new err.T05SinPermiso("Un borrador local no puede asignar numeración.");
+      // Sesión bloqueada antes de consultar incluso un resultado ya confirmado.
+      await validarPersonaPozo(creadoPor, "perforador", client);
+      await exigirEpoca(client, epoca);
+      if (data.pozo.id_perforador !== creadoPor || data.pozo.id_propietario !== null) throw new err.T05SinPermiso();
+      claveOffline = claveOffline.toLowerCase();
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 714))", [`${creadoPor}:${claveOffline}`]);
+      const previo = await client.query("SELECT epoca,huella,resultado FROM creacion_offline WHERE actor=$1 AND clave=$2", [creadoPor, claveOffline]);
+      if (previo.rows[0]) {
+        if (previo.rows[0].epoca !== String(epoca).toLowerCase()) throw new err.T05EpocaRetirada();
+        if (previo.rows[0].huella !== huellaOffline(data)) throw new err.T05DatosIncorrectos("Conflicto: este identificador local ya fue enviado con otros datos. Conserve el borrador y consulte Administración.");
+        await client.query("COMMIT");
+        return previo.rows[0].resultado;
+      }
+      const cerrada = await client.query('SELECT 1 FROM clave_offline_cerrada WHERE actor=$1 AND clave=$2', [creadoPor, claveOffline]);
+      if (cerrada.rows.length) throw new err.T05ClaveOfflineCerrada();
+    }
+    if (data.pozo.numero_perforacion != null) {
+      throw new err.T05DatosIncorrectos('Use Carga histórica para un número explícito. El alta normal siempre es automática.');
+    }
+    await validarPropiedad(data.pozo, client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
     const sitio = await insertarSitio(client, data.sitio_nuevo);
     const pozo = await insertarPozo(client, creadoPor, data, sitio.id_sitio);
     const idPozo = pozo.id_pozo;
+    const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo ?? null, pozo.profundidad_final_m);
     const litologia = [] as PozoCompletoResultado["intervalos_litologicos"];
     const diametros = [] as PozoCompletoResultado["intervalos_diametro"];
     const aportes = [] as PozoCompletoResultado["niveles_aporte"];
@@ -117,10 +162,10 @@ export async function crearPozoCompleto(
     }
     for (const intervalo of data.intervalos_diametro) {
       const { rows } = await client.query(
-        `INSERT INTO intervalo_diametro_perforacion (id_pozo, desde_m, hasta_m, diametro_pulg, material_tuberia)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id_intervalo_diametro_perforacion, id_pozo, desde_m, hasta_m, diametro_pulg, material_tuberia`,
-        [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.diametro_pulg, intervalo.material_tuberia],
+        `INSERT INTO intervalo_diametro_perforacion (id_pozo, desde_m, hasta_m, diametro_pulg, material_tuberia, sin_tuberia)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id_intervalo_diametro_perforacion, id_pozo, desde_m, hasta_m, diametro_pulg, material_tuberia, sin_tuberia`,
+        [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.diametro_pulg, intervalo.material_tuberia, intervalo.sin_tuberia === true],
       );
       diametros.push(numerizarDiametro(rows[0]));
     }
@@ -146,20 +191,40 @@ export async function crearPozoCompleto(
       await fs.writeFile(archivoTemporal, foto.buffer, { flag: "wx" });
       await fs.rename(archivoTemporal, archivoFinal);
       archivoTemporal = null;
-      await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, `/usuarios/${data.pozo.id_propietario}/pozos/${idPozo}/foto`]);
-      pozo.foto_url = `/usuarios/${data.pozo.id_propietario}/pozos/${idPozo}/foto`;
+      await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`]);
+      pozo.foto_url = `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`;
     }
 
+    const resultado = { pozo, sitio, sello_sanitario_constructivo: sello, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado,epoca) VALUES($1,$2,$3,$4,$5)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado), epoca]);
+    commitIntentado = true;
     await client.query("COMMIT");
-    return { pozo, sitio, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    return resultado;
   } catch (error) {
-    await client.query("ROLLBACK");
-    if (archivoTemporal) await fs.rm(archivoTemporal, { force: true });
-    if (archivoFinal) await fs.rm(archivoFinal, { force: true });
-    throw error;
+    const compensacion = await compensarFalloTransaccionalFotos({
+      idPozo: 0, operacion: "crear_pozo_completo",
+      rollback: async () => { await client.query("ROLLBACK"); },
+      restaurar: async () => {
+        // Una respuesta COMMIT perdida no prueba rollback: conservar el archivo.
+        // El reconciliador existente puede auditar huérfanos; nunca borrar una foto confirmada.
+        if (commitIntentado) return;
+        const limpieza = await Promise.allSettled([archivoTemporal, archivoFinal]
+          .filter((ruta): ruta is string => ruta !== null).map(ruta => fs.rm(ruta, { force: true })));
+        if (limpieza.some(resultado => resultado.status === "rejected")) throw new Error("Limpieza de fotografías incompleta");
+      },
+    });
+    descartar = Boolean(compensacion.errorRollback);
+    if (compensacion.errorFilesystem) throw new err.T05ErrorDesconocido("Falló la creación y no se pudo limpiar la fotografía.", { cause: error });
+    throw traducirErrorNumeracion(error);
   } finally {
-    client.release();
+    client.release(descartar);
   }
+}
+
+export function huellaOffline(data: unknown): string {
+  const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical)
+    : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
+  return createHash("sha256").update(JSON.stringify(canonical(data))).digest("hex");
 }
 
 export async function actualizarPozoCompleto(
@@ -175,62 +240,45 @@ export async function actualizarPozoCompleto(
   if (errores.length) throw new err.T05DatosIncorrectos(errores.join(" "));
 
   const client = await pool.connect();
+  let descartar = false;
   let fotosAisladas: FotoAislada[] = [];
   let nuevo: string | null = null;
   let temporalNuevo: string | null = null;
   let resultado: PozoCompletoResultado;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer, 606)", [idPozo]);
-    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number }>(
-      "SELECT id_pozo,id_sitio FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const { rows: bloqueado } = await client.query<{ id_pozo:number; id_sitio:number; id_propietario: number | null; numero_perforacion: number | null; origen:string }>(
+      "SELECT id_pozo,id_sitio,id_propietario,numero_perforacion,origen FROM pozo WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
     if (!bloqueado[0]) throw new err.T05PozoNoEncontrado();
-    await validarPersonaPozo(data.pozo.id_propietario, "propietario", client);
+    if(bloqueado[0].origen==='historico')throw new err.T05DatosIncorrectos('Use la edición histórica para esta perforación.');
+    if (Object.hasOwn(data.pozo, "numero_perforacion") && data.pozo.numero_perforacion !== bloqueado[0].numero_perforacion)
+      throw new err.T05DatosIncorrectos("La numeración se administra por separado; no se puede cambiar desde la edición habitual.");
+    const provisional = await validarPropiedad(data.pozo, client);
     await validarPersonaPozo(data.pozo.id_perforador, "perforador", client);
 
-    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
-      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
-    const originales = litologiasOriginales.map((fila) => ({
-      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
-      desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),
-      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
-    }));
-    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
-    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
-    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
-    let ranurasFiltros = new Map<number, 0.5 | 0.75 | 1 | null>();
-    if (idsFiltros.length) {
-      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number;ranura_mm:number|null}>(
-        "SELECT id_intervalo_filtro,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
-        [idPozo, idsFiltros],
-      );
-      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
-      ranurasFiltros = resolverRanurasFiltros(data.intervalos_filtro, filtrosOriginales.map((filtro) => ({ id_intervalo_filtro: Number(filtro.id_intervalo_filtro), ranura_mm: filtro.ranura_mm == null ? null : Number(filtro.ranura_mm) as 0.5 | 0.75 | 1 })));
-    }
+    if ((bloqueado[0].id_propietario == null ? null : Number(bloqueado[0].id_propietario)) !== data.pozo.id_propietario)
+      throw new err.T05DatosIncorrectos("La vinculación del propietario requiere la operación administrativa específica. Recargue si cambió.");
 
+    const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo, data.pozo.profundidad_final_m);
+    const hijos = await reemplazarHijosPozo(client, idPozo, data);
     const p = data.pozo;
     const { rows } = await client.query(
       `UPDATE pozo SET id_propietario=$2, id_sitio=$3, empresa=$4, id_perforador=$5,
        fecha_inicio=$6, fecha_fin=$7, profundidad_final_m=$8,
        nivel_estatico_m=$9, nivel_dinamico_m=$10, caudal_estimado_lh=$11,
        metodo_sedimentario=COALESCE($12::text,metodo_sedimentario), metodo_rocoso=COALESCE($13::text,metodo_rocoso),
-       cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16
+       cementacion=COALESCE($14::text,cementacion), desarrollo=COALESCE($15::text,desarrollo), revestimiento=$16, propietario_provisional=$17
        WHERE id_pozo=$1
-       RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+       RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
         fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
         caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
         foto_url, fecha_creado`,
       [idPozo,p.id_propietario,Number(bloqueado[0].id_sitio),p.empresa??null,p.id_perforador,p.fecha_inicio??null,p.fecha_fin??null,
        p.profundidad_final_m??null,p.nivel_estatico_m??null,p.nivel_dinamico_m??null,p.caudal_estimado_lh??null,
-       p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null],
+       p.metodo_sedimentario??null,p.metodo_rocoso??null,p.cementacion??null,p.desarrollo??null,p.revestimiento??null,provisional],
     );
     const pozo = numerizarPozo({ ...rows[0], id_pozo: idPozo });
-
-    await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
-    await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
-    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones, ranurasFiltros);
 
     if (data.foto_accion !== "conservar") {
       await fs.mkdir(directorioFotos, { recursive: true });
@@ -242,16 +290,16 @@ export async function actualizarPozoCompleto(
         await fs.writeFile(temporalNuevo, foto.buffer, { flag: "wx" });
         await fs.rename(temporalNuevo, nuevo);
         temporalNuevo = null;
-        pozo.foto_url = `/usuarios/${p.id_propietario}/pozos/${idPozo}/foto`;
+        pozo.foto_url = `/usuarios/${p.id_propietario ?? p.id_perforador}/pozos/${idPozo}/foto`;
       } else pozo.foto_url = undefined;
       await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, pozo.foto_url ?? null]);
     } else if (pozo.foto_url) {
-      pozo.foto_url = `/usuarios/${p.id_propietario}/pozos/${idPozo}/foto`;
+      pozo.foto_url = `/usuarios/${p.id_propietario ?? p.id_perforador}/pozos/${idPozo}/foto`;
       await client.query("UPDATE pozo SET foto_url = $2 WHERE id_pozo = $1", [idPozo, pozo.foto_url]);
     }
     const sitio = await obtenerSitioTransaccional(client, Number(bloqueado[0].id_sitio));
     await client.query("COMMIT");
-    resultado = { pozo, sitio, ...hijos };
+    resultado = { pozo, sitio, sello_sanitario_constructivo: sello, ...hijos };
   } catch (error) {
     const compensacion = await compensarFalloTransaccionalFotos({
       idPozo,
@@ -269,25 +317,72 @@ export async function actualizarPozoCompleto(
         if (errores.length) throw new Error("Compensación de archivos incompleta");
       },
     });
+    descartar = Boolean(compensacion.errorRollback);
     if (compensacion.errorFilesystem)
       throw new err.T05ErrorDesconocido("Falló la actualización y no se pudo restaurar la fotografía anterior.", { cause: error });
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(descartar); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "actualizar_pozo_completo", opciones.logger, opciones.eliminarPostCommit);
   return resultado;
 }
 
-async function insertarHijos(client: PoolClient, idPozo: number, data: DatosCompletosPozo, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {
+
+export async function reemplazarHijosPozo(client: PoolClient, idPozo: number, data: Pick<PozoCompletoUpdateBody, "intervalos_litologicos"|"intervalos_diametro"|"intervalos_filtro"|"niveles_aporte">) {
+    const { rows: litologiasOriginales } = await client.query<IntervaloOriginal>(
+      "SELECT id_intervalo_litologico,desde_m,hasta_m,material,id_litologia,litologia_provisional FROM intervalo_litologico WHERE id_pozo = $1 FOR UPDATE", [idPozo]);
+    const originales = litologiasOriginales.map((fila) => ({
+      id_intervalo_litologico: Number(fila.id_intervalo_litologico),
+      desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),
+      id_litologia: fila.id_litologia == null ? null : Number(fila.id_litologia),
+      litologia_provisional: fila.litologia_provisional,
+    }));
+    const resoluciones = resolverLitologiasOriginales(data.intervalos_litologicos, originales);
+    for (const intervalo of data.intervalos_litologicos) {
+      const previo = originales.find(x => x.id_intervalo_litologico === intervalo.id_intervalo_litologico);
+      exigirVinculacionDesdePendientes(previo?.litologia_provisional, intervalo.id_litologia);
+      // Omitir el ID no permite disfrazar una sustitución como un alta.
+      if (intervalo.id_litologia != null && intervalo.id_intervalo_litologico == null) {
+        const retirado = originales.find(x => x.litologia_provisional != null && !data.intervalos_litologicos.some(i =>
+          i.id_intervalo_litologico === x.id_intervalo_litologico || (i.id_litologia == null && i.desde_m === x.desde_m && i.hasta_m === x.hasta_m && i.material === x.material)));
+        exigirVinculacionDesdePendientes(retirado?.litologia_provisional, intervalo.id_litologia);
+      }
+    }
+    const idsFiltros = data.intervalos_filtro.flatMap((filtro) => filtro.id_intervalo_filtro == null ? [] : [filtro.id_intervalo_filtro]);
+    if (new Set(idsFiltros).size !== idsFiltros.length) throw new err.T05DatosIncorrectos("No se puede repetir un filtro persistido.");
+    let ranurasFiltros = new Map<number, 0.5 | 0.75 | 1 | null>();
+    if (idsFiltros.length) {
+      const { rows: filtrosOriginales } = await client.query<{id_intervalo_filtro:number;ranura_mm:number|null}>(
+        "SELECT id_intervalo_filtro,ranura_mm FROM intervalo_filtro WHERE id_pozo=$1 AND id_intervalo_filtro=ANY($2::bigint[]) FOR UPDATE",
+        [idPozo, idsFiltros],
+      );
+      if (filtrosOriginales.length !== idsFiltros.length) throw new err.T05DatosIncorrectos("Un filtro histórico no pertenece al pozo editado.");
+      ranurasFiltros = resolverRanurasFiltros(data.intervalos_filtro, filtrosOriginales.map((filtro) => ({ id_intervalo_filtro: Number(filtro.id_intervalo_filtro), ranura_mm: filtro.ranura_mm == null ? null : Number(filtro.ranura_mm) as 0.5 | 0.75 | 1 })));
+    }
+
+    await client.query("DELETE FROM intervalo_litologico WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM intervalo_diametro_perforacion WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM intervalo_filtro WHERE id_pozo = $1", [idPozo]);
+    await client.query("DELETE FROM nivel_aporte WHERE id_pozo = $1", [idPozo]);
+    const hijos = await insertarHijos(client, idPozo, data, originales, resoluciones, ranurasFiltros);
+    return hijos;
+}
+
+export async function insertarHijos(client: PoolClient, idPozo: number, data: Pick<DatosCompletosPozo, 'intervalos_litologicos' | 'intervalos_diametro' | 'intervalos_filtro' | 'niveles_aporte'>, originales?: IntervaloOriginal[], resoluciones?: Map<number, number | null | undefined>, ranurasFiltros?: Map<number, 0.5 | 0.75 | 1 | null>) {
   const intervalos_litologicos: PozoCompletoResultado["intervalos_litologicos"] = [];
   const intervalos_diametro: PozoCompletoResultado["intervalos_diametro"] = [];
   const niveles_aporte: PozoCompletoResultado["niveles_aporte"] = [];
   const intervalos_filtro: PozoCompletoResultado["intervalos_filtro"] = [];
   for (const i of data.intervalos_litologicos) {
-    const originalId = originales === undefined ? undefined : resoluciones?.get(intervalos_litologicos.length) ?? null;
-    intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, i, originalId));
+    const originalId = resoluciones?.get(intervalos_litologicos.length);
+    const previo = originales?.find(x => i.id_intervalo_litologico != null
+      ? x.id_intervalo_litologico === i.id_intervalo_litologico
+      : i.id_litologia == null && x.desde_m === i.desde_m && x.hasta_m === i.hasta_m && normalizarMaterial(x.material) === normalizarMaterial(i.material));
+    const dato = i.id_litologia == null && i.litologia_provisional == null && previo?.litologia_provisional
+      ? {...i,litologia_provisional:previo.litologia_provisional} : i;
+    intervalos_litologicos.push(await insertarIntervaloLitologico(client, idPozo, dato, originalId));
   }
   for (const i of data.intervalos_diametro) {
-    const { rows } = await client.query(`INSERT INTO intervalo_diametro_perforacion (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia) VALUES ($1,$2,$3,$4,$5) RETURNING id_intervalo_diametro_perforacion,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia]);
+    const { rows } = await client.query(`INSERT INTO intervalo_diametro_perforacion (id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,sin_tuberia) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_intervalo_diametro_perforacion,id_pozo,desde_m,hasta_m,diametro_pulg,material_tuberia,sin_tuberia`, [idPozo,i.desde_m,i.hasta_m,i.diametro_pulg,i.material_tuberia,i.sin_tuberia === true]);
     intervalos_diametro.push(numerizarDiametro(rows[0]));
   }
   for (const i of data.intervalos_filtro ?? []) {
@@ -380,20 +475,23 @@ async function insertarIntervaloLitologico(
   intervalo: PozoCompletoBody["intervalos_litologicos"][number],
   originalId?: number | null,
 ): Promise<PozoCompletoResultado["intervalos_litologicos"][number]> {
-  const idEnviado = intervalo.id_litologia ?? (originalId == null ? null : originalId);
-  const esCreacion = originalId === undefined;
+  const provisional = originalId === undefined ? provisionalParaIntervaloNuevo(intervalo) : normalizarLitologiaProvisional(intervalo);
+  const idEnviado = provisional ? null : intervalo.id_litologia ?? (originalId == null ? null : originalId);
+  exigirTextoLitologico(intervalo.material);
+  await exigirLitologiaNoConstructiva(client, idEnviado);
+  const esCreacion = originalId === undefined && !provisional;
   const { rows } = await client.query(
     `WITH elegida AS (SELECT id_litologia,nombre FROM catalogo_litologia c
        WHERE (($5::bigint IS NOT NULL AND c.id_litologia=$5
          AND (c.activo OR ($6::bigint IS NOT NULL AND c.id_litologia=$6)))
        OR ($5::bigint IS NULL AND $7::boolean AND c.activo AND c.nombre_normalizado=litologia_normalizar($4)))
        FOR SHARE)
-     INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia)
-     SELECT $1,$2,$3,COALESCE(c.nombre,$4),c.id_litologia
+     INSERT INTO intervalo_litologico (id_pozo,desde_m,hasta_m,material,id_litologia,litologia_provisional)
+     SELECT $1,$2,$3,COALESCE(c.nombre,$8,$4),c.id_litologia,$8
      FROM (SELECT 1) base LEFT JOIN elegida c ON TRUE
      WHERE $5::bigint IS NULL OR c.id_litologia IS NOT NULL
-     RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia`,
-    [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, idEnviado, originalId ?? null, esCreacion],
+     RETURNING id_intervalo_litologico,id_pozo,desde_m,hasta_m,material,id_litologia,litologia_provisional`,
+    [idPozo, intervalo.desde_m, intervalo.hasta_m, intervalo.material, idEnviado, originalId ?? null, esCreacion, provisional],
   );
   const fila = rows[0] as Record<string, unknown> | undefined;
   if (!fila) throw new err.T05DatosIncorrectos("La litología indicada no existe o no está activa.");
@@ -428,9 +526,9 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
     `INSERT INTO public.pozo (
       id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio, fecha_fin,
       profundidad_final_m, nivel_estatico_m, nivel_dinamico_m,
-      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-    RETURNING id_pozo, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
+      caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento, numero_perforacion, propietario_provisional
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+    RETURNING id_pozo, numero_perforacion, propietario_provisional, id_propietario, id_sitio, empresa, id_perforador, creado_por, fecha_inicio,
       fecha_fin, profundidad_final_m, sello_sanitario, pre_filtro, nivel_estatico_m, nivel_dinamico_m,
       caudal_estimado_lh, metodo_sedimentario, metodo_rocoso, cementacion, desarrollo, revestimiento,
       foto_url, fecha_creado`,
@@ -438,7 +536,7 @@ async function insertarPozo(client: PoolClient, creadoPor: number, data: PozoCom
       p.fecha_fin ?? null, p.profundidad_final_m ?? null, p.nivel_estatico_m ?? null,
       p.nivel_dinamico_m ?? null, p.caudal_estimado_lh ?? null,
       estandar.metodo_sedimentario, estandar.metodo_rocoso, estandar.cementacion,
-      estandar.desarrollo, p.revestimiento ?? null],
+      estandar.desarrollo, p.revestimiento ?? null, p.numero_perforacion ?? null, normalizarPropiedad(p)],
   );
   return numerizarPozo(rows[0]);
 }
@@ -450,12 +548,12 @@ function decodificarFoto(foto: NonNullable<PozoCompletoBody["foto"]>) {
 function numeroOpcional(valor: unknown): number | undefined { return valor == null ? undefined : Number(valor); }
 function numerizarPozo(fila: Record<string,unknown>):Pozo{return{
   ...fila,
-  id_pozo:Number(fila.id_pozo),id_propietario:Number(fila.id_propietario),id_sitio:Number(fila.id_sitio),id_perforador:Number(fila.id_perforador),
+  id_pozo:Number(fila.id_pozo),id_propietario:fila.id_propietario == null ? null : Number(fila.id_propietario),id_sitio:Number(fila.id_sitio),id_perforador:Number(fila.id_perforador),
   creado_por:fila.creado_por==null?undefined:Number(fila.creado_por),
   profundidad_final_m:numeroOpcional(fila.profundidad_final_m),nivel_estatico_m:numeroOpcional(fila.nivel_estatico_m),
   nivel_dinamico_m:numeroOpcional(fila.nivel_dinamico_m),caudal_estimado_lh:numeroOpcional(fila.caudal_estimado_lh),
 } as Pozo;}
-function numerizarLitologia(fila: Record<string, unknown>) { return { id_intervalo_litologico: Number(fila.id_intervalo_litologico), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),id_litologia:fila.id_litologia==null?null:Number(fila.id_litologia) }; }
-function numerizarDiametro(fila: Record<string, unknown>) { return { id_intervalo_diametro_perforacion: Number(fila.id_intervalo_diametro_perforacion), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: fila.material_tuberia == null ? null : String(fila.material_tuberia) as "PVC" | "Acero" }; }
+function numerizarLitologia(fila: Record<string, unknown>) { return { id_intervalo_litologico: Number(fila.id_intervalo_litologico), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), material: String(fila.material),litologia_provisional:fila.litologia_provisional == null ? null : String(fila.litologia_provisional),id_litologia:fila.id_litologia==null?null:Number(fila.id_litologia) }; }
+function numerizarDiametro(fila: Record<string, unknown>) { return { id_intervalo_diametro_perforacion: Number(fila.id_intervalo_diametro_perforacion), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: fila.material_tuberia == null ? null : String(fila.material_tuberia) as "PVC" | "Acero", sin_tuberia: fila.sin_tuberia === true }; }
 function numerizarFiltro(fila: Record<string, unknown>) { return { id_intervalo_filtro: Number(fila.id_intervalo_filtro), id_pozo: Number(fila.id_pozo), desde_m: Number(fila.desde_m), hasta_m: Number(fila.hasta_m), diametro_pulg: Number(fila.diametro_pulg), material_tuberia: String(fila.material_tuberia) as "PVC" | "Acero", ranura_mm: fila.ranura_mm == null ? null : Number(fila.ranura_mm) as 0.5 | 0.75 | 1 }; }
 function numerizarAporte(fila: Record<string, unknown>) { return { id_nivel_aporte: Number(fila.id_nivel_aporte), id_pozo: Number(fila.id_pozo), profundidad_m: Number(fila.profundidad_m) }; }

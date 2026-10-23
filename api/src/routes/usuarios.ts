@@ -6,16 +6,64 @@ import {
   UsuarioCrearBody,
   UsuarioActualizarBody,
   UsuarioPublico,
+  PasswordPlanoSchema, EmailLoginSchema,
 } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import * as func from "../services/usuarios-service.ts";
 import * as rolfunc from "../services/roles-services.ts";
+import { buscarPersonasAdministradas, perforacionesDePropietario } from "../services/personas-admin-service.ts";
 import { clientConnections } from "../plugins/websocket.ts";
+import { crearAccesoPropietario, eliminarIdentidadSinHistorial } from '../services/acceso-persona-service.ts';
 
 const usuariosRoutes = async function (
   fastify: FastifyInstance,
   options: object
 ) {
+  fastify.delete('/usuarios/personas/:id_usuario', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: { params: Type.Object({ id_usuario: Type.Integer({ minimum: 1 }) }), response: { 204: Type.Null() } },
+  }, async (req, rep) => {
+    await eliminarIdentidadSinHistorial((req.params as { id_usuario: number }).id_usuario);
+    return rep.code(204).send();
+  });
+  fastify.post('/usuarios/personas/:id_usuario/acceso', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: {
+      params: Type.Object({ id_usuario: Type.Integer({ minimum: 1 }) }),
+      body: Type.Object({ email: EmailLoginSchema, password: PasswordPlanoSchema, confirmar: PasswordPlanoSchema }, { additionalProperties: false }),
+      response: { 204: Type.Null() },
+    },
+  }, async (req, rep) => {
+    const { id_usuario } = req.params as { id_usuario: number };
+    const b = req.body as { email: string; password: string; confirmar: string };
+    await crearAccesoPropietario(id_usuario, b.email, b.password, b.confirmar);
+    return rep.code(204).send();
+  });
+  const pagina = Type.Object({
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  });
+  fastify.get('/usuarios/personas', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: {
+      tags: ['usuarios'], summary: 'Buscar cuentas e identidades de propietarios',
+      querystring: Type.Intersect([pagina, Type.Object({ buscar: Type.Optional(Type.String({ maxLength: 160 })) })]),
+    },
+  }, async (req) => {
+    const q = req.query as { buscar?: string; limite?: number; offset?: number };
+    return buscarPersonasAdministradas(q.buscar, q.limite, q.offset);
+  });
+  fastify.get('/usuarios/personas/:id_usuario/perforaciones', {
+    onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin],
+    schema: {
+      tags: ['usuarios'], summary: 'Perforaciones vinculadas a una identidad real',
+      params: Type.Object({ id_usuario: Type.Integer({ minimum: 1 }) }), querystring: pagina,
+    },
+  }, async (req) => {
+    const { id_usuario } = req.params as { id_usuario: number };
+    const q = req.query as { limite?: number; offset?: number };
+    return perforacionesDePropietario(id_usuario, q.limite, q.offset);
+  });
   //dar de alta un usuario
   fastify.post(
     "/usuarios",

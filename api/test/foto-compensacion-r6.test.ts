@@ -132,3 +132,15 @@ test("reemplazar foto restaura la anterior aunque falle el rollback exterior", (
     assert.equal(await fs.stat(path.join(directorio, "pozo-76.png")).then(() => true, () => false), false);
     assert.deepEqual(await fs.readdir(path.join(directorio, ".trash")), []);
   }));
+
+test("compensa filesystem antes de liberar los bloqueos, incluso si restaurar falla", async () => {
+  const orden: string[] = [];
+  const resultado = await compensarFalloTransaccionalFotos({
+    idPozo: 1, operacion: "orden",
+    restaurar: async () => { orden.push("restaurar"); throw new Error("filesystem"); },
+    rollback: async () => { orden.push("rollback"); },
+  });
+  assert.deepEqual(orden, ["restaurar", "rollback"]);
+  assert.ok(resultado.errorFilesystem);
+  assert.equal(resultado.errorRollback, undefined);
+});

@@ -1,8 +1,10 @@
-import { Component, effect, input, output, signal } from '@angular/core';
+import { opcionTuberia, seleccionarTuberia } from '../../../../shared/utils/intervalo-diametro';
+import { afterNextRender, Component, ElementRef, effect, inject, Injector, input, output, signal, viewChildren } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
 import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
+import { huellaDatosTecnicos } from '../../../../shared/utils/estado-formulario-perforacion';
 
 @Component({
   selector: 'app-datos-tecnicos-borrador',
@@ -19,7 +21,10 @@ export class DatosTecnicosBorradorComponent {
   readonly estadoSucio = output<boolean>();
   readonly datos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   private siguienteId = 1;
+  private readonly injector = inject(Injector);
+  readonly filasDinamicas = viewChildren<ElementRef<HTMLElement>>('filaDinamica');
   readonly dirty = signal(false);
+  private baseDatos = huellaDatosTecnicos(this.datos());
   private ultimoInicial: DatosTecnicosBorrador | null = null;
   private ultimaVersionDescartar = 0;
   readonly errorAgregar = signal('');
@@ -34,7 +39,10 @@ export class DatosTecnicosBorradorComponent {
       if (inicial && (!this.dirty() || descarteConfirmado)) {
         this.ultimoInicial = inicial;
         this.ultimaVersionDescartar = version;
-        this.datos.set(ordenarDatosTecnicos(inicial));
+        this.datos.set(structuredClone(ordenarDatosTecnicos(inicial)));
+        this.baseDatos = huellaDatosTecnicos(this.datos());
+        const ids = [...inicial.intervalosLitologicos, ...inicial.intervalosDiametro, ...inicial.intervalosFiltro, ...inicial.nivelesAporte].map(item => Number(String(item.idLocal).replace(/^local-/, ''))).filter(Number.isFinite);
+        this.siguienteId = Math.max(this.siguienteId, ...ids.map(id => id + 1));
         this.cambiado.emit(this.datos());
         this.dirty.set(false);
         this.estadoSucio.emit(false);
@@ -43,29 +51,68 @@ export class DatosTecnicosBorradorComponent {
   }
 
   agregarLitologia() {
+    if (this.guardando()) return;
     const sugerencia = sugerirIntervaloLitologico(this.datos().intervalosLitologicos.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
-    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' })] });
+    const nueva = this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' });
+    this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, nueva] });
+    this.enfocarNueva(nueva.idLocal);
+  }
+  agregarSello() {
+    if (this.guardando() || this.datos().sello_sanitario_constructivo != null) return;
+    this.actualizar({ ...this.datos(), sello_sanitario_constructivo: { desde_m: Number.NaN, hasta_m: Number.NaN } });
+    this.enfocarNueva('sello-sanitario');
+  }
+  quitarSello() {
+    if (this.guardando()) return;
+    this.actualizar({ ...this.datos(), sello_sanitario_constructivo: null });
+  }
+  private enfocarNueva(idLocal: string) {
+    afterNextRender(() => {
+      const fila = this.filasDinamicas().find((ref) => ref.nativeElement.dataset['capa'] === idLocal)?.nativeElement;
+      if (!fila || this.guardando()) return;
+      fila.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus({ preventScroll: true });
+      fila.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }, { injector: this.injector });
   }
   seleccionarLitologia(item: IntervaloLitologicoBody, id: number | null, nombre: string) {
     item.id_litologia = id ?? undefined;
     if (id != null) item.material = nombre;
     this.notificarEdicion();
   }
+  provisional(item: IntervaloLitologicoBody, texto: string | null) {
+    item.litologia_provisional = texto;
+    if (texto != null) { item.id_litologia = undefined; item.material = texto.trim(); }
+    this.notificarEdicion();
+  }
+  readonly opcionTuberia = opcionTuberia;
+  cambiarTuberia(dato: IntervaloDiametroPerforacionBody, opcion: string) {
+    seleccionarTuberia(dato, opcion);
+    this.notificarEdicion();
+  }
   agregarDiametro() {
+    if (this.guardando()) return;
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosDiametro.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
     this.actualizar({ ...this.datos(), intervalosDiametro: [...this.datos().intervalosDiametro, this.local<IntervaloDiametroPerforacionBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC' })] });
+    this.enfocarNueva(this.datos().intervalosDiametro.at(-1)!.idLocal);
   }
   agregarFiltro() {
+    if (this.guardando()) return;
     const sugerencia = sugerirInicioSiguienteIntervalo(this.datos().intervalosFiltro.map((x) => x.dato), this.profundidad());
     if (!sugerencia.permitido) { this.errorAgregar.set(sugerencia.mensaje); return; }
     this.errorAgregar.set('');
     this.actualizar({ ...this.datos(), intervalosFiltro: [...this.datos().intervalosFiltro, this.local<IntervaloFiltroBody>({ desde_m: sugerencia.desde_m, hasta_m: Number.NaN, diametro_pulg: 1, material_tuberia: 'PVC', ranura_mm: null })] });
+    this.enfocarNueva(this.datos().intervalosFiltro.at(-1)!.idLocal);
   }
-  agregarAporte() { this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] }); }
+  agregarAporte() {
+    if (this.guardando()) return;
+    this.errorAgregar.set('');
+    this.actualizar({ ...this.datos(), nivelesAporte: [...this.datos().nivelesAporte, this.local<NivelAporteBody>({ profundidad_m: 0 })] });
+    this.enfocarNueva(this.datos().nivelesAporte.at(-1)!.idLocal);
+  }
   quitarLitologia(id: string) { this.actualizar({ ...this.datos(), intervalosLitologicos: this.datos().intervalosLitologicos.filter((item) => item.idLocal !== id) }); }
   quitarDiametro(id: string) { this.actualizar({ ...this.datos(), intervalosDiametro: this.datos().intervalosDiametro.filter((item) => item.idLocal !== id) }); }
   quitarFiltro(id: string) { this.actualizar({ ...this.datos(), intervalosFiltro: this.datos().intervalosFiltro.filter((item) => item.idLocal !== id) }); }
@@ -78,5 +125,13 @@ export class DatosTecnicosBorradorComponent {
   }
 
   private local<T>(dato: T): ElementoBorrador<T> { return { idLocal: `local-${this.siguienteId++}`, dato }; }
-  private actualizar(datos: DatosTecnicosBorrador) { const ordenados = ordenarDatosTecnicos(datos); this.datos.set(ordenados); this.cambiado.emit(ordenados); this.dirty.set(true); this.estadoSucio.emit(true); }
+  private actualizar(datos: DatosTecnicosBorrador) {
+    // El orden visible es el de incorporación; las validaciones ordenan copias.
+    const actualizado = { ...datos };
+    this.datos.set(actualizado);
+    this.cambiado.emit(actualizado);
+    const dirty = huellaDatosTecnicos(actualizado) !== this.baseDatos;
+    this.dirty.set(dirty);
+    this.estadoSucio.emit(dirty);
+  }
 }

@@ -1,5 +1,7 @@
+import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
+import { AuthService } from '../../../../shared/services/auth-service/auth.service';
+import { AsignarNumeroPendienteComponent } from '../../../../shared/components/numero-perforacion/asignar-numero-pendiente.component';
 import { Component, inject, signal } from '@angular/core';
-import { PozosListService } from '../../../../shared/services/pozos-list.service';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -33,6 +35,7 @@ import { ProtectedResourceDirective } from '../../../../core/resources/protected
 @Component({
   selector: 'app-pozos-detail',
   imports: [
+    AsignarNumeroPendienteComponent,
     IonContent,
     IonCard,
     IonCardHeader,
@@ -53,6 +56,9 @@ import { ProtectedResourceDirective } from '../../../../core/resources/protected
   styleUrl: './pozos-detail.page.css',
 })
 export class PozosDetailPage implements ViewWillEnter {
+  readonly permisos = inject(EdicionPozoService);
+  readonly authService = inject(AuthService);
+  numeroAsignado(numero: number) { this.pozo.update((p) => p ? { ...p, numero_perforacion: numero } : p); }
   readonly formatearFechaCalendario = formatearFechaCalendario;
   readonly representarSitio = representarSitio;
   public informeService: PdfGenerate = inject(PdfGenerate);
@@ -62,6 +68,8 @@ export class PozosDetailPage implements ViewWillEnter {
   public id_pozo = Number(this.ruta.snapshot.paramMap.get('id_pozo'));
   public pozo = signal<Pozo | undefined>(undefined);
   public errorMessage = signal<string>('');
+  public generandoPdf = signal(false);
+  public errorPdf = signal('');
   public litologia = signal<IntervaloLitologico[]>([]);
   public diametros = signal<IntervaloDiametroPerforacion[]>([]);
   public aportes = signal<NivelAporte[]>([]);
@@ -101,7 +109,11 @@ export class PozosDetailPage implements ViewWillEnter {
       this.errorMessage.set('No se pudieron cargar todos los datos técnicos.');
     }
   }
+  public irAEditarHistorico() {
+    if(this.authService.puedeGestionarHistoricos() && this.pozo()?.origen==='historico')void this.router.navigate(['/pozos-historicos',this.id_pozo,'editar']);
+  }
   public irAEditarPozo() {
+    if (!this.permisos.puedeEditar(this.pozo())) return;
     this.router.navigate([`pozo-edit/${this.id_pozo}`]);
   }
   ubicacionPropietario(): string {
@@ -122,22 +134,21 @@ getFoto() {
   }
   return environment.serverURL + path;
 }
-  generarPdf() {
+  async generarPdf(): Promise<void> {
+    if (this.generandoPdf()) return;
+    this.errorPdf.set('');
     const pozo = this.pozo();
     if (!pozo) {
-      this.errorMessage.set('No se pudo obtener la información del pozo.');
+      this.errorPdf.set('No se pudo obtener la información del pozo.');
       return;
     }
-    const id_usuario = pozo.id_propietario;
-    this.informeService.descargarInformePozo(id_usuario, this.id_pozo).subscribe((blob) => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `informe_pozo_${this.id_pozo}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    });
+    this.generandoPdf.set(true);
+    try {
+      await this.informeService.exportarInformePozo(this.authService.userId()!, this.id_pozo);
+    } catch {
+      this.errorPdf.set('No se pudo generar o abrir el PDF. Verificá la conexión e intentá nuevamente.');
+    } finally {
+      this.generandoPdf.set(false);
+    }
   }
 }

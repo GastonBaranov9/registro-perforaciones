@@ -1,4 +1,4 @@
-package com.example.app;
+package uy.com.raulsilva.perforaciones;
 
 import com.getcapacitor.BridgeActivity;
 

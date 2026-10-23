@@ -1,17 +1,20 @@
 import { Component, inject } from '@angular/core';
-import { IonButton, IonContent } from '@ionic/angular/standalone';
-import { Router } from '@angular/router';
-import { MainStore } from '../../shared/services/mainstore-service/main.store';
+import { RouterLink } from '@angular/router';
+import { AuthService } from '../../shared/services/auth-service/auth.service';
+import { LitologiasService } from '../../shared/services/litologias.service';
+import { IonContent } from '@ionic/angular/standalone';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [IonContent, IonButton],
+  imports: [IonContent, RouterLink],
   templateUrl: './home.page.html',
   styleUrl: './home.page.css',
 })
 export class HomePage {
-  readonly mainStore = inject(MainStore);
-  private readonly router = inject(Router);
-  irAAdministracion() { void this.router.navigate(['/litologias-admin']); }
+  readonly auth = inject(AuthService);
+  private catalogo = inject(LitologiasService);
+  ionViewWillEnter() {
+    if (this.auth.isNative() && this.auth.tieneRol('perforador')) void this.catalogo.listar().catch(() => undefined);
+  }
 }

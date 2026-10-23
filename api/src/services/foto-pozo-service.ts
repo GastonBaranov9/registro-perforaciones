@@ -1,3 +1,4 @@
+import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
 import type { Pool, PoolClient } from "pg";
@@ -26,8 +27,9 @@ export async function eliminarFotoPersistida(
   const client = await pool.connect();
   let fotosAisladas: FotoAislada[] = [];
   let confirmada = false;
+  let descartar = false;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer,606)", [idPozo]);
     const vigente = await client.query("SELECT id_pozo,foto_url FROM pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
     if (!vigente.rows[0]) throw new err.T05PozoNoEncontrado();
@@ -49,10 +51,11 @@ export async function eliminarFotoPersistida(
         await (opciones.restaurarCompensacion ?? restaurarFotosAisladas)(fotosAisladas);
       },
     });
+    descartar = Boolean(compensacion.errorRollback);
     if (compensacion.errorFilesystem)
       throw new err.T05ErrorDesconocido("Falló el borrado y no se pudo restaurar la fotografía.", { cause: error });
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(descartar); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "eliminar_foto", opciones.logger, opciones.eliminarPostCommit);
   return { archivoExistia: fotosAisladas.length > 0 };
 }
@@ -66,8 +69,9 @@ export async function eliminarPozoPersistido(
   const client = await pool.connect();
   let fotosAisladas: FotoAislada[] = [];
   let confirmada = false;
+  let descartar = false;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer,606)", [idPozo]);
     const vigente = await client.query("SELECT id_pozo FROM pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
     if (!vigente.rows[0]) throw new err.T05PozoNoEncontrado();
@@ -86,10 +90,11 @@ export async function eliminarPozoPersistido(
         await (opciones.restaurarCompensacion ?? restaurarFotosAisladas)(fotosAisladas);
       },
     });
+    descartar = Boolean(compensacion.errorRollback);
     if (compensacion.errorFilesystem)
       throw new err.T05ErrorDesconocido("Falló el borrado y no se pudieron restaurar sus fotografías.", { cause: error });
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(descartar); }
   await purgarFotosConfirmadas(fotosAisladas, idPozo, "eliminar_pozo", opciones.logger, opciones.eliminarPostCommit);
   return { fotos: fotosAisladas.length };
 }
@@ -105,8 +110,9 @@ export async function reemplazarFotoPersistida<T>(
 ): Promise<T> {
   const client = await pool.connect();
   let confirmada = false;
+  let descartar = false;
   try {
-    await client.query("BEGIN");
+    await iniciarEscrituraSesion(client, false);
     await client.query("SELECT pg_advisory_xact_lock($1::integer,606)", [idPozo]);
     const vigente = await client.query("SELECT id_pozo,foto_url FROM pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
     if (!vigente.rows[0]) throw new err.T05PozoNoEncontrado();
@@ -121,7 +127,7 @@ export async function reemplazarFotoPersistida<T>(
     );
     return operacion.resultado;
   } catch (error) {
-    await compensarFalloTransaccionalFotos({
+    const compensacion = await compensarFalloTransaccionalFotos({
       idPozo,
       operacion: "reemplazar_foto_multipart",
       logger: opciones.logger,
@@ -129,6 +135,7 @@ export async function reemplazarFotoPersistida<T>(
       // reemplazarFotoReversible compensa sus archivos antes de propagar el fallo.
       restaurar: async () => undefined,
     });
+    descartar = Boolean(compensacion.errorRollback);
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(descartar); }
 }

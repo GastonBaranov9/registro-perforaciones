@@ -1,3 +1,4 @@
+import { conEscrituraSesion } from "./escritura-sesion.ts";
 import type { PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import type { RuntimeConfig } from "../config/runtime.ts";
@@ -347,30 +348,32 @@ export async function emitirTicketWsNative(
   metadata: NativeClientMetadata,
   config: RuntimeConfig = cargarConfiguracionRuntime(),
 ): Promise<NativeWsTicketIssued> {
-  const rawTicket = generarTokenNativo("ws-ticket");
-  const ticketHash = hmacTokenNativo(
-    rawTicket,
-    config.nativeAuth.hmacSecret,
-    "ws-ticket",
-  );
-  const { rows } = await myPool.query<{ expires_at: Date }>(
-    `INSERT INTO ticket_ws_nativo (
-       id_sesion_nativa, ticket_hash, platform, app_build_emitido, expires_at
-     ) VALUES (
-       $1, $2, $3, $4, now() + make_interval(secs => $5)
-     )
-     RETURNING expires_at`,
-    [
-      session.idSesionNativa,
-      ticketHash,
-      metadata.platform,
-      metadata.appBuild,
-      config.nativeAuth.wsTicketTtlSeconds,
-    ],
-  );
-  const ticket = rows[0];
-  if (!ticket) throw new Error("No se pudo emitir el ticket WebSocket native");
-  return { ticket: rawTicket, expiresAt: ticket.expires_at };
+  return conEscrituraSesion(async (dbEscritura) => {
+    const rawTicket = generarTokenNativo("ws-ticket");
+    const ticketHash = hmacTokenNativo(
+      rawTicket,
+      config.nativeAuth.hmacSecret,
+      "ws-ticket",
+    );
+    const { rows } = await dbEscritura.query<{ expires_at: Date }>(
+      `INSERT INTO ticket_ws_nativo (
+         id_sesion_nativa, ticket_hash, platform, app_build_emitido, expires_at
+       ) VALUES (
+         $1, $2, $3, $4, now() + make_interval(secs => $5)
+       )
+       RETURNING expires_at`,
+      [
+        session.idSesionNativa,
+        ticketHash,
+        metadata.platform,
+        metadata.appBuild,
+        config.nativeAuth.wsTicketTtlSeconds,
+      ],
+    );
+    const ticket = rows[0];
+    if (!ticket) throw new Error("No se pudo emitir el ticket WebSocket native");
+    return { ticket: rawTicket, expiresAt: ticket.expires_at };
+  }, myPool, false);
 }
 
 /**

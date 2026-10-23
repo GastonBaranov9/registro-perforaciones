@@ -171,6 +171,34 @@ services:
     networks:
       - backend
 
+  reset-piloto:
+    profiles: ["ops"]
+    image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
+    # Backup 0700 y cuarentena hermana de fotos: sólo esta operación manual.
+    user: "0:0"
+    restart: "no"
+    healthcheck:
+      disable: true
+    command: ["node", "./dist/scripts/reset-piloto.js"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${PGUSER:?Falta PGUSER}
+      PGPASSWORD: ${PGPASSWORD:?Falta PGPASSWORD}
+      PGDATABASE: ${PGDATABASE:?Falta PGDATABASE}
+      FOTOS_DIR: /var/lib/registro-perforaciones/fotos
+      RESET_CONFIRM: ${RESET_CONFIRM:-}
+      RESET_BACKUP_DIR: ${RESET_BACKUP_DIR:-}
+      RESET_PHOTO_SHA256: ${RESET_PHOTO_SHA256:-}
+    volumes:
+      - raul_silva_fotos:/var/lib/registro-perforaciones
+      - type: bind
+        source: ${BACKUP_DIR:?Falta BACKUP_DIR}
+        target: /backups
+        read_only: true
+    networks:
+      - backend
+
   reconcile-fotos:
     profiles: ["ops"]
     image: ${API_IMAGE_REF:?Defina API_IMAGE_REF con tag inmutable o digest}
@@ -233,6 +261,8 @@ services:
       NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD: ${NATIVE_AUTH_JANITOR_FAILURE_THRESHOLD:-3}
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PGHOST: postgres
       PGPORT: "5432"
@@ -309,6 +339,8 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
       HSTS_ENABLED: ${HSTS_ENABLED:-false}
     depends_on:
       api:
@@ -347,8 +379,13 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Falta PUBLIC_HOST}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Falta PUBLIC_ORIGIN}
+      APP_HOST: ${APP_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      API_HOST: ${API_HOST:-${PUBLIC_HOST:?Falta PUBLIC_HOST}}
+      HSTS_ENABLED: ${HSTS_ENABLED:-false}
+    entrypoint: ["/bin/sh", "/opt/rsp/start.sh"]
     volumes:
       - ./proxy/maintenance.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./proxy/start.sh:/opt/rsp/start.sh:ro
       - type: bind
         source: ${TLS_CERT_FILE:?Falta TLS_CERT_FILE}
         target: /etc/nginx/tls/tls.crt

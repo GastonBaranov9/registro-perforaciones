@@ -14,6 +14,7 @@ export function loggerOptions(level: string) {
       paths: [
         "req.headers.authorization", "req.headers.cookie", "req.headers['x-csrf-token']",
         "res.headers['set-cookie']", "password", "*.password", "req.body.password",
+        "confirmar", "*.confirmar", "req.body.confirmar",
         "req.body.foto", "req.body.*.base64", "*.base64", "authorization", "cookie", "csrf",
         "session_token", "*.session_token", "native_token", "*.native_token",
         "ticket", "*.ticket", "ws_ticket", "*.ws_ticket",

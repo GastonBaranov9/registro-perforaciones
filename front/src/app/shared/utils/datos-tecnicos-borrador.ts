@@ -87,15 +87,32 @@ export function sugerirInicioSiguienteIntervalo(
 
 export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?: number): string[] {
   const errores: string[] = [];
+  const sello = datos.sello_sanitario_constructivo;
+  if (sello != null) {
+    if (!Number.isFinite(sello.desde_m) || !Number.isFinite(sello.hasta_m))
+      errores.push('Sello sanitario: complete Desde y Hasta con números finitos.');
+    else if (sello.desde_m < 0 || sello.desde_m >= sello.hasta_m)
+      errores.push('Sello sanitario: Desde debe ser mayor o igual a 0 y menor que Hasta.');
+    else if (profundidad != null && sello.hasta_m > profundidad)
+      errores.push('El sello sanitario constructivo excede la profundidad final.');
+  }
   datos.intervalosLitologicos.forEach((item, indice) => {
+    if (item.dato.litologia_provisional != null && (!item.dato.litologia_provisional.trim() || item.dato.litologia_provisional.trim().length > 160 || item.dato.id_litologia != null)) errores.push('Indique un nombre provisional de 1 a 160 caracteres o una litología catalogada.');
     const persistido = item.dato.id_intervalo_litologico != null;
-    if (!persistido && item.dato.id_litologia == null) errores.push(`Intervalo litologico ${indice + 1}: selecciona una litologia para el intervalo.`);
+    if (!persistido && item.dato.id_litologia == null && !item.dato.litologia_provisional?.trim()) errores.push(`Intervalo litologico ${indice + 1}: selecciona una litologia para el intervalo.`);
     if (!item.dato.material.trim()) errores.push(`Intervalo litologico ${indice + 1}: el material no puede estar vacio.`);
   });
   validarIntervalos(datos.intervalosLitologicos.map((item) => item.dato), 'litológico', profundidad, errores);
   validarIntervalos(datos.intervalosDiametro.map((item) => item.dato), 'de diámetro', profundidad, errores);
   validarIntervalos(datos.intervalosFiltro.map((item) => item.dato), 'de filtro', profundidad, errores);
-  datos.intervalosDiametro.forEach((item, indice) => { if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`); });
+  datos.intervalosDiametro.forEach(({ dato }, indice) => {
+    if (dato.sin_tuberia === true) {
+      if (dato.material_tuberia !== null) errores.push(`Intervalo ${indice + 1}: sin cañería no admite material de tubería.`);
+      if (datos.intervalosFiltro.some(({ dato: filtro }) => filtro.desde_m < dato.hasta_m && filtro.hasta_m > dato.desde_m))
+        errores.push(`Intervalo ${indice + 1}: un filtro no puede solaparse con una perforación sin cañería.`);
+    } else if (dato.material_tuberia !== 'PVC' && dato.material_tuberia !== 'Acero')
+      errores.push(`Tubería ${indice + 1}: material pendiente de seleccionar.`);
+  });
   datos.intervalosFiltro.forEach((item, indice) => {
     if (!['PVC', 'Acero'].includes(item.dato.material_tuberia)) errores.push(`Filtro ${indice + 1}: material obligatorio.`);
     if (item.dato.ranura_mm == null && item.dato.id_intervalo_filtro == null) errores.push(`Filtro ${indice + 1}: ranura obligatoria.`);
@@ -132,9 +149,17 @@ function validarIntervalos(
 
 export function ordenarDatosTecnicos(datos: DatosTecnicosBorrador): DatosTecnicosBorrador {
   return {
+    ...datos,
     intervalosLitologicos: [...datos.intervalosLitologicos].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     intervalosDiametro: [...datos.intervalosDiametro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     intervalosFiltro: [...datos.intervalosFiltro].sort((a, b) => a.dato.desde_m - b.dato.desde_m),
     nivelesAporte: [...datos.nivelesAporte].sort((a, b) => a.dato.profundidad_m - b.dato.profundidad_m),
   };
+}
+
+export function selloSanitarioParaEnvio(datos: DatosTecnicosBorrador, originales?: DatosTecnicosBorrador) {
+  const sello = datos.sello_sanitario_constructivo ?? null;
+  const original = originales?.sello_sanitario_constructivo ?? null;
+  if (originales && sello?.desde_m === original?.desde_m && sello?.hasta_m === original?.hasta_m) return undefined;
+  return sello == null ? null : { ...sello };
 }

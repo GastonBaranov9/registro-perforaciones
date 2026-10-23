@@ -17,7 +17,10 @@
     "check:utf8": "node scripts/check-interface-mojibake.mjs",
     "verify:native-assets": "node scripts/verify-native-assets.mjs",
     "probe:native-release-model": "node scripts/probe-native-release-model.mjs",
-    "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs"
+    "check:native-release-readiness": "node scripts/check-native-release-readiness.mjs",
+    "check:android-signing-env": "node scripts/check-android-signing-env.mjs",
+    "generate:android-branding": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-android-branding.ps1",
+    "verify:android-branding": "node scripts/verify-android-branding.mjs"
   },
   "prettier": {
     "printWidth": 100,
@@ -43,10 +46,12 @@
     "@aparajita/capacitor-secure-storage": "8.0.0",
     "@capacitor/android": "8.5.0",
     "@capacitor/app": "8.0.0",
-    "@capacitor/camera": "^7.0.2",
+    "@capacitor/camera": "8.0.0",
     "@capacitor/core": "8.5.0",
+    "@capacitor/filesystem": "8.0.0",
     "@capacitor/geolocation": "^8.0.0",
     "@capacitor/preferences": "8.0.0",
+    "@capacitor/share": "8.0.0",
     "@ionic/angular": "^8.7.8",
     "@ionic/pwa-elements": "^3.2.2",
     "pdf-lib": "^1.17.1",

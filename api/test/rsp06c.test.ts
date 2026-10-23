@@ -41,7 +41,7 @@ function poolActualizacion(fallar = false, rechazarLitologia = false, fallarRoll
     consultas.push(sql);
     if (fallarRollback && sql === "ROLLBACK") throw Object.assign(new Error("rollback controlado"), { code: "ECONNRESET" });
     if (sql.includes("JOIN usuario_rol")) return { rows: [{ id_usuario: 2 }] };
-    if (sql.includes("SELECT id_pozo,id_sitio FROM pozo")) return { rows: [{ id_pozo: 55, id_sitio: 4 }] };
+    if (sql.includes("SELECT id_pozo,id_sitio,id_propietario,numero_perforacion,origen FROM pozo")) return { rows: [{ id_pozo: 55, id_sitio: 4, id_propietario: 2, origen:'normal' }] };
     if (sql.includes("UPDATE pozo SET id_propietario")) { parametrosUpdate=params; return { rows: [{ id_pozo: 55, id_propietario: 2, id_perforador: 8, id_sitio: 4, profundidad_final_m: "40", foto_url: "/foto" }] }; }
     if (sql.includes("FROM public.sitio WHERE id_sitio")) {
       if (fallarSitio) throw new Error("fallo posterior a foto");

@@ -14,16 +14,24 @@
           </ion-item>
         </ion-menu-toggle>
 
+        @if (mainStore.isAdmin()) {
         <ion-menu-toggle auto-hide="true">
           <ion-item routerLink="/sitio">
             <ion-label>IR A SITIOS</ion-label>
           </ion-item>
         </ion-menu-toggle>
+        }
 
         @if (mainStore.isAdmin()) {
           <ion-menu-toggle auto-hide="true">
             <ion-item routerLink="/usuario">
               <ion-label>IR A USUARIOS</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+          <ion-menu-toggle auto-hide="true">
+            <ion-item routerLink="/personas-pendientes"><ion-label>PERSONAS PENDIENTES DE VINCULACIÓN</ion-label></ion-item>
+            <ion-item routerLink="/litologias-admin">
+              <ion-label>ADMINISTRAR LITOLOGÍAS</ion-label>
             </ion-item>
           </ion-menu-toggle>
         }
@@ -35,7 +43,7 @@
         >
 
         <ion-menu-toggle auto-hide="true">
-          <ion-button color="grey" shape="round" expand="block"> Cerrar menú </ion-button>
+          <ion-button fill="clear" expand="block"> Cerrar menú </ion-button>
         </ion-menu-toggle>
       </ion-list>
     </ion-content>
@@ -43,24 +51,24 @@
 
   <div class="ion-page" id="main-content">
     <ion-header>
-      <ion-toolbar>
+      <ion-toolbar class="app-header">
         <ion-buttons slot="start">
           <ion-back-button  icon="arrow-back-outline"> </ion-back-button>
-          <ion-menu-button></ion-menu-button>
+          <ion-menu-button aria-label="Abrir menú"></ion-menu-button>
         </ion-buttons>
 
         <div class="header-logo">
-          <img src="/assets/branding/logo.png" alt="Logo" />
+          <img src="/assets/branding/logo.png" alt="Raúl Silva Perforaciones" />
         </div>
-        <ion-buttons slot="end">
+        <ion-buttons slot="end" class="account-actions">
           @if(!mainStore.user()){
 
-          <ion-button routerLink="/login" fill="clear" class="login-btn">Login</ion-button>
+          <ion-button routerLink="/login" fill="clear" class="login-btn">Ingresar</ion-button>
 
           }@else {
 
-          <ion-button routerLink="/usuario-detail" fill="clear" class="login-btn"
-            >{{ mainStore.user()?.nombre }}
+          <ion-button routerLink="/usuario-detail" fill="clear" class="login-btn" [attr.aria-label]="'Mi cuenta: ' + mainStore.user()?.nombre"
+            ><span class="account-name">{{ nombreCompacto() }}</span>
           </ion-button>
 
           }

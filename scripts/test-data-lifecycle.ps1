@@ -146,9 +146,9 @@ try {
   Invoke-Compose -Base $origin -Arguments @("--profile", "ops", "build", "migrate")
   Invoke-Compose -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "migrate")
   $ledgerFresh = Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations"
-  if ($ledgerFresh -ne "9") { throw "Fresh install no registró 000..008." }
+  if ($ledgerFresh -ne "11") { throw "Fresh install no registró 000..010." }
   $noop = Invoke-ComposeText -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "migrate")
-  if ($noop -notmatch "no hay cambios pendientes" -or (Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations") -ne "9") {
+  if ($noop -notmatch "no hay cambios pendientes" -or (Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations") -ne "11") {
     throw "La segunda ejecución de migraciones no fue no-op."
   }
   $migration006 = [IO.File]::ReadAllText((Join-Path $repo "api/db/migrations/006_roles_base.sql")).Replace("`r`n", "`n").Replace("`r", "`n")
@@ -173,7 +173,7 @@ try {
   )
   Invoke-Psql $origin $adoptDb "DROP TABLE schema_migrations" | Out-Null
   Invoke-Compose -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "-e", "PGDATABASE=$adoptDb", "migrate", "npm", "run", "db:migrate", "--", "--adopt-current-schema")
-  if ((Invoke-Psql $origin $adoptDb "SELECT count(*) FROM schema_migrations") -ne "9") { throw "La adopción compatible no registró el baseline." }
+  if ((Invoke-Psql $origin $adoptDb "SELECT count(*) FROM schema_migrations") -ne "11") { throw "La adopción compatible no registró el baseline." }
 
   $badAdoptDb = "rsp07c_bad_adopt"
   Invoke-Psql $origin "postgres" "CREATE DATABASE $badAdoptDb" | Out-Null
@@ -182,10 +182,10 @@ try {
   if ((Invoke-Psql $origin $badAdoptDb "SELECT to_regclass('public.schema_migrations') IS NULL") -ne "t") { throw "Adopción incompatible creó un ledger." }
 
   Copy-Item -LiteralPath (Join-Path $repo "api/db/migrations") -Destination $failureDir -Recurse
-  [IO.File]::WriteAllText((Join-Path $failureDir "009_control_failure.sql"), "CREATE TABLE rsp07c_partial(id integer);`nSELECT funcion_inexistente_rsp07c();`n", [Text.UTF8Encoding]::new($false))
-  Invoke-ExpectedFailure -Base $origin -Expected "009_control_failure.sql" -Arguments @("--profile", "ops", "run", "--rm", "-e", "MIGRATIONS_DIR=/fixtures", "-v", "${failureDir}:/fixtures:ro", "migrate") | Out-Null
+  [IO.File]::WriteAllText((Join-Path $failureDir "011_control_failure.sql"), "CREATE TABLE rsp07c_partial(id integer);`nSELECT funcion_inexistente_rsp07c();`n", [Text.UTF8Encoding]::new($false))
+  Invoke-ExpectedFailure -Base $origin -Expected "011_control_failure.sql" -Arguments @("--profile", "ops", "run", "--rm", "-e", "MIGRATIONS_DIR=/fixtures", "-v", "${failureDir}:/fixtures:ro", "migrate") | Out-Null
   if ((Invoke-Psql $origin $originDb "SELECT to_regclass('public.rsp07c_partial') IS NULL") -ne "t") { throw "La migración fallida dejó DDL parcial." }
-  if ((Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations WHERE version='009'") -ne "0") { throw "La migración fallida alteró el ledger." }
+  if ((Invoke-Psql $origin $originDb "SELECT count(*) FROM schema_migrations WHERE version='011'") -ne "0") { throw "La migración fallida alteró el ledger." }
 
   Copy-Item -LiteralPath (Join-Path $repo "api/db/migrations") -Destination $checksumDir -Recurse
   [IO.File]::AppendAllText((Join-Path $checksumDir "006_roles_base.sql"), "`n-- alteración controlada de checksum`n", [Text.UTF8Encoding]::new($false))
@@ -195,7 +195,7 @@ try {
   Invoke-Psql $origin "postgres" "CREATE DATABASE $concurrencyDb" | Out-Null
   $concurrentCommand = 'npm run db:migrate >/tmp/m1.log 2>&1 & p1=$!; npm run db:migrate >/tmp/m2.log 2>&1 & p2=$!; wait $p1; a=$?; wait $p2; b=$?; cat /tmp/m1.log; cat /tmp/m2.log; test $a -eq 0 -a $b -eq 0'
   Invoke-Compose -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "-e", "PGDATABASE=$concurrencyDb", "migrate", "sh", "-c", $concurrentCommand)
-  if ((Invoke-Psql $origin $concurrencyDb "SELECT count(*) FROM schema_migrations") -ne "9") { throw "El lock no protegió el ledger concurrente." }
+  if ((Invoke-Psql $origin $concurrencyDb "SELECT count(*) FROM schema_migrations") -ne "11") { throw "El lock no protegió el ledger concurrente." }
 
   $bootstrap = Invoke-ComposeText -Base $origin -Arguments @("--profile", "ops", "run", "--rm", "-e", "ADMIN_EMAIL=$adminEmail", "-e", "ADMIN_NAME=Administrador control", "-e", "ADMIN_PASSWORD_FILE=/run/secrets/admin-password", "-v", "${passwordFile}:/run/secrets/admin-password:ro", "bootstrap-admin")
   if ($bootstrap -notmatch "Administrador inicial creado" -or $bootstrap.Contains($adminPassword)) { throw "Bootstrap no cumplió salida segura." }
@@ -312,10 +312,10 @@ await fs.writeFile(path.join(process.env.FOTOS_DIR,'pozo-$wellId.jpg'),foto.buff
   $cleanupRetry = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "restore")
   if ($cleanupRetry -notmatch "RESTORE_OK=$bundle MODE=replace") { throw 'No se pudo limpiar/reintentar luego del cleanup pendiente.' }
   $migrateAfterRestore = Invoke-ComposeText -Base $target -Arguments @("--profile", "ops", "run", "--rm", "migrate")
-  if ($migrateAfterRestore -notmatch 'no hay cambios pendientes' -or (Invoke-Psql $target $targetDb "SELECT count(*)=9 AND max(version)='008' FROM schema_migrations") -ne 't') { throw 'El ledger restaurado no quedó exactamente en N.' }
+  if ($migrateAfterRestore -notmatch 'no hay cambios pendientes' -or (Invoke-Psql $target $targetDb "SELECT count(*)=11 AND max(version)='010' FROM schema_migrations") -ne 't') { throw 'El ledger restaurado no quedó exactamente en N.' }
 
   Invoke-Compose -Base $target -Arguments @("up", "-d", "--build", "--wait", "--wait-timeout", "300")
-  $relations = Invoke-Psql $target $targetDb "SELECT (SELECT count(*) FROM pozo)=1 AND (SELECT count(*) FROM intervalo_litologico)=1 AND (SELECT count(*) FROM intervalo_diametro_perforacion)=1 AND (SELECT count(*) FROM intervalo_filtro WHERE ranura_mm=0.75)=1 AND (SELECT count(*) FROM nivel_aporte)=1 AND (SELECT count(*) FROM schema_migrations)=9"
+  $relations = Invoke-Psql $target $targetDb "SELECT (SELECT count(*) FROM pozo)=1 AND (SELECT count(*) FROM intervalo_litologico)=1 AND (SELECT count(*) FROM intervalo_diametro_perforacion)=1 AND (SELECT count(*) FROM intervalo_filtro WHERE ranura_mm=0.75)=1 AND (SELECT count(*) FROM nivel_aporte)=1 AND (SELECT count(*) FROM schema_migrations)=11"
   if ($relations -ne "t") { throw "Los datos/relaciones restaurados no coinciden." }
   $targetPhotoSha = Invoke-ComposeText -Base $target -Arguments @("exec", "-T", "api", "sha256sum", "/var/lib/registro-perforaciones/fotos/pozo-$wellId.jpg")
   if (($sourcePhotoSha -split '\s+')[0] -ne ($targetPhotoSha -split '\s+')[0]) { throw "La foto restaurada no conserva checksum." }
@@ -333,7 +333,7 @@ const pdf=await generarPDFBytes(r,$wellId);assert.equal(Buffer.from(pdf).subarra
   if ($LASTEXITCODE -ne 0 -or $ready -ne "ok") { throw "Readiness restaurado falló." }
 
   [pscustomobject]@{
-    migrations_fresh = 9; rerun_noop = $true; legacy_crlf_ledger = $true; checksum_rejected = $true; rollback_ok = $true
+    migrations_fresh = 11; rerun_noop = $true; legacy_crlf_ledger = $true; checksum_rejected = $true; rollback_ok = $true
     concurrent_lock = $true; adoption_ok = $true; adoption_rejected = $true
     bootstrap_login = $true; bootstrap_second_rejected = $true
     backup_bundle = $bundle; corrupt_restore_rejected = $true; invalid_manifest_rejected = $true; missing_dump_rejected = $true; corrupt_replace_preserved_target = $true

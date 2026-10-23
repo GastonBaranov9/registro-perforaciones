@@ -4,11 +4,15 @@ param(
   [Parameter(Mandatory=$true)][string]$ProjectName,
   [Parameter(Mandatory=$true)][string]$AdminEmail,
   [Parameter(Mandatory=$true)][string]$AdminPasswordFile,
+  [ValidateRange(0,65535)][int]$ConnectPort=0,
+  [string]$TlsCaFile="",
+  [switch]$PublicOnly,
   [string]$ComposeFile="docker-compose.production.yaml"
 )
 
 $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "secret-file.ps1")
+. (Join-Path $PSScriptRoot "smoke-wells.ps1")
 if($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $envPath=(Resolve-Path $EnvFile).Path
@@ -25,6 +29,16 @@ $origin=[Uri](Get-EnvValue "PUBLIC_ORIGIN")
 $hostName=Get-EnvValue "PUBLIC_HOST"
 if($origin.Scheme -ne "https" -or $origin.Host -ne $hostName){throw "PUBLIC_ORIGIN/PUBLIC_HOST no forman la origin HTTPS canónica."}
 $port=$origin.Port
+if($origin.Scheme -ne 'https' -or $origin.AbsolutePath -ne '/' -or $origin.Query -or $origin.Fragment -or $origin.UserInfo){throw 'PUBLIC_ORIGIN debe ser una origin HTTPS sin ruta ni credenciales.'}
+if(-not $ConnectPort){
+  $configuredPort=Get-Content -LiteralPath $envPath | Where-Object {$_ -match '^HTTPS_PORT='} | Select-Object -Last 1
+  $ConnectPort=if($configuredPort){[int](($configuredPort -split '=',2)[1].Trim())}else{$port}
+}
+if($ConnectPort -lt 1 -or $ConnectPort -gt 65535){throw 'Puerto HTTPS de conexión inválido.'}
+# connect-to changes only the socket destination, preserving URL, Host, SNI and cookies.
+$transport=@('--connect-to',"${hostName}:${port}:127.0.0.1:${ConnectPort}",'--noproxy','*')
+if(-not $TlsCaFile){$TlsCaFile=$env:SMOKE_CA_FILE}
+if($TlsCaFile){$transport+=@('--cacert',(Resolve-Path -LiteralPath $TlsCaFile).Path)}
 $compose=@("--project-name",$ProjectName,"--env-file",$envPath)
 if($DeploymentStateFile){$compose+=@("--env-file",(Resolve-Path $DeploymentStateFile).Path)}
 $compose+=@("-f",$composePath)
@@ -33,7 +47,7 @@ $tempRoot=Join-Path ([IO.Path]::GetTempPath()) "rsp-smoke-$PID-$([Guid]::NewGuid
 $body=Join-Path $tempRoot "body.bin";$headers=Join-Path $tempRoot "headers.txt";$cookies=Join-Path $tempRoot "cookies.txt";$cookiesCopy=Join-Path $tempRoot "cookies-copy.txt";$loginBody=Join-Path $tempRoot "login.json"
 
 function Invoke-Https([string[]]$Arguments){
-  $status=(& curl.exe --insecure --silent --show-error --resolve "${hostName}:${port}:127.0.0.1" @Arguments --output $body --write-out "%{http_code}"|Out-String).Trim()
+  $status=(& curl.exe --silent --show-error @transport @Arguments --output $body --write-out "%{http_code}"|Out-String).Trim()
   if($LASTEXITCODE -ne 0){throw "curl falló durante smoke."}
   return $status
 }
@@ -50,6 +64,7 @@ try{
   Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/health")) "200" "health"
   Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/ready")) "200" "readiness"
   Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/docs")) "404" "Swagger production off"
+  if($PublicOnly){Write-Output 'PUBLIC_SMOKE_OK';return}
 
   $login=@{email=$AdminEmail;password=(Read-OpaqueSecretFile $passwordPath)}|ConvertTo-Json -Compress
   [IO.File]::WriteAllText($loginBody,$login,[Text.UTF8Encoding]::new($false))
@@ -68,7 +83,7 @@ try{
   if(-not($trimmed.StartsWith('[')-and $trimmed.EndsWith(']'))){throw "Lista de pozos JSON inválida."}
   try{$parsedPozos=$wellsRaw|ConvertFrom-Json;$pozos=if($null-eq $parsedPozos){@()}else{@($parsedPozos)}}catch{throw "Lista de pozos JSON inválida."}
   foreach($candidate in $pozos){
-    if($candidate.id_pozo-isnot [ValueType]-or $candidate.id_pozo-is [bool]-or $candidate.id_propietario-isnot [ValueType]-or $candidate.id_propietario-is [bool]){throw "Lista de pozos sin identificadores numéricos válidos."}
+    Assert-SmokeWell $candidate
     if($null-ne $candidate.foto_url-and $candidate.foto_url-isnot [string]){throw "Lista de pozos con foto_url inválida."}
   }
   Write-Pass "wells-list"
@@ -78,14 +93,15 @@ try{
     Write-Skip "photo" "no wells available"
     Write-Skip "pdf" "no well available"
   }else{
-    $pozo=$pozos[0];$wellId=[int]$pozo.id_pozo;$ownerId=[int]$pozo.id_propietario
+    # 0 is the existing administrative route context, never an invented owner.
+    $pozo=$pozos[0];$wellId=[long]$pozo.id_pozo;$ownerId=if($null-eq $pozo.id_propietario){0}else{[long]$pozo.id_propietario}
     Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/usuarios/$ownerId/pozos/$wellId")) "200" "detalle de pozo";Write-Pass "well-detail"
     Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/usuarios/$ownerId/pozos/$wellId/informe-pdf")) "200" "PDF"
     if((Get-Item $body).Length-lt 4 -or [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($body),0,4)-ne '%PDF'){throw "PDF inválido."}
     $pdfChecked=$true;Write-Pass "pdf"
     $pozoFoto=$pozos|Where-Object{$_.foto_url-is [string]-and $_.foto_url.Length-gt 0}|Select-Object -First 1
     if($null-eq $pozoFoto){Write-Skip "photo" "no photo available"}else{
-      $photoWellId=[int]$pozoFoto.id_pozo;$photoOwnerId=[int]$pozoFoto.id_propietario
+      $photoWellId=[long]$pozoFoto.id_pozo;$photoOwnerId=if($null-eq $pozoFoto.id_propietario){0}else{[long]$pozoFoto.id_propietario}
       Assert-Status (Invoke-Https @("$($origin.AbsoluteUri)api/usuarios/$photoOwnerId/pozos/$photoWellId/foto")) "401" "foto protegida sin sesión"
       Assert-Status (Invoke-Https @("--cookie",$cookies,"--dump-header",$headers,"$($origin.AbsoluteUri)api/usuarios/$photoOwnerId/pozos/$photoWellId/foto")) "200" "foto protegida"
       $photoHeaders=[IO.File]::ReadAllText($headers);$bytes=[IO.File]::ReadAllBytes($body)
@@ -99,7 +115,7 @@ try{
   }
 
   $oldPreference=$ErrorActionPreference;$ErrorActionPreference="Continue"
-  try{$ws=(& curl.exe --insecure --silent --show-error --include --max-time 2 --resolve "${hostName}:${port}:127.0.0.1" --cookie $cookies --header "Origin: $($origin.AbsoluteUri.TrimEnd('/'))" --header "Connection: Upgrade" --header "Upgrade: websocket" --header "Sec-WebSocket-Version: 13" --header "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "$($origin.AbsoluteUri)ws" 2>&1|Out-String);$wsExit=$LASTEXITCODE}finally{$ErrorActionPreference=$oldPreference}
+  try{$ws=(& curl.exe --silent --show-error --include --max-time 2 @transport --cookie $cookies --header "Origin: $($origin.AbsoluteUri.TrimEnd('/'))" --header "Connection: Upgrade" --header "Upgrade: websocket" --header "Sec-WebSocket-Version: 13" --header "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "$($origin.AbsoluteUri)ws" 2>&1|Out-String);$wsExit=$LASTEXITCODE}finally{$ErrorActionPreference=$oldPreference}
   if($wsExit-notin @(0,28)-or $ws-notmatch 'HTTP/1\.1 101'){throw "WebSocket no devolvió 101."}
   foreach($service in @("api","front","postgres")){$id=(& docker compose @compose ps -q $service|Out-String).Trim();if(-not $id){throw "Falta servicio $service."};$bindings=(& docker inspect --format '{{json .HostConfig.PortBindings}}' $id|Out-String).Trim();if($bindings-ne '{}'){throw "$service tiene puertos publicados."}}
 

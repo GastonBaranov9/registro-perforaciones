@@ -5,7 +5,8 @@ import { actualizarFiltro } from "../src/services/intervalos-filtro-service.ts";
 const valido = { desde_m:10,hasta_m:20,diametro_pulg:6,material_tuberia:"PVC" as const,ranura_mm:0.75 as const };
 function dbCon(filas: Record<string,unknown>[][]) {
   let indice=0;
-  return { query:async()=>({rows:filas[indice++] ?? []}) };
+  return { query:async(sql: string)=>({rows:
+    sql.includes('FOR UPDATE') || sql.includes('AND sin_tuberia') ? [] : filas[indice++] ?? []}) };
 }
 
 test("filtro inexistente o ajeno conserva el 404 genérico mediante null", async()=>{

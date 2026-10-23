@@ -1,4 +1,10 @@
-import { Component, inject, input, resource, signal } from '@angular/core';
+import { tecnicosPersistidos } from '../../../../shared/utils/tecnicos-persistidos';
+import { huellaDatosTecnicos } from '../../../../shared/utils/estado-formulario-perforacion';
+import { reconciliarDatosTecnicos } from '../../../../shared/utils/reconciliar-perforacion';
+import { EdicionPozoService } from '../../../../shared/services/edicion-pozo.service';
+import { VincularPropietarioComponent } from '../../components/vincular-propietario/vincular-propietario.component';
+import { CandidatoPozo } from '../../../../shared/types/schemas';
+import { Component, ViewChild, inject, input, resource, signal } from '@angular/core';
 import { PozosEditService } from '../../../../shared/services/pozos-edit.service';
 import { Router } from '@angular/router';
 import { AccionFotoEdicion, DatosTecnicosBorrador, NuevoPozo, PropietarioOperativoActualizarBody, Sitio } from '../../../../shared/types/schemas';
@@ -29,9 +35,16 @@ import { normalizarFechaCalendarioInput } from '../../../../shared/utils/fechas'
 import { mensajeHumano } from '../../../../shared/utils/errores';
 import { AuthService } from '../../../../shared/services/auth-service/auth.service';
 import { PropietariosOperativosService } from '../../../../shared/services/propietarios-operativos.service';
+import { SitiosFormComponent } from '../../../sitios/components/sitios-form/sitios-form.component';
+import { SitiosEditService } from '../../../../shared/services/sitios-edit.service';
+import { SitioBody } from '../../../../shared/types/schemas';
+import { MapaAereoComponent } from '../../../../shared/components/mapa-aereo/mapa-aereo.component';
 @Component({
   selector: 'app-pozo-edit',
   imports: [
+    SitiosFormComponent,
+    MapaAereoComponent,
+    VincularPropietarioComponent,
     IonButton,
     IonContent,
     IonSpinner,
@@ -48,6 +61,11 @@ import { PropietariosOperativosService } from '../../../../shared/services/propi
   styleUrl: './pozo-edit.page.css',
 })
 export class PozoEditPage {
+  private readonly editarUbicacionService = inject(SitiosEditService);
+  readonly sitioEnEdicion = signal<Sitio | null>(null);
+  readonly coordenadasPendientes = signal<{ latitud: string; longitud: string } | null>(null);
+  readonly permisos = inject(EdicionPozoService);
+  @ViewChild(PozosFormComponent) public formulario?: PozosFormComponent;
   public pozoEditService: PozosEditService = inject(PozosEditService);
   public router: Router = inject(Router);
   public id_pozo = input.required<number>();
@@ -71,30 +89,42 @@ export class PozoEditPage {
         this.litologia.getIntervalosLitologicos(params.idPozo), this.diametros.getIntervalosDiametros(params.idPozo), this.filtros.listar(params.idPozo),
         this.aportes.getNivelesAporte(params.idPozo),
       ]);
+      if (pozo.origen === 'historico' || pozo.id_sitio == null || pozo.id_perforador == null) throw new Error('Este registro histórico no se edita con el formulario de alta normal.');
       const [propietario, perforador] = await Promise.all([
-        personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
-        personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
+        !this.authService.puedeOperarTodosLosPozos() || pozo.id_propietario === null || personasBase.propietarios.some((x) => x.id_usuario === pozo.id_propietario) ? null : this.candidatos.obtenerPorId('propietario', pozo.id_propietario),
+        pozo.id_perforador == null || personasBase.perforadores.some((x) => x.id_usuario === pozo.id_perforador) ? null : this.candidatos.obtenerPorId('perforador', pozo.id_perforador),
       ]);
       const personas = {
         propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
         perforadores: perforador ? [perforador, ...personasBase.perforadores] : personasBase.perforadores,
       };
-      const tecnicos: DatosTecnicosBorrador = {
-        intervalosLitologicos: litologia.map((x) => ({ idLocal: `persistido-lit-${x.id_intervalo_litologico}`, dato: { id_intervalo_litologico: x.id_intervalo_litologico, desde_m: x.desde_m, hasta_m: x.hasta_m, material: x.material, id_litologia: x.id_litologia ?? undefined } })),
-        intervalosDiametro: diametros.map((x) => ({ idLocal: `persistido-dia-${x.id_intervalo_diametro_perforacion}`, dato: { desde_m: x.desde_m, hasta_m: x.hasta_m, diametro_pulg: x.diametro_pulg, material_tuberia: x.material_tuberia ?? '' } })),
-        intervalosFiltro: filtros.map((x) => ({ idLocal: `persistido-fil-${x.id_intervalo_filtro}`, ranuraOriginal: x.ranura_mm, dato: { id_intervalo_filtro:x.id_intervalo_filtro,desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.material_tuberia,ranura_mm:x.ranura_mm } })),
-        nivelesAporte: aportes.map((x) => ({ idLocal: `persistido-apo-${x.id_nivel_aporte}`, dato: { profundidad_m: x.profundidad_m } })),
-      };
-      return { pozo: { ...pozo, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
+      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes,pozo.sello_sanitario_constructivo);
+      this.tecnicosGuardados = structuredClone(tecnicos);
+      return { pozo: { ...pozo, id_sitio: pozo.id_sitio, id_perforador: pozo.id_perforador, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
   });
 
   public errorMessage = signal<string>('');
   public disabled = signal<boolean>(false);
+  public vinculando = signal(false);
+  propietarioVinculado(persona: CandidatoPozo) {
+    const editor = this.pozoResource.value();
+    if (!editor) return;
+    editor.pozo.id_propietario = persona.id_usuario;
+    editor.pozo.propietario_provisional = null;
+    editor.personas.propietarios = [persona, ...editor.personas.propietarios.filter(p => p.id_usuario !== persona.id_usuario)];
+  }
   public datosTecnicos = signal<DatosTecnicosBorrador>({ intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] });
   public sitiosActualizados = signal<Sitio[] | null>(null);
   public profundidadBorrador = signal<number | undefined>(undefined);
   public borradorDirty = signal(false);
+  private tecnicosGuardados?: DatosTecnicosBorrador;
+  tieneCambiosSinGuardar(): boolean {
+    return (this.tecnicosGuardados
+      ? huellaDatosTecnicos(this.datosTecnicos()) !== huellaDatosTecnicos(this.tecnicosGuardados)
+      : this.borradorDirty()) || !!this.formulario?.fotoFile || !!this.formulario?.eliminarFotoPendiente?.()
+      || !!this.formulario?.tieneCambiosPropietario?.();
+  }
   public versionDescartar = signal(0);
   mensajeErrorCarga() { return mensajeHumano(this.pozoResource.error(), 'No fue posible cargar los datos del pozo.'); }
 
@@ -110,30 +140,44 @@ export class PozoEditPage {
   }
 
   async handleEdit(data: { pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }) {
-    if (this.disabled()) return;
+    if (!this.permisos.puedeEditar(this.pozoResource.value()?.pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
+    if (this.disabled() || this.vinculando() || this.sitioEnEdicion()) return;
     const errores = validarDatosTecnicos(this.datosTecnicos(), data.pozo.profundidad_final_m);
     if (errores.length) { this.errorMessage.set(errores.join(' ')); return; }
     try {
       this.disabled.set(true);
-      await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, this.datosTecnicos(), data.foto, data.fotoAccion);
-      this.borradorDirty.set(false);
+      this.errorMessage.set('');
+      const enviado = structuredClone(this.datosTecnicos());
+      const resultado = await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, enviado, data.foto, data.fotoAccion, this.tecnicosGuardados);
+      const canonico = tecnicosPersistidos(resultado.intervalos_litologicos, resultado.intervalos_diametro, resultado.intervalos_filtro, resultado.niveles_aporte, resultado.sello_sanitario_constructivo);
+      const actualizados = reconciliarDatosTecnicos(enviado, this.datosTecnicos(), canonico);
+      this.tecnicosGuardados = canonico;
+      this.datosTecnicos.set(actualizados);
+      if (this.pozoResource.hasValue()) this.pozoResource.update(editor => editor ? { ...editor, tecnicos: actualizados } : editor);
+      this.versionDescartar.update(version => version + 1);
+      if (resultado.pozo) this.formulario?.confirmarFotoGuardada(resultado.pozo.foto_url);
+      if (this.formulario && this.formulario.fotoFile === data.foto
+        && this.formulario.eliminarFotoPendiente() === (data.fotoAccion === 'eliminar')) this.formulario.cancelarCambioFoto();
+      this.borradorDirty.set(huellaDatosTecnicos(actualizados) !== huellaDatosTecnicos(canonico));
       await this.router.navigate(['/pozos-detail', this.id_pozo()]);
-    } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la perforación.')); }
+    } catch (error: unknown) { this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la perforación.') + ' Los cambios y la fotografía siguen pendientes de guardar.'); }
     finally { this.disabled.set(false); }
   }
   recargar(): void {
-    if (this.borradorDirty() && !window.confirm('Hay cambios técnicos sin guardar. ¿Desea descartarlos y recargar?')) return;
+    if (this.disabled() || this.vinculando() || this.sitioEnEdicion()) return;
+    if (this.tieneCambiosSinGuardar() && !window.confirm('Hay cambios sin guardar. ¿Desea descartarlos y recargar?')) return;
+    this.formulario?.cancelarCambioFoto();
     this.borradorDirty.set(false);
     this.versionDescartar.update((version) => version + 1);
     this.pozoResource.reload();
   }
   async eliminarFotoPersistida() {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo?.foto_url || this.disabled()) return;
+    if (!this.permisos.puedeEditar(pozo) || !pozo?.foto_url || this.disabled()) return;
     try {
       this.disabled.set(true);
       this.errorMessage.set('');
-      await this.fotoPozoService.eliminarFoto(pozo.id_propietario, this.id_pozo());
+      await this.fotoPozoService.eliminarFoto(this.authService.userId()!, this.id_pozo());
       this.pozoResource.reload();
     } catch (error: unknown) {
       this.errorMessage.set(mensajeHumano(error, 'No se pudo eliminar la fotografía.'));
@@ -147,14 +191,40 @@ export class PozoEditPage {
 
   editarSitio() {
     const pozo = this.pozoResource.value()?.pozo;
-    if (!pozo) return;
+    if (!pozo || !this.permisos.puedeEditar(pozo) || this.disabled() || this.vinculando()) return;
+
+    if (!this.authService.tieneRol('administracion')) {
+      const sitio = (this.sitiosActualizados() ?? this.pozoResource.value()?.sitios ?? [])
+        .find(sitio => sitio.id_sitio === pozo.id_sitio);
+      if (sitio) {
+        this.coordenadasPendientes.set(null);
+        this.sitioEnEdicion.set(structuredClone(sitio));
+        this.errorMessage.set('');
+      }
+      return;
+    }
 
     this.router.navigate(['/sitios-edit', pozo.id_sitio], {
       state: { returnTo: this.router.url },
     });
   }
+  async guardarUbicacion(sitio: SitioBody) {
+    const pozo = this.pozoResource.value()?.pozo;
+    if (!pozo || pozo.id_sitio == null || !this.sitioEnEdicion() || this.disabled() || this.vinculando()) return;
+    if (!this.permisos.puedeEditar(pozo)) { this.errorMessage.set(this.permisos.mensaje); return; }
+    try {
+      this.disabled.set(true); this.errorMessage.set('');
+      // La API comprueba todos los pozos del sitio y su ventana de edición.
+      const actualizado = await this.editarUbicacionService.editSitio(pozo.id_sitio, sitio);
+      this.sitiosActualizados.set((this.sitiosActualizados() ?? this.pozoResource.value()!.sitios)
+        .map(actual => actual.id_sitio === actualizado.id_sitio ? actualizado : actual));
+      this.sitioEnEdicion.set(null);
+    } catch (error: unknown) {
+      this.errorMessage.set(mensajeHumano(error, 'No se pudo actualizar la ubicación.'));
+    } finally { this.disabled.set(false); }
+  }
   async actualizarPropietario(evento: { id: number; body: PropietarioOperativoActualizarBody }) {
-    if (this.disabled()) return;
+    if (this.disabled() || this.vinculando()) return;
     try {
       this.disabled.set(true); this.errorMessage.set('');
       const actualizado = await this.propietariosOperativos.actualizar(evento.id, evento.body);

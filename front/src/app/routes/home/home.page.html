@@ -5,14 +5,14 @@
         <p class="hero-subtitle">Bienvenido a</p>
 
         <h1 class="hero-title">
-          <span>RAÚL SILVA</span><br>
+          <span>RAÚL SILVA</span>
           
           <span>PERFORACIONES</span>
         </h1>
 
         <p class="hero-tagline">El hombre que trata bien a la tierra</p>
+        @if (auth.isNative() && auth.tieneRol('perforador')) { <p><a routerLink="/trabajo-local">Trabajo de campo · borradores y sincronización</a></p> }
       </div>
     </div>
   </div>
-  @if (mainStore.isAdmin()) { <ion-button class="admin-link" (click)="irAAdministracion()">Administrar litologías</ion-button> }
 </ion-content>

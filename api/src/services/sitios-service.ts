@@ -1,56 +1,61 @@
+import { conEscrituraSesion } from "./escritura-sesion.ts";
 import { myPool } from "../db/pool.ts";
 import type { Pool } from "pg";
 import { Sitio, SitioBody } from "../models/schemas.ts";
 import * as err from "../models/errors.ts";
 import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 export async function createSitio(data: SitioBody): Promise<Sitio> {
-  const normalizado = validarSitio(data);
-  const sql = `
-            INSERT INTO sitio
-              (departamento, localidad, latitud, longitud, padron)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
-          `;
-  const { rows } = await myPool.query(sql, [
-    normalizado.departamento,
-    normalizado.localidad,
-    normalizado.latitud,
-    normalizado.longitud,
-    normalizado.padron,
-  ]);
-  return rows[0] as Sitio;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const normalizado = validarSitio(data);
+    const sql = `
+              INSERT INTO sitio
+                (departamento, localidad, latitud, longitud, padron)
+              VALUES ($1, $2, $3, $4, $5)
+              RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
+            `;
+    const { rows } = await dbEscritura.query(sql, [
+      normalizado.departamento,
+      normalizado.localidad,
+      normalizado.latitud,
+      normalizado.longitud,
+      normalizado.padron,
+    ]);
+    return rows[0] as Sitio;
+  }, myPool, false);
 }
 
 export async function updateSitio(
   id_sitio: number,
   data: SitioBody
 ): Promise<Sitio | null> {
-  const normalizado = validarSitio(data);
-  const exists = await myPool.query(`SELECT 1 FROM sitio WHERE id_sitio = $1`, [
-    id_sitio,
-  ]);
-  if (!exists.rows[0]) return null;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const normalizado = validarSitio(data);
+    const exists = await dbEscritura.query(`SELECT 1 FROM sitio WHERE id_sitio = $1`, [
+      id_sitio,
+    ]);
+    if (!exists.rows[0]) return null;
 
-  const sql = `
-    UPDATE sitio
-    SET
-      departamento = $2,
-      localidad = $3,
-      latitud = $4,
-      longitud = $5,
-      padron = $6
-    WHERE id_sitio = $1
-    RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
-  `;
-  const { rows } = await myPool.query(sql, [
-    id_sitio,
-    normalizado.departamento,
-    normalizado.localidad,
-    normalizado.latitud,
-    normalizado.longitud,
-    normalizado.padron,
-  ]);
-  return rows[0] ?? null;
+    const sql = `
+      UPDATE sitio
+      SET
+        departamento = $2,
+        localidad = $3,
+        latitud = $4,
+        longitud = $5,
+        padron = $6
+      WHERE id_sitio = $1
+      RETURNING id_sitio, departamento, localidad, latitud, longitud, padron;
+    `;
+    const { rows } = await dbEscritura.query(sql, [
+      id_sitio,
+      normalizado.departamento,
+      normalizado.localidad,
+      normalizado.latitud,
+      normalizado.longitud,
+      normalizado.padron,
+    ]);
+    return rows[0] ?? null;
+  }, myPool, false);
 }
 
 function validarSitio(data: SitioBody): SitioBody {
@@ -64,15 +69,17 @@ function validarSitio(data: SitioBody): SitioBody {
 }
 
 export async function deleteSitio(id_sitio: number): Promise<Boolean> {
-  const { rowCount } = await myPool.query(
-    `
-        DELETE FROM sitio
-        WHERE id_sitio = $1
-        `,
-    [id_sitio]
-  );
-  if (rowCount === 0) throw new err.T05SitioNoEncontrado();
-  return (rowCount ?? 0) > 0;
+  return conEscrituraSesion(async (dbEscritura) => {
+    const { rowCount } = await dbEscritura.query(
+      `
+          DELETE FROM sitio
+          WHERE id_sitio = $1
+          `,
+      [id_sitio]
+    );
+    if (rowCount === 0) throw new err.T05SitioNoEncontrado();
+    return (rowCount ?? 0) > 0;
+  }, myPool, false);
 }
 
 export async function getSitioById(id_sitio: number): Promise<Sitio> {

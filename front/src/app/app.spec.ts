@@ -6,6 +6,17 @@ import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 
 describe('App', () => {
+  for (const rol of ['propietario', 'perforador', 'administracion', 'operador_administrativo']) {
+    it(`${rol}: acceso a Sitios sólo para administración`, () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.componentInstance.mainStore.setUser({ id_usuario: 7, nombre: 'Usuario', roles: [{ id_rol: 1, nombre: rol, descr: rol }] });
+      fixture.detectChanges();
+      expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/sitio"]')).toBe(rol === 'administracion');
+      expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/usuario"]')).toBe(rol === 'administracion');
+      expect(!!fixture.nativeElement.querySelector('ion-menu [routerLink="/litologias-admin"]')).toBe(rol === 'administracion');
+      expect(fixture.componentInstance.mainStore.isAdmin()).toBe(rol === 'administracion');
+    });
+  }
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       providers: [
@@ -41,6 +52,20 @@ describe('App', () => {
 
     expect(compiled.querySelector('#main-content > ion-content')).toBeNull();
     expect(outlet?.closest('ion-content')).toBeNull();
+  });
+
+  it('ofrece administración de litologías en el menú sólo a administradores', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const enlace = () => fixture.nativeElement.querySelector('ion-menu [routerLink="/litologias-admin"]');
+    expect(enlace()).toBeNull();
+    fixture.componentInstance.mainStore.setUser({ id_usuario: 8, nombre: 'Perforador', roles: [{ id_rol: 2, nombre: 'perforador', descr: 'Perforador' }] });
+    fixture.detectChanges();
+    expect(enlace()).toBeNull();
+    fixture.componentInstance.mainStore.setUser({ id_usuario: 1, nombre: 'Administrador', roles: [{ id_rol: 1, nombre: 'administracion', descr: 'Administración' }] });
+    fixture.detectChanges();
+    expect(enlace()).not.toBeNull();
+    expect(enlace().textContent.trim()).toBe('ADMINISTRAR LITOLOGÍAS');
   });
 
   it('should give the routed content the space below the header', () => {

@@ -1,5 +1,5 @@
 import { Component, inject, input, output } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, NgForm } from '@angular/forms';
 import {
   IonItem,
   IonLabel,
@@ -46,6 +46,8 @@ export class UsuarioFormComponent {
 
   public mainStore = inject(MainStore);
   public passwordRequired = input<boolean>(true);
+  public saving = input<boolean>(false);
+  public passwordConfirmation = '';
   public roles = input.required<Rol[]>();
 
   public isAdmin() {
@@ -62,7 +64,13 @@ export class UsuarioFormComponent {
     return o1 && o2 ? o1.id_rol === o2.id_rol : o1 === o2;
   }
 
-  handleSubmit() {
+  public passwordConfirmationInvalid(): boolean {
+    return !this.passwordRequired() && this.user().password.length > 0 &&
+      this.user().password !== this.passwordConfirmation;
+  }
+
+  handleSubmit(form: NgForm) {
+    if (form.invalid || this.saving() || this.passwordConfirmationInvalid()) return;
     this.saved.emit(this.user());
   }
 }

@@ -36,6 +36,8 @@ test("acepta un contrato de producción completo y normaliza origins", () => {
   assert.equal(config.postgres.host, "postgres");
   assert.equal(config.publicHost, "perforaciones.example.test");
   assert.equal(config.publicOrigin, "https://perforaciones.example.test");
+  assert.equal(config.appHost, config.publicHost);
+  assert.equal(config.apiHost, config.publicHost);
   assert.equal(config.trustProxy, 1);
   assert.deepEqual(config.corsOrigins, ["https://perforaciones.example.test", "https://integracion.example.test"]);
   assert.equal(config.enableApiDocs, false);
@@ -47,6 +49,22 @@ test("acepta un contrato de producción completo y normaliza origins", () => {
   assert.equal(config.nativeAuth.maxActiveSessionsPerUser, 5);
   assert.equal(config.nativeAuth.wsTicketTtlSeconds, 30);
   assert.deepEqual(config.nativeCorsOrigins, ["https://localhost", "capacitor://localhost"]);
+});
+
+test("APP/API separados conservan PUBLIC como origen web y no agregan API al CORS web", () => {
+  const env = { ...entornoProduccion(), PUBLIC_HOST: "app.raulsilvaperforaciones.com",
+    PUBLIC_ORIGIN: "https://app.raulsilvaperforaciones.com",
+    APP_HOST: "app.raulsilvaperforaciones.com", API_HOST: "api.raulsilvaperforaciones.com", CORS_ORIGINS: "" };
+  const config = cargarConfiguracionRuntime(env);
+  assert.equal(config.appHost, env.APP_HOST);
+  assert.equal(config.apiHost, env.API_HOST);
+  assert.deepEqual(config.corsOrigins, [env.PUBLIC_ORIGIN]);
+  assert.deepEqual(config.nativeCorsOrigins, ["https://localhost", "capacitor://localhost"]);
+  assert.throws(() => cargarConfiguracionRuntime({ ...env, APP_HOST: "other.example.test" }), /APP_HOST debe coincidir/);
+  assert.throws(() => cargarConfiguracionRuntime({ ...env, PUBLIC_ORIGIN: "https://api.raulsilvaperforaciones.com" }), /PUBLIC_ORIGIN/);
+  for (const host of ["*", "localhost", "API.example.test", "api.example.test:443", "api.example.test/path", "api.example.test;", "-api.example.test"]) {
+    assert.throws(() => cargarConfiguracionRuntime({ ...env, API_HOST: host }), /API_HOST/);
+  }
 });
 
 test("falla temprano ante variables críticas ausentes sin imprimir secretos", () => {

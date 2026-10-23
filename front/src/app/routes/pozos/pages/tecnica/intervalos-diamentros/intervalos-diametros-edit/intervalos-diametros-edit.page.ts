@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, input, resource, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { PozosEditService } from '../../../../../../shared/services/pozos-edit.service';
@@ -21,6 +22,7 @@ import {
 import { IntervaloDiamFormComponent } from '../components/intervalo-diam-form.component/intervalo-diam-form.component';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-diametros-edit',
   imports: [
     IonContent,
@@ -37,6 +39,7 @@ import { IntervaloDiamFormComponent } from '../components/intervalo-diam-form.co
   styleUrl: './intervalos-diametros-edit.page.css',
 })
 export class IntervalosDiametrosEditPage {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public interevaloEditService: IntervaloDiametroEditService = inject(IntervaloDiametroEditService);
   public toastController = inject(ToastController);
   public router: Router = inject(Router);
@@ -52,6 +55,7 @@ export class IntervalosDiametrosEditPage {
   });
 
   async handleEdit(intervalo: IntervaloDiametroPerforacionBody) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       const id_pozo = this.id_pozo();
       const id_intervalo_diametro = this.id_intervalo_diametro();

@@ -332,8 +332,17 @@ export class AuthService {
     return this.mainStore.user()?.roles?.some((rol) => rol.nombre === nombre) ?? false;
   }
 
+  public puedeOperarTodosLosPozos(): boolean {
+    return this.tieneRol('administracion');
+  }
+
+  public puedeGestionarHistoricos(): boolean { return this.tieneRol('administracion') || this.tieneRol('operador_administrativo'); }
+
+  public tieneAlcancePerforador(): boolean { return this.tieneRol('perforador') || this.tieneRol('operador_administrativo'); }
+  public puedeAdministrarUsuarios(): boolean { return this.tieneRol('administracion'); }
+
   public puedeAdministrarPozos(): boolean {
-    return this.tieneRol('administracion') || this.tieneRol('perforador');
+    return this.puedeOperarTodosLosPozos() || this.tieneAlcancePerforador();
   }
 
   private async bootstrapInternal(): Promise<void> {
@@ -482,6 +491,7 @@ export class AuthService {
         await this.secureStorage.save({
           token: response.session_token,
           installationId: this.installationId,
+          offlineUser: response.user,
         });
       } catch {
         await this.discardUncommittedLogin(response.session_token);
@@ -561,9 +571,13 @@ export class AuthService {
         await this.handleNative401(authSnapshot.generation);
         return;
       }
-      this.expiresAt.set(response.expires_at);
-      this.mainStore.setUser(response.user);
-      this.state.set('authenticated');
+      await this.withNativeAuthMutationLock(async () => {
+        if (authSnapshot.generation !== this.nativeAuthGeneration) return;
+        if (this.installationId && this.nativeToken) await this.secureStorage.save({ token: this.nativeToken, installationId: this.installationId, offlineUser: response.user });
+        this.expiresAt.set(response.expires_at);
+        this.mainStore.setUser(response.user);
+        this.state.set('authenticated');
+      });
     } catch (error) {
       if (authSnapshot.generation !== this.nativeAuthGeneration) return;
       if (this.state() === 'unauthenticated' || this.state() === 'upgrade-required') return;

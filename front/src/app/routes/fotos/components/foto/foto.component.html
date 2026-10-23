@@ -1,6 +1,12 @@
 <input #selectorFoto class="selector-foto" type="file" accept="image/jpeg,image/png"
   aria-label="Seleccionar fotografía del pozo" (change)="archivoCambiado($event)">
-<ion-button type="button" expand="block" (click)="abrirSelector()" [disabled]="procesando()" aria-describedby="error-foto">
-  {{ procesando() ? 'Validando fotografía…' : 'Subir foto' }}
+@if (esNative) {
+  <ion-button type="button" expand="block" (click)="tomarFoto()" fill="outline" [disabled]="procesando() || deshabilitado()">
+    Tomar foto
+  </ion-button>
+}
+<ion-button type="button" expand="block" (click)="abrirSelector()" fill="outline" [disabled]="procesando() || deshabilitado()">
+  {{ esNative ? 'Elegir de galería' : 'Seleccionar foto' }}
 </ion-button>
-@if (error()) { <ion-text id="error-foto" color="danger" role="alert">{{ error() }}</ion-text> }
+@if (procesando()) { <p role="status">Preparando fotografía…</p> }
+@if (error()) { <ion-text color="danger" role="alert">{{ error() }}</ion-text> }

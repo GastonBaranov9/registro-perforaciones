@@ -3,12 +3,9 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import * as err from "../models/errors.ts";
 import { Type } from "@fastify/type-provider-typebox";
 import {
-  Informe,
-  CaracteristicasConstructivas,
   IntervaloLitologico,
   PerfilLitologicoVistaPreviaBody,
 } from "../models/schemas.ts";
-import * as func from "../services/informes-services.ts";
 import { listIntervalosLitologicosByPozo } from "../services/intervalos-litologicos-services.ts";
 import { getReportePozo } from "../services/generar-informe-consultas.ts";
 import { generarPDFBytes } from "../pdf/pdf-generate.ts";
@@ -25,68 +22,6 @@ const informeRoutes = async function (
   const runtime = cargarConfiguracionRuntime();
   const { fotosDir } = runtime;
   const pdfCapacity = new PdfCapacityGate(runtime.pdf.maxConcurrent, runtime.pdf.maxQueue, runtime.pdf.queueTimeoutMs);
-  //Ver un informe
-  fastify.get(
-    "/usuarios/:id_usuario/pozos/:id_pozo/informes",
-    {
-      schema: {
-        summary: "Ver el informee",
-        description: "Rol: Administrador/Perforador",
-        tags: ["informes"],
-        params: Type.Object({
-          id_usuario: Type.Integer(),
-          id_pozo: Type.Integer(),
-        }),
-        response: {
-          200: Informe,
-          501: err.ErrorSchema,
-        },
-        security: [{ BearerAuth: [] }],
-      },
-      onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
-    },
-    async function (req, rep) {
-      const { id_pozo } = req.params as {
-        id_pozo: number;
-      };
-      const informeObtenido = await func.getInforme(id_pozo);
-      if (!informeObtenido) throw new err.T05InformeNoEncontrado();
-      return rep.code(200).send(informeObtenido);
-    }
-  );
-  fastify.get(
-    "/usuarios/:id_usuario/pozos/:id_pozo/caracteristicas",
-    {
-      schema: {
-        summary: "Ver características constructivas",
-        description: "Rol: Administrador/Perforador (Solo sus informes)",
-        tags: ["informes"],
-        params: Type.Object({
-          id_usuario: Type.Integer(),
-          id_pozo: Type.Integer(),
-        }),
-        response: {
-          200: CaracteristicasConstructivas,
-          501: err.ErrorSchema,
-        },
-        security: [{ BearerAuth: [] }],
-      },
-      onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
-    },
-    async function (req, rep) {
-      const { id_pozo } = req.params as {
-        id_pozo: number;
-      };
-      const caracteriticasObtenido = await func.getCaracteristicasConstructivas(
-        id_pozo
-      );
-      if (!caracteriticasObtenido) throw new err.T05InformeNoEncontrado();
-      return rep.code(200).send(caracteriticasObtenido);
-    }
-  );
-
   fastify.get(
     "/usuarios/:id_usuario/pozos/:id_pozo/litologia",
     {
@@ -105,7 +40,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as {
@@ -136,7 +71,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const { id_pozo } = req.params as { id_pozo: number };
@@ -149,6 +84,7 @@ const informeRoutes = async function (
           reporte.niveles_aporte,
           reporte.diametros,
           reporte.filtros ?? [],
+          reporte.sello_sanitario_constructivo,
         ),
       );
     },
@@ -157,6 +93,7 @@ const informeRoutes = async function (
   fastify.post(
     "/usuarios/:id_usuario/pozos/:id_pozo/perfil-litologico/vista-previa",
     {
+      config: { pozoSoloLectura: true },
       schema: {
         summary: "Generar una vista previa no persistente del perfil",
         description: "Valida un borrador técnico y reutiliza el modelo visual canónico",
@@ -166,7 +103,7 @@ const informeRoutes = async function (
         response: { 200: Type.Unknown(), 400: err.ErrorSchema, 404: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const borrador = req.body as import("../models/schemas.ts").PerfilLitologicoVistaPreviaBody;
@@ -178,7 +115,7 @@ const informeRoutes = async function (
       const porId = new Map(metadatos.map((x) => [Number(x.id_litologia), x]));
       const intervalos = borrador.intervalos_litologicos.map((x) => {
         const catalogo = x.id_litologia == null ? undefined : porId.get(x.id_litologia);
-        return catalogo ? { ...x, material: catalogo.nombre, litologia_nombre: catalogo.nombre, litologia_color: catalogo.color, litologia_patron: catalogo.patron as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia, litologia_activa: catalogo.activo } : x;
+        return catalogo ? { ...x, material: catalogo.nombre, litologia_codigo: catalogo.codigo, litologia_nombre: catalogo.nombre, litologia_color: catalogo.color, litologia_patron: catalogo.patron as import("../pdf/perfil-litologico.ts").PatronCatalogoLitologia, litologia_activa: catalogo.activo } : { ...x, material: x.litologia_provisional?.trim() ?? x.material };
       });
       return rep.code(200).send(crearPerfilLitologico(
         intervalos,
@@ -186,6 +123,7 @@ const informeRoutes = async function (
         borrador.niveles_aporte,
         borrador.intervalos_diametro,
         borrador.intervalos_filtro,
+        borrador.sello_sanitario_constructivo,
       ));
     },
   );
@@ -209,7 +147,7 @@ const informeRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       await fastify.rateLimitPdf(req, rep);

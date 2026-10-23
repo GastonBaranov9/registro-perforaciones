@@ -1,5 +1,6 @@
 
 <ion-content class="ion-padding">
+  @if (!permisosTecnicos.puedeEditar()) { <p role="status">{{ permisosTecnicos.mensaje }}</p> }
 
   <ion-toolbar>
   <ion-buttons slot="start" color="primary">
@@ -12,10 +13,12 @@
       <h2>Editar nivel de aporte</h2>
 
       @if (this.nivelResource.hasValue()) {
-      <app-aportes-form
+      @if (permisosTecnicos.puedeEditar()) {
+<app-aportes-form
         [nivelAporte]="this.nivelResource.value()!"
         (saved)="this.handleEdit($event)" 
       />
+}
       } @else if (this.nivelResource.isLoading()) {
       <ion-spinner></ion-spinner>
       } @else {

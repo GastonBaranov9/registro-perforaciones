@@ -1,16 +1,19 @@
-import { Component, input, output, signal } from '@angular/core';
+import { RuntimePlatformService } from '../../../../core/native/runtime-platform.service';
+import { numeroPerforacionValido } from '../../../../shared/services/numeracion-perforacion.service';
+import { Component, OnDestroy, ViewChild, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccionFotoEdicion, CandidatoPozo, NuevoPozo, PropietarioOperativoActualizarBody, PropietarioOperativoCrearBody, Sitio, SitioBody } from '../../../../shared/types/schemas';
-import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonImg, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
+import { IonItem, IonLabel, IonInput, IonButton, IonList, IonText, IonTextarea, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
 import { CommonModule } from '@angular/common';
 import { FotoComponent, FotoSeleccionada } from '../../../fotos/components/foto/foto.component';
 import { environment } from '../../../../../environments/environment';
 import { SelectorPersonaPozoComponent } from '../selector-persona-pozo/selector-persona-pozo.component';
 import { capturarUbicacionActual } from '../../../../shared/utils/geolocalizacion';
 import { EjeCoordenada, normalizarCoordenadaTexto } from '../../../../shared/utils/coordenadas';
-import { CampoTecnicoEstandar } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { CampoTecnicoEstandar, DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
 import { DEPARTAMENTOS_URUGUAY } from '../../../../shared/constants/departamentos-uruguay';
 import { ProtectedResourceDirective } from '../../../../core/resources/protected-resource.directive';
+import { huellaPropietario } from '../../../../shared/utils/estado-formulario-perforacion';
 
 type PropietarioEdicionEstado = {
   id_usuario: number;
@@ -34,12 +37,17 @@ type PropietarioEdicionEstado = {
     CommonModule,
     FormsModule,
     FotoComponent,
-    IonImg,
     SelectorPersonaPozoComponent,
     ProtectedResourceDirective,
 ],
 })
-export class PozosFormComponent {
+export class PozosFormComponent implements OnDestroy {
+  @ViewChild(FotoComponent) private selectorFoto?: FotoComponent;
+  capturaPendiente(): boolean { return this.capturandoUbicacion() || !!this.selectorFoto?.procesando(); }
+  private readonly runtime = inject(RuntimePlatformService);
+  public borradorLocal = input(false);
+  public historico = input(false);
+  public fotoLocalUri = input<string | null>(null);
   public pozo = input.required<NuevoPozo>();
   public id_pozo = input<number | null>(null);
   public propietarios = input<CandidatoPozo[]>([]);
@@ -50,6 +58,10 @@ export class PozosFormComponent {
   public buscarPerforadores = input<((q: string) => Promise<CandidatoPozo[]>) | null>(null);
   public catalogosDisponibles = input(false);
   public perforadorBloqueado = input(false);
+  public administrarNumeracion = input(false);
+  public administrarPropietarios = input(false);
+  public seleccionarPropietarios = input(false);
+  public textoGuardar = input('Guardar pozo');
 
   public saved = output<{ pozo: NuevoPozo; foto: File | null; fotoAccion: AccionFotoEdicion }>();
   public crearPropietario = output<PropietarioOperativoCrearBody>();
@@ -61,6 +73,7 @@ export class PozosFormComponent {
   public disabled = signal<boolean>(false);
   public agregareditar = input<boolean>(false);
   public guardando = input<boolean>(false);
+  public soloLectura = input(false);
   public errorMessage = signal<string>('');
   public ubicacionPrecision = signal<number | null>(null);
   public ubicacionError = signal('');
@@ -69,8 +82,37 @@ export class PozosFormComponent {
   public propietarioNuevo: PropietarioOperativoCrearBody = propietarioVacio();
   public propietarioSeleccionadoDatos = signal<CandidatoPozo | null>(null);
   public propietarioEdicion = signal<PropietarioEdicionEstado | null>(null);
+  private basePropietarioNuevo = huellaPropietario(this.propietarioNuevo);
+  private basePropietarioEdicion: PropietarioOperativoActualizarBody = {};
+
+  tieneCambiosPropietario(): boolean {
+    const editor = this.propietarioEdicion();
+    return huellaPropietario(this.propietarioNuevo) !== this.basePropietarioNuevo
+      || !!editor && huellaPropietario(editor.body) !== huellaPropietario(this.basePropietarioEdicion);
+  }
+
+  confirmarPropietarioCreado(enviado: PropietarioOperativoCrearBody): void {
+    this.basePropietarioNuevo = huellaPropietario(enviado);
+  }
+
+  confirmarPropietarioActualizado(id: number, enviado: PropietarioOperativoActualizarBody): void {
+    if (this.propietarioEdicion()?.id_usuario === id) {
+      this.basePropietarioEdicion = { ...this.basePropietarioEdicion, ...enviado };
+    }
+  }
   public camposTecnicosEditables = signal<Set<CampoTecnicoEstandar>>(new Set());
-  datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.camposTecnicosEditables().has(campo); }
+  private readonly camposEstandar = Object.keys(DATOS_TECNICOS_ESTANDAR) as CampoTecnicoEstandar[];
+  hayDatosTecnicosVacios(): boolean {
+    return this.camposEstandar.some(campo => !this.pozo()[campo]?.trim());
+  }
+  aplicarValoresEstandar(): void {
+    if (!this.historico() || this.guardando() || this.soloLectura() || !this.hayDatosTecnicosVacios()) return;
+    for (const campo of this.camposEstandar) {
+      if (!this.pozo()[campo]?.trim()) this.pozo()[campo] = DATOS_TECNICOS_ESTANDAR[campo];
+    }
+    this.notificarCambio();
+  }
+  datoTecnicoEditable(campo: CampoTecnicoEstandar) { return this.historico() || this.camposTecnicosEditables().has(campo); }
   editarDatoTecnico(campo: CampoTecnicoEstandar) {
     this.camposTecnicosEditables.update((actual) => new Set(actual).add(campo));
   }
@@ -80,11 +122,17 @@ export class PozosFormComponent {
   public fotoBlob: File | null = null;
   public fotoFile: File | null = null;
   public fotoVistaPrevia = signal<string | null>(null);
+  readonly revisionFoto = signal(0);
+  refrescarFotoPersistida() { this.revisionFoto.update(v => v + 1); }
   public eliminarFotoPendiente = signal(false);
 
   handlePozo() {
+    if(this.guardando() || this.soloLectura())return;
+    if (!this.agregareditar() && this.pozo().numero_perforacion != null && !numeroPerforacionValido(this.pozo().numero_perforacion)) {
+      this.errorMessage.set("El número de perforación debe ser un entero entre 1 y 2147483647."); return;
+    }
     const sitio=this.sitioNuevo();
-    if(sitio){
+    if(sitio && !this.borradorLocal() && (!this.historico() || sitio.latitud || sitio.longitud)){
       const latitud=normalizarCoordenadaTexto(sitio.latitud,'latitud'),longitud=normalizarCoordenadaTexto(sitio.longitud,'longitud');
       if(!latitud||!longitud){this.ubicacionError.set('Las coordenadas no son válidas.');return;}
       sitio.latitud=latitud;sitio.longitud=longitud;
@@ -103,22 +151,25 @@ export class PozosFormComponent {
     if (!sitio || this.capturandoUbicacion()) return;
     try {
       this.capturandoUbicacion.set(true); this.ubicacionError.set('');
-      const ubicacion = await capturarUbicacionActual();
+      const ubicacion = await capturarUbicacionActual(undefined, this.runtime.platform() === 'android' ? 30_000 : 10_000);
       sitio.latitud = ubicacion.latitud; sitio.longitud = ubicacion.longitud;
       this.ubicacionPrecision.set(ubicacion.precision ?? null);
     } catch (error: unknown) {
+      this.ubicacionPrecision.set(null);
       this.ubicacionError.set(error instanceof Error ? error.message : 'No fue posible obtener la ubicación.');
     } finally { this.capturandoUbicacion.set(false); }
   }
 
   normalizarCoordenadaNueva(eje:EjeCoordenada) {
     const sitio=this.sitioNuevo();if(!sitio)return;
+    if(this.historico()&&!sitio[eje]){this.ubicacionError.set('');return;}
     const normalizada=normalizarCoordenadaTexto(sitio[eje],eje);
     if(!normalizada){this.ubicacionError.set(`La ${eje} no es válida.`);return;}
     sitio[eje]=normalizada;this.ubicacionError.set('');
   }
 
   registrarPropietario() {
+    if (!this.administrarPropietarios() || this.guardando()) return;
     const nombre = this.propietarioNuevo.nombre.trim();
     if (!nombre) return;
     this.propietarioSeleccionadoDatos.set(null);
@@ -129,6 +180,7 @@ export class PozosFormComponent {
 
   seleccionarPropietario(persona: CandidatoPozo) {
     this.pozo().id_propietario = persona.id_usuario;
+    this.pozo().propietario_provisional = null;
     this.propietarioSeleccionadoDatos.set(persona);
     this.propietarioEdicion.set(null);
     this.errorMessage.set('');
@@ -153,6 +205,7 @@ export class PozosFormComponent {
         departamento: persona.departamento ?? '', observaciones: persona.observaciones ?? '',
       },
     });
+    this.basePropietarioEdicion = { ...this.propietarioEdicion()!.body };
   }
   guardarEditorPropietario() {
     const editor = this.propietarioEdicion();
@@ -169,7 +222,7 @@ export class PozosFormComponent {
   cerrarEditorPropietario() { this.propietarioEdicion.set(null); this.errorMessage.set(''); }
 
   limpiarPropietario() {
-    this.pozo().id_propietario = 0;
+    this.pozo().id_propietario = null;
     this.propietarioSeleccionadoDatos.set(null);
     this.propietarioEdicion.set(null);
     this.errorMessage.set('');
@@ -181,6 +234,8 @@ export class PozosFormComponent {
   }
 
   fotoCapturada(foto: FotoSeleccionada) {
+    if (this.guardando()) { URL.revokeObjectURL(foto.vistaPrevia); return; }
+    this.liberarVistaPrevia();
     this.fotoBlob = foto.archivo;
     this.fotoFile = foto.archivo;
     this.fotoVistaPrevia.set(foto.vistaPrevia);
@@ -188,10 +243,23 @@ export class PozosFormComponent {
     this.errorMessage.set('');
   }
 
+  confirmarFotoGuardada(fotoUrl?: string | null): void {
+    this.pozo().foto_url = fotoUrl ?? undefined;
+    this.cancelarCambioFoto();
+  }
+
   quitarFotoSeleccionada() {
+    this.liberarVistaPrevia();
     this.fotoBlob = null;
     this.fotoFile = null;
     this.fotoVistaPrevia.set(null);
+  }
+
+  ngOnDestroy(): void { this.liberarVistaPrevia(); }
+
+  private liberarVistaPrevia(): void {
+    const url = this.fotoVistaPrevia();
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
   }
 
   cancelarCambioFoto() {
@@ -204,7 +272,8 @@ export class PozosFormComponent {
     this.quitarFotoSeleccionada();
   }
   personasValidas() {
-    return Number(this.pozo().id_propietario) > 0 && Number(this.pozo().id_perforador) > 0;
+    if(this.historico())return true;
+    return (Number(this.pozo().id_propietario) > 0 || (this.pozo().id_propietario === null && !!this.pozo().propietario_provisional?.trim())) && Number(this.pozo().id_perforador) > 0;
   }
 
 getFoto() {

@@ -20,6 +20,7 @@
           [user]="userResource.value().usuario"
           [roles]="userResource.value().roles"
           [passwordRequired]="false"
+          [saving]="disabled()"
           (saved)="handleEdit($event)"
         />
         <ion-button

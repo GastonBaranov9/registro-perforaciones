@@ -1,11 +1,11 @@
 import { Component, inject } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IonButton, IonContent, IonSpinner } from '@ionic/angular/standalone';
 import { AuthService } from '../../shared/services/auth-service/auth.service';
 
 @Component({
   selector: 'app-session-status',
-  imports: [IonButton, IonContent, IonSpinner],
+  imports: [IonButton, IonContent, IonSpinner, RouterLink],
   templateUrl: './session-status.page.html',
   styleUrl: './session-status.page.css',
 })

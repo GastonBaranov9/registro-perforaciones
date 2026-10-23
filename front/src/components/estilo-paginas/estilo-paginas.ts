@@ -11,7 +11,7 @@ import {
 
 @Component({
   selector: 'app-estilo-paginas',
-  imports: [IonIcon, IonCard, IonCol, RouterLink],
+  imports: [IonIcon, RouterLink],
   templateUrl: './estilo-paginas.html',
   styleUrls: ['./estilo-pagina.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,

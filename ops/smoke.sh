@@ -12,12 +12,23 @@ command -v od >/dev/null 2>&1 || { echo "Falta od" >&2; exit 2; }
 . "$(dirname "$0")/secret-file.sh"
 env_value(){ awk -v key="$1" 'index($0,key "=")==1{value=substr($0,length(key)+2)} END{print value}' "$ENV_FILE"; }
 origin=$(env_value PUBLIC_ORIGIN);host=$(env_value PUBLIC_HOST)
-[ -n "$origin" ] && [ -n "$host" ] || { echo "Falta origin/host" >&2; exit 2; }
-port=$(printf '%s' "$origin"|sed -n 's#^https://[^:/]*:\([0-9][0-9]*\)$#\1#p');[ -n "$port" ]||port=443
+origin=${origin%/}
+case "$origin" in "https://$host"|"https://$host:"*) ;; *) echo 'Origin HTTPS no canonica' >&2;exit 2;; esac
+suffix=${origin#https://$host}
+case "$suffix" in '') port=443;; :*) port=${suffix#:};; *) exit 2;; esac
+case "$port" in ''|*[!0-9]*) echo 'Puerto logico invalido' >&2;exit 2;;esac
+[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || exit 2
+connect_port=${SMOKE_CONNECT_PORT:-$(env_value HTTPS_PORT)};connect_port=${connect_port:-$port}
+case "$connect_port" in ''|*[!0-9]*) echo 'Puerto de conexion invalido' >&2;exit 2;;esac
+[ "$connect_port" -ge 1 ] && [ "$connect_port" -le 65535 ] || exit 2
+transport(){
+  if [ -n "${SMOKE_CA_FILE:-}" ];then set -- --cacert "$SMOKE_CA_FILE" "$@";fi
+  curl --silent --show-error --noproxy '*' --connect-to "$host:$port:127.0.0.1:$connect_port" "$@"
+}
 tmp=$(mktemp -d);trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 body=$tmp/body;headers=$tmp/headers;cookies=$tmp/cookies;old_cookies=$tmp/old-cookies
 compose(){ docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$DEPLOYMENT_STATE_FILE" -f "$COMPOSE_FILE" "$@"; }
-request(){ curl --insecure --silent --show-error --resolve "$host:$port:127.0.0.1" -o "$body" -w '%{http_code}' "$@"; }
+request(){ transport -o "$body" -w '%{http_code}' "$@"; }
 expect(){ actual=$1;expected=$2;step=$3;[ "$actual" = "$expected" ]||{ echo "$step devolvio $actual, esperado $expected" >&2;exit 1;}; }
 pass(){ printf 'PASS %s\n' "$1"; }
 skip(){ printf 'SKIP %s: %s\n' "$1" "$2"; }
@@ -28,6 +39,7 @@ expect "$(request "$origin/pozos-detail/1")" 200 deep_route
 expect "$(request "$origin/api/health")" 200 health
 expect "$(request "$origin/api/ready")" 200 ready
 expect "$(request "$origin/api/docs")" 404 swagger
+if [ "${SMOKE_PUBLIC_ONLY:-false}" = true ];then echo PUBLIC_SMOKE_OK;exit 0;fi
 secret_file_write_login_json "$ADMIN_PASSWORD_FILE" "$ADMIN_EMAIL" "$tmp/login.json"
 expect "$(request -D "$headers" -c "$cookies" -H "Origin: $origin" -H 'Content-Type: application/json' --data-binary @"$tmp/login.json" "$origin/api/login")" 200 login
 grep -Eqi '^set-cookie: rsp_session=.*HttpOnly.*Secure.*SameSite=Lax' "$headers";grep -Eqi '^set-cookie: rsp_csrf=.*Secure.*SameSite=Lax' "$headers"
@@ -36,7 +48,7 @@ expect "$(request -b "$cookies" "$origin/api/login")" 200 authenticated
 expect "$(request -X POST -b "$cookies" -H "Origin: $origin" "$origin/api/logout")" 403 csrf
 expect "$(request -b "$cookies" "$origin/api/usuarios/0/pozos")" 200 wells
 wells_json=$tmp/wells.json;cp "$body" "$wells_json"
-jq -e 'type=="array" and all(.[]; (.id_pozo|type)=="number" and (.id_propietario|type)=="number" and ((.foto_url? == null) or ((.foto_url|type)=="string")))' "$wells_json" >/dev/null || { echo "Lista de pozos JSON invalida" >&2;exit 1; }
+jq -e -f "$(dirname "$0")/smoke-wells.jq" "$wells_json" >/dev/null || { echo "Lista de pozos JSON invalida" >&2;exit 1; }
 pass wells-list
 well_count=$(jq -r 'length' "$wells_json")
 if [ "$well_count" -eq 0 ];then
@@ -44,12 +56,12 @@ if [ "$well_count" -eq 0 ];then
   skip photo 'no wells available'
   skip pdf 'no well available'
 else
-  well=$(jq -er '.[0].id_pozo' "$wells_json");owner=$(jq -er '.[0].id_propietario' "$wells_json")
+  well=$(jq -er '.[0].id_pozo' "$wells_json");owner=$(jq -er '.[0].id_propietario // 0' "$wells_json")
   expect "$(request -b "$cookies" "$origin/api/usuarios/$owner/pozos/$well")" 200 detail;pass well-detail
   expect "$(request -b "$cookies" "$origin/api/usuarios/$owner/pozos/$well/informe-pdf")" 200 pdf
   [ "$(head -c 4 "$body")" = '%PDF' ] || { echo "PDF invalido" >&2;exit 1; };pass pdf
   photo_well=$(jq -r '[.[]|select((.foto_url? // "") != "")][0].id_pozo // empty' "$wells_json")
-  photo_owner=$(jq -r '[.[]|select((.foto_url? // "") != "")][0].id_propietario // empty' "$wells_json")
+  photo_owner=$(jq -r '[.[]|select((.foto_url? // "") != "")][0].id_propietario // 0' "$wells_json")
   if [ -z "$photo_well" ] || [ -z "$photo_owner" ];then
     skip photo 'no photo available'
   else
@@ -64,7 +76,7 @@ else
     pass photo
   fi
 fi
-if ws=$(curl --insecure --silent --show-error --include --max-time 2 --resolve "$host:$port:127.0.0.1" -b "$cookies" -H "Origin: $origin" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$origin/ws" 2>&1);then ws_code=0;else ws_code=$?;fi
+if ws=$(transport --include --max-time 2 -b "$cookies" -H "Origin: $origin" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$origin/ws" 2>&1);then ws_code=0;else ws_code=$?;fi
 case "$ws_code" in 0|28) ;; *) echo "WebSocket fallo" >&2;exit 1;;esac;printf '%s' "$ws"|grep -q 'HTTP/1.1 101'
 for service in api front postgres;do id=$(compose ps -q "$service");[ -n "$id" ];[ "$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$id")" = '{}' ]||{ echo "$service publica puertos" >&2;exit 1;};done
 expect "$(request -X POST -b "$cookies" -H "Origin: $origin" -H "X-CSRF-Token: $csrf" "$origin/api/logout")" 204 logout

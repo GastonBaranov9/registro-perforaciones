@@ -22,17 +22,17 @@
 
     <ion-item>
       <ion-label position="stacked">Litología: </ion-label>
-      <app-selector-litologia [seleccionado]="intervaloLitologico().id_litologia" [materialHistorico]="intervaloLitologico().material"
+      <app-selector-litologia [provisional]="intervaloLitologico().litologia_provisional" (provisionalChange)="provisional($event)" [seleccionado]="intervaloLitologico().id_litologia" [materialHistorico]="intervaloLitologico().material"
         [requerirSeleccion]="requerirSeleccion()"
         (seleccionadoChange)="seleccionar($event, intervaloLitologico().material)"
         (nombreChange)="seleccionar(intervaloLitologico().id_litologia ?? null, $event)" />
       <input type="hidden" name="id_litologia" [ngModel]="intervaloLitologico().id_litologia ?? ''"
         (ngModelChange)="seleccionarDesdeControl($event)"
-        [required]="requerirSeleccion()" />
+        [required]="requerirSeleccion() && !intervaloLitologico().litologia_provisional?.trim()" />
     </ion-item>
   </ion-list>
 
-  <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid">
+  <ion-button type="submit" expand="block" [disabled]="intervaloLitForm.invalid || !seleccionValida()">
     GUARDAR INTERVALO LITOLOGICO
   </ion-button>
 </form>

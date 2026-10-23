@@ -48,6 +48,7 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/dotenv": "^6.1.1"
+    "@types/dotenv": "^6.1.1",
+    "@xmldom/xmldom": "0.9.12"
   }
 }

@@ -17,8 +17,63 @@ if [ "$LEVEL" = Full ]&&[ "$DA_BACKUP_COMPLETED" != true ];then echo "Rollback F
 if [ "$DA_STATUS" = success ]&&[ "$LEVEL" = Application ];then [ "$current_hash" = "$target_hash" ];else [ "$current_hash" = "$target_hash" ]||[ "$current_hash" = "$previous_hash" ];fi
 [ "$(docker image inspect --format '{{.Id}}' "$previous_api")" = "$previous_api_id" ];[ "$(docker image inspect --format '{{.Id}}' "$previous_front")" = "$previous_front_id" ]
 compose(){ docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$DEPLOYMENT_STATE_FILE" -f "$COMPOSE_FILE" "$@"; }
+recovery_error(){ recovery_errors="${recovery_errors}${recovery_errors:+
+}$*"; }
+recovery_ids(){ docker ps -a -q --filter "label=com.docker.compose.project=$PROJECT_NAME" --filter "label=com.docker.compose.service=$1"; }
+recovery_stopped(){
+  rs_service=$1
+  if rs_ids=$(recovery_ids "$rs_service" 2>&1);then :;else recovery_error "list/$rs_service: $rs_ids";return 1;fi
+  for rs_id in $rs_ids;do
+    if rs_state=$(docker inspect --format '{{.State.Status}}' "$rs_id" 2>&1);then
+      case "$rs_state" in exited|created|dead) ;;*) return 1;;esac
+    else recovery_error "verify/$rs_service: $rs_state";return 1;fi
+  done
+}
+recovery_stop(){
+  rc_service=$1
+  if rc_ids=$(recovery_ids "$rc_service" 2>&1);then :;else recovery_error "list/$rc_service: $rc_ids";return;fi
+  for rc_id in $rc_ids;do
+    if rc_state=$(docker inspect --format '{{.State.Status}}' "$rc_id" 2>&1);then
+      case "$rc_state" in exited|created|dead) continue;;esac
+    else recovery_error "inspect/$rc_service: $rc_state";fi
+    if rc_output=$(docker stop --time 10 "$rc_id" 2>&1);then :;else
+      recovery_error "stop/$rc_service: $rc_output"
+      if rc_output=$(docker stop --time 0 "$rc_id" 2>&1);then :;else recovery_error "force-stop/$rc_service: $rc_output";fi
+    fi
+  done
+}
+recovery_maintenance(){
+  if rm_ids=$(recovery_ids maintenance 2>&1);then :;else recovery_error "list/maintenance: $rm_ids";return 1;fi
+  [ -n "$rm_ids" ] || return 1
+  for rm_id in $rm_ids;do
+    if rm_state=$(docker inspect --format '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$rm_id" 2>&1);then
+      [ "$rm_state" = running/healthy ] || return 1
+    else recovery_error "verify/maintenance: $rm_state";return 1;fi
+  done
+}
 rollback_ok=false
-on_exit(){ code=$?;if [ "$rollback_ok" != true ];then compose stop proxy >/dev/null 2>&1||true;compose --profile ops up -d --wait --wait-timeout 60 maintenance >/dev/null 2>&1||true;echo ROLLBACK_FAILED;fi;exit "$code";}
+on_exit(){
+  code=$?;trap - EXIT;set +e
+  [ "$rollback_ok" != true ] || exit "$code"
+  [ "$code" -ne 0 ] || code=1
+  recovery_errors=;public_blocked=false;maintenance_verified=false
+  recovery_stop proxy
+  if ! recovery_stopped proxy;then recovery_stop api;fi
+  if ! recovery_maintenance;then
+    if recovery_output=$(compose --profile ops up -d --no-deps --no-recreate --wait --wait-timeout 60 maintenance 2>&1);then :;else recovery_error "start/maintenance: $recovery_output";fi
+  fi
+  if recovery_maintenance;then maintenance_verified=true;fi
+  if recovery_stopped proxy;then public_blocked=true;else recovery_stop api;fi
+  # Preserve the original exit status; a failed audit cannot interrupt containment.
+  if audit_error=$( {
+    temp="$STATE_FILE.$$.tmp"
+    { grep -v '^ROLLBACK_' "$STATE_FILE" && printf 'ROLLBACK_STATUS=failed\nROLLBACK_ORIGINAL_EXIT_CODE=%s\nROLLBACK_RECOVERY_PUBLIC_BLOCKED=%s\nROLLBACK_RECOVERY_MAINTENANCE_VERIFIED=%s\n' "$code" "$public_blocked" "$maintenance_verified"; } > "$temp" && mv -f "$temp" "$STATE_FILE"
+  } 2>&1);then :;else recovery_error "audit: $audit_error";fi
+  printf 'ROLLBACK_FAILED\nORIGINAL_EXIT_CODE=%s\nRECOVERY_PUBLIC_BLOCKED=%s\nRECOVERY_MAINTENANCE_VERIFIED=%s\n' "$code" "$public_blocked" "$maintenance_verified"
+  if [ -n "$recovery_errors" ];then printf '%s\n' "$recovery_errors" >&2;fi
+  if [ "$public_blocked" != true ];then printf '%s\n' 'RECOVERY_CRITICAL: acceso publico no confirmado bloqueado; INTERVENCION MANUAL URGENTE.' >&2;fi
+  exit "$code"
+}
 trap on_exit EXIT;trap 'exit 130' HUP INT TERM
 export API_IMAGE_REF=$previous_api FRONT_IMAGE_REF=$previous_front APP_VERSION=$previous_version GIT_SHA=$previous_sha
 echo "rollback_start level=$LEVEL version=$previous_version";compose config --quiet;compose stop proxy;compose --profile ops up -d --wait --wait-timeout 60 maintenance;compose stop api

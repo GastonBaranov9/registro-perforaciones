@@ -35,7 +35,7 @@ const intervalosDiametroPerforacionRoutes =
           security: [{ BearerAuth: [] }],
         },
         onRequest: [fastify.authenticate],
-        preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+        preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
       },
       async function (req, rep) {
         try {
@@ -79,7 +79,7 @@ const intervalosDiametroPerforacionRoutes =
           security: [{ BearerAuth: [] }],
         },
         onRequest: [fastify.authenticate],
-        preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+        preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
       },
       async function (req, rep) {
         try {
@@ -131,7 +131,7 @@ const intervalosDiametroPerforacionRoutes =
           security: [{ BearerAuth: [] }],
         },
         onRequest: [fastify.authenticate],
-        preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+        preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
       },
       async function (req, rep) {
         try {
@@ -180,7 +180,7 @@ const intervalosDiametroPerforacionRoutes =
           security: [{ BearerAuth: [] }],
         },
         onRequest: [fastify.authenticate],
-        preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+        preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
       },
       async function (req, rep) {
         try {
@@ -228,7 +228,7 @@ const intervalosDiametroPerforacionRoutes =
           security: [{ BearerAuth: [] }],
         },
         onRequest: [fastify.authenticate],
-        preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+        preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
       },
       async function (req, rep) {
         const { id_pozo } = req.params as {

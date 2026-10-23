@@ -10,21 +10,45 @@
 
         @if (this.pozoResource.hasValue()) {
         @let editor = this.pozoResource.value()!;
-        <div class="editor-layout"><div class="editor-formulario"><app-pozos-form
+        @if (authService.tieneRol('administracion')) {
+          <app-vincular-propietario [idPozo]="id_pozo()" [propietarioActual]="editor.pozo.id_propietario"
+            [provisional]="editor.pozo.propietario_provisional ?? null"
+            [deshabilitado]="disabled()" (ocupacion)="vinculando.set($event)" (vinculado)="propietarioVinculado($event)" />
+        }
+        @if (!permisos.puedeEditar(editor.pozo)) {
+          <p role="status">{{ permisos.mensaje }}</p>
+          <ion-button fill="outline" (click)="router.navigate(['/pozos-detail', id_pozo()])">Ver detalle</ion-button>
+        }
+        @if (sitioEnEdicion(); as ubicacion) {
+          <section aria-label="Ubicación de la perforación">
+            <h3>Editar ubicación de la perforación</h3>
+            <p>La ubicación se guarda por separado. Los demás cambios del pozo siguen pendientes.</p>
+            <div [attr.inert]="disabled() || !permisos.puedeEditar(editor.pozo) ? '' : null">
+              <app-sitios-form [sitio]="ubicacion" (saved)="guardarUbicacion($event)" (ubicacionChange)="coordenadasPendientes.set($event)" />
+            </div>
+            <app-mapa-aereo [idSitio]="ubicacion.id_sitio" [idUsuario]="authService.userId() || 0"
+              [preview]="!!coordenadasPendientes()" [latitud]="coordenadasPendientes()?.latitud ?? ubicacion.latitud"
+              [longitud]="coordenadasPendientes()?.longitud ?? ubicacion.longitud" />
+            <ion-button fill="clear" [disabled]="disabled()" (click)="sitioEnEdicion.set(null)">Volver al pozo sin guardar ubicación</ion-button>
+          </section>
+        }
+        <div class="editor-layout" [style.display]="sitioEnEdicion() ? 'none' : null"><div class="editor-formulario" [attr.inert]="!permisos.puedeEditar(editor.pozo) ? '' : null"><app-pozos-form
           [pozo]="editor.pozo" [propietarios]="editor.personas.propietarios" [perforadores]="editor.personas.perforadores" [catalogosDisponibles]="true"
           [sitios]="this.sitiosActualizados() ?? editor.sitios"
           [buscarPropietarios]="buscarPropietarios" [buscarPerforadores]="buscarPerforadores"
-          [perforadorBloqueado]="!authService.tieneRol('administracion')"
+          [perforadorBloqueado]="!authService.puedeOperarTodosLosPozos()"
           (saved)="this.handleEdit($event)"
           [id_pozo]="id_pozo()"
           [agregareditar]="true"
-          [guardando]="disabled()"
+          [seleccionarPropietarios]="authService.puedeOperarTodosLosPozos()" [administrarPropietarios]="authService.tieneRol('administracion')"
+          [guardando]="disabled() || vinculando() || !permisos.puedeEditar(editor.pozo)"
+          [soloLectura]="!permisos.puedeEditar(editor.pozo)"
           (editarSitio)="editarSitio()"
           (actualizarPropietario)="actualizarPropietario($event)"
           (cambiado)="profundidadBorrador.set($event.profundidad_final_m)"
         >
           <app-datos-tecnicos-borrador [inicial]="editor.tecnicos" [versionDescartar]="versionDescartar()" [profundidad]="editor.pozo.profundidad_final_m"
-            [guardando]="disabled()" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
+            [guardando]="disabled() || vinculando() || !permisos.puedeEditar(editor.pozo)" (cambiado)="datosTecnicos.set($event)" (estadoSucio)="borradorDirty.set($event)" />
         </app-pozos-form></div>
         <aside><app-perfil-litologico-vista-previa [idPozo]="id_pozo()"
           [profundidad]="profundidadBorrador() ?? editor.pozo.profundidad_final_m" [datos]="datosTecnicos()" /></aside></div>
@@ -38,13 +62,13 @@
           fill="outline"
           expand="block"
           (click)="recargar()"
-          [disabled]="this.disabled()"
+          [disabled]="this.disabled() || vinculando() || !!sitioEnEdicion()"
         >
           RECARGAR
         </ion-button>
 
         @if (this.errorMessage()) {
-        <div class="error-message">
+        <div class="error-message" role="alert">
           {{ this.errorMessage() }}
         </div>
         }

@@ -21,6 +21,35 @@ describe('PozosCreateService', () => {
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
+  for (const sello of [null, { desde_m: 0, hasta_m: 10 }, { desde_m: 2.125, hasta_m: 9.875 }]) {
+    it('transporta sello separado de la litología y del booleano legado: ' + JSON.stringify(sello), async () => {
+      const guardar = service.createPozoCompleto(3, { id_propietario: 1, id_perforador: 3, id_sitio: 0, profundidad_final_m: 20 },
+        { departamento: 'Salto', latitud: '-31', longitud: '-57' }, {
+          sello_sanitario_constructivo: sello,
+          intervalosLitologicos: [{ idLocal: 'real', dato: { desde_m: 0, hasta_m: 20, material: 'Basalto', id_litologia: 1 } }],
+          intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [],
+        }, null);
+      const req = http.expectOne(request => request.url.endsWith('/completo'));
+      expect(req.request.body.sello_sanitario_constructivo).toEqual(sello);
+      expect(req.request.body.pozo.sello_sanitario_constructivo).toBeUndefined();
+      expect(req.request.body.intervalos_litologicos[0]).toEqual({ desde_m: 0, hasta_m: 20, material: 'Basalto', id_litologia: 1 });
+      req.flush({ pozo: { id_pozo: 9 } }); await guardar; http.verify();
+    });
+  }
+
+  it('envía provisional en el pozo, sin llamar al alta de propietarios', async () => {
+    const promesa = service.createPozoCompleto(3,
+      { id_propietario: null, propietario_provisional: 'Nombre de campo', id_sitio: 0, id_perforador: 3 },
+      { departamento: 'Salto', latitud: '-31', longitud: '-57' },
+      { intervalosLitologicos: [], intervalosDiametro: [], intervalosFiltro: [], nivelesAporte: [] }, null);
+    const req = http.expectOne(r => r.url.endsWith('/usuarios/3/pozos/completo'));
+    expect(req.request.body.pozo.id_propietario).toBeNull();
+    expect(req.request.body.pozo.propietario_provisional).toBe('Nombre de campo');
+    expect(req.request.body.sello_sanitario_constructivo).toBeNull();
+    http.expectNone(r => r.url.includes('/propietarios'));
+    req.flush({pozo:{id_pozo:9,id_propietario:null,propietario_provisional:'Nombre de campo'}});
+    expect((await promesa).pozo.id_propietario).toBeNull(); http.verify();
+  });
 
   it('envía el contrato compuesto sin IDs locales', async () => {
     const pozoHistoricoEnMemoria = {

@@ -1,4 +1,15 @@
 <ion-content>
+  @if (authService.puedeOperarTodosLosPozos()) {
+    <ion-button id="exportar-kml" expand="block" [disabled]="exportandoKml()" (click)="exportarKml()">
+      {{ exportandoKml() ? 'Exportando…' : 'Exportar Google Earth (KML)' }}
+    </ion-button>
+    <p class="ion-padding-horizontal">Exporta todas las perforaciones con coordenadas y número comercial válidos, sin aplicar los filtros de la lista.</p>
+  }
+  <ion-input class="owner-search" name="propietario" type="search" label="Buscar por propietario o número"
+    labelPlacement="stacked" placeholder="Nombre del propietario o número real" fill="outline"
+    [clearInput]="true" [value]="propietarioBusqueda()"
+    (ionInput)="propietarioBusqueda.set($event.detail.value ?? '')">
+  </ion-input>
   <ion-toolbar>
         
     <ion-buttons slot="start">
@@ -13,7 +24,7 @@
       <ion-header>
         <ion-toolbar>
           <ion-title size="large">Filtros</ion-title>
-          <ion-buttons slot="end">
+        <ion-buttons slot="end">
             <ion-button (click)="modal.dismiss()" fill="clear"> Cancelar </ion-button>
           </ion-buttons>
         </ion-toolbar>
@@ -76,43 +87,37 @@
     </ng-template>
   </ion-modal>
 
-  @for (pozo of this.pozos(); track pozo.id_pozo) {
+  @if (propietarioBusqueda().trim() && pozosVisibles().length === 0) {
+    <p role="status">No hay pozos que coincidan con esa búsqueda y los filtros actuales.</p>
+  }
+  @for (pozo of pozosVisibles(); track pozo.id_pozo) {
   <ion-card>
     <ion-card-header>
-      <ion-card-title>Pozo: {{ pozo.id_pozo }}</ion-card-title>
+      @if (pozo.origen === 'historico') { <p>Perforación histórica</p> }
+      <ion-card-title>{{ pozo.numero_perforacion == null ? "Perforación sin número asignado" : "Perforación N.º " + pozo.numero_perforacion }}</ion-card-title>
+      <p>ID interno: {{ pozo.id_pozo }}</p>
       <ion-card-subtitle>Empresa: {{ pozo.empresa || '-' }}</ion-card-subtitle>
     </ion-card-header>
 
     <ion-card-content>
-      <ion-list>
-        <ion-item>
-          <ion-label>ID Propietario</ion-label>
-          <ion-label>{{ pozo.id_propietario }}</ion-label>
-        </ion-item>
+      <div class="pozo-summary">
+        <dl class="data-row">
+          <dt>Propietario</dt>
+          <dd>{{ pozo.propietario_nombre || 'No disponible' }} @if (pozo.id_propietario === null) { <span> · Pendiente de vinculación</span> }</dd>
+        </dl>
 
-        <ion-item>
-          <ion-label>ID Sitio</ion-label>
-          <ion-label>{{ pozo.id_sitio }}</ion-label>
-        </ion-item>
+        <dl class="data-row">
+          <dt>Sitio</dt>
+          <dd>{{ pozo.sitio_nombre || 'No disponible' }}</dd>
+        </dl>
 
-        
-        <ion-item>
-          <ion-label>Caudal (lh)</ion-label>
-          <ion-label>{{ pozo.caudal_estimado_lh ?? '-' }}</ion-label>
-        </ion-item>
-
-        <ion-item>
-          <ion-label>Profundidad (m)</ion-label>
-          <ion-label>{{ pozo.profundidad_final_m ?? '-' }}</ion-label>
-        </ion-item>
-
-        <ion-item>
-          <ion-label>Fecha de creación</ion-label>
-          <ion-label>
+        <dl class="data-row pozo-date">
+          <dt>Fecha de creación</dt>
+          <dd>
             {{ formatearInstanteComoFecha(pozo.fecha_creado) }}
-          </ion-label>
-        </ion-item>
-      </ion-list>
+          </dd>
+        </dl>
+      </div>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-button id="popover-{{ pozo.id_pozo }}" color="primary"> Técnica </ion-button>
@@ -135,14 +140,17 @@
         </ion-popover>
 
         <ion-buttons slot="end">
-          <ion-button size="large" fill="clear" color="primary" (click)="irADetalle(pozo)">
+          <ion-button aria-label="Ver detalle del pozo" fill="clear" color="secondary" (click)="irADetalle(pozo)">
             <ion-icon slot="icon-only" name="eye"> </ion-icon
           ></ion-button>
-          @if (authService.puedeAdministrarPozos()) {
-          <ion-button fill="clear" color="primary" (click)="irAEditar(pozo)"
+          @if (authService.tieneRol('perforador') && !permisos.puedeEditar(pozo)) { <p>Solo lectura</p> }
+          @if (permisos.puedeEditar(pozo)) {
+          <ion-button aria-label="Editar pozo" fill="clear" color="secondary" (click)="irAEditar(pozo)"
             ><ion-icon slot="icon-only" name="pencil"> </ion-icon
           ></ion-button>
-          <ion-button fill="clear" color="danger" (click)="borrarPozo(pozo)">
+          }
+          @if (authService.tieneRol('administracion')) {
+          <ion-button aria-label="Eliminar pozo" fill="clear" color="danger" (click)="borrarPozo(pozo)">
             <ion-icon slot="icon-only" name="trash"> </ion-icon>
           </ion-button>
           }

@@ -1,5 +1,7 @@
 import { DatosTecnicosBorrador } from '../types/schemas';
 import { analizarCoberturaIntervalos, ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from './datos-tecnicos-borrador';
+import { tecnicosPersistidos } from './tecnicos-persistidos';
+import { huellaDatosTecnicos } from './estado-formulario-perforacion';
 
 function datos(): DatosTecnicosBorrador {
   return {
@@ -14,6 +16,38 @@ function datos(): DatosTecnicosBorrador {
 }
 
 describe('datos técnicos en memoria', () => {
+  for (const sello of [undefined, null, { desde_m: 0, hasta_m: 10 }, { desde_m: 2.125, hasta_m: 9.875 }]) {
+    it('admite sello independiente opcional y decimal: ' + JSON.stringify(sello), () => {
+      const technical = { ...datos(), sello_sanitario_constructivo: sello };
+      expect(validarDatosTecnicos(technical, 20)).toEqual([]);
+      expect(ordenarDatosTecnicos(technical).sello_sanitario_constructivo).toEqual(sello);
+    });
+  }
+  for (const sello of [
+    { desde_m: NaN, hasta_m: 10 }, { desde_m: 0, hasta_m: Infinity }, { desde_m: null, hasta_m: 10 },
+    { desde_m: -1, hasta_m: 10 }, { desde_m: 10, hasta_m: 10 }, { desde_m: 11, hasta_m: 10 }, { desde_m: 0, hasta_m: 21 },
+  ]) {
+    it('rechaza sello incompleto, inválido o fuera de profundidad: ' + JSON.stringify(sello), () => {
+      expect(validarDatosTecnicos({ ...datos(), sello_sanitario_constructivo: sello as never }, 20).join(' ').toLowerCase()).toContain('sello sanitario');
+    });
+  }
+  it('hidrata exactamente sin compartir referencias ni inventar sello a partir de litologías', () => {
+    const sello = { desde_m: 1.125, hasta_m: 9.875 };
+    const actual = tecnicosPersistidos([], [], [], [], sello);
+    expect(actual.sello_sanitario_constructivo).toEqual(sello);
+    expect(actual.sello_sanitario_constructivo).not.toBe(sello);
+    expect(tecnicosPersistidos([], [], [], [], null).sello_sanitario_constructivo).toBeNull();
+    expect(tecnicosPersistidos([{ id_intervalo_litologico: 1, id_pozo: 1, desde_m: 0, hasta_m: 10, material: 'Sello sanitario', id_litologia: 30 }], [], [], []).sello_sanitario_constructivo).toBeNull();
+  });
+  it('la huella ignora ausencia/null y reconoce cambios y reversiones exactas del sello', () => {
+    expect(huellaDatosTecnicos(datos())).toBe(huellaDatosTecnicos({ ...datos(), sello_sanitario_constructivo: null }));
+    const actual = { ...datos(), sello_sanitario_constructivo: { desde_m: 1.125, hasta_m: 9.875 } };
+    const inicial = huellaDatosTecnicos(actual);
+    actual.sello_sanitario_constructivo.hasta_m = 10;
+    expect(huellaDatosTecnicos(actual)).not.toBe(inicial);
+    actual.sello_sanitario_constructivo.hasta_m = 9.875;
+    expect(huellaDatosTecnicos(actual)).toBe(inicial);
+  });
   it('ordena sin reemplazar identificadores locales por IDs persistidos', () => {
     const ordenados = ordenarDatosTecnicos(datos());
     expect(ordenados.intervalosLitologicos.map((item) => item.idLocal)).toEqual(['a', 'b']);

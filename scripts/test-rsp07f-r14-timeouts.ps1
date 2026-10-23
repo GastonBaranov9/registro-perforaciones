@@ -28,6 +28,7 @@ try {
 
   $template = [IO.File]::ReadAllText((Join-Path $repo "proxy/https.conf.template"))
   $nginxConfig = $template.Replace('${PUBLIC_HOST}', 'r14.example.test').Replace('${PUBLIC_ORIGIN}', 'https://r14.example.test').Replace('${HSTS_HEADER}', '')
+  $nginxConfig = $nginxConfig.Replace('${APP_HOST}', 'r14.example.test').Replace('${API_HOST}', 'r14.example.test').Replace('${API_ORIGIN}', 'https://r14.example.test')
   $nginxConfig = $nginxConfig.Replace('http://api:3000', 'http://127.0.0.1:9').Replace('http://front:80', 'http://127.0.0.1:9')
   [IO.File]::WriteAllText($rendered, $nginxConfig, [Text.UTF8Encoding]::new($false))
 

@@ -37,6 +37,50 @@ function Compose([string[]]$Arguments){& docker compose @compose @Arguments;if($
 function Clear-DeploymentEnvironment{foreach($name in @('API_IMAGE_REF','FRONT_IMAGE_REF','APP_VERSION','GIT_SHA')){[Environment]::SetEnvironmentVariable($name,$null,'Process')}}
 function Restore-DeploymentEnvironment{foreach($name in $savedEnvironment.Keys){[Environment]::SetEnvironmentVariable($name,$savedEnvironment[$name],'Process')}}
 function Assert-ComposeState([object]$Expected){$json=(& docker compose @compose config --format json|Out-String);if($LASTEXITCODE-ne 0){throw "No se pudo renderizar Compose desde deployment state."};$config=$json|ConvertFrom-Json;if($config.services.api.image-ne $Expected.ApiImage-or $config.services.front.image-ne $Expected.FrontImage-or $config.services.api.environment.APP_VERSION-ne $Expected.AppVersion-or $config.services.api.environment.GIT_SHA-ne $Expected.GitSha){throw "Compose no reproduce el deployment state persistido."}}
+# Containment must not depend on audit/state persistence or Compose interpolation.
+function Recovery-Docker([string[]]$Arguments){
+  $oldPreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
+  try{
+    $output=(& docker @Arguments 2>&1 | Out-String).Trim();$code=$LASTEXITCODE
+    if($code -ne 0){throw "docker $($Arguments -join ' '): exit=$code; $output"}
+    return $output
+  }finally{$ErrorActionPreference=$oldPreference}
+}
+function Recovery-Ids([string]$Service){
+  $raw=Recovery-Docker @('ps','-a','-q','--filter',"label=com.docker.compose.project=$ProjectName",'--filter',"label=com.docker.compose.service=$Service")
+  return @($raw -split '\s+' | Where-Object {$_})
+}
+function Test-RecoveryStopped([string]$Service){
+  try{
+    foreach($id in @(Recovery-Ids $Service)){
+      if((Recovery-Docker @('inspect','--format','{{.State.Status}}',$id)) -notin @('exited','created','dead')){return $false}
+    }
+    return $true
+  }catch{$recoveryErrors.Add("verify/$Service`: $($_.Exception.Message)");return $false}
+}
+function Stop-RecoveryService([string]$Service){
+  try{$ids=@(Recovery-Ids $Service)}catch{$recoveryErrors.Add("list/$Service`: $($_.Exception.Message)");return}
+  foreach($id in $ids){
+    try{if((Recovery-Docker @('inspect','--format','{{.State.Status}}',$id)) -in @('exited','created','dead')){continue}}
+    catch{$recoveryErrors.Add("inspect/$Service`: $($_.Exception.Message)")}
+    try{Recovery-Docker @('stop','--time','10',$id) | Out-Null}
+    catch{
+      $recoveryErrors.Add("stop/$Service`: $($_.Exception.Message)")
+      try{Recovery-Docker @('stop','--time','0',$id) | Out-Null}
+      catch{$recoveryErrors.Add("force-stop/$Service`: $($_.Exception.Message)")}
+    }
+  }
+}
+function Test-RecoveryMaintenance{
+  try{
+    $ids=@(Recovery-Ids 'maintenance');if(-not $ids.Count){return $false}
+    foreach($id in $ids){
+      if((Recovery-Docker @('inspect','--format','{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{end}}',$id)) -ne 'running/healthy'){return $false}
+    }
+    return $true
+  }catch{$recoveryErrors.Add("verify/maintenance: $($_.Exception.Message)");return $false}
+}
+
 $env:API_IMAGE_REF=[string]$state.previous_api_ref;$env:FRONT_IMAGE_REF=[string]$state.previous_front_ref;$env:APP_VERSION=[string]$state.previous_version;$env:GIT_SHA=[string]$state.previous_git_sha
 try{
   Log "rollback_start" "level=$Level version=$($state.previous_version)"
@@ -57,7 +101,41 @@ try{
   $state|Add-Member -Force NoteProperty rollback_level $Level;$state|Add-Member -Force NoteProperty rollback_at_utc ([DateTime]::UtcNow.ToString('o'));$state|Add-Member -Force NoteProperty rollback_status 'success';Write-DeploymentAuditAtomic $resolvedState $state
   Log "deployment_state_ok" "config=$($written.ConfigHash)";Write-Output "ROLLBACK_OK"
 }catch{
-  $state|Add-Member -Force NoteProperty rollback_status 'failed';$state|Add-Member -Force NoteProperty rollback_failure 'Ver logs operativos anteriores.';Write-DeploymentAuditAtomic $resolvedState $state
-  try{Compose @("stop","proxy");Compose @("--profile","ops","up","-d","--wait","--wait-timeout","60","maintenance")}catch{}
-  Write-Output "ROLLBACK_FAILED";throw
-}finally{Restore-DeploymentEnvironment}
+  $originalError=$_;$recoveryErrors=[Collections.Generic.List[string]]::new()
+  Stop-RecoveryService 'proxy'
+  if(-not (Test-RecoveryStopped 'proxy')){Stop-RecoveryService 'api'}
+  if(-not (Test-RecoveryMaintenance)){
+    try{Recovery-Docker (@('compose')+$compose+@('--profile','ops','up','-d','--no-deps','--no-recreate','--wait','--wait-timeout','60','maintenance')) | Out-Null}
+    catch{$recoveryErrors.Add("start/maintenance: $($_.Exception.Message)")}
+  }
+  $maintenanceVerified=Test-RecoveryMaintenance
+  $publicBlocked=Test-RecoveryStopped 'proxy'
+  if(-not $publicBlocked){Stop-RecoveryService 'api'}
+  # Only after protection and verification may persistence or reporting fail.
+  try{
+    $state|Add-Member -Force NoteProperty rollback_status 'failed'
+    $state|Add-Member -Force NoteProperty rollback_failure $originalError.ToString()
+    $state|Add-Member -Force NoteProperty rollback_failure_stack $originalError.ScriptStackTrace
+    $state|Add-Member -Force NoteProperty rollback_recovery_public_blocked $publicBlocked
+    $state|Add-Member -Force NoteProperty rollback_recovery_maintenance_verified $maintenanceVerified
+    $state|Add-Member -Force NoteProperty rollback_recovery_errors @($recoveryErrors.ToArray())
+    Write-DeploymentAuditAtomic $resolvedState $state
+  }catch{$recoveryErrors.Add("audit: $($_.Exception.Message)")}
+  $originalError.Exception.Data['RecoveryPublicBlocked']=$publicBlocked
+  $originalError.Exception.Data['RecoveryErrors']=$recoveryErrors.ToArray()
+  $originalError.Exception.Data['UrgentManualIntervention']=(-not $publicBlocked)
+  try{
+    Write-Output 'ROLLBACK_FAILED'
+    Write-Output "RECOVERY_PUBLIC_BLOCKED=$($publicBlocked.ToString().ToLowerInvariant())"
+    Write-Output "RECOVERY_MAINTENANCE_VERIFIED=$($maintenanceVerified.ToString().ToLowerInvariant())"
+    foreach($detail in $recoveryErrors){Write-Warning $detail -WarningAction Continue}
+    if(-not $publicBlocked){Write-Warning 'RECOVERY_CRITICAL: acceso publico no confirmado bloqueado; INTERVENCION MANUAL URGENTE.' -WarningAction Continue}
+  }catch{
+    $recoveryErrors.Add("report: $($_.Exception.Message)")
+    $originalError.Exception.Data['RecoveryErrors']=$recoveryErrors.ToArray()
+    try{[Console]::Error.WriteLine("ROLLBACK_FAILED; RECOVERY_PUBLIC_BLOCKED=$publicBlocked; URGENT_MANUAL_INTERVENTION=$(-not $publicBlocked)")}catch{}
+  }
+  throw $originalError
+}finally{
+  try{Restore-DeploymentEnvironment}catch{if($originalError){$originalError.Exception.Data['EnvironmentRestoreError']=$_.Exception.Message}else{throw}}
+}

@@ -1,3 +1,4 @@
+import { CAPACITOR_RUNTIME } from '../../../../core/native/native-plugin.tokens';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
@@ -5,6 +6,8 @@ import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { IonicModule } from '@ionic/angular';
 
 import { PozosFormComponent } from './pozos-form.component';
+import { DATOS_TECNICOS_ESTANDAR } from '../../../../shared/constants/datos-tecnicos-estandar';
+import { By } from '@angular/platform-browser';
 
 describe('PozosFormComponent', () => {
   let component: PozosFormComponent;
@@ -12,20 +15,79 @@ describe('PozosFormComponent', () => {
   const propietarioA = { id_usuario: 1, nombre: 'Propietario A', documento_rut: 'A-1', telefono: '091 A', email: 'a@example.test', roles: ['propietario'] };
   const propietarioB = { id_usuario: 2, nombre: 'Propietario B', documento_rut: null, telefono: null, email: null, roles: ['propietario'] };
 
+  it('histórico reutiliza campos/foto, permite desconocidos y bloquea número en edición',async()=>{
+    fixture.componentRef.setInput('historico',true);
+    fixture.componentRef.setInput('pozo',{id_propietario:null,id_perforador:0,id_sitio:0,numero_perforacion:3281});
+    fixture.componentRef.setInput('sitioNuevo',{departamento:'',localidad:'',latitud:'',longitud:''});
+    fixture.componentRef.setInput('catalogosDisponibles',true);
+    fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(component.personasValidas()).toBeTrue();
+    expect(fixture.nativeElement.querySelector('[name="numero_historico"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[name="empresa"]').required).toBeFalse();
+    expect(fixture.nativeElement.querySelector('[name="profundidad_final_m"]').required).toBeFalse();
+    expect(fixture.nativeElement.querySelector('app-foto')).not.toBeNull();
+    const saved=spyOn(component.saved,'emit');component.handlePozo();expect(saved).toHaveBeenCalled();
+    expect(component.datoTecnicoEditable('cementacion')).toBeTrue();
+    fixture.componentRef.setInput('agregareditar',true);fixture.componentRef.setInput('id_pozo',18);fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[name="numero_historico"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('3281');
+    expect(fixture.nativeElement.querySelector('[name="latitud"]')).not.toBeNull();
+  });
+
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: CAPACITOR_RUNTIME, useValue: { getPlatform: () => 'android', isNativePlatform: () => true } }, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
       imports: [PozosFormComponent, IonicModule.forRoot()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(PozosFormComponent);
+    fixture.componentRef.setInput('administrarPropietarios', true);
     fixture.componentRef.setInput('pozo', { id_propietario: 1, id_sitio: 1, id_perforador: 1 });
     component = fixture.componentInstance;
     fixture.detectChanges();
   }));
 
+  it('muestra la URI local guardada sin marcarla como foto nueva pendiente', () => {
+    fixture.componentRef.setInput('borradorLocal', true);
+    fixture.componentRef.setInput('fotoLocalUri', 'https://localhost/_capacitor_file_/data/photo-test'); fixture.detectChanges();
+    const image = fixture.nativeElement.querySelector('img.foto-preview') as HTMLImageElement;
+    expect(image.getAttribute('src')).toBe('https://localhost/_capacitor_file_/data/photo-test');
+    expect(image.alt).toContain('guardada en este dispositivo');
+    expect(component.fotoFile).toBeNull(); expect(component.fotoVistaPrevia()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Fotografía pendiente de guardar');
+    component.fotoCapturada({ archivo: new File(['new'], 'new.png', { type: 'image/png' }), vistaPrevia: 'blob:new' });
+    component.cancelarCambioFoto(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('img').getAttribute('src')).toContain('/data/photo-test');
+  });
+  it('GPS Android espera 30 segundos sin caché; timeout conserva datos y permite guardar sin ubicación', async () => {
+    const sitio = { departamento: '', localidad: '', latitud: '', longitud: '' };
+    fixture.componentRef.setInput('sitioNuevo', sitio); fixture.componentRef.setInput('borradorLocal', true);
+    const gps = spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((_ok, fail) => fail!({ code: 3 } as GeolocationPositionError));
+    const saved = spyOn(component.saved, 'emit');
+    await component.tomarUbicacionNueva(); fixture.detectChanges();
+    expect(gps).toHaveBeenCalledWith(jasmine.any(Function), jasmine.any(Function), { enableHighAccuracy: true, timeout: 30_000, maximumAge: 0 });
+    expect(component.ubicacionError()).toContain('tiempo'); expect(component.capturandoUbicacion()).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Reintentar ubicación');
+    expect(sitio.latitud).toBe(''); expect(sitio.longitud).toBe('');
+    component.handlePozo(); expect(saved).toHaveBeenCalled();
+    sitio.latitud = '-31'; sitio.longitud = '-57'; await component.tomarUbicacionNueva();
+    expect(sitio.latitud).toBe('-31'); expect(sitio.longitud).toBe('-57'); expect(component.ubicacionPrecision()).toBeNull();
+  });
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+  it('alta normal siempre automática incluso para administración; edición conserva el número', () => {
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('asignará automáticamente');
+    fixture.componentRef.setInput('administrarNumeracion', true); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).toBeNull();
+    fixture.componentRef.setInput('agregareditar', true);
+    fixture.componentRef.setInput('id_pozo', 12);
+    fixture.componentRef.setInput('pozo', { id_propietario: 1, id_sitio: 1, id_perforador: 1, numero_perforacion: 2047 });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-numero-perforacion')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('2047');
+    expect(fixture.nativeElement.textContent).toContain('ID interno: 12');
   });
 
   it('retira sello sanitario y pre-filtro del formulario moderno', () => {
@@ -45,6 +107,57 @@ describe('PozosFormComponent', () => {
     expect(component.datoTecnicoEditable('desarrollo')).toBeTrue();
     expect(component.datoTecnicoEditable('cementacion')).toBeFalse();
     expect(desarrollo.readonly).toBeFalse();
+  });
+
+  for (const vacio of [null, undefined, '', '  ']) {
+    it(`ofrece estándares sólo en históricos y completa ${JSON.stringify(vacio)} sin reemplazar textos existentes`, () => {
+      const selector = 'ion-button.aplicar-estandares';
+      expect(fixture.nativeElement.querySelector(selector)).toBeNull();
+      const antes = { ...component.pozo() };
+      component.aplicarValoresEstandar();
+      expect(component.pozo()).toEqual(antes);
+      fixture.componentRef.setInput('historico', true);
+      fixture.componentRef.setInput('pozo', { ...antes, metodo_sedimentario: ' Método original ', desarrollo: 'Desarrollo documentado', cementacion: vacio, metodo_rocoso: vacio });
+      fixture.detectChanges();
+      const cambio = spyOn(component.cambiado, 'emit');
+      fixture.debugElement.query(By.css(selector)).triggerEventHandler('click');
+      fixture.detectChanges();
+      expect(component.pozo()).toEqual({ ...antes, metodo_sedimentario: ' Método original ', desarrollo: 'Desarrollo documentado',
+        cementacion: DATOS_TECNICOS_ESTANDAR.cementacion, metodo_rocoso: DATOS_TECNICOS_ESTANDAR.metodo_rocoso });
+      expect(cambio).toHaveBeenCalledTimes(1);
+      expect(fixture.nativeElement.querySelector(selector).disabled).toBeTrue();
+      component.aplicarValoresEstandar();
+      expect(cambio).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  for (const bloqueo of ['guardando', 'soloLectura']) {
+    it(`no aplica estándares con ${bloqueo}`, () => {
+      fixture.componentRef.setInput('historico', true);
+      fixture.componentRef.setInput(bloqueo, true);
+      fixture.detectChanges();
+      const antes = { ...component.pozo() };
+      component.aplicarValoresEstandar();
+      expect(component.pozo()).toEqual(antes);
+      expect(fixture.nativeElement.querySelector('ion-button.aplicar-estandares').disabled).toBeTrue();
+    });
+  }
+
+  it('el perforador guarda solo un nombre provisional y no emite alta de usuario', () => {
+    fixture.componentRef.setInput('administrarPropietarios', false);
+    component.limpiarPropietario();
+    component.pozo().propietario_provisional = 'Nombre de campo';
+    fixture.detectChanges();
+    const crear = spyOn(component.crearPropietario, 'emit');
+    component.propietarioNuevo.nombre = 'Intento'; component.registrarPropietario();
+    expect(crear).not.toHaveBeenCalled();
+    expect(component.personasValidas()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('pendiente de vinculación');
+    expect(fixture.nativeElement.textContent).toContain('Ingresá el nombre del cliente');
+    expect(fixture.nativeElement.querySelector('app-selector-persona-pozo[rol="propietario"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('ion-input[name="propietario_provisional"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('input[name="propietario_nuevo_documento"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Registrar propietario');
   });
 
   it('oculta el alta mientras hay propietario y vuelve a mostrarla al limpiar', () => {
@@ -155,6 +268,49 @@ describe('PozosFormComponent', () => {
     expect(component.fotoBlob).toBeNull();
   });
 
+  it('renderiza inmediatamente la última foto pendiente al editar, sin lazy ion-img ni foto obsoleta', async () => {
+    fixture.componentRef.setInput('agregareditar', true);
+    const archivo = new File(['foto'], 'nueva.png', { type: 'image/png' });
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    for (const url of ['blob:primera', 'blob:segunda', 'blob:tercera']) {
+      component.fotoCapturada({ archivo, vistaPrevia: url });
+      fixture.detectChanges();
+      const imagen = fixture.nativeElement.querySelector('.foto-preview') as HTMLImageElement;
+      expect(imagen.tagName).toBe('IMG');
+      expect(imagen.getAttribute('src')).toBe(url);
+      expect(fixture.nativeElement.querySelectorAll('.foto-preview').length).toBe(1);
+      expect(fixture.nativeElement.querySelector('.foto-pendiente').textContent).toContain('pendiente de guardar');
+      expect(fixture.nativeElement.querySelector('app-foto')).not.toBeNull();
+    }
+    expect(revoke).toHaveBeenCalledWith('blob:primera');
+    expect(revoke).toHaveBeenCalledWith('blob:segunda');
+  });
+
+  it('confirmar guardado libera el borrador y adopta la fotografía persistida', () => {
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    component.fotoCapturada({ archivo: new File(['foto'], 'nueva.jpg'), vistaPrevia: 'blob:pendiente' });
+    component.confirmarFotoGuardada('/usuarios/1/pozos/1/foto');
+    expect(revoke).toHaveBeenCalledWith('blob:pendiente');
+    expect(component.fotoFile).toBeNull();
+    expect(component.fotoVistaPrevia()).toBeNull();
+    expect(component.pozo().foto_url).toBe('/usuarios/1/pozos/1/foto');
+    component.confirmarFotoGuardada(null);
+    expect(component.getFoto()).toBeNull();
+  });
+
+  it('libera ObjectURLs al reemplazar, quitar y destruir la vista previa', () => {
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    const archivo = new File(['foto'], 'foto.jpg', { type: 'image/jpeg' });
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:primera' });
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:segunda' });
+    expect(revoke).toHaveBeenCalledWith('blob:primera');
+    component.quitarFotoSeleccionada();
+    expect(revoke).toHaveBeenCalledWith('blob:segunda');
+    component.fotoCapturada({ archivo, vistaPrevia: 'blob:tercera' });
+    fixture.destroy();
+    expect(revoke).toHaveBeenCalledWith('blob:tercera');
+  });
+
   it('aplaza la eliminación persistida hasta guardar la edición', () => {
     component.solicitarEliminarFotoPersistida();
     expect(component.eliminarFotoPendiente()).toBeTrue();
@@ -188,5 +344,33 @@ describe('PozosFormComponent', () => {
     fixture.componentRef.setInput('sitioNuevo',sitio);
     const emitir=spyOn(component.saved,'emit');component.handlePozo();
     expect(sitio.latitud).toBe('-31.4439167');expect(sitio.longitud).toBe('-57.9865556');expect(emitir).toHaveBeenCalled();
+  });
+
+  it('la confirmación del propietario nuevo conserva ediciones posteriores al envío', () => {
+    component.propietarioNuevo.nombre = 'Ana';
+    const enviado = { ...component.propietarioNuevo };
+    component.propietarioNuevo.telefono = 'Posterior';
+    component.confirmarPropietarioCreado(enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.propietarioNuevo.telefono = ' \t ';
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+  });
+
+  it('la confirmación de edición conserva cambios posteriores y no limpia otro propietario', () => {
+    fixture.componentRef.setInput('propietarios', [propietarioA, propietarioB]);
+    component.seleccionarPropietario(propietarioA); component.abrirEditorPropietario();
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+    component.propietarioEdicion()!.body.telefono = 'Enviado';
+    const enviado = { ...component.propietarioEdicion()!.body };
+    component.propietarioEdicion()!.body.telefono = 'Posterior';
+    component.confirmarPropietarioActualizado(1, enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.propietarioEdicion()!.body.telefono = 'Enviado';
+    expect(component.tieneCambiosPropietario()).toBeFalse();
+    component.seleccionarPropietario(propietarioB); component.abrirEditorPropietario();
+    component.propietarioEdicion()!.body.telefono = 'De B';
+    component.confirmarPropietarioActualizado(1, enviado);
+    expect(component.tieneCambiosPropietario()).toBeTrue();
+    component.cerrarEditorPropietario(); expect(component.tieneCambiosPropietario()).toBeFalse();
   });
 });

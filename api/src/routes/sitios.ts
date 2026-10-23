@@ -1,3 +1,4 @@
+import { exigirEdicionSitio, puedeOperarSitioGlobal } from "../services/edicion-pozo.ts";
 import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@fastify/type-provider-typebox";
@@ -22,7 +23,7 @@ const sitiosRoutes= async function (
       schema: { summary: "Consultar disponibilidad del proveedor de mapas", tags: ["sitios"],
         response: { 200: Type.Object({ configurado: Type.Boolean(), atribucion: Type.Optional(Type.String()) }) } },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.puedeConsultarRecursos],
     },
     async () => {
       const configuracion = configuracionMapaDesdeEntorno();
@@ -40,13 +41,13 @@ const sitiosRoutes= async function (
         response: { 400: err.ErrorSchema, 404: err.ErrorSchema, 503: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async (req, rep) => {
       const { id_sitio } = req.params as { id_sitio: number };
       const { latitud, longitud } = req.query as { latitud: string; longitud: string };
       const [administrador, gestionable] = await Promise.all([
-        isAdmin(req.user.sub), sitioEsGestionablePorPerforador(id_sitio, req.user.sub),
+        puedeOperarSitioGlobal(id_sitio, req.user.sub), sitioEsGestionablePorPerforador(id_sitio, req.user.sub),
       ]);
       if (!administrador && !gestionable) throw new err.T05SitioNoEncontrado();
       const sitio = administrador || gestionable
@@ -75,12 +76,12 @@ const sitiosRoutes= async function (
         response: { 404: err.ErrorSchema, 503: err.ErrorSchema },
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.puedeConsultarRecursos],
     },
     async (req, rep) => {
       const { id_sitio } = req.params as { id_sitio: number };
       const [propietario,administrador,gestionable]=await Promise.all([
-        rolUser(req.user.sub,"propietario"),isAdmin(req.user.sub),sitioEsGestionablePorPerforador(id_sitio,req.user.sub),
+        rolUser(req.user.sub,"propietario"),puedeOperarSitioGlobal(id_sitio,req.user.sub),sitioEsGestionablePorPerforador(id_sitio,req.user.sub),
       ]);
       if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
       const sitio = administrador||gestionable
@@ -119,7 +120,7 @@ const sitiosRoutes= async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       if (!(await isAdmin(req.user.sub))) throw new err.T05SinPermiso();
@@ -149,15 +150,14 @@ const sitiosRoutes= async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       const {id_sitio} = req.params as {
         id_sitio:number
       }
       const data = req.body as SitioBody;
-      if (!(await isAdmin(req.user.sub)) && !(await sitioEsGestionablePorPerforador(id_sitio,req.user.sub)))
-        throw new err.T05SitioNoEncontrado();
+      if (!(await puedeOperarSitioGlobal(id_sitio, req.user.sub))) await exigirEdicionSitio(id_sitio, req.user.sub);
       const sitioEditado = await func.updateSitio(id_sitio, data)
       if(!sitioEditado) throw err.T05SitioNoEncontrado
       return rep.code(200).send(sitioEditado)
@@ -185,7 +185,7 @@ const sitiosRoutes= async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       const {id_sitio} = req.params as {
@@ -218,7 +218,7 @@ const sitiosRoutes= async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const {id_sitio} = req.params as {
@@ -226,7 +226,7 @@ const sitiosRoutes= async function (
       }
       const { sub } = req.user;
       const [propietario,administrador,gestionable]=await Promise.all([
-        rolUser(sub,"propietario"),isAdmin(sub),sitioEsGestionablePorPerforador(id_sitio,sub),
+        rolUser(sub,"propietario"),puedeOperarSitioGlobal(id_sitio,sub),sitioEsGestionablePorPerforador(id_sitio,sub),
       ]);
       if (!propietario && !administrador && !gestionable) throw new err.T05SitioNoEncontrado();
       const sitioObtenido = administrador||gestionable
@@ -242,7 +242,7 @@ const sitiosRoutes= async function (
     {
       schema: {
         summary: "Obtener la lista de sitios",
-        description: "Rol: Administrador/Perforador",
+        description: "Rol: Administrador. Listado del módulo independiente de Sitios.",
         params: Type.Object({
           id_usuario: Type.Integer(),
         }),
@@ -254,15 +254,12 @@ const sitiosRoutes= async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       const { sub } = req.user;
-      const listaSitios = await isAdmin(sub)
-        ? await func.getAllSitios()
-        : await rolUser(sub, "propietario")
-          ? await func.getSitiosByPropietario(sub)
-          : await func.getSitiosByPerforador(sub)
+      if (!(await isAdmin(sub))) throw new err.T05SinPermiso();
+      const listaSitios = await func.getAllSitios();
       return rep.code(200).send(listaSitios)
     }
   );

@@ -60,11 +60,11 @@ test("proxy HTTPS es same-origin, redirige y sobrescribe forwarding", async () =
   assert.match(compose, /TLS_CERT_FILE:\?Falta TLS_CERT_FILE/);
   assert.match(compose, /TLS_KEY_FILE:\?Falta TLS_KEY_FILE/);
   assert.doesNotMatch(compose.slice(compose.indexOf("  api:"), compose.indexOf("\n  front:")), /^\s+ports:/m);
-  assert.match(proxy, /return 308 \$\{PUBLIC_ORIGIN\}\$request_uri/);
+  assert.match(proxy, /return 308 \$host_origin\$request_uri/);
   assert.match(proxy, /proxy_pass http:\/\/api:3000\//);
   assert.match(proxy, /proxy_set_header X-Forwarded-For \$remote_addr/);
   assert.match(proxy, /proxy_set_header X-Forwarded-Proto https/);
-  assert.match(proxy, /if \(\$host != "\$\{PUBLIC_HOST\}"\) \{ return 421; \}/);
+  assert.match(proxy, /if \(\$host_origin = ""\) \{ return 421; \}/);
   assert.match(proxy, /ssl_protocols TLSv1\.2 TLSv1\.3/);
   assert.doesNotMatch(proxy, /ssl_protocols[^;]*(?:SSLv3|TLSv1\.0|TLSv1\.1)/);
 });
@@ -192,7 +192,7 @@ test("primer upgrade prepara fotos antes del backup y assets respetan CSP",async
   const proxy=await fs.readFile(path.join(repo,"proxy","https.conf.template"),"utf8");
   const background=await fs.readFile(path.join(repo,"front","public","assets","branding","background.jpeg"));
   const logo=await fs.readFile(path.join(repo,"front","public","assets","branding","logo.png"));
-  assert.match(styles,/url\('\/assets\/branding\/background\.jpeg'\)/);
+  assert.match(styles,/--background: var\(--rsp-background\)/);
   assert.match(app,/src="\/assets\/branding\/logo\.png"/);
   assert.doesNotMatch(`${styles}\n${app}`,/imgur\.com/i);
   assert.match(proxy,/img-src 'self' data: blob:/);

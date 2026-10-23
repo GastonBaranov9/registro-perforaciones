@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.example.app',
-  appName: 'front',
+  appId: 'uy.com.raulsilva.perforaciones',
+  appName: 'Raul Silva Perforaciones',
   webDir: 'dist/front/browser'
 };
 

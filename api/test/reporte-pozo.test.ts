@@ -34,3 +34,34 @@ test("PDF posterior a eliminar foto no intenta cargar archivo", async () => {
   };
   assert.ok((await generarPDFBytes(reporte, 8)).length > 1_000);
 });
+
+test("consulta preserva los NULL de históricos y selecciona origen, sello sanitario y prefiltro", async () => {
+  const fila = {
+    id_pozo: "90042", numero_perforacion: "123", origen: "historico", propietario: null,
+    empresa: null, perforador: null, sitio: null, departamento: null,
+    profundidad_final_m: null, nivel_estatico_m: null, nivel_dinamico_m: null,
+    caudal_estimado_lh: null, sello_sanitario: null, pre_filtro: null,
+  };
+  let consultas = 0;
+  const db = { async query(sql: string, params: unknown[]) {
+    assert.deepEqual(params, [90042]);
+    if (consultas++ === 0) {
+      for (const campo of ["p.origen", "p.sello_sanitario", "p.pre_filtro"]) assert.ok(sql.includes(campo));
+      // El orden conserva la prioridad del vínculo; sin ambos nombres, SQL devuelve NULL.
+      assert.match(sql, /COALESCE\(\s*prop\.nombre,\s*p\.propietario_provisional\s*\)\s+AS propietario/);
+      assert.doesNotMatch(sql, /pendiente de vinculación/);
+      for (const tabla of ["usuario prop", "usuario perf", "sitio s"])
+        assert.ok(sql.includes(`LEFT JOIN public.${tabla}`), `Conservar históricos parciales: ${tabla}`);
+      return { rows: [fila] };
+    }
+    return { rows: [] };
+  } };
+  const resultado = await getReportePozo(90042, db as never);
+  assert.ok(resultado);
+  assert.equal(resultado.origen, "historico");
+  assert.equal(resultado.numero_perforacion, 123);
+  for (const campo of ["propietario", "empresa", "perforador", "sitio", "departamento", "profundidad_final_m",
+    "nivel_estatico_m", "nivel_dinamico_m", "caudal_estimado_lh", "sello_sanitario", "pre_filtro"] as const)
+    assert.equal(resultado[campo], null, campo);
+  assert.deepEqual(resultado.litologia, []);
+});

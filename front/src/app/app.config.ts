@@ -6,7 +6,7 @@ import {
   provideZonelessChangeDetection,
   isDevMode,
 } from '@angular/core';
-import { provideRouter, RouteReuseStrategy, withComponentInputBinding } from '@angular/router';
+import { provideRouter, RouteReuseStrategy, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { provideIonicAngular, IonicRouteStrategy } from '@ionic/angular/standalone';
 
 import { routes } from './app.routes';
@@ -20,7 +20,8 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
-    provideRouter(routes, withComponentInputBinding()),
+    // Cancelar Atrás restaura la posición del historial sin sobrescribir la página previa.
+    provideRouter(routes, withComponentInputBinding(), withRouterConfig({ canceledNavigationResolution: 'computed' })),
     provideIonicAngular(),
     provideHttpClient(withFetch(), withInterceptors([tokenInterceptor])),
     provideAppInitializer(() => inject(AuthService).bootstrap()),

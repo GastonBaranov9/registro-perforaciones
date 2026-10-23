@@ -1,3 +1,4 @@
+import { PermisosTecnicosService } from '../../../../../../shared/services/permisos-tecnicos.service';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { IntervaloLitologicoListService } from '../../../../../../shared/services/intervalo-lit-service/intervalo-lit-list/intervalo-litologico-list.service';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -11,8 +12,6 @@ import {
   IonCardSubtitle,
   IonCardContent,
   IonList,
-  IonItem,
-  IonLabel,
   IonButton,
   IonButtons,
   IonToolbar,
@@ -20,6 +19,7 @@ import {
 } from '@ionic/angular/standalone';
 
 @Component({
+  providers: [PermisosTecnicosService],
   selector: 'app-intervalos-litologicos-list',
   imports: [
     IonContent,
@@ -28,8 +28,6 @@ import {
     IonCardTitle,
     IonCardContent,
     IonList,
-    IonItem,
-    IonLabel,
     IonButton,
     IonButtons,
     IonToolbar,
@@ -39,6 +37,7 @@ import {
   styleUrl: './intervalos-litologicos-list.page.css',
 })
 export class IntervalosLitologicosListPage implements OnInit, ViewWillEnter {
+  readonly permisosTecnicos = inject(PermisosTecnicosService);
   public intervaloLitologicoListService = inject(IntervaloLitologicoListService);
   public toastController = inject(ToastController);
   public ruta = inject(ActivatedRoute);
@@ -63,6 +62,7 @@ export class IntervalosLitologicosListPage implements OnInit, ViewWillEnter {
   }
 
   public async borrarIntervaloLit(intervaloLit: IntervaloLitologico) {
+    if (!this.permisosTecnicos.puedeEditar()) return;
     try {
       if (!this.id_pozo) throw new Error('Pozo no encontrado');
 

@@ -25,8 +25,13 @@ function Invoke-Compose {
 }
 
 $apiRunning = ((& docker compose @compose ps --status running -q api | Out-String).Trim()).Length -gt 0
+if ($LASTEXITCODE -ne 0) { throw "No se pudo comprobar el estado de API." }
 try {
   if ($apiRunning) { Invoke-Compose -Arguments @("stop", "api") }
+  $apiId = (& docker compose @compose ps -a -q api | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or -not $apiId) { throw "No se pudo identificar API antes del respaldo." }
+  $running = (& docker inspect --format '{{.State.Running}}' $apiId | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $running -ne 'false') { throw "API debe permanecer detenida durante el respaldo." }
   Invoke-Compose -Arguments @("--profile", "ops", "run", "--rm", "backup")
 }
 finally {

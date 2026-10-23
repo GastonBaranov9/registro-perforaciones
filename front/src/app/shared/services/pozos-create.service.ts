@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { DatosTecnicosBorrador, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoResultado, SitioBody } from '../types/schemas';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { selloSanitarioParaEnvio } from '../utils/datos-tecnicos-borrador';
 
 @Injectable({
   providedIn: 'root',
@@ -34,6 +35,7 @@ export class PozosCreateService {
   ): Promise<PozoCompletoResultado> {
     const pozoNuevo = sinCamposHistoricos(pozo);
     const body: PozoCompletoBody = {
+      sello_sanitario_constructivo: selloSanitarioParaEnvio(tecnicos),
       pozo: pozoNuevo,
       sitio_nuevo: {
         ...sitioNuevo,
@@ -58,14 +60,15 @@ export class PozosCreateService {
 }
 
 function sinCamposHistoricos(pozo: NuevoPozo): Omit<NuevoPozo, 'id_sitio'> {
-  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown; sello_sanitario_constructivo?: unknown };
+  delete copia.sello_sanitario_constructivo;
   delete copia.sello_sanitario;
   delete copia.pre_filtro;
   const { id_sitio: _idSitio, ...moderno } = copia;
   return moderno;
 }
 
-async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {
+export async function convertirFoto(foto: File): Promise<NonNullable<PozoCompletoBody['foto']>> {
   if (foto.type !== 'image/jpeg' && foto.type !== 'image/png') throw new Error('La fotografía debe ser JPEG o PNG.');
   const bytes = new Uint8Array(await foto.arrayBuffer());
   let binario = '';

@@ -31,7 +31,7 @@ const nivelesAporteRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       try {
@@ -44,6 +44,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(201).send(nuevoNivelAporte);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );
@@ -71,7 +72,7 @@ const nivelesAporteRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       try {
@@ -89,6 +90,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(200).send(pozoEditado);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );
@@ -115,7 +117,7 @@ const nivelesAporteRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsAdminOrPerforador],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeOperarPozos],
     },
     async function (req, rep) {
       try {
@@ -131,6 +133,7 @@ const nivelesAporteRoutes = async function (
         return rep.code(204).send(null);
       } catch (e) {
         req.log.error(e);
+        throw e;
       }
     }
   );
@@ -156,7 +159,7 @@ const nivelesAporteRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async function (req, rep) {
       try {
@@ -193,7 +196,7 @@ const nivelesAporteRoutes = async function (
         security: [{ BearerAuth: [] }],
       },
       onRequest: [fastify.authenticate],
-      preHandler: [fastify.pozoIsFromUser, fastify.userIsPropietarioOrPerforadorOrAdmin],
+      preHandler: [fastify.pozoIsFromUser, fastify.puedeConsultarRecursos],
     },
     async (req, rep) => {
       try {

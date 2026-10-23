@@ -11,6 +11,16 @@ export type Usuario = {
 
 export type UsuarioPublico = Omit<Usuario, 'password'>;
 
+export type PersonaAdministrada = {
+  id_usuario: number; nombre: string; documento_rut: string | null;
+  email: string | null; cuenta_acceso: boolean; activo: boolean; roles: string[];
+};
+export type PerforacionAsociada = {
+  id_pozo: number; numero_perforacion: number | null; fecha_creado: string; ubicacion: string;
+};
+export type PaginaPersonas = { personas: PersonaAdministrada[]; total: number };
+export type PaginaPerforaciones = { perforaciones: PerforacionAsociada[]; total: number };
+
 export type UsuarioSesion = Omit<Usuario, 'password' | 'email' | 'activo' | 'fecha_registro'> &
   Partial<Pick<Usuario, 'email' | 'activo' | 'fecha_registro'>>;
 
@@ -39,11 +49,16 @@ export type UsuarioFormulario = {
 };
 
 export type Pozo = {
+  sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
+  origen?: 'normal' | 'historico';
+  numero_perforacion?: number | null;
   id_pozo: number;
-  id_propietario: number;
-  id_sitio: number;
+  id_propietario: number | null;
+  propietario_provisional?: string | null;
+  perforador_provisional?: string | null;
+  id_sitio: number | null;
   empresa?: string;
-  id_perforador: number;
+  id_perforador: number | null;
   fecha_inicio?: string;
   fecha_fin?: string;
   profundidad_final_m?: number;
@@ -56,11 +71,12 @@ export type Pozo = {
   metodo_rocoso?: string;
   cementacion?: string; //Es lo mismo siempre
   desarrollo?: string; //Es lo mismo siempre
-  revestimiento?: Revestimiento | null;
+  revestimiento?: string | null;
   creado_por?: number;
   fecha_creado: string;
   foto_url?: string;
   propietario_nombre?: string;
+  sitio_nombre?: string;
   propietario_email?: string | null;
   propietario_documento_rut?: string | null;
   propietario_telefono?: string | null;
@@ -74,7 +90,10 @@ export type Pozo = {
 };
 
 export type NuevoPozo = {
-  id_propietario: number;
+  numero_perforacion?: number | null;
+  id_propietario: number | null;
+  propietario_provisional?: string | null;
+  perforador_provisional?: string | null;
   id_sitio: number;
   empresa?: string;
   id_perforador: number;
@@ -88,7 +107,7 @@ export type NuevoPozo = {
   metodo_rocoso?: string;
   cementacion?: string; //Es lo mismo siempre
   desarrollo?: string; //Es lo mismo siempre
-  revestimiento?: Revestimiento | null;
+  revestimiento?: string | null;
   creado_por?: number;
   foto_url?: string;
 };
@@ -139,6 +158,7 @@ export type IntervaloLitologico = {
   id_pozo: number;
   desde_m: number;
   hasta_m: number;
+  litologia_provisional?: string | null;
   material: string;
   id_litologia: number | null;
   litologia_nombre?: string | null;
@@ -153,12 +173,13 @@ export type IntervaloLitologicoBody = {
   id_intervalo_litologico?: number;
   desde_m: number;
   hasta_m: number;
+  litologia_provisional?: string | null;
   material: string;
-  id_litologia?: number;
+  id_litologia?: number | null;
 };
 
 export const familiasLitologia = ['basalto','suelo','arenisca','arcilla_arena','tosca','gravilla','granito','otro'] as const;
-export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite'] as const;
+export const patronesLitologia = ['basalt','basalt_fractured','organic','sandstone_fine','sandstone_medium','sandstone_coarse','clay','sandy_clay','tosca','gravel_fine','gravel_coarse','granite','concrete'] as const;
 export type FamiliaLitologia = (typeof familiasLitologia)[number];
 export type PatronCatalogoLitologia = (typeof patronesLitologia)[number];
 export type LitologiaPublica = { id_litologia:number;codigo:string;nombre:string;familia:FamiliaLitologia;color:string;patron:PatronCatalogoLitologia;activo:boolean;orden:number };
@@ -172,6 +193,7 @@ export type IntervaloDiametroPerforacion = {
   hasta_m: number;
   diametro_pulg: number;
   material_tuberia: MaterialTuberia | null;
+  sin_tuberia?: boolean;
 };
 
 export type MaterialTuberia = 'PVC' | 'Acero';
@@ -180,7 +202,8 @@ export type IntervaloDiametroPerforacionBody = {
   desde_m: number;
   hasta_m: number;
   diametro_pulg: number;
-  material_tuberia: MaterialTuberia | '';
+  material_tuberia: MaterialTuberia | '' | null;
+  sin_tuberia?: boolean;
 };
 
 export type RanuraFiltro = 0.5 | 0.75 | 1;
@@ -199,7 +222,10 @@ export type NivelAporteBody = {
 
 export type ElementoBorrador<T> = { idLocal: string; dato: T; ranuraOriginal?: RanuraFiltro | null };
 
+export type SelloSanitarioConstructivo = { desde_m: number; hasta_m: number };
+
 export type DatosTecnicosBorrador = {
+  sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
   intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
   intervalosDiametro: Array<ElementoBorrador<IntervaloDiametroPerforacionBody>>;
   intervalosFiltro: Array<ElementoBorrador<IntervaloFiltroBody>>;
@@ -207,6 +233,7 @@ export type DatosTecnicosBorrador = {
 };
 
 export type PozoCompletoBody = {
+  sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
   pozo: NuevoPozoCrear;
   sitio_nuevo: SitioBody;
   intervalos_litologicos: IntervaloLitologicoBody[];
@@ -234,6 +261,7 @@ export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 's
 };
 
 export type PozoCompletoResultado = {
+  sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
   pozo: Pozo;
   sitio: Sitio;
   intervalos_litologicos: IntervaloLitologico[];
@@ -250,6 +278,7 @@ export type PropietarioOperativoCrearBody = {
 };
 export type PropietarioOperativoActualizarBody = Partial<PropietarioOperativoCrearBody>;
 export type PropietarioOperativo = {
+  cuenta_acceso?: boolean; activo?: boolean;
   id_usuario: number; nombre: string; documento_rut: string | null; telefono: string | null; email: string | null;
   direccion: string | null; localidad: string | null;
   departamento: import('../constants/departamentos-uruguay').DepartamentoUruguay | null;
@@ -283,7 +312,11 @@ export type PerfilLitologico = {
   aportes: Array<{ profundidad_m: number; tipo: 'puntual'; desde_m: number; hasta_m: number; geometria: { x_inicio: 0.03; x_fin: 0.97; espesor_min_px: 12; patron: 'ondas' } }>;
   tuberias: Array<{tipo:'tuberia';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
   filtros: Array<{tipo:'filtro';desde_m:number;hasta_m:number;diametro_pulg:number;material_tuberia:MaterialTuberia|null;material_texto:string;carril_etiqueta:number;geometria:{x_inicio:number;x_fin:number;patron:'liso'|'metal'|'ranuras'}}>;
-  etiquetas: Array<{clave:string;tipo:'litologia'|'tuberia'|'filtro'|'aporte';texto:string;profundidad_anclaje_m:number;rango_desde_m:number;posicion_y_normalizada:number;carril:0|1|2|3;x_anclaje_normalizado:number;x_texto_normalizado:number;conector:{puntos:Array<{x_normalizada:number;y_normalizada:number}>};caja_texto:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}}>;
+  perforaciones_abiertas?: Array<Omit<PerfilLitologico['tuberias'][number], 'tipo'> & {tipo:'perforacion_abierta'}>;
+  contornos_tuberia?: Array<{desde_m:number;hasta_m:number;x_inicio:number;x_fin:number;x_interior_inicio:number;x_interior_fin:number}>;
+  sobresaliente?: {x_inicio:number;x_fin:number;alto_logico:number;material_tuberia:MaterialTuberia|null} | null;
+  sello_sanitario_constructivo?: SelloSanitarioConstructivo & { texto: string; estilo: { color: string; gris: number; patron: PatronLitologico }; geometria: { bandas: Array<{ x_inicio: number; x_fin: number }>; segmentos?: Array<{desde_m:number;hasta_m:number;bandas:Array<{x_inicio:number;x_fin:number}>}> } } | null;
+  etiquetas: Array<{clave:string;tipo:'litologia'|'tuberia'|'filtro'|'aporte'|'sello_sanitario'|'perforacion_abierta';texto:string;profundidad_anclaje_m:number;rango_desde_m:number;posicion_y_normalizada:number;carril:0|1|2|3;x_anclaje_normalizado:number;x_texto_normalizado:number;conector:{puntos:Array<{x_normalizada:number;y_normalizada:number}>};caja_texto:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}}>;
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   geometria: { ancho_logico:760;alto_logico:820;columna:{x:90;y:70;ancho:180;alto:700};x_texto_escala:12;carriles_etiqueta_x:readonly [310,390,470,550];separacion_vertical_normalizada:number;conector:{salida:12;llegada:8};alto_texto:16 };
   rangos: Array<{ desde_m: number; hasta_m: number }>;

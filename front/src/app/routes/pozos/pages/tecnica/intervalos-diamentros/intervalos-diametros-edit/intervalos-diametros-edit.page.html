@@ -1,4 +1,5 @@
 <ion-content class="ion-padding">
+  @if (!permisosTecnicos.puedeEditar()) { <p role="status">{{ permisosTecnicos.mensaje }}</p> }
     <ion-toolbar>
   <ion-buttons slot="start" color="primary">
     <ion-back-button default-href="#" (click)="irAtras()" color="primary"  ></ion-back-button>
@@ -10,10 +11,12 @@
       <h2>Editar intervalo de diámetros</h2>
 
       @if (this.intervaloResource.hasValue()) {
-      <app-intervalo-diam-form
+      @if (permisosTecnicos.puedeEditar()) {
+<app-intervalo-diam-form
         [intervaloDiametro]="this.intervaloResource.value()!"
         (saved)="this.handleEdit($event)"
       />
+}
       } @else if (this.intervaloResource.isLoading()) {
       <ion-spinner></ion-spinner>
       } @else {

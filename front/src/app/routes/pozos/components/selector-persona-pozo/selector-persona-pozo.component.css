@@ -1,3 +1,8 @@
-.selector { display:block; margin: 1rem 0; border:1px solid var(--ion-color-medium); border-radius:8px; padding:.75rem; }
-.selector ion-list { max-height: 16rem; overflow:auto; }
-small { color: var(--ion-color-medium-shade); }
+:host { display: block; min-width: 0; }
+.selector { display: block; margin: var(--rsp-space-4) 0; border: 1px solid var(--rsp-border); border-radius: var(--rsp-radius); padding: var(--rsp-space-3); }
+.selector ion-list { max-height: 20rem; overflow: auto; }
+.selector ion-item::part(native) { display: block; }
+.selector ion-item ion-button { margin-inline: 0; }
+small { color: var(--rsp-text-muted); }
+
+.persona-option { width: 100%; min-width: 0; padding-block: var(--rsp-space-2); }

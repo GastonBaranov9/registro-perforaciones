@@ -1,0 +1,43 @@
+<h2>{{ litologias() ? 'Litologías provisionales pendientes' : 'Personas pendientes de vinculación' }}</h2>
+<p>Los nombres se agrupan para facilitar la revisión. Seleccione explícitamente las ocurrencias que correspondan a la misma identidad.</p>
+<button type="button" (click)="cargar()" [disabled]="ocupado()">Actualizar pendientes</button>
+@if (!litologias()) { <a routerLink="/usuarios-create">Crear persona o cuenta en Administración</a> }
+@else { <p>Puede crear una litología con el formulario del catálogo de esta página y luego buscarla aquí.</p> }
+@if (error()) { <p role="alert" class="error">{{ error() }}</p> }
+@if (mensaje()) { <p role="status">{{ mensaje() }}</p> }
+<label>Filtrar pendientes <input type="search" [(ngModel)]="filtro" /></label>
+@for (g of filtrados(); track g.tipo + ':' + g.texto) {
+  <section>
+    <strong>{{ g.texto }}</strong> — {{ g.tipo }} — {{ g.ocurrencias.length }} {{ litologias() ? 'intervalos' : 'perforaciones' }}
+    <button type="button" (click)="abrir(g)" [disabled]="ocupado()">Revisar ocurrencias</button>
+    @if (activo() === g) {
+      <fieldset [disabled]="ocupado()">
+        <legend>Ocurrencias a vincular</legend>
+        <button type="button" (click)="todas()">Seleccionar todas las ocurrencias de este grupo</button>
+        @for (o of g.ocurrencias; track o.id) {
+          <label><input type="checkbox" [checked]="seleccion().has(o.id)" (change)="marcar(o.id,$any($event.target).checked)" />
+            P-{{ o.numero_perforacion ?? o.id_pozo }}
+            @if (litologias()) { · {{ o.desde_m }}–{{ o.hasta_m }} m }
+            <a [routerLink]="['/pozos-detail',o.id_pozo]">Ver perforación</a>
+          </label>
+        }
+        <label>Buscar {{ litologias() ? 'litología de catálogo' : 'identidad existente' }}
+          <input type="search" [(ngModel)]="busqueda" (keydown.enter)="buscar()" />
+        </label>
+        <button type="button" (click)="buscar()">Buscar</button>
+        <label>Vincular a
+          <select [(ngModel)]="destino" (ngModelChange)="confirmar.set(false)">
+            <option [ngValue]="null">Seleccione un destino</option>
+            @for (d of destinos(); track d.id) { <option [ngValue]="d.id">{{ d.nombre }}</option> }
+          </select>
+        </label>
+        <button type="button" [disabled]="!destino || !seleccion().size" (click)="confirmar.set(true)">Revisar vinculación</button>
+        @if (confirmar()) {
+          <p>Vincular {{ seleccion().size }} ocurrencias de «{{ g.texto }}» a «{{ nombreDestino() }}». Se limpiará el texto provisional de las ocurrencias seleccionadas.</p>
+          <button type="button" (click)="vincular()">Confirmar vinculación</button>
+          <button type="button" (click)="confirmar.set(false)">Cancelar</button>
+        }
+      </fieldset>
+    }
+  </section>
+} @empty { @if (!ocupado()) { <p>No hay pendientes para este filtro.</p> } }

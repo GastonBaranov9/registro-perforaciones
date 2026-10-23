@@ -7,7 +7,7 @@ try {
   const {rows:normalizadas}=await db.query<{normalizado:string}>(`SELECT litologia_normalizar(valor) AS normalizado FROM unnest($1::text[]) AS t(valor)`,[variantes]);
   assert.deepEqual(normalizadas.map((fila)=>fila.normalizado),Array(5).fill("arena fina"));
   assert.notEqual((await db.query<{valor:string}>(`SELECT litologia_normalizar($1) AS valor`,["Arena final"])).rows[0].valor,"arena fina");
-  assert.equal((await db.query<{cantidad:number}>(`SELECT count(*)::int AS cantidad FROM catalogo_litologia`)).rows[0].cantidad,29);
+  assert.equal((await db.query<{cantidad:number}>(`SELECT count(*)::int AS cantidad FROM catalogo_litologia`)).rows[0].cantidad,30);
 
   await db.query("BEGIN");
   const codigo=`control_r1_${Date.now()}`;

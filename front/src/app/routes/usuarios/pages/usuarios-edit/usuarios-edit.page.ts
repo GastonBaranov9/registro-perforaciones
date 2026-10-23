@@ -90,6 +90,7 @@ export class UsuariosEditPage {
   }
 
   async handleEdit(usuario: UsuarioFormulario) {
+    if (this.disabled()) return;
     try {
       this.disabled.set(true);
 

@@ -4,6 +4,7 @@ import { AccionFotoEdicion, DatosTecnicosBorrador, NuevoPozo, Pozo, PozoCompleto
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth-service/auth.service';
 import { environment } from '../../../environments/environment';
+import { selloSanitarioParaEnvio } from '../utils/datos-tecnicos-borrador';
 
 @Injectable({
   providedIn: 'root',
@@ -23,7 +24,7 @@ export class PozosEditService {
     return id;
   }
 
-  public async editPozo(id_pozo: number, body: NuevoPozo): Promise<NuevoPozo> {
+  public async editPozo(id_pozo: number, body: NuevoPozo): Promise<Pozo> {
     const id_usuario = this.getUserIdOrThrow();
     try {
       return await firstValueFrom(
@@ -36,9 +37,10 @@ export class PozosEditService {
     }
   }
 
-  public async editPozoCompleto(idPozo: number, pozo: NuevoPozo, tecnicos: DatosTecnicosBorrador, foto: File | null, fotoAccion: AccionFotoEdicion): Promise<PozoCompletoResultado> {
+  public async editPozoCompleto(idPozo: number, pozo: NuevoPozo, tecnicos: DatosTecnicosBorrador, foto: File | null, fotoAccion: AccionFotoEdicion, originales?: DatosTecnicosBorrador): Promise<PozoCompletoResultado> {
     const idUsuario = this.getUserIdOrThrow();
     const body: PozoCompletoUpdateBody = {
+      sello_sanitario_constructivo: selloSanitarioParaEnvio(tecnicos, originales),
       pozo: sinCamposHistoricos(pozo),
       intervalos_litologicos: tecnicos.intervalosLitologicos.map((x) => ({ ...x.dato })),
       intervalos_diametro: tecnicos.intervalosDiametro.map((x) => ({ ...x.dato })),
@@ -68,9 +70,11 @@ export class PozosEditService {
 }
 
 function sinCamposHistoricos(pozo: NuevoPozo): NuevoPozo {
-  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown };
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown; sello_sanitario_constructivo?: unknown };
+  delete copia.sello_sanitario_constructivo;
   delete copia.sello_sanitario;
   delete copia.pre_filtro;
+  delete copia.numero_perforacion;
   return copia;
 }
 

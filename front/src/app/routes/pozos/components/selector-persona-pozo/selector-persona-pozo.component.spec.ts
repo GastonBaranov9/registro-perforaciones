@@ -14,11 +14,18 @@ describe('SelectorPersonaPozoComponent', () => {
     fixture.componentRef.setInput('etiqueta', 'Propietario'); fixture.componentRef.setInput('candidatos', personas);
     fixture.componentRef.setInput('seleccionado', 1); fixture.detectChanges();
   });
-  it('busca y muestra documento sin recargar la opción con contacto', () => {
+  it('busca y muestra documento, contacto e ID para distinguir identidades', () => {
     component.resultados.set(personas); component.busqueda.set('2.345'); fixture.detectChanges();
     expect(component.filtrados().map((x) => x.id_usuario)).toEqual([2]);
     expect(fixture.nativeElement.textContent).toContain('CI/RUT: 2.345.678-9');
-    expect(fixture.nativeElement.textContent).not.toContain('bea@example.test');
+    expect(fixture.nativeElement.textContent).toContain('bea@example.test');
+    expect(fixture.nativeElement.textContent).toContain('Registro #2');
+  });
+  it('elimina repeticiones del mismo ID sin fusionar personas homónimas', () => {
+    component.resultados.set([personas[0], personas[0], personas[1]]);
+    component.busqueda.set('Nombre'); fixture.detectChanges();
+    expect(component.filtrados().map(p => p.id_usuario)).toEqual([1,2]);
+    expect(fixture.nativeElement.querySelectorAll('.persona-option').length).toBe(2);
   });
   it('busca por nombre y email', () => {
     component.resultados.set(personas);
