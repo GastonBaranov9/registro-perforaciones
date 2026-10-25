@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 
 export interface EstadoNumeracion { proximo: number | null; minimo: number; agotado: boolean }
 export interface VistaRectificacion {
+  token: string | null;
   proximo: number | null; mayor_asignado: number;
   reservas: { numero_perforacion: number; id_pozo_original: string; asignado_en: string; bloqueada: boolean }[];
 }
@@ -21,13 +22,14 @@ export class NumeracionPerforacionService {
   }
   rectificar(desde: number, vista: VistaRectificacion, motivo: string, sinReferencias: boolean) {
     return this.peticion(firstValueFrom(this.http.post<EstadoNumeracion & { rectificacion_id: string }>(this.url + '/rectificacion', {
+      token:vista.token, confirmacion:'RECTIFICAR', pruebas_confirmadas:sinReferencias,
       desde, esperado: vista.proximo, mayor_esperado: vista.mayor_asignado, motivo,
       sin_referencias_externas: sinReferencias,
       reservas: vista.reservas.map(({ numero_perforacion, id_pozo_original, asignado_en }) => ({ numero_perforacion, id_pozo_original, asignado_en })),
     })));
   }
-  configurar(proximo: number, esperado: number | null) {
-    return this.peticion(firstValueFrom(this.http.put<EstadoNumeracion>(this.url, { proximo, esperado })));
+  configurar(proximo: number, esperado: number | null, motivo:string) {
+    return this.peticion(firstValueFrom(this.http.put<EstadoNumeracion>(this.url, { proximo, esperado, motivo })));
   }
   consultar(numero: number) {
     return this.peticion(firstValueFrom(this.http.get<{ utilizado: boolean }>(this.url + '/disponibilidad/' + numero)));

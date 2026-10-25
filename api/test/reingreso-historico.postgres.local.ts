@@ -1,0 +1,101 @@
+// PostgreSQL nuevo en Temp. Sin .env, Docker, redes ni datos productivos.
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
+import {mkdtempSync,writeFileSync,unlinkSync,mkdirSync,readFileSync,readdirSync,copyFileSync} from 'node:fs';
+import {createServer} from 'node:net';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {Pool} from 'pg';
+import Fastify from 'fastify';
+import {ejecutarMigraciones} from '../src/db/migrator.ts';
+process.env.NODE_ENV='test';for(const k of Object.keys(process.env))if(/^(PG|POSTGRES_)/i.test(k))delete process.env[k];
+const root=mkdtempSync(path.join(tmpdir(),'rsp-reingreso-pg-')),data=path.join(root,'data'),fotos=path.join(root,'persistencia','fotos');mkdirSync(fotos,{recursive:true});process.env.FOTOS_DIR=fotos;
+const {crearHistorico}=await import('../src/services/historicos-service.ts');
+const {consultarReingreso}=await import('../src/services/reingreso-historico-service.ts');
+const {consultarEliminacion,ejecutarEliminacion}=await import('../src/services/administracion-eliminaciones-service.ts');
+const {configurarNumeracion}=await import('../src/services/numeracion-perforacion-service.ts');
+const {previsualizarRectificacion,rectificarNumeracion}=await import('../src/services/rectificacion-numeracion-service.ts');
+const {myPool}=await import('../src/db/pool.ts');
+const {T05SinPermiso}=await import('../src/models/errors.ts');
+const listener=createServer();await new Promise<void>(r=>listener.listen(0,'127.0.0.1',r));const addr=listener.address();assert.ok(addr&&typeof addr==='object');const port=addr.port;await new Promise<void>((r,j)=>listener.close(e=>e?j(e):r()));
+const password=randomBytes(24).toString('hex'),bin='C:/Program Files/PostgreSQL/18/bin';
+function pg(name:string,args:string[]){return execFileSync(path.join(bin,name+'.exe'),args,{env:{...process.env,PGPASSWORD:password},windowsHide:true,timeout:60000,encoding:'utf8',stdio:name==='pg_ctl'?'ignore':['pipe','pipe','pipe']});}
+let started=false,pool:Pool|undefined,passed=0;
+async function check(name:string,fn:()=>Promise<void>){await fn();passed++;console.log('PASS '+name);}
+try{
+ const pw=path.join(root,'password');writeFileSync(pw,password);pg('initdb',['-D',data,'-U','postgres','--auth=scram-sha-256','--pwfile='+pw,'--encoding=UTF8','--locale=C']);unlinkSync(pw);
+ started=true;pg('pg_ctl',['-D',data,'-l',path.join(root,'postgres.log'),'-o',`-h 127.0.0.1 -p ${port} -c shared_buffers=16MB -c max_connections=15`,'-w','start']);
+ pool=new Pool({host:'127.0.0.1',port,user:'postgres',password,database:'postgres',max:6});
+ assert.equal(path.resolve((await pool.query('SHOW data_directory')).rows[0].data_directory).toLowerCase(),path.resolve(data).toLowerCase());
+ const anteriores=path.join(root,'schema023');mkdirSync(anteriores);for(const f of readdirSync('db/migrations').filter(f=>/^\d{3}_.*\.sql$/.test(f)&&f.slice(0,3)<='023'))copyFileSync('db/migrations/'+f,path.join(anteriores,f));
+ await ejecutarMigraciones(pool,{directorio:anteriores,logger:()=>{}});
+ await pool.query(`INSERT INTO usuario(id_usuario,nombre,email,password,cuenta_acceso) VALUES (1,'Admin','admin@example.test','no-login',TRUE),(2,'Perforador','p@example.test','no-login',TRUE),(3,'Propietario',NULL,NULL,FALSE);
+ INSERT INTO usuario_rol SELECT 1,id_rol FROM rol WHERE nombre='administracion';INSERT INTO usuario_rol SELECT 2,id_rol FROM rol WHERE nombre='perforador';
+ INSERT INTO sitio(departamento) VALUES('Salto');SELECT setval('pozo_id_pozo_seq',19,false);`);
+ const epoca=(await pool.query('SELECT epoca FROM epoca_datos')).rows[0].epoca,claveOriginal=randomUUID();
+ const foto={mime_type:'image/jpeg' as const,base64:Buffer.from([255,216,255,42]).toString('base64')};
+ const payloadOriginal={numero_perforacion:3277,foto};
+ assert.equal((await crearHistorico(1,payloadOriginal,claveOriginal,epoca,pool)).id_pozo,19);
+ await crearHistorico(1,{numero_perforacion:3281},randomUUID(),epoca,pool);
+ await pool.query('UPDATE numeracion_perforacion SET proximo=3282; DELETE FROM pozo WHERE id_pozo=19; INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por) VALUES(NULL,3282,1)');
+ const snapshot=async()=> (await pool!.query(`SELECT jsonb_build_object('pozos',(SELECT jsonb_agg(p ORDER BY id_pozo) FROM pozo p),'reservas',(SELECT jsonb_agg(r ORDER BY numero_perforacion) FROM numero_perforacion_reservado r),'contador',(SELECT to_jsonb(n) FROM numeracion_perforacion n),'historicas',(SELECT jsonb_agg(c ORDER BY actor,clave) FROM creacion_historica c)) s`)).rows[0].s;
+ const original=await snapshot(),fotoOriginal=readFileSync(path.join(fotos,'pozo-19.jpg'));
+ await check('023 a 024 conserva datos, reservas, referencias y contador; instalación no ejecuta operaciones',async()=>{assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,['024_reingreso_historico_y_numeracion.sql']);assert.deepEqual(await snapshot(),original);assert.equal((await pool!.query('SELECT motivo FROM numeracion_perforacion_configuracion')).rows[0].motivo,null);assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,[]);});
+ const confirmar=async(n=3277)=>({token:(await consultarReingreso(1,n,pool!)).token!,motivo:'Nueva carga administrativa de la misma perforación ficticia',confirmacion:`REINGRESAR ${n}`,sin_referencias_externas:true as const,nueva_carga_administrativa:true as const});
+ const pendiente={numero_perforacion:3277,foto},claveNueva=randomUUID();
+ await check('cancelación/consulta son lectura; referencia histórica original informativa y número cero/automático rechazados',async()=>{const v=await consultarReingreso(1,3277,pool!);assert.equal(v.id_original,19);assert.equal(v.referencias_historicas,1);assert.ok(v.token);assert.deepEqual(await snapshot(),original);for(const n of [0,3282])await assert.rejects(consultarReingreso(1,n,pool!),{statusCode:400});});
+ await check('perforador, administrador deshabilitado y token de otro actor rechazados',async()=>{await assert.rejects(consultarReingreso(2,3277,pool!),{statusCode:403});const a=await confirmar();await assert.rejects(crearHistorico(2,{...pendiente,reingreso:a},claveNueva,epoca,pool!),{statusCode:403});await pool!.query('UPDATE usuario SET activo=FALSE WHERE id_usuario=1');await assert.rejects(consultarReingreso(1,3277,pool!),{statusCode:403});await pool!.query('UPDATE usuario SET activo=TRUE WHERE id_usuario=1');});
+ await check('reserva sigue ocupada para alta ordinaria; rechazo no consume clave ni foto pendiente',async()=>{await assert.rejects(crearHistorico(1,pendiente,claveNueva,epoca,pool!),{statusCode:409});assert.equal((await pool!.query('SELECT count(*) FROM creacion_historica WHERE clave=$1',[claveNueva])).rows[0].count,'0');assert.deepEqual(await snapshot(),original);});
+ await check('confirmación escrita, motivo, firma y vigencia exigidos sin liberar reserva',async()=>{const a=await confirmar();for(const cambio of [{confirmacion:'REINGRESAR 3276'},{motivo:'x'},{token:a.token+'x'},{sin_referencias_externas:false}])await assert.rejects(crearHistorico(1,{...pendiente,reingreso:{...a,...cambio} as any},claveNueva,epoca,pool!));const now=Date.now;try{Date.now=()=>now()+301000;await assert.rejects(crearHistorico(1,{...pendiente,reingreso:a},claveNueva,epoca,pool!),{statusCode:409});}finally{Date.now=now;}assert.deepEqual(await snapshot(),original);});
+ await check('referencias incompatibles offline y documentos archivados bloquean; nada se ignora',async()=>{
+  const key=randomUUID();await pool!.query('INSERT INTO creacion_offline(actor,clave,epoca,huella,resultado) VALUES(1,$1,$2,repeat(\'a\',64),$3)',[key,epoca,{pozo:{id_pozo:19,numero_perforacion:3277}}]);assert.equal((await consultarReingreso(1,3277,pool!)).token,null);await pool!.query('DELETE FROM creacion_offline WHERE clave=$1',[key]);
+  // Evidencia inmutable ficticia para otro número: nunca se modifica una auditoría.
+  await pool!.query("INSERT INTO pozo(origen,numero_perforacion,creado_por) VALUES('historico',3275,1); DELETE FROM pozo WHERE numero_perforacion=3275");
+  const id=(await pool!.query('SELECT id_pozo_original FROM numero_perforacion_reservado WHERE numero_perforacion=3275')).rows[0].id_pozo_original;
+  await pool!.query("INSERT INTO administracion_eliminacion(nonce,actor,operacion,id_pozo_original,numero_perforacion,motivo,prueba_confirmada,sin_referencias_externas,anterior,posterior) VALUES($1,1,'eliminar',$2,3275,'Evidencia ficticia de documentos',FALSE,FALSE,$3,'{}')",[randomUUID(),id,{detalles:{documento:[{id:1}],informe:[]}}]);assert.equal((await consultarReingreso(1,3275,pool!)).elegible,false);
+ });
+ await check('referencia histórica de identidad ajena bloquea en lugar de reclasificarse',async()=>{const key=randomUUID();await pool!.query('INSERT INTO creacion_historica(actor,clave,epoca,huella,resultado) VALUES(1,$1,$2,repeat(\'b\',64),$3)',[key,epoca,{id_pozo:999,numero_perforacion:3277,origen:'historico'}]);assert.equal((await consultarReingreso(1,3277,pool!)).token,null);await pool!.query('DELETE FROM creacion_historica WHERE clave=$1',[key]);});
+ await check('cambio concurrente de referencia invalida desafío',async()=>{const a=await confirmar(),key=randomUUID();await pool!.query('INSERT INTO creacion_offline(actor,clave,epoca,huella,resultado) VALUES(1,$1,$2,repeat(\'c\',64),$3)',[key,epoca,{id_pozo:19}]);await assert.rejects(crearHistorico(1,{...pendiente,reingreso:a},claveNueva,epoca,pool!),{statusCode:409});await pool!.query('DELETE FROM creacion_offline WHERE clave=$1',[key]);});
+ await check('fallo SQL después de INSERT/foto restaura reserva, hijos e idempotencia',async()=>{
+  await pool!.query("CREATE FUNCTION fallo_reingreso() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo-auditoria'; END $$; CREATE TRIGGER fallo_reingreso BEFORE INSERT ON reingreso_historico FOR EACH ROW EXECUTE FUNCTION fallo_reingreso();");
+  const before=await snapshot(),files=readdirSync(fotos).sort(),a=await confirmar();await assert.rejects(crearHistorico(1,{...pendiente,reingreso:a},claveNueva,epoca,pool!),/fallo-auditoria/);assert.deepEqual(await snapshot(),before);assert.deepEqual(readdirSync(fotos).sort(),files);await pool!.query('DROP TRIGGER fallo_reingreso ON reingreso_historico');
+ });
+ await check('altas concurrentes con claves diferentes no se apropian del número reservado',async()=>{
+  await pool!.query("INSERT INTO pozo(origen,numero_perforacion,creado_por) VALUES('historico',3273,1); DELETE FROM pozo WHERE numero_perforacion=3273");
+  const auth=await confirmar(3273),body={numero_perforacion:3273,reingreso:auth};
+  const results=await Promise.allSettled([crearHistorico(1,body,randomUUID(),epoca,pool!),crearHistorico(1,body,randomUUID(),epoca,pool!),crearHistorico(1,{numero_perforacion:3273},randomUUID(),epoca,pool!)]);
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(results[2].status,'rejected');assert.equal((await pool!.query('SELECT count(*) FROM pozo WHERE numero_perforacion=3273')).rows[0].count,'1');
+ });
+ let nuevo=0;
+ const a=await confirmar(),enviado={...pendiente,reingreso:a};
+ await check('doble envío idempotente: una nueva identidad, reserva sustituida atómicamente y foto conservada',async()=>{const [x,y]=await Promise.all([crearHistorico(1,enviado,claveNueva,epoca,pool!),crearHistorico(1,enviado,claveNueva,epoca,pool!)]);nuevo=x.id_pozo;assert.equal(x.id_pozo,y.id_pozo);assert.notEqual(nuevo,19);assert.equal(x.numero_perforacion,3277);assert.deepEqual(readFileSync(path.join(fotos,`pozo-${nuevo}.jpg`)),fotoOriginal);assert.deepEqual(readFileSync(path.join(fotos,'pozo-19.jpg')),fotoOriginal);});
+ await check('ID original, asignación y referencia histórica preservados; contador 3282 inalterado',async()=>{const after=await snapshot();assert.deepEqual(after.contador,original.contador);assert.deepEqual(after.historicas.find((r:any)=>r.clave===claveOriginal),original.historicas.find((r:any)=>r.clave===claveOriginal));const audit=(await pool!.query('SELECT * FROM reingreso_historico WHERE numero_perforacion=3277')).rows[0];assert.equal(Number(audit.id_original),19);assert.equal(Number(audit.id_nuevo),nuevo);assert.deepEqual(audit.anterior.reserva,original.reservas.find((r:any)=>r.numero_perforacion===3277));});
+ await check('antigua idempotencia nunca devuelve el nuevo registro; nonce consumido y activo rechazan otra alta',async()=>{await assert.rejects(crearHistorico(1,payloadOriginal,claveOriginal,epoca,pool!),/original fue eliminada/);await assert.rejects(crearHistorico(1,enviado,randomUUID(),epoca,pool!),{statusCode:409});assert.equal((await consultarReingreso(1,3277,pool!)).token,null);});
+ await check('respuesta perdida: reintento exacto funciona aun vencido sin duplicación; cambios de payload rechazados',async()=>{const now=Date.now;try{Date.now=()=>now()+301000;assert.equal((await crearHistorico(1,enviado,claveNueva,epoca,pool!)).id_pozo,nuevo);}finally{Date.now=now;}await assert.rejects(crearHistorico(1,{...enviado,empresa:'Otro contenido'},claveNueva,epoca,pool!),{statusCode:409});});
+ await check('auditorías inmutables y actualización de contador requiere motivo y no permite retroceso',async()=>{for(const tabla of ['reingreso_historico','numeracion_perforacion_configuracion'])for(const op of ['DELETE FROM','TRUNCATE'])await assert.rejects(pool!.query(op+' '+tabla),/inmutable/);await assert.rejects(configurarNumeracion(1,3285,3282,'',pool!),{statusCode:400});await assert.rejects(configurarNumeracion(1,3281,3282,'Motivo de ensayo valido',pool!),{statusCode:409});await configurarNumeracion(1,3282,3282,'Confirmar contador de ensayo',pool!);const c=(await pool!.query('SELECT * FROM numeracion_perforacion_configuracion ORDER BY id DESC LIMIT 1')).rows[0];assert.equal(c.motivo,'Confirmar contador de ensayo');assert.equal(Number(c.cambiado_por),1);assert.ok(c.cambiado_en);});
+ const borrar=async(id:number)=>{const v=await consultarEliminacion(1,'eliminar',id,pool!);await ejecutarEliminacion(1,'eliminar',id,{token:v.token!,confirmacion:'ELIMINAR',motivo:'Prueba ficticia eliminada de forma normal'},fotos,pool!);};
+ await check('eliminación segura conserva reservas; administración individual permanece disponible',async()=>{const x=await crearHistorico(1,{numero_perforacion:3274},randomUUID(),epoca,pool!);await borrar(x.id_pozo);const v=await consultarEliminacion(1,'liberar_reserva',3274,pool!);assert.equal(v.elegible,false);assert.equal((await pool!.query('SELECT count(*) FROM numero_perforacion_reservado WHERE numero_perforacion=3274')).rows[0].count,'1');});
+ let solicitud:any;
+ await check('rectificación recuperada: vista previa de cola consecutiva con evidencia y confirmación firmada',async()=>{for(let i=0;i<2;i++){const r=(await pool!.query('INSERT INTO pozo(id_propietario,id_perforador,id_sitio) VALUES(3,2,1) RETURNING id_pozo')).rows[0];await borrar(Number(r.id_pozo));}const v=await previsualizarRectificacion(1,3282,pool!);assert.ok(v.token);assert.deepEqual(v.reservas.map(r=>r.numero_perforacion),[3282,3283]);solicitud={desde:3282,esperado:v.proximo,mayor_esperado:v.mayor_asignado,reservas:v.reservas,motivo:'Pruebas ficticias sin referencias',sin_referencias_externas:true,pruebas_confirmadas:true,confirmacion:'RECTIFICAR',token:v.token};await assert.rejects(rectificarNumeracion(1,{...solicitud,token:''},pool!),{statusCode:409});});
+ await check('rectificación concurrente se ejecuta una vez y conserva auditoría 022 y 023',async()=>{const before=(await pool!.query('SELECT count(*) FROM administracion_eliminacion')).rows[0].count;const results=await Promise.allSettled([rectificarNumeracion(1,solicitud,pool!),rectificarNumeracion(1,solicitud,pool!)]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal((await pool!.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3282');assert.equal((await pool!.query('SELECT count(*) FROM administracion_eliminacion')).rows[0].count,before);assert.equal((await pool!.query('SELECT jsonb_array_length(reservas_anuladas) n FROM numeracion_rectificacion')).rows[0].n,2);});
+ await check('HTTP: endpoint recuperado, motivos obligatorios y eliminación antigua rechazada',async()=>{
+  const q=myPool.query,c=myPool.connect;myPool.query=pool!.query.bind(pool);myPool.connect=pool!.connect.bind(pool);const app=Fastify();
+  app.decorate('authenticate',async req=>{req.user={sub:Number(req.headers['x-test-user']??1)} as typeof req.user;});app.decorate('userIsAdmin',async req=>{if(Number(req.user.sub)!==1)throw new T05SinPermiso();});for(const name of ['puedeGestionarHistoricos','puedeOperarTodosLosPozos','puedeOperarPozos','pozoIsFromUser','puedeConsultarRecursos','userIsSelf'])app.decorate(name,async()=>{});app.decorate('notifyClient',()=>{});
+  try{await app.register((await import('../src/routes/numeracion-perforacion.ts')).default);await app.register((await import('../src/routes/historicos.ts')).default);await app.register((await import('../src/routes/pozos.ts')).default);
+   assert.equal((await app.inject({method:'DELETE',url:`/usuarios/1/pozos/${nuevo}`})).statusCode,400);
+   assert.equal((await app.inject({method:'PUT',url:'/pozos/numeracion',payload:{proximo:3290,esperado:3282}})).statusCode,400);
+   assert.equal((await app.inject({method:'GET',url:'/pozos/historicos/reingreso/3277',headers:{'x-test-user':'2'}})).statusCode,403);
+   const v=await app.inject({method:'GET',url:'/pozos/historicos/reingreso/3277'});assert.equal(v.statusCode,200);assert.equal(v.json().elegible,false);assert.equal(v.headers['cache-control'],'no-store');
+   assert.equal((await app.inject({method:'GET',url:'/pozos/numeracion/rectificacion/3282'})).statusCode,200);
+  }finally{await app.close();myPool.query=q;myPool.connect=c;}
+ });
+ await check('dump/restore nuevo conserva identidades, referencias, reservas, secuencias y auditorías 024',async()=>{
+  const dump=path.join(root,'database.dump'),args=['-h','127.0.0.1','-p',String(port),'-U','postgres'];pg('pg_dump',[...args,'-Fc','-f',dump,'postgres']);pg('pg_restore',['--list',dump]);await pool!.query('CREATE DATABASE restauracion_aislada');pg('pg_restore',[...args,'--exit-on-error','--dbname=restauracion_aislada',dump]);const restored=new Pool({host:'127.0.0.1',port,user:'postgres',password,database:'restauracion_aislada'});
+  try{for(const tabla of ['pozo','numero_perforacion_reservado','creacion_historica','numeracion_perforacion','numeracion_perforacion_configuracion','reingreso_historico','administracion_eliminacion','numeracion_rectificacion']){const sql=`SELECT to_jsonb(t) dato FROM ${tabla} t ORDER BY to_jsonb(t)::text`;assert.deepEqual((await restored.query(sql)).rows,(await pool!.query(sql)).rows);}for(const seq of ['pozo_id_pozo_seq','reingreso_historico_id_seq'])assert.deepEqual((await restored.query(`SELECT last_value,is_called FROM ${seq}`)).rows,(await pool!.query(`SELECT last_value,is_called FROM ${seq}`)).rows);await assert.rejects(restored.query('DELETE FROM reingreso_historico'),/inmutable/);
+   await configurarNumeracion(1,3290,3282,'Adelanto documentado en base restaurada',restored);assert.equal((await restored.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3290');await assert.rejects(configurarNumeracion(1,3282,3290,'No corresponde retroceder directamente',restored),{statusCode:409});assert.equal((await pool!.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo,'3282');
+  }finally{await restored.end();}
+  const dest=path.join(root,'fotos-restauradas');mkdirSync(dest);for(const name of readdirSync(fotos).filter(n=>n.endsWith('.jpg'))){copyFileSync(path.join(fotos,name),path.join(dest,name));assert.equal(createHash('sha256').update(readFileSync(path.join(fotos,name))).digest('hex'),createHash('sha256').update(readFileSync(path.join(dest,name))).digest('hex'));}
+ });
+ writeFileSync(path.join(root,'RESULT.json'),JSON.stringify({passed,root,productionTouched:false,restored:true,counter:(await pool.query('SELECT proximo FROM numeracion_perforacion')).rows[0].proximo}));console.log(`${passed}/${passed} pruebas aprobadas; evidencia ficticia: ${root}`);
+}finally{await pool?.end();await myPool.end();if(started)pg('pg_ctl',['-D',data,'-m','fast','-w','stop']);}

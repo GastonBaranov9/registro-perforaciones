@@ -19,7 +19,8 @@ import { cuerpoHistorico, tecnicosVacios } from '../../../../shared/utils/histor
 import { Component, DestroyRef, inject, input, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
+import { ReingresoHistoricoService, VistaReingreso, ConfirmacionReingreso } from '../../../../shared/services/reingreso-historico.service';
 import { IonContent, IonButton } from '@ionic/angular/standalone';
 import { firstValueFrom, timeout } from 'rxjs';
 import { environment } from '../../../../../environments/environment';
@@ -35,6 +36,37 @@ import { AuthService } from '../../../../shared/services/auth-service/auth.servi
 export class HistoricosPage {
   private http = inject(HttpClient); private router = inject(Router); private candidatos = inject(CandidatosPozoService);
   readonly auth = inject(AuthService);
+  private ruta=inject(ActivatedRoute,{optional:true});
+  private reingresos=inject(ReingresoHistoricoService);
+  reingresar=signal<number|null>(null); vistaReingreso=signal<VistaReingreso|null>(null);
+  autorizacionReingreso:ConfirmacionReingreso|null=null;
+  motivoReingreso='';confirmacionReingreso='';declaracionReingreso=false;nuevaCarga=false;
+  private consultaReingreso=0;private reingresoCancelado=false;
+  async revisarReingreso(){
+    if(this.ocupado()||!this.reingresar()||!this.auth.tieneRol('administracion'))return;
+    const turno=++this.consultaReingreso,actor=this.auth.userId();this.ocupado.set(true);this.error.set('');
+    this.autorizacionReingreso=null;this.vistaReingreso.set(null);
+    try{const v=await this.reingresos.consultar(this.reingresar()!);if(turno===this.consultaReingreso&&actor===this.auth.userId())this.vistaReingreso.set(v);}
+    catch(e){this.error.set(e instanceof HttpErrorResponse?e.error?.message??'No se pudo comprobar el número.':String(e));}
+    finally{this.ocupado.set(false);}
+  }
+  puedeAutorizarReingreso(){return this.auth.tieneRol('administracion')&&!this.ocupado()&&!!this.vistaReingreso()?.token&&this.nuevaCarga&&this.declaracionReingreso
+    &&this.motivoReingreso.trim().length>=10&&this.motivoReingreso.trim().length<=1000&&this.confirmacionReingreso===`REINGRESAR ${this.reingresar()}`;}
+  autorizarReingreso(){
+    if(!this.puedeAutorizarReingreso())return;
+    const a:ConfirmacionReingreso={token:this.vistaReingreso()!.token!,motivo:this.motivoReingreso.trim(),confirmacion:this.confirmacionReingreso,sin_referencias_externas:true,nueva_carga_administrativa:true};
+    if(this.envio){
+      if(this.envio.actor!==this.auth.userId()||this.envio.body['numero_perforacion']!==this.reingresar()) {this.error.set('Hay otra carga pendiente. Se conserva sin reemplazarla.');return;}
+      const anterior=this.envio.body['reingreso'] as ConfirmacionReingreso|undefined;
+      if(anterior&&anterior.motivo!==a.motivo){this.error.set('El motivo de un envío ya preparado no puede cambiar; renová sólo la confirmación.');return;}
+      // No cambiar clave, época, datos ni foto. Si la clave ya tuvo resultado, el backend lo detecta.
+      this.envio.body['reingreso']=a;this.envio.rechazada=false;this.retirada.set(false);
+    }
+    this.autorizacionReingreso=a;this.reingresoCancelado=false;
+    this.error.set('Confirmación preparada por cinco minutos. Revisá los datos y guardá; todavía no se realizó ningún cambio en el servidor.');
+  }
+  cancelarReingreso(){this.consultaReingreso++;this.vistaReingreso.set(null);this.autorizacionReingreso=null;this.confirmacionReingreso='';this.reingresoCancelado=true;}
+  ionViewWillLeave(){this.cancelarReingreso();}
   private storageKey() { const actor = this.auth.userId(); if (!actor) throw new Error('Inicie sesión con permiso para carga histórica.'); return `historico-pendiente:${environment.apiURL}:${actor}`; }
   propietarios = signal<CandidatoPozo[]>([]); perforadores = signal<CandidatoPozo[]>([]);
   error = signal(''); ocupado = signal(false); retirada = signal(false);
@@ -77,6 +109,30 @@ export class HistoricosPage {
       if(this.envio?.fotoKey&&!this.envio.body['foto']&&!this.resultado()){const foto=await fotoHistoricaPendiente(this.envio.fotoKey,'leer');if(!foto)throw Error('Falta la foto pendiente. No se enviará una carga incompleta.');this.envio.body['foto']=foto;}
       if (this.envio?.rechazada) this.retirada.set(true);
       if (this.envio && this.envio.actor !== this.auth.userId()) { this.envio = undefined; this.resultado.set(null); }
+      if(!this.id_pozo()){
+        const solicitado=this.ruta?.snapshot.queryParamMap.get('reingresar');
+        const guardada=this.envio?.body['reingreso'] as ConfirmacionReingreso|undefined;
+        const n=solicitado?Number(solicitado):guardada?Number(this.envio?.body['numero_perforacion']):null;
+        if(n!==null){
+          if(!this.auth.tieneRol('administracion')||!Number.isInteger(n)||n<1||n>3281)throw Error('Reingreso histórico no autorizado.');
+          this.reingresar.set(n);this.reingresoCancelado=false;
+          if(this.envio&&this.envio.body['numero_perforacion']!==n)throw Error('Existe otra carga pendiente. Sus datos y fotografía se conservan; no se reemplazará.');
+          this.numero=n;
+          if(guardada){this.autorizacionReingreso=guardada;this.motivoReingreso=guardada.motivo;}
+          else await this.revisarReingreso();
+        }
+        if(this.envio){
+          const b=this.envio.body;
+          const {foto,reingreso,sitio,intervalos_litologicos,intervalos_diametro,intervalos_filtro,niveles_aporte,sello_sanitario_constructivo,...campos}=b;
+          this.pozo.update(p=>({...p,...campos}));
+          if(sitio)this.sitio.set(sitio as SitioBody);
+          const t:DatosTecnicosBorrador=tecnicosVacios();
+          for(const [key,values] of Object.entries({intervalosLitologicos:intervalos_litologicos,intervalosDiametro:intervalos_diametro,intervalosFiltro:intervalos_filtro,nivelesAporte:niveles_aporte}))
+            if(Array.isArray(values))(t as any)[key]=values.map((dato,i)=>({idLocal:`pendiente-${key}-${i}`,dato}));
+          if(sello_sanitario_constructivo)t.sello_sanitario_constructivo=sello_sanitario_constructivo as any;
+          this.inicial.set(t);this.tecnicos.set(structuredClone(t));
+        }
+      }
       const c = await this.candidatos.obtener({ limite: 50, historico: true }); this.propietarios.set(c.propietarios); this.perforadores.set(c.perforadores);
       if(this.id_pozo()&&!this.cargado())await this.cargarEdicion();
       this.cargado.set(true);
@@ -86,6 +142,7 @@ export class HistoricosPage {
   async guardar(data?:{pozo:NuevoPozo;foto:File|null;fotoAccion:AccionFotoEdicion}) {
     if(this.id_pozo()){if(data)await this.editar(data);return;}
     if (this.ocupado() || this.resultado() || this.retirada()) return;
+    if(this.reingresar()&&(this.reingresoCancelado||(!this.autorizacionReingreso&&!this.envio?.body['reingreso']))){this.error.set('Revisá y confirmá el reingreso antes de guardar.');return;}
     this.ocupado.set(true); this.error.set('');
     try {
       if (!this.envio) {
@@ -94,6 +151,10 @@ export class HistoricosPage {
         if (!Number.isInteger(this.numero) || this.numero! < 1 || this.numero! > 3281) throw new Error('Ingrese un número entero entre 1 y 3281.');
         const body=cuerpoHistorico(data?.pozo??this.pozo(),this.sitio(),this.tecnicos(),false);
         body['numero_perforacion']=this.numero;
+        if(this.reingresar()){
+          if(this.numero!==this.reingresar())throw Error('El número no coincide con la autorización.');
+          body['reingreso']=this.autorizacionReingreso;
+        }
         if(data?.foto)body['foto']=await convertirFoto(data.foto);
         const { epoca } = await firstValueFrom(this.http.get<{ epoca: string }>(`${environment.apiURL}pozos/epoca-datos`).pipe(timeout(15000)));
         if (this.auth.userId() !== actor) throw new Error('La sesión cambió. Reabra Carga histórica.');

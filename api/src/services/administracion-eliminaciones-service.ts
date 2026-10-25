@@ -145,7 +145,7 @@ export async function ejecutarEliminacion(actor:number,op:OperacionEliminacion,v
       if((await client.query('DELETE FROM numero_perforacion_reservado WHERE numero_perforacion=$1 AND id_pozo_original=$2',[s.reserva.numero_perforacion,id])).rowCount!==1) throw conflicto();
       if(s.reserva.numero_perforacion>=3282) {
         await client.query('UPDATE numeracion_perforacion SET proximo=$1,mayor_asignado=$2 WHERE singleton',[posterior.proximo,posterior.mayor_asignado]);
-        await client.query('INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por) VALUES($1,$2,$3)',[s.contador.proximo,posterior.proximo,actor]);
+        await client.query('INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por,motivo) VALUES($1,$2,$3,$4)',[s.contador.proximo,posterior.proximo,actor,solicitud.motivo.trim()]);
       }
     }
     await client.query('COMMIT');

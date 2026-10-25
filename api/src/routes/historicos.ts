@@ -3,8 +3,13 @@ import { Type } from '@sinclair/typebox';
 import { HistoricoBody, HistoricoUpdateBody, validarHistorico, validarEdicionHistorica } from '../models/historicos.ts';
 import { crearHistorico, editarHistorico } from '../services/historicos-service.ts';
 import { FOTO_JSON_BODY_LIMIT_BYTES } from '../constants/fotos.ts';
+import { consultarReingreso } from '../services/reingreso-historico-service.ts';
 
 export default async function historicosRoutes(app: FastifyInstance) {
+  app.get('/pozos/historicos/reingreso/:numero',{
+    onRequest:[app.authenticate],preHandler:[app.userIsAdmin],
+    schema:{params:Type.Object({numero:Type.Integer({minimum:1,maximum:3281})})},
+  },async(req,rep)=>rep.header('Cache-Control','no-store').send(await consultarReingreso(Number(req.user.sub),(req.params as {numero:number}).numero)));
   app.post('/pozos/historicos', {
     bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,
     onRequest: [app.authenticate], preHandler: [app.puedeGestionarHistoricos],

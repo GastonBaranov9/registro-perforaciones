@@ -8,6 +8,11 @@ const id = () => Type.Integer({ minimum: 1 });
 const fecha = () => Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 export const HistoricoBody = Type.Object({
   numero_perforacion: Type.Integer({ minimum: 1, maximum: 3281 }),
+  reingreso: Type.Optional(Type.Object({
+    token: Type.String({minLength:1,maxLength:4096}), motivo: Type.String({minLength:10,maxLength:1000}),
+    confirmacion: Type.String({maxLength:40}), sin_referencias_externas: Type.Literal(true),
+    nueva_carga_administrativa: Type.Literal(true),
+  },{additionalProperties:false})),
   sello_sanitario_constructivo: SelloSanitarioOpcional,
   id_propietario: Type.Optional(id()),
   propietario_provisional: Type.Optional(Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' })),

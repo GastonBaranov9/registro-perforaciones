@@ -2,6 +2,7 @@ import { iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import type { Pool, PoolClient } from "pg";
 import { myPool } from "../db/pool.ts";
 import * as err from "../models/errors.ts";
+import { exigirMotivo } from './confirmacion-numeracion.ts';
 
 export const MAX_NUMERO_PERFORACION = 2147483647;
 type Db = Pick<PoolClient, "query">;
@@ -44,8 +45,9 @@ export async function obtenerNumeracion(idUsuario: number, db: Db = myPool): Pro
   return estado(rows[0]);
 }
 
-export async function configurarNumeracion(idUsuario: number, proximo: number, esperado: number | null, pool: ConnectionPool = myPool): Promise<EstadoNumeracion> {
+export async function configurarNumeracion(idUsuario: number, proximo: number, esperado: number | null, motivo: string, pool: ConnectionPool = myPool): Promise<EstadoNumeracion> {
   validarNumeroPerforacion(proximo);
+  exigirMotivo(motivo);
   if (esperado !== null && (!Number.isInteger(esperado) || esperado < 1 || esperado > MAX_NUMERO_PERFORACION + 1))
     throw new err.T05DatosIncorrectos("El valor anterior del contador no es válido.");
   const client = await pool.connect();
@@ -56,8 +58,10 @@ export async function configurarNumeracion(idUsuario: number, proximo: number, e
     const actual = estado(rows[0]);
     if (actual.proximo !== esperado) throw new err.T05ConflictoNumeracion("El contador cambió. Actualice la información antes de configurarlo.");
     if (proximo < actual.minimo) throw new err.T05ConflictoNumeracion("El próximo número debe ser al menos " + actual.minimo + ". El contador no puede retroceder.");
+    if((await client.query('SELECT 1 FROM numero_perforacion_reservado WHERE numero_perforacion=$1 UNION ALL SELECT 1 FROM pozo WHERE numero_perforacion=$1',[proximo])).rowCount)
+      throw new err.T05ConflictoNumeracion('El número solicitado está ocupado o reservado.');
     await client.query("UPDATE public.numeracion_perforacion SET proximo=$1 WHERE singleton=TRUE", [proximo]);
-    await client.query("INSERT INTO public.numeracion_perforacion_configuracion(anterior,proximo,cambiado_por) VALUES ($1,$2,$3)", [actual.proximo, proximo, idUsuario]);
+    await client.query("INSERT INTO public.numeracion_perforacion_configuracion(anterior,proximo,cambiado_por,motivo) VALUES ($1,$2,$3,$4)", [actual.proximo, proximo, idUsuario,motivo.trim()]);
     await client.query("COMMIT");
     return { proximo, minimo: proximo, agotado: false };
   } catch (error) {

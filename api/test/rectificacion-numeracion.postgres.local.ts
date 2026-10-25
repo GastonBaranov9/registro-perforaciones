@@ -54,7 +54,9 @@ try {
     INSERT INTO pozo(origen,numero_perforacion,creado_por) VALUES ('historico',3277,1),('historico',3281,1);
     UPDATE numeracion_perforacion SET proximo=3282;
     INSERT INTO pozo(id_propietario,id_perforador,id_sitio) VALUES (4,2,1),(4,2,1);
-    DELETE FROM pozo WHERE numero_perforacion>=3282;`);
+`);
+  const {consultarEliminacion,ejecutarEliminacion}=await import('../src/services/administracion-eliminaciones-service.ts');
+  for(const r of (await pool.query('SELECT id_pozo FROM pozo WHERE numero_perforacion>=3282')).rows){const v=await consultarEliminacion(1,'eliminar',Number(r.id_pozo),pool);await ejecutarEliminacion(1,'eliminar',Number(r.id_pozo),{token:v.token!,confirmacion:'ELIMINAR',motivo:'Prueba ficticia para rectificacion'},root,pool);}
   const stable = (await pool.query('SELECT json_agg(p ORDER BY id_pozo) AS datos FROM pozo p')).rows[0].datos;
   const sequence = (await pool.query('SELECT last_value FROM pozo_id_pozo_seq')).rows[0].last_value;
   const snapshot = async () => (await pool!.query(`SELECT json_build_object('contador',(SELECT row_to_json(n) FROM numeracion_perforacion n),
@@ -62,7 +64,7 @@ try {
     'auditoria',(SELECT json_agg(a ORDER BY id) FROM numeracion_rectificacion a),
     'configuracion',(SELECT json_agg(c ORDER BY id) FROM numeracion_perforacion_configuracion c)) AS estado`)).rows[0].estado;
   const vista = await previsualizarRectificacion(1,3282,pool);
-  const solicitud = { desde:3282, esperado:3284, mayor_esperado:3283, reservas:vista.reservas.map(({bloqueada,...r}) => r), motivo:'Anulación de pruebas ficticias eliminadas', sin_referencias_externas:true };
+  const solicitud = { token:vista.token!,confirmacion:"RECTIFICAR",pruebas_confirmadas:true,desde:3282, esperado:3284, mayor_esperado:3283, reservas:vista.reservas.map(({bloqueada,...r}) => r), motivo:'Anulación de pruebas ficticias eliminadas', sin_referencias_externas:true };
   const rejected = async (fn: () => Promise<unknown>, status: number) => {
     const before = await snapshot();
     await assert.rejects(fn, (e: any) => e.statusCode===status);

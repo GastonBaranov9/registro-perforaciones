@@ -3,12 +3,14 @@ import { myPool } from '../db/pool.ts';
 import { T05ConflictoNumeracion, T05DatosIncorrectos } from '../models/errors.ts';
 import { exigirAdministracionNumeracion, validarNumeroPerforacion } from './numeracion-perforacion-service.ts';
 import { iniciarEscrituraSesion } from './escritura-sesion.ts';
+import { emitirConfirmacion, verificarConfirmacion } from './confirmacion-numeracion.ts';
 
 type Db = Pick<PoolClient, 'query'>;
 type Connections = Pick<Pool, 'connect'>;
 export interface ReservaRectificable { numero_perforacion: number; id_pozo_original: string; asignado_en: string; bloqueada: boolean }
 export interface VistaRectificacion { proximo: number | null; mayor_asignado: number; reservas: ReservaRectificable[] }
 export interface SolicitudRectificacion {
+  token: string; confirmacion: string; pruebas_confirmadas: boolean;
   desde: number; esperado: number; mayor_esperado: number;
   reservas: { numero_perforacion: number; id_pozo_original: string; asignado_en: string }[];
   motivo: string; sin_referencias_externas: boolean;
@@ -27,7 +29,12 @@ async function vista(desde: number, db: Db): Promise<VistaRectificacion> {
         (EXISTS(SELECT 1 FROM pozo p WHERE p.id_pozo=n.id_pozo_original OR p.numero_perforacion=n.numero_perforacion)
          OR EXISTS(SELECT 1 FROM creacion_offline c WHERE c.resultado->>'id_pozo'=n.id_pozo_original::text OR c.resultado#>>'{pozo,id_pozo}'=n.id_pozo_original::text
            OR c.resultado->>'numero_perforacion'=n.numero_perforacion::text OR c.resultado#>>'{pozo,numero_perforacion}'=n.numero_perforacion::text)
-         OR EXISTS(SELECT 1 FROM creacion_historica c WHERE c.resultado->>'id_pozo'=n.id_pozo_original::text OR c.resultado->>'numero_perforacion'=n.numero_perforacion::text)) AS bloqueada
+         OR EXISTS(SELECT 1 FROM creacion_historica c WHERE c.resultado->>'id_pozo'=n.id_pozo_original::text OR c.resultado->>'numero_perforacion'=n.numero_perforacion::text)
+         OR EXISTS(SELECT 1 FROM documento WHERE id_pozo=n.id_pozo_original)
+         OR EXISTS(SELECT 1 FROM informe WHERE id_pozo=n.id_pozo_original)
+         OR NOT EXISTS(SELECT 1 FROM administracion_eliminacion WHERE id_pozo_original=n.id_pozo_original AND operacion='eliminar')
+         OR EXISTS(SELECT 1 FROM administracion_eliminacion WHERE id_pozo_original=n.id_pozo_original AND
+           (jsonb_array_length(COALESCE(anterior#>'{detalles,documento}','[]'::jsonb))>0 OR jsonb_array_length(COALESCE(anterior#>'{detalles,informe}','[]'::jsonb))>0))) AS bloqueada
       FROM numero_perforacion_reservado n WHERE n.numero_perforacion >= $1
       ORDER BY n.numero_perforacion LIMIT 101
     ) r), '[]'::json) AS reservas FROM numeracion_perforacion WHERE singleton=TRUE`, [desde]);
@@ -38,31 +45,37 @@ async function vista(desde: number, db: Db): Promise<VistaRectificacion> {
 export async function previsualizarRectificacion(actor: number, desde: number, db: Db = myPool) {
   validarDesde(desde);
   await exigirAdministracionNumeracion(actor, db);
-  return vista(desde, db);
+  const v=await vista(desde,db);
+  const elegible=v.proximo===v.mayor_asignado+1&&v.reservas.length>0&&v.reservas.length<=100
+    &&v.reservas.length===v.proximo-desde&&v.reservas.every((r,i)=>!r.bloqueada&&r.numero_perforacion===desde+i);
+  return {...v,token:elegible?emitirConfirmacion(actor,'rectificar',desde,v):null};
 }
 
 export async function rectificarNumeracion(actor: number, solicitud: SolicitudRectificacion, pool: Connections = myPool) {
   validarDesde(solicitud.desde);
   if (typeof solicitud.motivo !== 'string' || solicitud.motivo.trim().length < 10 || solicitud.motivo.trim().length > 1000
       || solicitud.sin_referencias_externas !== true || !Array.isArray(solicitud.reservas)
-      || !solicitud.reservas.length || solicitud.reservas.length > 100)
+      || !solicitud.reservas.length || solicitud.reservas.length > 100 || solicitud.confirmacion!=='RECTIFICAR' || solicitud.pruebas_confirmadas!==true)
     throw new T05DatosIncorrectos('Se requiere motivo (10–1000 caracteres), reservas explícitas y declaración de ausencia de referencias y sincronizaciones pendientes.');
   const client = await pool.connect();
   try {
-    await iniciarEscrituraSesion(client, false);
+    await iniciarEscrituraSesion(client, true);
     await exigirAdministracionNumeracion(actor, client);
     // Mismo bloqueo que asignación automática, histórica y configuración.
     await client.query('SELECT singleton FROM numeracion_perforacion WHERE singleton=TRUE FOR UPDATE');
     const actual = await vista(solicitud.desde, client);
+    const autorizacion=verificarConfirmacion(solicitud.token,actor,'rectificar',solicitud.desde,actual);
+    if((await client.query('SELECT 1 FROM numeracion_rectificacion WHERE nonce=$1',[autorizacion.nonce])).rowCount)
+      throw new T05ConflictoNumeracion('La confirmación ya fue utilizada.');
     const conflicto = () => new T05ConflictoNumeracion('La numeración cambió, contiene referencias o no corresponde a reservas finales de pruebas eliminadas. Actualice la vista previa.');
     if (actual.proximo !== solicitud.esperado || actual.mayor_asignado !== solicitud.mayor_esperado
         || actual.proximo !== actual.mayor_asignado + 1 || solicitud.desde >= actual.proximo
         || !actual.reservas.length || actual.reservas.length > 100
         || actual.reservas[0].numero_perforacion !== solicitud.desde
-        || actual.reservas.length !== solicitud.reservas.length) throw conflicto();
+        || actual.reservas.length !== solicitud.reservas.length || actual.reservas.length!==actual.proximo-solicitud.desde) throw conflicto();
     for (let i = 0; i < actual.reservas.length; i++) {
       const a = actual.reservas[i], b = solicitud.reservas[i];
-      if (a.bloqueada || a.numero_perforacion !== b.numero_perforacion || a.id_pozo_original !== b.id_pozo_original
+      if (a.bloqueada || a.numero_perforacion!==solicitud.desde+i || a.numero_perforacion !== b.numero_perforacion || a.id_pozo_original !== b.id_pozo_original
           || a.asignado_en !== b.asignado_en) throw conflicto();
     }
     const { rows: restantes } = await client.query(`SELECT GREATEST(3281,
@@ -72,13 +85,13 @@ export async function rectificarNumeracion(actor: number, solicitud: SolicitudRe
     if (mayorNuevo >= solicitud.desde) throw conflicto();
     // Archivar la identidad original ANTES de liberar exclusividad. Todo o nada.
     const { rows: auditoria } = await client.query(`INSERT INTO numeracion_rectificacion
-      (actor,motivo,sin_referencias_externas,proximo_anterior,mayor_anterior,proximo_nuevo,mayor_nuevo,reservas_anuladas)
-      VALUES ($1,$2,TRUE,$3,$4,$5,$6,$7::jsonb) RETURNING id`,
-      [actor, solicitud.motivo.trim(), actual.proximo, actual.mayor_asignado, solicitud.desde, mayorNuevo, JSON.stringify(actual.reservas)]);
+      (actor,motivo,sin_referencias_externas,proximo_anterior,mayor_anterior,proximo_nuevo,mayor_nuevo,reservas_anuladas,nonce,confirmacion,pruebas_confirmadas)
+      VALUES ($1,$2,TRUE,$3,$4,$5,$6,$7::jsonb,$8,'RECTIFICAR',TRUE) RETURNING id`,
+      [actor, solicitud.motivo.trim(), actual.proximo, actual.mayor_asignado, solicitud.desde, mayorNuevo, JSON.stringify(actual.reservas),autorizacion.nonce]);
     const borrado = await client.query('DELETE FROM numero_perforacion_reservado WHERE numero_perforacion >= $1', [solicitud.desde]);
     if (borrado.rowCount !== actual.reservas.length) throw conflicto();
     await client.query('UPDATE numeracion_perforacion SET proximo=$1,mayor_asignado=$2 WHERE singleton=TRUE', [solicitud.desde, mayorNuevo]);
-    await client.query('INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por) VALUES ($1,$2,$3)', [actual.proximo, solicitud.desde, actor]);
+    await client.query('INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por,motivo) VALUES ($1,$2,$3,$4)', [actual.proximo, solicitud.desde, actor,solicitud.motivo.trim()]);
     await client.query('COMMIT');
     return { proximo: solicitud.desde, minimo: solicitud.desde, agotado: false, rectificacion_id: String(auditoria[0].id) };
   } catch (error) {

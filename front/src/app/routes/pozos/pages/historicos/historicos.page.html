@@ -2,6 +2,26 @@
   <h1>{{ id_pozo() ? 'Editar perforación histórica' : 'Nueva perforación histórica' }}</h1>
   <p>Para perforaciones anteriores. Registre el número real hasta P-3281; no consume el próximo número automático.</p>
   <p>Complete toda la información disponible. Los datos desconocidos pueden quedar vacíos.</p>
+  @if(reingresar(); as n){
+    <section aria-label="Volver a ingresar perforación eliminada">
+      <h2>Volver a ingresar perforación eliminada P-{{n}}</h2>
+      <p>Se conservará el número empresarial y se creará un ID interno nuevo. No se restaurarán datos automáticamente ni cambiará el próximo automático.</p>
+      <ion-button (click)="revisarReingreso()" [disabled]="ocupado()">Revisar o renovar autorización</ion-button>
+      @if(vistaReingreso(); as v){
+        <p>ID original: {{v.id_original}} · Asignado: {{v.asignado_en}}. Referencias históricas conservadas: {{v.referencias_historicas}}.</p>
+        @for(b of v.bloqueos;track b){<p role="alert">{{b}}</p>}
+        @if(v.elegible){
+          <label>Motivo del reingreso<textarea [(ngModel)]="motivoReingreso" minlength="10" maxlength="1000" [disabled]="ocupado()"></textarea></label>
+          <label><input type="checkbox" [(ngModel)]="nuevaCarga" [disabled]="ocupado()" />Confirmo que es una nueva carga administrativa del mismo número empresarial: la misma perforación física o una sustitución expresamente justificada en el motivo.</label>
+          <label><input type="checkbox" [(ngModel)]="declaracionReingreso" [disabled]="ocupado()" />Declaro que no hay documentación externa incompatible ni sincronizaciones pendientes. Las referencias anteriores se conservarán.</label>
+          <label>Escribí REINGRESAR {{n}}<input [(ngModel)]="confirmacionReingreso" autocomplete="off" [disabled]="ocupado()" /></label>
+          <ion-button (click)="autorizarReingreso()" [disabled]="!puedeAutorizarReingreso()">Autorizar esta carga</ion-button>
+        }
+      }
+      @if(autorizacionReingreso){<p role="status">Confirmación preparada. Motivo: {{autorizacionReingreso.motivo}}. Sólo guardar completa la operación; si vence, renovala sin descartar tus datos.</p>}
+      <ion-button (click)="cancelarReingreso()" [disabled]="ocupado()">Cancelar reingreso conservando datos</ion-button>
+    </section>
+  }
   @if (error()) { <p role="alert" class="error">{{ error() }}</p> }
   @if (recargaPendiente()) { <ion-button [disabled]="ocupado()" (click)="actualizarGuardado()">Actualizar datos guardados</ion-button> }
   @if (cargado()) {
@@ -22,5 +42,5 @@
     @if (!retirada()) { <ion-button [disabled]="ocupado()" (click)="guardar()">Reintentar la misma carga</ion-button> }
     @if (envio.rechazada) { <p>El intento y su fotografía están conservados. No lo descartes si necesitás recuperarlos.</p><ion-button [disabled]="ocupado()" (click)="comprobarReintento()">Comprobar número para reintentar esta carga</ion-button><ion-button [disabled]="ocupado()" (click)="otra()">Descartar intento rechazado</ion-button> }
   }
-  @if (resultado(); as r) { <p role="status">P-{{ r.numero_perforacion }} guardada.</p><ion-button (click)="ver(r.id_pozo)">Ver perforación</ion-button><ion-button (click)="otra()">Cargar otra perforación</ion-button> }
+  @if (resultado(); as r) { <p role="status">P-{{ r.numero_perforacion }} guardada. Nuevo ID interno: {{r.id_pozo}}.</p><ion-button (click)="ver(r.id_pozo)">Ver perforación</ion-button><ion-button (click)="otra()">Cargar otra perforación</ion-button> }
 </ion-content>

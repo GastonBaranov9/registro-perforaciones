@@ -57,7 +57,7 @@ export class RectificacionNumeracionComponent {
   cancelar() { if (this.ocupado()) return; this.vista.set(null); this.motivo = ''; this.sinReferencias = false; this.confirmacion = ''; this.mensaje.set(''); }
   candidata() {
     const v = this.vista();
-    return !!v && v.reservas.length > 0 && v.reservas.length <= 100 && !v.reservas.some(r => r.bloqueada)
+    return !!v?.token && v.reservas.length > 0 && v.reservas.length <= 100 && !v.reservas.some(r => r.bloqueada)
       && v.reservas[0].numero_perforacion === this.desde && v.proximo === v.mayor_asignado + 1;
   }
   puedeConfirmar() {

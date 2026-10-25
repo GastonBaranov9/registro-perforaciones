@@ -8,7 +8,7 @@ describe('Rectificación administrativa de numeración', () => {
   let fixture: ComponentFixture<RectificacionNumeracionComponent>;
   let servicio: jasmine.SpyObj<NumeracionPerforacionService>;
   let auth: { tieneRol: jasmine.Spy };
-  const vista: VistaRectificacion = { proximo:4002, mayor_asignado:4001,
+  const vista: VistaRectificacion = { token:"signed",proximo:4002, mayor_asignado:4001,
     reservas:[{numero_perforacion:4001,id_pozo_original:'99',asignado_en:'2026-01-01 12:00:00+00',bloqueada:false}] };
   beforeEach(async () => {
     servicio=jasmine.createSpyObj('Numeracion',['previsualizar','rectificar']);

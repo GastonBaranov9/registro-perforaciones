@@ -1,9 +1,10 @@
 import { Component, inject, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { IonButton } from '@ionic/angular/standalone';
+import { RouterLink } from '@angular/router';
 import { AdministracionEliminacionesService, VistaEliminacion } from '../../../../shared/services/administracion-eliminaciones.service';
 @Component({
-  selector:'app-reservas-eliminadas',imports:[FormsModule,IonButton],
+  selector:'app-reservas-eliminadas',imports:[FormsModule,IonButton,RouterLink],
   template:`<h2>Administrar números de perforaciones eliminadas</h2>
     <p>Consultá un número individual. Un histórico no cambia el próximo número automático. Nunca liberes un número con documentación vigente.</p>
     <form (ngSubmit)="buscar()"><label>Número<input name="numero" type="number" min="1" max="2147483647" [(ngModel)]="numero" [disabled]="ocupado()" /></label><ion-button type="submit" [disabled]="ocupado()">Consultar</ion-button></form>
@@ -11,6 +12,10 @@ import { AdministracionEliminacionesService, VistaEliminacion } from '../../../.
       <p>Número {{v.numero}} · ID original {{v.id_original ?? 'desconocido'}} · Asignado {{v.asignado_en ?? 'sin reserva'}}.</p>
       <p>{{v.existe?'La perforación existe. No se puede liberar su reserva.':v.reservada?'La perforación ya no existe; conserva reserva.':'No existe una reserva comprobable.'}}</p>
       @for(b of v.bloqueos; track b) {<p role="alert">{{b}}</p>}
+      @if(!v.existe && v.reservada && v.numero! <= 3281) {
+        <p>Reingresar una perforación histórica es una operación distinta de liberar su número: conserva el antecedente y exige revisar sus referencias.</p>
+        <ion-button routerLink="/pozos-historicos" [queryParams]="{reingresar:v.numero}" [disabled]="ocupado()">Revisar reingreso histórico</ion-button>
+      }
       @if(v.elegible) {
         <p>No se detectaron conflictos internos. Esto NO comprueba referencias externas. Se conservará auditoría permanente de la reserva original.</p>
         <label>Motivo<input [(ngModel)]="motivo" maxlength="1000" [disabled]="ocupado()" /></label>

@@ -13,6 +13,8 @@ import { normalizarCoordenadasTexto } from '../utils/coordenadas.ts';
 import { FotoHistoricoTransaccion } from './foto-historico-transaccion.ts';
 import { compensarFalloTransaccionalFotos } from './foto-archivo-service.ts';
 import { cargarConfiguracionRuntime } from '../config/runtime.ts';
+import { prepararReingreso, auditarReingreso } from './reingreso-historico-service.ts';
+import { exigirAdministracionNumeracion } from './numeracion-perforacion-service.ts';
 import { guardarSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
 
 export async function crearHistorico(actor: number, data: HistoricoBody, clave: unknown, epoca: unknown, pool: Pick<Pool, 'connect'> = myPool) {
@@ -28,13 +30,15 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
   const coordenadas = normalizarCoordenadasTexto(data.sitio?.latitud, data.sitio?.longitud);
   if ((data.sitio?.latitud !== undefined || data.sitio?.longitud !== undefined) && !coordenadas)
     throw new T05DatosIncorrectos('Indique ambas coordenadas válidas o deje ambas sin registrar.');
-  const huella = huellaOffline(data);
+  // Renovar una confirmación vencida no cambia la identidad de la carga pendiente.
+  const huella = huellaOffline(data.reingreso ? {...data,reingreso:{...data.reingreso,token:undefined}} : data);
   const client = await pool.connect();
   const fotoTx=new FotoHistoricoTransaccion(cargarConfiguracionRuntime().fotosDir);
   let descartar=false;
   try {
-    await iniciarEscrituraSesion(client, false);
+    await iniciarEscrituraSesion(client, !!data.reingreso);
     await exigirCapacidad(actor, 'gestionarHistoricos', client);
+    if(data.reingreso)await exigirAdministracionNumeracion(actor,client);
     const generacion = await exigirEpoca(client, epoca);
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 717))', [`${actor}:${clave}`]);
     const previo = await client.query('SELECT epoca,huella,resultado FROM creacion_historica WHERE actor=$1 AND clave=$2', [actor, clave]);
@@ -50,6 +54,7 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     const estado = await client.query('SELECT proximo FROM numeracion_perforacion WHERE singleton=TRUE FOR UPDATE');
     if (!estado.rows[0] || (estado.rows[0].proximo != null && Number(estado.rows[0].proximo) < 3282))
       throw new T05ConflictoNumeracion('Habilite primero la numeración desde 3282.');
+    const reingreso=data.reingreso ? await prepararReingreso(actor,data.numero_perforacion,data.reingreso,client) : null;
     if (data.id_propietario) await validarPersonaPozo(data.id_propietario, 'propietario', client);
     if (data.id_perforador) await validarPersonaPozo(data.id_perforador, 'perforador', client);
     let sitio: Record<string, unknown> | null = null;
@@ -62,6 +67,8 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     const values = [data.numero_perforacion, actor, data.id_propietario ?? null, data.propietario_provisional?.trim() ?? null, data.id_perforador ?? null, sitio?.id_sitio ?? null, ...fields.map(f => f === 'perforador_provisional' ? data[f]?.trim() ?? null : data[f] ?? null)];
     const pozo = (await client.query(`INSERT INTO pozo(origen,numero_perforacion,creado_por,id_propietario,propietario_provisional,id_perforador,id_sitio,${fields.join(',')})
       VALUES('historico',${values.map((_, i) => '$' + (i + 1)).join(',')}) RETURNING *`, values)).rows[0];
+    if(reingreso&&Number(pozo.id_pozo)===Number(reingreso.estado.reserva.id_pozo_original))
+      throw new T05ConflictoNumeracion('La secuencia interna no permite una identidad nueva. No se modificaron datos ni fotografías.');
     const hijos = await insertarHijos(client, Number(pozo.id_pozo), tecnicos);
     const sello = await guardarSelloSanitario(client, Number(pozo.id_pozo), data.sello_sanitario_constructivo ?? null, data.profundidad_final_m);
     if(data.foto){
@@ -70,6 +77,7 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     }
     const resultado = { id_pozo: Number(pozo.id_pozo), numero_perforacion: pozo.numero_perforacion, origen: 'historico', creado_por: actor, sello_sanitario_constructivo: sello, ...hijos };
     await client.query('INSERT INTO creacion_historica(actor,clave,epoca,huella,resultado) VALUES($1,$2,$3,$4,$5)', [actor, clave, generacion, huella, JSON.stringify(resultado)]);
+    if(reingreso)await auditarReingreso(actor,data.numero_perforacion,Number(pozo.id_pozo),clave as string,reingreso,client);
     fotoTx.commitIntentado=true;
     await client.query('COMMIT');
     await fotoTx.confirmar(Number(pozo.id_pozo));
