@@ -11,7 +11,7 @@ import { Pool } from "pg";
 import Fastify from "fastify";
 import { ejecutarMigraciones, leerMigraciones } from "../src/db/migrator.ts";
 import { crearPozoCompleto, actualizarPozoCompleto } from "../src/services/pozo-completo-service.ts";
-import { asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../src/services/numeracion-perforacion-service.ts";
+import { asignarNumeroPendiente, configurarNumeracion as configurarSeguro, revisarConfiguracion, consultarNumero, obtenerNumeracion } from "../src/services/numeracion-perforacion-service.ts";
 import { getReportePozo } from "../src/services/generar-informe-consultas.ts";
 import type { PozoCompletoBody } from "../src/models/schemas.ts";
 import { crearHistorico } from '../src/services/historicos-service.ts';
@@ -63,6 +63,7 @@ function body(numero?: number | null, perforador = 2): PozoCompletoBody {
     intervalos_diametro: [], intervalos_filtro: [], niveles_aporte: [],
   };
 }
+async function configurarNumeracion(actor:number,n:number,esperado:number|null,motivo:string,db:Pool){const v=await revisarConfiguracion(actor,n,motivo,db);return configurarSeguro(actor,n,esperado,motivo,db,{token:v.token!,confirmacion:'CONFIRMAR '+n,registros_fisicos_confirmados:true});}
 const status = (code: number) => (error: unknown) => (error as { statusCode?: number })?.statusCode === code;
 let started = false;
 let adminPool: Pool | undefined;
@@ -99,24 +100,21 @@ try {
         assert.equal((await pool.query("SELECT id_pozo FROM intervalo_litologico")).rows[0].id_pozo, "1");
       } else await pool.query(seed);
       // Cargar históricos no requiere habilitar antes la numeración automática.
-      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false, puede_retroceder:false });
       // Fixture legado inconsistente: no permitir que un histórico lo adelante.
-      await pool.query('UPDATE numeracion_perforacion SET proximo=2000');
-      await assert.rejects(historico(2100), status(409));
-      assert.equal((await obtenerNumeracion(1, pool)).proximo, 2000);
-      assert.deepEqual(await consultarNumero(1, 2100, pool), { utilizado: false });
-      await pool.query('UPDATE numeracion_perforacion SET proximo=NULL');
+      await assert.rejects(pool.query('UPDATE numeracion_perforacion SET proximo=2000'),{code:'P1104'});
+      assert.equal((await obtenerNumeracion(1,pool)).proximo,null);
       const inicial = await historico(2100);
       assert.equal(inicial.pozo.numero_perforacion, 2100);
       assert.equal(inicial.pozo.origen, 'historico');
       assert.deepEqual(await consultarNumero(1, 2100, pool), { utilizado: true });
       assert.equal((await pool.query('SELECT id_pozo_original FROM numero_perforacion_reservado WHERE numero_perforacion=2100')).rows[0].id_pozo_original, String(inicial.pozo.id_pozo));
       await assert.rejects(historico(2100), status(409));
-      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false, puede_retroceder:false });
       assert.equal((await pool.query('SELECT mayor_asignado FROM numeracion_perforacion')).rows[0].mayor_asignado, 2100);
       // El mínimo no puede depender del mayor histórico ni invadir su rango.
       for (const numero of [1, 2101, 3281])
-        await assert.rejects(configurarNumeracion(1, numero, null, "Cambio administrativo de ensayo", pool), status(409));
+        await assert.rejects(configurarNumeracion(1, numero, null, "Cambio administrativo de ensayo", pool), status(400));
       for (const numero of [0, -1, 1.5, 3282])
         await assert.rejects(historico(numero), status(400));
       await assert.rejects(crearHistorico(2, { numero_perforacion: 2099 }, randomUUID(), epoca, pool), status(403));
@@ -127,7 +125,7 @@ try {
       await pool.query('DELETE FROM pozo WHERE id_pozo=$1', [inicial.pozo.id_pozo]);
       await assert.rejects(historico(2100), status(409));
       await historico(3281);
-      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false });
+      assert.deepEqual(await obtenerNumeracion(1, pool), { proximo: null, minimo: 3282, agotado: false, puede_retroceder:false });
       assert.equal((await pool.query('SELECT count(*) FROM numeracion_perforacion_configuracion')).rows[0].count, '0');
       await assert.rejects(crearPozoCompleto(2, body(), root, pool), status(409));
       await assert.rejects(configurarNumeracion(2, 3282, null, "Cambio administrativo de ensayo", pool), status(403));
@@ -174,7 +172,7 @@ try {
       await pool.query("DELETE FROM pozo WHERE id_pozo=$1", [alto.pozo.id_pozo]);
       assert.deepEqual(await consultarNumero(1, 3000, pool), { utilizado: true });
       await assert.rejects(historico(3000), status(409));
-      await assert.rejects(configurarNumeracion(1, 2000, 3001, "Cambio administrativo de ensayo", pool), status(409));
+      await assert.rejects(configurarNumeracion(1, 2000, 3001, "Cambio administrativo de ensayo", pool), status(400));
       await assert.rejects(configurarNumeracion(1, 4000, 3285, "Cambio administrativo de ensayo", pool), status(409));
       // Hist?rico y alta autom?tica concurrentes ocupan rangos separados.
       const race = await Promise.allSettled([historico(3001), crearPozoCompleto(2, body(), root, pool)]);
@@ -215,7 +213,7 @@ try {
       app.decorate("notifyClient", () => {});
       try {
         await app.register(numeracionRoutes); await app.register(pozoRoutes);
-        assert.equal((await app.inject({ method: "PUT", url: "/pozos/numeracion", payload: { proximo: 8000, esperado: null, motivo:'Cambio de ensayo documentado' } })).statusCode, 403);
+        assert.equal((await app.inject({ method: "PUT", url: "/pozos/numeracion", payload: { proximo: 8000, esperado: null, motivo:'Cambio de ensayo documentado' } })).statusCode, 400);
         for (const numero of [0, -1, 1.5, 2147483648, true, false, "", "3282"]) {
           assert.equal((await app.inject({ method: "POST", url: "/usuarios/4/pozos/completo", headers: { "x-test-user": "1" }, payload: body(numero as number) })).statusCode, 400, "Número inválido: " + numero);
         }

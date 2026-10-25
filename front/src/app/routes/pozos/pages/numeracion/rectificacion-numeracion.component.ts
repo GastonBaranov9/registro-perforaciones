@@ -10,12 +10,14 @@ import { NumeracionPerforacionService, numeroPerforacionValido, VistaRectificaci
   template: `@if (auth.tieneRol('administracion')) {
     <section aria-labelledby="rectificacion-titulo">
       <h2 id="rectificacion-titulo">Rectificación excepcional de pruebas eliminadas</h2>
-      <p>Esta operación permite reutilizar reservas finales de pruebas eliminadas. Conserva su historia en auditoría y no recupera datos ni fotografías. No se pueden modificar perforaciones existentes ni números históricos hasta 3281.</p>
+      <p>Esta herramienta permite recuperar números utilizados en pruebas eliminadas. No modifica perforaciones existentes.</p>
+      <p>Revisa sólo las últimas reservas consecutivas del rango automático. Para corregir un error de tipeo sin asignaciones, usá Próximo automático.</p>
       <label>Volver a ofrecer desde el número
         <input type="number" name="desdeRectificacion" min="3282" max="2147483647" step="1"
           [ngModel]="desde" (ngModelChange)="cambiarDesde($event)" [disabled]="ocupado()" />
       </label>
       <ion-button (click)="previsualizar()" [disabled]="ocupado() || !desdeValido()">Revisar reservas</ion-button>
+      @if(!desdeValido()){<p class="ayuda">Ingresá un número entero desde 3282 para revisar.</p>}
       @if (vista(); as v) {
         <p>Próximo número: {{ v.proximo }} → {{ desde }}. Mayor asignado actual: {{ v.mayor_asignado }}.</p>
         <ul>@for (r of v.reservas; track r.numero_perforacion) {
@@ -35,11 +37,12 @@ import { NumeracionPerforacionService, numeroPerforacionValido, VistaRectificaci
         </label>
         <ion-button (click)="cancelar()" [disabled]="ocupado()">Cancelar</ion-button>
         <ion-button color="danger" (click)="rectificar()" [disabled]="!puedeConfirmar()">Rectificar reservas de prueba</ion-button>
+        @if(candidata()&&!puedeConfirmar()&&!ocupado()){<p class="ayuda">Ingresá un motivo de 10 a 1000 caracteres, confirmá que fueron pruebas sin referencias y escribí RECTIFICAR.</p>}
       }
       @if (mensaje()) { <p role="status">{{ mensaje() }}</p> }
     </section>
   }`,
-  styles: ['section { margin-top: 2rem; border-top: 1px solid; padding-top: 1rem; } label { display: grid; gap: .5rem; margin-block: 1rem; max-width: 36rem; } input, textarea { min-height: 44px; }'],
+  styles: ['h2{margin-top:0;font-size:1.4rem} p{line-height:1.6} label{display:grid;gap:.5rem;margin:1.2rem 0;max-width:38rem} input:not([type=checkbox]),textarea{width:100%;box-sizing:border-box;min-height:48px;padding:12px;border:1px solid #8295a8;border-radius:8px;background:white;color:#20344b;font:inherit} input[type=checkbox]{width:22px;height:22px} .ayuda{color:#485d70;font-size:.9rem} li{padding:12px;border-bottom:1px solid #dce4eb} input:focus-visible,textarea:focus-visible{outline:3px solid #2875ad;outline-offset:2px}'],
 })
 export class RectificacionNumeracionComponent {
   readonly auth = inject(AuthService);

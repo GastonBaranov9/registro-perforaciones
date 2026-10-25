@@ -3,7 +3,9 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
-export interface EstadoNumeracion { proximo: number | null; minimo: number; agotado: boolean }
+export interface EstadoNumeracion { proximo: number | null; minimo: number; agotado: boolean; puede_retroceder?:boolean }
+export interface RevisionContador { anterior:number|null;nuevo:number;tipo:string;disponible:boolean;motivo:string;bloqueos:string[];salto_grande:boolean;token:string|null }
+export interface EventoNumeracion { id:string;anterior:number|null;proximo:number;motivo:string|null;cambiado_en:string;responsable:string;responsable_id:string|null;tipo:string }
 export interface VistaRectificacion {
   token: string | null;
   proximo: number | null; mayor_asignado: number;
@@ -28,8 +30,10 @@ export class NumeracionPerforacionService {
       reservas: vista.reservas.map(({ numero_perforacion, id_pozo_original, asignado_en }) => ({ numero_perforacion, id_pozo_original, asignado_en })),
     })));
   }
-  configurar(proximo: number, esperado: number | null, motivo:string) {
-    return this.peticion(firstValueFrom(this.http.put<EstadoNumeracion>(this.url, { proximo, esperado, motivo })));
+  revisar(proximo:number,motivo:string){return this.peticion(firstValueFrom(this.http.post<RevisionContador>(this.url+'/revision',{proximo,motivo})));}
+  historial(antes?:string){return this.peticion(firstValueFrom(this.http.get<EventoNumeracion[]>(this.url+'/historial',{params:antes?{antes}:{}})));}
+  configurar(proximo: number, esperado: number | null, motivo:string,confirmacion?:{token:string;confirmacion:string;registros_fisicos_confirmados:boolean}) {
+    return this.peticion(firstValueFrom(this.http.put<EstadoNumeracion>(this.url, { proximo, esperado, motivo,...confirmacion })));
   }
   consultar(numero: number) {
     return this.peticion(firstValueFrom(this.http.get<{ utilizado: boolean }>(this.url + '/disponibilidad/' + numero)));

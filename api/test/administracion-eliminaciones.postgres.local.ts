@@ -34,7 +34,7 @@ try {
   for(const f of readdirSync('db/migrations').filter(f=>/^0(0|1|2[0-2])/.test(f)))copyFileSync('db/migrations/'+f,path.join(anteriores,f));
   await ejecutarMigraciones(pool,{directorio:anteriores,logger:()=>{}});
   await check('migración 022 → 023, repetible sin modificar 000–022',async()=>{
-    assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,['023_administracion_eliminaciones.sql','024_reingreso_historico_y_numeracion.sql']);
+    assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,['023_administracion_eliminaciones.sql','024_reingreso_historico_y_numeracion.sql','025_control_administrativo_numeracion.sql']);
     assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,[]);
   });
   await pool.query(`INSERT INTO usuario(id_usuario,nombre,email,password,cuenta_acceso) VALUES

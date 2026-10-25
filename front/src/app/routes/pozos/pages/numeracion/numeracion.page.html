@@ -1,0 +1,64 @@
+<ion-content>
+ <main class="numeracion-shell" [attr.aria-busy]="trabajando()">
+  <header class="cabecera">
+   <div class="marca"><img src="assets/branding/logo.png" alt="Raúl Silva Perforaciones" /><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Numeración de perforaciones</h1><p>Control y trazabilidad de los números de la empresa.</p></div></div>
+   <ion-button fill="outline" routerLink="/pozo">Volver a perforaciones</ion-button>
+  </header>
+  <section class="resumen" aria-label="Estado del contador">
+   <div><span>Próxima perforación automática</span><strong>{{estado()?.proximo ?? 'Sin configurar'}}</strong></div>
+   <p>Configurar un número no crea una perforación. Los números asignados y reservados conservan su historia.</p>
+   <ion-button fill="clear" (click)="cargar()" [disabled]="trabajando()">Actualizar</ion-button>
+  </section>
+  <div class="distribucion">
+   <nav aria-label="Herramientas de numeración">
+    @for(s of secciones;track s.id){<button type="button" [attr.aria-current]="seccion()===s.id?'page':null" [disabled]="trabajando()" (click)="seleccionar(s.id)"><span>{{s.titulo}}</span><small>{{s.ayuda}}</small></button>}
+   </nav>
+   <section class="panel" aria-label="Herramienta seleccionada">
+    @if(ocupado()){<p role="status" class="progreso">Procesando… Esperá antes de iniciar otra operación.</p>}
+    @if(error()){<p role="alert" class="aviso error">{{error()}}</p>}
+    @if(mensaje()){<p role="status" class="aviso exito">{{mensaje()}}</p>}
+    @switch(seccion()){
+     @case('contador'){
+      <p class="eyebrow">CONFIGURACIÓN</p><h2>Elegí el próximo número</h2>
+      <p>Elegí el número que recibirá la próxima perforación. Podés corregir errores de numeración siempre que el número esté disponible y tengas el permiso necesario.</p>
+      <form (ngSubmit)="revisar()">
+       <div class="campos"><label>Nuevo número automático<input name="proximo" type="number" inputmode="numeric" step="1" [(ngModel)]="proximo" (ngModelChange)="cambiar()" [disabled]="ocupado()" aria-describedby="validacion-contador" /></label>
+       <label>Motivo del cambio<textarea name="motivo" rows="3" maxlength="1000" [(ngModel)]="motivo" (ngModelChange)="cambiar()" [disabled]="ocupado()" placeholder="Explicá por qué necesitás cambiarlo" aria-describedby="validacion-contador"></textarea></label></div>
+       <p id="validacion-contador" class="ayuda" aria-live="polite">{{impedimento() || 'Revisá la disponibilidad antes de confirmar. Todavía no se guardó ningún cambio.'}}</p>
+       <ion-button type="submit" [disabled]="ocupado()||!valido()">Revisar cambio</ion-button>
+      </form>
+      @if(revision();as r){
+       <section class="revision" aria-labelledby="titulo-revision"><h3 id="titulo-revision">Revisión del cambio · {{r.tipo}}</h3>
+        <div class="comparacion"><div>Actual<strong>{{r.anterior ?? 'Sin configurar'}}</strong></div><span aria-hidden="true">→</span><div>Solicitado<strong>{{r.nuevo}}</strong></div></div>
+        @if(r.disponible){<p>El número {{r.nuevo}} está disponible en el sistema.</p>}
+        @for(b of r.bloqueos;track b){<p class="aviso error" role="alert">{{b}}</p>}
+        @if(r.salto_grande){<p class="aviso advertencia">El salto es de 100 números o más. Revisá los dígitos y las carpetas físicas para descartar un error de tipeo.</p>}
+        <p>Vas a cambiar el próximo número de {{r.anterior ?? 'sin configurar'}} a {{r.nuevo}}. Esta operación no modifica perforaciones ya registradas ni libera reservas.</p>
+        <p><strong>Motivo:</strong> {{r.motivo}}</p>
+        @if(r.token){
+         <label class="check"><input type="checkbox" [(ngModel)]="declaracion" [disabled]="ocupado()" />Comprobé las carpetas y referencias de la empresa. No hay documentación incompatible ni sincronizaciones pendientes para este número.</label>
+         <label>Escribí CONFIRMAR {{r.nuevo}}<input [(ngModel)]="confirmacion" autocomplete="off" [disabled]="ocupado()" /></label>
+         @if(!puedeGuardar()&&!ocupado()){<p class="ayuda">Marcá la declaración y escribí la frase exacta para habilitar el guardado.</p>}
+         <div class="acciones"><ion-button fill="outline" (click)="cancelar()" [disabled]="ocupado()">Cancelar sin guardar</ion-button><ion-button (click)="guardar()" [disabled]="!puedeGuardar()">Confirmar y guardar</ion-button></div>
+        }
+       </section>
+      }
+      <p class="politica">La próxima alta recibirá exactamente el número elegido. Después, el sistema avanzará al siguiente disponible, salteando números utilizados, reservados o con referencias previas.</p>
+     }
+     @case('pruebas'){<app-rectificacion-numeracion (rectificada)="cargar()" />}
+     @case('reservas'){<app-reservas-eliminadas (rectificada)="cargar()" />}
+     @case('reingreso'){
+      <p class="eyebrow">HISTÓRICOS</p><h2>Volver a ingresar una perforación eliminada</h2><p>Conservá el número empresarial y sus antecedentes. La nueva carga tendrá una identidad distinta y no cambiará el próximo automático.</p>
+      <form (ngSubmit)="consultarHistorico()"><label>Número histórico<input name="historico" type="number" inputmode="numeric" [(ngModel)]="numeroHistorico" (ngModelChange)="cambiarHistorico()" [disabled]="ocupado()" /></label><p class="ayuda">Ingresá un número entre 1 y 3281. Esta consulta no modifica datos.</p><ion-button type="submit" [disabled]="ocupado()">Consultar histórico</ion-button></form>
+      @if(historico();as h){<section class="revision"><h3>P-{{h.numero}}</h3><p>Identidad anterior: {{h.id_original ?? 'Sin antecedente'}} · Referencias históricas conservadas: {{h.referencias_historicas}}</p>@for(b of h.bloqueos;track b){<p role="alert" class="aviso error">{{b}}</p>}@if(h.elegible){<p>Podés revisar una nueva carga administrativa. El formulario exigirá motivo y confirmación; esta consulta no autoriza el guardado.</p><ion-button routerLink="/pozos-historicos" [queryParams]="{reingresar:h.numero}">Revisar nueva carga histórica</ion-button>}</section>}
+     }
+     @case('historial'){
+      <p class="eyebrow">SÓLO CONSULTA</p><h2>Historial de cambios</h2><p>Configuraciones y movimientos de contador asociados a rectificaciones. Los eventos no pueden editarse ni eliminarse.</p>
+      <ol class="historial">@for(e of eventos();track e.id){<li><div><strong>{{e.anterior ?? 'Sin configurar'}} → {{e.proximo}}</strong><span>{{e.cambiado_en | date:'dd/MM/yyyy HH:mm'}}</span></div><p>{{e.motivo ?? 'Evento anterior al registro obligatorio de motivos'}}</p><small>{{e.responsable}} · {{e.tipo}}</small></li>}@empty{<li>No hay cambios para mostrar.</li>}</ol>
+      @if(masHistorial()){<ion-button fill="outline" (click)="cargarHistorial(true)" [disabled]="ocupado()">Ver cambios anteriores</ion-button>}
+     }
+    }
+   </section>
+  </div>
+ </main>
+</ion-content>

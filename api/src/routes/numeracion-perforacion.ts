@@ -4,14 +4,21 @@ import { NumeroPerforacion } from "../models/schemas.ts";
 import { ErrorSchema } from "../models/errors.ts";
 import { validarNumeroPerforacion, asignarNumeroPendiente, configurarNumeracion, consultarNumero, obtenerNumeracion } from "../services/numeracion-perforacion-service.ts";
 import { previsualizarRectificacion, rectificarNumeracion, type SolicitudRectificacion } from '../services/rectificacion-numeracion-service.ts';
+import { revisarConfiguracion, historialNumeracion, type ConfirmacionConfiguracion } from '../services/numeracion-perforacion-service.ts';
 
 export default async function numeracionRoutes(fastify: FastifyInstance) {
   const seguridad = { onRequest: [fastify.authenticate], preHandler: [fastify.userIsAdmin] };
   const estado = Type.Object({
     proximo: Type.Union([Type.Integer(), Type.Null()]),
-    minimo: Type.Integer(), agotado: Type.Boolean(),
+    minimo: Type.Integer(), agotado: Type.Boolean(), puede_retroceder: Type.Optional(Type.Boolean()),
   });
   const errores = { 400: ErrorSchema, 403: ErrorSchema, 409: ErrorSchema };
+  fastify.post('/pozos/numeracion/revision', {
+    ...seguridad, schema:{body:Type.Object({proximo:NumeroPerforacion,motivo:Type.String({minLength:10,maxLength:1000})},{additionalProperties:false})},
+  },async(req,rep)=>{const b=req.body as {proximo:number;motivo:string};return rep.header('Cache-Control','no-store').send(await revisarConfiguracion(Number(req.user.sub),b.proximo,b.motivo));});
+  fastify.get('/pozos/numeracion/historial',{
+    ...seguridad,schema:{querystring:Type.Object({antes:Type.Optional(Type.String({pattern:'^[1-9][0-9]{0,18}$'}))},{additionalProperties:false})},
+  },async(req,rep)=>rep.header('Cache-Control','no-store').send(await historialNumeracion(Number(req.user.sub),(req.query as {antes?:string}).antes)));
   fastify.get('/pozos/numeracion/rectificacion/:desde', {
     ...seguridad, schema: { params: Type.Object({ desde: Type.Integer({ minimum: 3282, maximum: 2147483647 }) }) },
   }, async (req,rep) => rep.header('Cache-Control','no-store').send(await previsualizarRectificacion(Number(req.user.sub), (req.params as { desde: number }).desde)));
@@ -35,12 +42,12 @@ export default async function numeracionRoutes(fastify: FastifyInstance) {
     preValidation: async (req) => validarNumeroPerforacion((req.body as { proximo?: unknown } | undefined)?.proximo),
     ...seguridad, schema: {
       tags: ["pozos"],
-      body: Type.Object({ proximo: NumeroPerforacion, esperado: Type.Union([Type.Integer({ minimum: 1, maximum: 2147483648 }), Type.Null()]), motivo: Type.String({minLength:10,maxLength:1000}) }, { additionalProperties: false }),
+      body: Type.Object({ proximo: NumeroPerforacion, esperado: Type.Union([Type.Integer({ minimum: 1, maximum: 2147483648 }), Type.Null()]), motivo: Type.String({minLength:10,maxLength:1000}), token:Type.String({minLength:1,maxLength:4096}),confirmacion:Type.String({maxLength:40}),registros_fisicos_confirmados:Type.Literal(true) }, { additionalProperties: false }),
       response: { 200: estado, ...errores },
     },
   }, async (req) => {
-    const body = req.body as { proximo: number; esperado: number | null; motivo:string };
-    return configurarNumeracion(Number(req.user.sub), body.proximo, body.esperado,body.motivo);
+    const body = req.body as { proximo: number; esperado: number | null; motivo:string } & ConfirmacionConfiguracion;
+    return configurarNumeracion(Number(req.user.sub), body.proximo, body.esperado,body.motivo,undefined,body);
   });
   fastify.get("/pozos/numeracion/disponibilidad/:numero", {
     ...seguridad, schema: {
