@@ -7,12 +7,17 @@ param(
   [ValidateRange(0,65535)][int]$ConnectPort=0,
   [string]$TlsCaFile="",
   [switch]$PublicOnly,
+  [switch]$Validate026,
   [string]$ComposeFile="docker-compose.production.yaml"
 )
 
 $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "secret-file.ps1")
 . (Join-Path $PSScriptRoot "smoke-wells.ps1")
+if($Validate026){
+  if($PublicOnly){throw '026 debe validarse mediante el smoke privado antes de reabrir.'}
+  . (Join-Path $PSScriptRoot 'validation-026.ps1')
+}
 if($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $envPath=(Resolve-Path $EnvFile).Path
@@ -114,6 +119,11 @@ try{
     }
   }
 
+  if($Validate026){
+    Assert-Status (Invoke-Https @('--cookie',$cookies,"$($origin.AbsoluteUri)api/pozos/numeracion/politica")) '200' 'politica 026'
+    Assert-Rsp026Policy ([IO.File]::ReadAllText($body) | ConvertFrom-Json) -Api
+  }
+
   $oldPreference=$ErrorActionPreference;$ErrorActionPreference="Continue"
   try{$ws=(& curl.exe --silent --show-error --include --max-time 2 @transport --cookie $cookies --header "Origin: $($origin.AbsoluteUri.TrimEnd('/'))" --header "Connection: Upgrade" --header "Upgrade: websocket" --header "Sec-WebSocket-Version: 13" --header "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "$($origin.AbsoluteUri)ws" 2>&1|Out-String);$wsExit=$LASTEXITCODE}finally{$ErrorActionPreference=$oldPreference}
   if($wsExit-notin @(0,28)-or $ws-notmatch 'HTTP/1\.1 101'){throw "WebSocket no devolvió 101."}
@@ -122,6 +132,7 @@ try{
   Assert-Status (Invoke-Https @("--request","POST","--cookie",$cookies,"--header","Origin: $($origin.AbsoluteUri.TrimEnd('/'))","--header","X-CSRF-Token: $csrf","--dump-header",$headers,"$($origin.AbsoluteUri)api/logout")) "204" "logout"
   Assert-Status (Invoke-Https @("--cookie",$cookiesCopy,"$($origin.AbsoluteUri)api/login")) "401" "revocación logout"
   Write-Output "SMOKE_OK"
+  if($Validate026){Write-Output 'SMOKE_026_API_OK'}
   [pscustomobject]@{health="ok";ready="ok";login=$true;csrf=403;pozo=$wellId;foto=$photoChecked;pdf=$pdfChecked;websocket=101;swagger=404;internal_ports=$true;logout_revocado=$true}|ConvertTo-Json -Compress
 }finally{
   if([IO.Directory]::Exists($tempRoot)){[IO.Directory]::Delete($tempRoot,$true)}

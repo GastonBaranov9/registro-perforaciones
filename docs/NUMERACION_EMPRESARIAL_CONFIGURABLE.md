@@ -213,3 +213,67 @@ No se modificó código funcional ni se repitieron suites. Las migraciones 000�
 permanecen intactas. Sin secretos identificados en los cambios revisados.
 Rama `feature/rsp-10-pilot-apk`, HEAD `06601c6aecdfeeffa7c763ce754fa5176d1b4afc`.
 Pendiente autorización para commit; no se creó commit ni se hizo push o despliegue.
+
+## Barrera operativa de reapertura 026 (2026-10-26)
+
+Ajuste operativo local posterior al commit funcional `bc704142`. No cambia la
+migración ni la aplicación. No se inició un despliegue, mantenimiento ni migración
+productiva durante esta preparación.
+
+La comprobación productiva de lectura confirmó P-3277 sin registro activo,
+reserva actual de ID 31, referencia original de ID 19 y eliminación de ID 31
+registrada. La auditoría enlaza **19 → 29 → 31**; las tres referencias corresponden
+a 3277. El paso intermedio no es una contradicción ni exige redirigir la reserva.
+No se corrigió ningún dato ni se investigó nuevamente el historial completo.
+
+`ops/deploy.ps1` detecta automáticamente la primera actualización 026 de
+`rsp-pilot`, sin opción de omitir la barrera. Exige esquema 000–025 con checksums
+compatibles y exactamente 026 pendiente en el checkout. No impone esta política
+inicial a otras instalaciones ni a despliegues posteriores con 026 ya aplicada.
+
+Orden obligatorio:
+
+1. Preflight, preparación de imágenes, mantenimiento y API anterior detenida.
+2. Respaldo integral con evidencia `BACKUP_VERIFIED_FULL` del mismo bundle.
+3. Captura de referencia bajo contención de escrituras, antes de migrar.
+4. Migración pendiente, API/frontend nuevos y smoke por proxy privado.
+5. Validación bloqueante de ledger 000–026, conservación de contador y mayor
+   asignado, huellas de reservas/referencias/idempotencias/auditorías/permisos,
+   capacidad exclusiva de ID 1 y cadena de P-3277.
+6. Política inicial 1–3281, revisión 1, excepciones e historial vacíos y comprobación
+   de `numero_protegido` en los límites. GET autenticado de política con capacidad
+   administrativa, sin configurar números ni conceder excepciones.
+7. API/frontend saludables, imágenes correspondientes a los refs objetivo,
+   etiqueta de revisión igual al SHA solicitado y `GIT_SHA` de API coincidente.
+8. Persistencia del estado y reapertura; después, comprobación pública habitual.
+
+Las consultas de `ops/validation-026.ps1` y `.sql` usan transacciones READ ONLY,
+incluida protección de conexión, y no exportan filas personales: sólo estado,
+identidades necesarias y huellas de comparación. La evidencia queda en
+`StateDir/<bundle>-026.json`, junto al estado operativo privado. Registra SHA
+real de origen y SHA objetivo por separado; no corrige etiquetas de backups.
+
+Un fallo antes de reabrir conserva mantenimiento y activa la recuperación
+existente. Un audit con `validation_026=pending` bloquea reintentos automáticos,
+incluso si la migración ya quedó aplicada: exige revisar estado y evidencia con
+el operador. No restaura datos ni inicia imágenes anteriores automáticamente.
+La validación inicial es específica de esta transición de RSP; cambios legítimos
+posteriores de política no deben compararse contra 1–3281 en cada despliegue.
+
+Verificaciones nuevas, aisladas:
+
+- `powershell.exe -NoProfile -File scripts/test-validation-026.ps1`: 45/45.
+- `node scripts/test-validation-026-postgres.mjs`: 48/48, incluyendo los 45
+  controles anteriores y 3 comprobaciones de snapshots/política sobre PostgreSQL
+  sintético 025→026. Clúster nuevo en Temp, detenido al terminar, sin Docker,
+  `.env`, copias productivas ni perforaciones activas ficticias.
+- `powershell.exe -NoProfile -File scripts/test-deploy-maintenance-mocks.ps1 -Validation026Only`:
+  10/10, éxito y nueve fallos bloqueantes; también verifica rechazo de reintento.
+- El mismo mock sin selector: 24/24 casos existentes de mantenimiento/recuperación.
+- `powershell.exe -NoProfile -File scripts/test-rsp07f-r8-smoke.ps1 -Validation026Only`:
+  6/6, contrato HTTP correcto y rechazo de ausencia, permisos o política incorrecta.
+
+No se repitieron las suites funcionales PostgreSQL/frontend previamente aprobadas.
+Pendiente: revisión y autorización del commit operativo, y nueva autorización de
+despliegue con preflight, respaldo integral nuevo y verificaciones reales bajo
+mantenimiento. Estas simulaciones no equivalen a un despliegue productivo.

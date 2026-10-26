@@ -20,6 +20,7 @@ param(
 $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "deployment-state.ps1")
 . (Join-Path $PSScriptRoot "deployment-audit.ps1")
+. (Join-Path $PSScriptRoot "validation-026.ps1")
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 Assert-DeploymentGitSha $GitSha
 if($BuildImages){Assert-DeploymentImageRef $TargetApiImage $GitSha;Assert-DeploymentImageRef $TargetFrontImage $GitSha}
@@ -30,11 +31,19 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path 
 $backupPath=[IO.Path]::GetFullPath($BackupDir);$statePath=[IO.Path]::GetFullPath($StateDir);[IO.Directory]::CreateDirectory($backupPath)|Out-Null;[IO.Directory]::CreateDirectory($statePath)|Out-Null
 $compose=@("--project-name",$ProjectName,"--env-file",$envPath,"--env-file",$deploymentPath,"-f",$composePath)
 $auditFile=Join-Path $statePath "deploy-$ProjectName.json"
+# Do not lose the pre-migration baseline or bypass a failed gate on a retry
+# just because 026 is already in the ledger. Recovery requires operator review.
+if(Test-Path -LiteralPath $auditFile){
+  $priorAudit=[IO.File]::ReadAllText($auditFile) | ConvertFrom-Json
+  if($priorAudit.validation_026 -eq 'pending'){throw '026: validacion anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
+}
 $previous=Read-DeploymentState $deploymentPath
 $savedEnvironment=@{}
 foreach($name in @('API_IMAGE_REF','FRONT_IMAGE_REF','APP_VERSION','GIT_SHA','SMOKE_INTERNAL_PORT')){$savedEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $env:SMOKE_INTERNAL_PORT=[string]$SmokeInternalPort
 $maintenance=$false;$persisted=$false;$smokeProxyAttempted=$false
+$validate026=$false;$baseline026=$null
+$migrationDir=Join-Path $repo 'api/db/migrations'
 function Log([string]$Event,[string]$Detail=""){Write-Output "[$([DateTime]::UtcNow.ToString('o'))] $Event $Detail".TrimEnd()}
 function Compose([string[]]$Arguments){& docker compose @compose @Arguments;if($LASTEXITCODE-ne 0){throw "docker compose fallo: $($Arguments-join ' ')"}}
 function ComposeSmoke([string[]]$Arguments){& docker compose @compose -f (Join-Path $PSScriptRoot 'smoke-proxy.compose.yaml') @Arguments;if($LASTEXITCODE-ne 0){throw 'Fallo el proxy privado de smoke.'}}
@@ -116,6 +125,10 @@ try{
   if($runningVersion-ne $previous.AppVersion){throw "El runtime no coincide con el deployment state previo; reconciliar antes de desplegar."}
   $previousApiContainerId=(& docker compose @compose ps -a -q api|Out-String).Trim();$previousProxyContainerId=(& docker compose @compose ps -a -q proxy|Out-String).Trim()
   if(-not $previousApiContainerId-or-not $previousProxyContainerId){throw "Faltan containers previos necesarios para una recuperación sin recreate."}
+  # RSP-specific initial upgrade, automatic and without an opt-out switch.
+  # Subsequent deployments must not reassert the initial policy after legitimate edits.
+  if($ProjectName -eq 'rsp-pilot'){$validate026=Test-Rsp026Upgrade $compose $migrationDir}
+  $audit.validation_026=if($validate026){'pending'}else{'not_required'}
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
 
   Set-DeploymentEnvironment $TargetApiImage $TargetFrontImage $TargetVersion $GitSha
@@ -145,6 +158,15 @@ try{
   $match=[regex]::Match($backupOutput,'BACKUP_BUNDLE=(rsp-backup-\d{8}T\d{6}Z)');if(-not $match.Success){throw "El backup previo no produjo un bundle valido."};$audit.backup_bundle=$match.Groups[1].Value
   if($backupOutput -notmatch ('(?m)^BACKUP_VERIFIED_FULL='+[regex]::Escape($audit.backup_bundle)+'\r?$')){throw "Falta verificacion del respaldo completo; migraciones bloqueadas."}
   Complete-DeploymentAuditPhase $audit 'backup' $auditFile;Log "backup_ok" "bundle=$($audit.backup_bundle)";Test-PhaseFailure 'backup'
+  if($validate026){
+    $baseline026=Get-Rsp026Snapshot $compose
+    Assert-Rsp026Ledger $baseline026.ledger 25 $migrationDir
+    Assert-Rsp026Baseline $baseline026
+    $audit.validation_026_evidence=Join-Path $statePath "$($audit.backup_bundle)-026.json"
+    $evidence026=[ordered]@{source_git_sha=$previous.GitSha;target_git_sha=$GitSha;backup_bundle=$audit.backup_bundle;before=$baseline026}
+    [IO.File]::WriteAllText($audit.validation_026_evidence,(ConvertTo-Json -InputObject $evidence026 -Depth 14),[Text.UTF8Encoding]::new($false))
+    Write-DeploymentAuditAtomic $auditFile $audit
+  }
 
   Start-DeploymentAuditPhase $audit 'images' $auditFile
   Compose @("config","--quiet")
@@ -163,14 +185,28 @@ try{
   Test-PhaseFailure 'services'
   Start-DeploymentAuditPhase $audit 'health' $auditFile;Log "health_ok";Complete-DeploymentAuditPhase $audit 'health' $auditFile;Test-PhaseFailure 'health'
   Start-DeploymentAuditPhase $audit 'smoke' $auditFile;Log "smoke_start"
-  $smoke=& (Join-Path $PSScriptRoot "smoke.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -AdminEmail $SmokeAdminEmail -AdminPasswordFile $SmokeAdminPasswordFile -ComposeFile $ComposeFile -ConnectPort $SmokeInternalPort -TlsCaFile $SmokeCaFile
-  if($smoke-notcontains "SMOKE_OK"){throw "El smoke operacional fallo."};Log "smoke_ok";Complete-DeploymentAuditPhase $audit 'smoke' $auditFile;Test-PhaseFailure 'smoke'
+  $smoke=& (Join-Path $PSScriptRoot "smoke.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -AdminEmail $SmokeAdminEmail -AdminPasswordFile $SmokeAdminPasswordFile -ComposeFile $ComposeFile -ConnectPort $SmokeInternalPort -TlsCaFile $SmokeCaFile -Validate026:$validate026
+  if($smoke-notcontains "SMOKE_OK"){throw "El smoke operacional fallo."}
+  if($validate026){
+    if($smoke -notcontains 'SMOKE_026_API_OK'){throw '026: falta validacion del contrato API autenticado.'}
+    $after026=Get-Rsp026Snapshot $compose
+    Assert-Rsp026Ledger $after026.ledger 26 $migrationDir
+    Assert-Rsp026Conservation $baseline026 $after026
+    $policy026=Get-Rsp026Policy $compose
+    Assert-Rsp026Policy $policy026
+    Assert-Rsp026Images $compose $GitSha $TargetApiImage $TargetFrontImage
+    $evidence026.after=$after026;$evidence026.policy=$policy026;$evidence026.validated_at_utc=[DateTime]::UtcNow.ToString('o')
+    [IO.File]::WriteAllText($audit.validation_026_evidence,(ConvertTo-Json -InputObject $evidence026 -Depth 14),[Text.UTF8Encoding]::new($false))
+    $audit.validation_026='passed';Log 'validation_026_ok'
+  }
+  Log "smoke_ok";Complete-DeploymentAuditPhase $audit 'smoke' $auditFile;Test-PhaseFailure 'smoke'
 
   Start-DeploymentAuditPhase $audit 'persist_state' $auditFile
   $written=Write-DeploymentStateAtomic $deploymentPath $TargetApiImage $TargetFrontImage $TargetVersion $GitSha;$persisted=$true
   $audit.deployment_state_persisted=$true;Complete-DeploymentAuditPhase $audit 'persist_state' $auditFile;Test-PhaseFailure 'persist_state'
   Clear-DeploymentEnvironment;Assert-ComposeState $written
   # All critical checks and state persistence succeeded while public writes were blocked.
+  if($validate026 -and $audit.validation_026 -ne 'passed'){throw '026: reapertura bloqueada sin validacion completa.'}
   ComposeSmoke @('stop','smoke-proxy');ComposeSmoke @('rm','-f','smoke-proxy');$smokeProxyAttempted=$false
   Compose @('stop','maintenance');$maintenance=$false;Compose @('rm','-f','maintenance')
   Compose @('up','-d','--no-deps','--wait','--wait-timeout','180','proxy')
