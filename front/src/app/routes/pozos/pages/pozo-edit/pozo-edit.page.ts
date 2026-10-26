@@ -98,7 +98,7 @@ export class PozoEditPage {
         propietarios: propietario ? [propietario, ...personasBase.propietarios] : personasBase.propietarios,
         perforadores: perforador ? [perforador, ...personasBase.perforadores] : personasBase.perforadores,
       };
-      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes,pozo.sello_sanitario_constructivo);
+      const tecnicos = tecnicosPersistidos(litologia,diametros,filtros,aportes,pozo.sello_sanitario_constructivo,pozo.prefiltro_constructivo);
       this.tecnicosGuardados = structuredClone(tecnicos);
       return { pozo: { ...pozo, id_sitio: pozo.id_sitio, id_perforador: pozo.id_perforador, fecha_inicio: normalizarFechaCalendarioInput(pozo.fecha_inicio), fecha_fin: normalizarFechaCalendarioInput(pozo.fecha_fin) }, personas, sitios: pozo.sitio ? [pozo.sitio] : [] as Sitio[], tecnicos };
     },
@@ -149,7 +149,7 @@ export class PozoEditPage {
       this.errorMessage.set('');
       const enviado = structuredClone(this.datosTecnicos());
       const resultado = await this.pozoEditService.editPozoCompleto(this.id_pozo(), data.pozo, enviado, data.foto, data.fotoAccion, this.tecnicosGuardados);
-      const canonico = tecnicosPersistidos(resultado.intervalos_litologicos, resultado.intervalos_diametro, resultado.intervalos_filtro, resultado.niveles_aporte, resultado.sello_sanitario_constructivo);
+      const canonico = tecnicosPersistidos(resultado.intervalos_litologicos, resultado.intervalos_diametro, resultado.intervalos_filtro, resultado.niveles_aporte, resultado.sello_sanitario_constructivo,resultado.prefiltro_constructivo);
       const actualizados = reconciliarDatosTecnicos(enviado, this.datosTecnicos(), canonico);
       this.tecnicosGuardados = canonico;
       this.datosTecnicos.set(actualizados);

@@ -43,6 +43,7 @@
           <pattern [attr.id]="patronId('puntos')" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.2" class="punto" /></pattern>
           <pattern [attr.id]="patronId('horizontal')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 4H8" class="trama" /></pattern>
           <pattern [attr.id]="patronId('vertical')" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M4 0V8" class="trama" /></pattern>
+          <pattern [attr.id]="patronId('gravilla-prefiltro')" width="6" height="6" patternUnits="userSpaceOnUse"><ellipse cx="2" cy="2" rx="1.15" ry=".8" fill="none" stroke="#473d29" stroke-width=".45" /></pattern>
           <pattern id="perfil-agua" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q3 1 6 4 T12 4" class="onda-agua" /></pattern>
           <pattern id="perfil-ranuras" width="18" height="12" patternUnits="userSpaceOnUse"><path d="M1 3H7M11 9H17" class="ranura-filtro" /></pattern>
         </defs>
@@ -66,6 +67,12 @@
                 [attr.fill]="patron(sello.estilo.patron)" class="trama-sello" />
             }
           }
+        }
+        @for (banda of bandasPrefiltroEnRango(perfil()!, rango); track $index) {
+          <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(banda.desde_m < rango.desde_m ? rango.desde_m : banda.desde_m, rango)"
+            [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(banda.desde_m, banda.hasta_m, rango)" [attr.fill]="banda.estilo.color" class="sello-sanitario" />
+          <rect [attr.x]="xAporte(banda.x_inicio)" [attr.y]="y(banda.desde_m < rango.desde_m ? rango.desde_m : banda.desde_m, rango)"
+            [attr.width]="xAporte(banda.x_fin) - xAporte(banda.x_inicio)" [attr.height]="alto(banda.desde_m, banda.hasta_m, rango)" [attr.fill]="patron(banda.estilo.patron)" class="trama-sello" />
         }
         @for (tramo of construccionEnRango(perfil()!, rango); track tramo.tipo + '-' + tramo.desde_m + '-' + tramo.hasta_m) {
           <rect [attr.x]="xAporte(tramo.geometria.x_inicio)" [attr.y]="y(tramo.desde_m < rango.desde_m ? rango.desde_m : tramo.desde_m, rango)"
@@ -120,10 +127,15 @@
       </svg>
     </div>
     }
-    <p id="perfil-descripcion" class="leyenda"><span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos. Contorno discontinuo marrón: perforación sin cañería. El ancho del sello y el sobresaliente son esquemáticos.</p>
+    <p id="perfil-descripcion" class="leyenda"><span class="muestra-aporte"></span> banda ondulada identifica “Aporte de agua”; trama cruzada gris indica huecos sin datos. Contorno discontinuo marrón: perforación sin cañería. Los espesores del sello y prefiltro, su posición radial y el sobresaliente son esquemáticos.</p>
     @if (perfil()!.sello_sanitario_constructivo; as sello) {
       <div class="leyenda-constructiva" aria-label="Leyenda constructiva">
         <span class="entrada-leyenda"><svg class="muestra-litologia" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="16" [attr.fill]="sello.estilo.color" /><rect width="24" height="16" [attr.fill]="patron(sello.estilo.patron)" /></svg>{{ sello.texto }} · envolvente constructiva</span>
+      </div>
+    }
+    @if (perfil()!.prefiltro_constructivo?.length) {
+      <div class="leyenda-constructiva" aria-label="Leyenda de prefiltro">
+        <span class="entrada-leyenda"><svg class="muestra-litologia" viewBox="0 0 24 16" aria-hidden="true"><rect width="24" height="16" [attr.fill]="perfil()!.prefiltro_constructivo![0].estilo.color" /><rect width="24" height="16" [attr.fill]="patron('gravilla-prefiltro')" /></svg>Prefiltro · gravilla constructiva</span>
       </div>
     }
     @if (litologiasPresentes(perfil()!).length) {
@@ -150,6 +162,7 @@
       }
       <table><caption>Diseño del pozo</caption><thead><tr><th>Tipo</th><th>Intervalo</th><th>Diámetro</th><th>Material</th></tr></thead><tbody>
         @if (perfil()!.sello_sanitario_constructivo; as sello) { <tr><td>Sello sanitario</td><td>{{ sello.desde_m }}–{{ sello.hasta_m }} m</td><td>No corresponde</td><td>Elemento constructivo</td></tr> }
+        @for (tramo of perfil()!.prefiltro_constructivo ?? []; track tramo.desde_m) { <tr><td>Prefiltro</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>No corresponde</td><td>Gravilla constructiva</td></tr> }
         @for (tramo of perfil()!.tuberias; track tramo.desde_m) { <tr><td>Tubería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }
         @for (tramo of perfil()!.perforaciones_abiertas ?? []; track tramo.desde_m) { <tr><td>Perforación sin cañería</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>Sin cañería</td></tr> }
         @for (tramo of perfil()!.filtros; track tramo.desde_m) { <tr><td>Filtro</td><td>{{ tramo.desde_m }}–{{ tramo.hasta_m }} m</td><td>{{ tramo.diametro_pulg }} pulg</td><td>{{ tramo.material_texto }}</td></tr> }

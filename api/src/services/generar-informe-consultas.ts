@@ -2,6 +2,7 @@ import { myPool } from "../db/pool.ts";
 import type { IntervaloPerfilLitologico } from "../pdf/perfil-litologico.ts";
 
 export interface ReportePozo {
+  prefiltro_constructivo?: import('../models/schemas.ts').IntervaloPrefiltro[] | null;
   sello_sanitario_constructivo?: import('../models/schemas.ts').SelloSanitarioConstructivo | null;
   id_pozo: number;
   numero_perforacion?: number | null;
@@ -61,6 +62,8 @@ export async function getReportePozo(
       p.id_pozo, p.numero_perforacion, p.origen,
       (SELECT json_build_object('desde_m',ss.desde_m,'hasta_m',ss.hasta_m)
        FROM public.sello_sanitario_pozo ss WHERE ss.id_pozo=p.id_pozo) AS sello_sanitario_constructivo,
+      (SELECT COALESCE(json_agg(json_build_object('desde_m',pf.desde_m,'hasta_m',pf.hasta_m) ORDER BY pf.desde_m),'[]'::json)
+       FROM public.prefiltro_pozo pf WHERE pf.id_pozo=p.id_pozo) AS prefiltro_constructivo,
       COALESCE(prop.nombre, p.propietario_provisional) AS propietario,
       prop.documento_rut AS propietario_documento_rut,
       prop.telefono AS propietario_telefono,

@@ -1,11 +1,13 @@
 import { DatosTecnicosBorrador, NuevoPozo, SitioBody } from '../types/schemas';
-import { validarDatosTecnicos, selloSanitarioParaEnvio } from './datos-tecnicos-borrador';
+import { prefiltroParaEnvio, validarDatosTecnicos, selloSanitarioParaEnvio } from './datos-tecnicos-borrador';
 
 export const tecnicosVacios=():DatosTecnicosBorrador=>({intervalosLitologicos:[],intervalosDiametro:[],intervalosFiltro:[],nivelesAporte:[]});
 export function cuerpoHistorico(pozo:NuevoPozo,sitio:SitioBody,tecnicos:DatosTecnicosBorrador,edicion:boolean,originales?:DatosTecnicosBorrador):Record<string,unknown>{
   const errors=validarDatosTecnicos(tecnicos,pozo.profundidad_final_m);
   if(errors.length)throw Error(errors.join(' '));
   const body:Record<string,unknown>={};
+  const prefiltro = prefiltroParaEnvio(tecnicos, originales);
+  if (prefiltro !== undefined) body['prefiltro_constructivo'] = prefiltro;
   const sello = selloSanitarioParaEnvio(tecnicos, edicion ? originales : undefined);
   if (sello !== undefined && (edicion || sello !== null)) body['sello_sanitario_constructivo'] = sello;
   for(const key of ['empresa','fecha_inicio','fecha_fin','metodo_sedimentario','metodo_rocoso','cementacion','desarrollo','revestimiento','propietario_provisional','perforador_provisional'] as const){

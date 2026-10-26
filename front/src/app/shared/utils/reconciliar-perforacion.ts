@@ -14,6 +14,8 @@ export function reconciliarPerforacion(enviado: EstadoPerforacion, actual: Estad
 
 export function reconciliarDatosTecnicos(enviado: DatosTecnicosBorrador, actual: DatosTecnicosBorrador, canonico: DatosTecnicosBorrador): DatosTecnicosBorrador {
   return {
+    prefiltro_constructivo: JSON.stringify(actual.prefiltro_constructivo) === JSON.stringify(enviado.prefiltro_constructivo)
+      ? structuredClone(canonico.prefiltro_constructivo) : structuredClone(actual.prefiltro_constructivo),
     sello_sanitario_constructivo: JSON.stringify(actual.sello_sanitario_constructivo ?? null) === JSON.stringify(enviado.sello_sanitario_constructivo ?? null)
       ? structuredClone(canonico.sello_sanitario_constructivo ?? null) : structuredClone(actual.sello_sanitario_constructivo ?? null),
     intervalosLitologicos: reconciliarFilas(enviado.intervalosLitologicos, actual.intervalosLitologicos, canonico.intervalosLitologicos),

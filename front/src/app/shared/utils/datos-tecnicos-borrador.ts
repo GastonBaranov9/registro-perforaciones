@@ -87,6 +87,9 @@ export function sugerirInicioSiguienteIntervalo(
 
 export function validarDatosTecnicos(datos: DatosTecnicosBorrador, profundidad?: number): string[] {
   const errores: string[] = [];
+  validarIntervalos(datos.prefiltro_constructivo ?? [], 'de prefiltro', profundidad, errores);
+  if (datos.prefiltro_constructivo?.length && (profundidad == null || !Number.isFinite(profundidad)))
+    errores.push('Prefiltro: indique una profundidad final válida.');
   const sello = datos.sello_sanitario_constructivo;
   if (sello != null) {
     if (!Number.isFinite(sello.desde_m) || !Number.isFinite(sello.hasta_m))
@@ -162,4 +165,22 @@ export function selloSanitarioParaEnvio(datos: DatosTecnicosBorrador, originales
   const original = originales?.sello_sanitario_constructivo ?? null;
   if (originales && sello?.desde_m === original?.desde_m && sello?.hasta_m === original?.hasta_m) return undefined;
   return sello == null ? null : { ...sello };
+}
+
+/** Ausencia conserva; null/[] elimina. No añadir el campo a borradores antiguos. */
+export function prefiltroParaEnvio(datos: DatosTecnicosBorrador, originales?: DatosTecnicosBorrador) {
+  if (datos.prefiltro_constructivo === undefined) return undefined;
+  const copia = (datos.prefiltro_constructivo ?? []).map(p => ({desde_m:p.desde_m,hasta_m:p.hasta_m}));
+  if (originales && JSON.stringify(copia) === JSON.stringify(originales.prefiltro_constructivo ?? [])) return undefined;
+  return copia;
+}
+
+export function advertenciasPrefiltro(datos: DatosTecnicosBorrador): string[] {
+  if (!datos.prefiltro_constructivo?.length) return [];
+  const avisos: string[] = [];
+  if (!datos.intervalosFiltro.length) avisos.push('Prefiltro declarado sin filtros ranurados: verificá que corresponda a la construcción realizada.');
+  const sello = datos.sello_sanitario_constructivo;
+  if (sello && datos.prefiltro_constructivo.some(p => p.desde_m < sello.hasta_m && p.hasta_m > sello.desde_m))
+    avisos.push('Sello y prefiltro coinciden en profundidad: revisá la construcción declarada. Las bandas separadas son esquemáticas; no indican posiciones radiales medidas.');
+  return avisos;
 }

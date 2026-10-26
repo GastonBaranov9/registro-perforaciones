@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { DatosTecnicosBorrador, NuevoPozo, Pozo, PozoCompletoBody, PozoCompletoResultado, SitioBody } from '../types/schemas';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { selloSanitarioParaEnvio } from '../utils/datos-tecnicos-borrador';
+import { prefiltroParaEnvio, selloSanitarioParaEnvio } from '../utils/datos-tecnicos-borrador';
 
 @Injectable({
   providedIn: 'root',
@@ -35,6 +35,7 @@ export class PozosCreateService {
   ): Promise<PozoCompletoResultado> {
     const pozoNuevo = sinCamposHistoricos(pozo);
     const body: PozoCompletoBody = {
+      prefiltro_constructivo: prefiltroParaEnvio(tecnicos),
       sello_sanitario_constructivo: selloSanitarioParaEnvio(tecnicos),
       pozo: pozoNuevo,
       sitio_nuevo: {
@@ -60,8 +61,9 @@ export class PozosCreateService {
 }
 
 function sinCamposHistoricos(pozo: NuevoPozo): Omit<NuevoPozo, 'id_sitio'> {
-  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown; sello_sanitario_constructivo?: unknown };
+  const copia = { ...pozo } as NuevoPozo & { sello_sanitario?: unknown; pre_filtro?: unknown; sello_sanitario_constructivo?: unknown; prefiltro_constructivo?: unknown };
   delete copia.sello_sanitario_constructivo;
+  delete copia.prefiltro_constructivo;
   delete copia.sello_sanitario;
   delete copia.pre_filtro;
   const { id_sitio: _idSitio, ...moderno } = copia;

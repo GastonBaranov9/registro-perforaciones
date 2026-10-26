@@ -6,7 +6,7 @@ import { IntervaloDiametroPerforacionBody, PozoCompletoBody } from '../src/model
 import { validarDatosTecnicosPozo, huellaOffline } from '../src/services/pozo-completo-service.ts';
 import { createIntervaloDiametro, updateIntervaloDiametro } from '../src/services/intervalo-diametro-services.ts';
 import { crearFiltro, actualizarFiltro } from '../src/services/intervalos-filtro-service.ts';
-import { crearPerfilLitologico, dibujarPerfilLitologico } from '../src/pdf/perfil-litologico.ts';
+import { crearPerfilLitologico, dibujarPerfilLitologico, ESPESOR_GRAFICO_SELLO } from '../src/pdf/perfil-litologico.ts';
 import { casosConstructivos } from './perfil-constructivo-casos.ts';
 
 const abierto = {desde_m:20,hasta_m:50,diametro_pulg:8,material_tuberia:null,sin_tuberia:true};
@@ -67,14 +67,15 @@ test('CRUD impide contradicción en ambas direcciones, incluyendo edición de fi
   ]) await assert.rejects(action,/no puede solaparse/);
 });
 
-test('A/B: sello ancho, contacto con caño, terreno completo y profundidad exacta', () => {
+test('A/B: sello proporcionado, contacto con caño, terreno completo y profundidad exacta', () => {
   const {A,B}=casosConstructivos();
   for(const p of [A,B]) {
     assert.equal(p.tramos.length,1);assert.equal(p.tramos[0].hasta_m,20);
     const s=p.sello_sanitario_constructivo!;
     for(const r of s.geometria.segmentos) {
       assert.equal(r.desde_m,s.desde_m);assert.equal(r.hasta_m,s.hasta_m);
-      assert.ok(r.bandas.every(b=>b.x_fin-b.x_inicio>=.23));
+      assert.ok(r.bandas.every(b=>Math.abs(b.x_fin-b.x_inicio-ESPESOR_GRAFICO_SELLO)<1e-10));
+      assert.ok(r.bandas.every(b=>b.x_inicio>0 && b.x_fin<1 && b.x_fin>b.x_inicio));
       assert.equal(r.bandas[0].x_fin,p.tuberias[0].geometria.x_inicio);
       assert.equal(r.bandas[1].x_inicio,p.tuberias[0].geometria.x_fin);
     }

@@ -119,6 +119,10 @@
             <p>Hasta: {{ sello.hasta_m }} m</p>
           } @else { <p>No registrado</p> }
         </section>
+        <section aria-label="Prefiltro"><h3>Prefiltro</h3>
+          @for (tramo of pozo()?.prefiltro_constructivo ?? []; track tramo.desde_m) { <p>Gravilla: {{ tramo.desde_m }}–{{ tramo.hasta_m }} m</p> }
+          @empty { <p>Sin prefiltro registrado.</p> }
+        </section>
         <h3>Litología</h3>
         @for (item of litologia(); track item.id_intervalo_litologico) { <p>{{ item.desde_m }}–{{ item.hasta_m }} m: {{ item.material }}</p> } @empty { <p>Sin intervalos litológicos.</p> }
         <h3>Diámetros</h3>

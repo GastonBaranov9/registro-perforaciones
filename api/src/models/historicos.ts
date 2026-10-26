@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { T05DatosIncorrectos } from './errors.ts';
-import { bodyIntervaloLitologico, IntervaloDiametroPerforacionBody, IntervaloFiltroCreateBody, IntervaloFiltroBody, NivelAporteBody, FotoNuevaPozo, SelloSanitarioOpcional } from './schemas.ts';
+import { bodyIntervaloLitologico, IntervaloDiametroPerforacionBody, IntervaloFiltroCreateBody, IntervaloFiltroBody, NivelAporteBody, FotoNuevaPozo, SelloSanitarioOpcional, PrefiltroOpcional } from './schemas.ts';
 
 const texto = () => Type.String({ minLength: 1, maxLength: 2000, pattern: '\\S' });
 const id = () => Type.Integer({ minimum: 1 });
@@ -14,6 +14,7 @@ export const HistoricoBody = Type.Object({
     nueva_carga_administrativa: Type.Literal(true),
   },{additionalProperties:false})),
   sello_sanitario_constructivo: SelloSanitarioOpcional,
+  prefiltro_constructivo: PrefiltroOpcional,
   id_propietario: Type.Optional(id()),
   propietario_provisional: Type.Optional(Type.String({ minLength: 1, maxLength: 160, pattern: '\\S' })),
   id_perforador: Type.Optional(id()),
@@ -41,6 +42,7 @@ export const CAMPOS_HISTORICOS = ['id_propietario','propietario_provisional','id
 const editables = Type.Pick(HistoricoBody, [...CAMPOS_HISTORICOS]);
 export const HistoricoUpdateBody = Type.Object({
   sello_sanitario_constructivo: SelloSanitarioOpcional,
+  prefiltro_constructivo: PrefiltroOpcional,
   ...Object.fromEntries(Object.entries(editables.properties).map(([k,v]) => [k, Type.Optional(Type.Union([v, Type.Null()]))])),
   sitio: HistoricoBody.properties.sitio,
   intervalos_litologicos: Type.Optional(Type.Array(bodyIntervaloLitologico)),
@@ -52,6 +54,7 @@ export const HistoricoUpdateBody = Type.Object({
 }, { additionalProperties:false, minProperties:1 });
 export type HistoricoUpdateBody = Partial<{ [K in typeof CAMPOS_HISTORICOS[number]]: HistoricoBody[K] | null }> & {
   sello_sanitario_constructivo?: HistoricoBody['sello_sanitario_constructivo'];
+  prefiltro_constructivo?: HistoricoBody['prefiltro_constructivo'];
   sitio?: HistoricoBody['sitio']; intervalos_litologicos?: Static<typeof bodyIntervaloLitologico>[];
   intervalos_diametro?: HistoricoBody['intervalos_diametro']; intervalos_filtro?: Static<typeof IntervaloFiltroBody>[];
   niveles_aporte?: HistoricoBody['niveles_aporte']; foto_accion?: 'conservar'|'eliminar'|'reemplazar'; foto?: HistoricoBody['foto'];

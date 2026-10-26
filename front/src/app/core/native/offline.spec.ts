@@ -82,6 +82,16 @@ function draft(): BorradorLocal {
 }
 
 describe('Repositorio offline persistente', () => {
+  for (const prefiltro of [undefined, null, [], [{desde_m:13.5,hasta_m:15.5},{desde_m:20,hasta_m:25}]]) {
+    it('conserva prefiltro y ausencia al reabrir: '+JSON.stringify(prefiltro), async()=>{
+      const disk=new Files(),original=draft();if(prefiltro!==undefined)original.tecnicos.prefiltro_constructivo=prefiltro;
+      const repo=new OfflineRepository(disk.plugin,'offline-v1/server/7',7);await repo.write(original);
+      const reiniciado=new OfflineRepository(Files.restart(disk.diskSnapshot()).plugin,'offline-v1/server/7',7);
+      const leido=await reiniciado.read(original.id);expect(leido.tecnicos.prefiltro_constructivo).toEqual(prefiltro);
+      if(prefiltro===undefined)expect(Object.hasOwn(leido.tecnicos,'prefiltro_constructivo')).toBeFalse();
+      expect(leido.epoca).toBe(original.epoca);expect(leido.id).toBe(original.id);
+    });
+  }
   it('reabre y edita sin cañería sin añadir defaults a intervalos antiguos', async () => {
     const disk=new Files(),d=draft();
     d.tecnicos.intervalosDiametro=[
@@ -255,6 +265,19 @@ describe('Cola offline del perforador', () => {
     service = TestBed.inject(OfflineService); http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  for(const prefiltro of [undefined,[{desde_m:13.5,hasta_m:15.5}]]) it('sincroniza prefiltro opcional con mismo payload y clave tras fallo: '+JSON.stringify(prefiltro),async()=>{
+    const d=draft();d.pozo.profundidad_final_m=30;if(prefiltro!==undefined)d.tecnicos.prefiltro_constructivo=prefiltro;
+    await service.guardar(d);await service.cargar();let run=service.sincronizar(),req=await request();
+    const body=JSON.stringify(req.request.body),key=req.request.headers.get('Idempotency-Key');
+    expect(req.request.body.prefiltro_constructivo).toEqual(prefiltro);
+    if(prefiltro===undefined)expect(body).not.toContain('prefiltro_constructivo');
+    req.flush('timeout',{status:500,statusText:'Timeout'});await run;
+    await service.cargar();run=service.sincronizar();req=await request();
+    expect(JSON.stringify(req.request.body)).toBe(body);expect(req.request.headers.get('Idempotency-Key')).toBe(key);
+    expect(req.request.headers.get('X-Epoca-Datos')).toBe(d.epoca!);
+    req.flush({pozo:{id_pozo:99,numero_perforacion:900001},prefiltro_constructivo:prefiltro??[]});await run;
+    expect(service.borradores()[0].estado).toBe('sincronizado');await service.sincronizar();http.expectNone(endpoint);
+  });
   it('sincroniza sin cañería y reintenta el mismo cuerpo sin defaults en intervalos antiguos', async () => {
     const d=draft();d.pozo.profundidad_final_m=50;
     d.tecnicos.intervalosDiametro=[

@@ -9,7 +9,7 @@ import { RuntimePlatformService } from './runtime-platform.service';
 import { OfflineRepository, BorradorLocal, OfflineFiles, eliminacionLocal } from './offline-repository';
 import { PozoCompletoBody, PozoCompletoResultado } from '../../shared/types/schemas';
 import { environment } from '../../../environments/environment';
-import { validarDatosTecnicos, selloSanitarioParaEnvio } from '../../shared/utils/datos-tecnicos-borrador';
+import { prefiltroParaEnvio, validarDatosTecnicos, selloSanitarioParaEnvio } from '../../shared/utils/datos-tecnicos-borrador';
 
 export const OFFLINE_FILES = new InjectionToken<OfflineFiles>('OFFLINE_FILES', { providedIn: 'root', factory: () => Filesystem });
 
@@ -177,6 +177,7 @@ export class OfflineService {
           if (!draft.pozo.propietario_provisional?.trim() || !draft.sitio.departamento || !draft.sitio.latitud || !draft.sitio.longitud) throw new Error('Complete propietario provisional, departamento y coordenadas antes de sincronizar.');
           const { id_sitio: _sitio, numero_perforacion: _numero, foto_url: _url, ...pozo } = draft.pozo;
           const body: PozoCompletoBody = {
+            prefiltro_constructivo: prefiltroParaEnvio(draft.tecnicos),
             sello_sanitario_constructivo: selloSanitarioParaEnvio(draft.tecnicos),
             pozo: { ...pozo, id_propietario: null, id_perforador: owner.id_usuario }, sitio_nuevo: draft.sitio,
             intervalos_litologicos: draft.tecnicos.intervalosLitologicos.map(i => i.dato),

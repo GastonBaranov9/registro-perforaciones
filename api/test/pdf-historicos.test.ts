@@ -112,7 +112,7 @@ test("histórico sin profundidad ni litología conserva NULL y explica la ausenc
   const texto = textoPDF(doc);
   assert.equal(doc.getPageCount(), 3);
   assert.match(texto.replace(/\n/g, " "), /No se puede representar el perfil litológico por falta de profundidad final/);
-  for (const etiqueta of ["Profundidad final", "Nivel estático:", "Nivel dinámico:", "Caudal estimado:", "Prefiltro:"]) {
+  for (const etiqueta of ["Profundidad final", "Nivel estático:", "Nivel dinámico:", "Caudal estimado:", "Prefiltro (texto legado):"]) {
     assert.ok(texto.includes(`${etiqueta}\nNo especificado`), etiqueta);
   }
   assert.match(texto, /Fecha de inicio\nNo especificada/);
@@ -172,8 +172,8 @@ for (const valor of [true, false, null] as const) {
     const texto = textoPDF(doc);
     if (valor === true) assert.match(texto.replace(/\s+/g, ' '), /Sello sanitario: Registrado en formato legado, sin profundidad especificada/);
     else assert.doesNotMatch(texto, /Sello sanitario/);
-    assert.doesNotMatch(texto, /Elemento constructivo/);
-    assert.match(texto, /Prefiltro:\nGrava seleccionada/);
+    assert.doesNotMatch(texto, /Prefiltro de gravilla/);
+    assert.match(texto, /Prefiltro \(texto legado\):\nGrava seleccionada/);
   });
 }
 
@@ -187,7 +187,7 @@ for (const profundidad of [null,20]) {
       assert.doesNotMatch(texto,/Elemento constructivo/);
       assert.match(texto,/falta de profundidad final/);
     } else {
-      assert.match(texto,/Elemento constructivo/);
+      assert.match(texto,/Materiales presentes Sello sanitario/);
       assert.match(texto,/Sello sanitario 2.5-8.75 m/);
     }
   });

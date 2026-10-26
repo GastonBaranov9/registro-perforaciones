@@ -350,10 +350,18 @@ export const SelloSanitarioConstructivo = Type.Object({
 export type SelloSanitarioConstructivo = Static<typeof SelloSanitarioConstructivo>;
 export const SelloSanitarioOpcional = Type.Optional(Type.Union([SelloSanitarioConstructivo, Type.Null()]));
 
+export const IntervaloPrefiltro = Type.Object({
+  desde_m: Type.Number({ minimum: 0 }), hasta_m: Type.Number({ exclusiveMinimum: 0 }),
+}, { additionalProperties: false });
+export type IntervaloPrefiltro = Static<typeof IntervaloPrefiltro>;
+export const PrefiltroConstructivo = Type.Array(IntervaloPrefiltro);
+export const PrefiltroOpcional = Type.Optional(Type.Union([PrefiltroConstructivo, Type.Null()]));
+
 export const PozoCompletoBody = Type.Object({
   pozo: Type.Omit(PozoModerno, ["id_sitio"]),
   sitio_nuevo: SitioNuevoPozoBody,
   sello_sanitario_constructivo: SelloSanitarioOpcional,
+  prefiltro_constructivo: PrefiltroOpcional,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
   intervalos_filtro: Type.Array(IntervaloFiltroCreateBody, { default: [] }),
@@ -366,6 +374,7 @@ export type PozoCompletoBody = Static<typeof PozoCompletoBody>;
 export const PerfilLitologicoVistaPreviaBody = Type.Object({
   profundidad_final_m: Type.Number({ exclusiveMinimum: 0 }),
   sello_sanitario_constructivo: SelloSanitarioOpcional,
+  prefiltro_constructivo: PrefiltroOpcional,
   intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
   intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
   intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
@@ -377,6 +386,7 @@ export const PozoCompletoUpdateBody = Type.Intersect([
   Type.Object({
     pozo: PozoModerno,
     sello_sanitario_constructivo: SelloSanitarioOpcional,
+    prefiltro_constructivo: PrefiltroOpcional,
     intervalos_litologicos: Type.Array(bodyIntervaloLitologico, { default: [] }),
     intervalos_diametro: Type.Array(IntervaloDiametroPerforacionBody, { default: [] }),
     intervalos_filtro: Type.Array(IntervaloFiltroBody, { default: [] }),
@@ -439,6 +449,7 @@ export const PozoDetalle = Type.Intersect([
   Pozo,
   Type.Object({
     sello_sanitario_constructivo: SelloSanitarioOpcional,
+    prefiltro_constructivo: PrefiltroOpcional,
     propietario_nombre: Type.Union([Type.String(), Type.Null()]),
     propietario_email: Type.Optional(Type.Union([Type.String({ format: "email" }), Type.Null()])),
     propietario_documento_rut: Type.Union([Type.String(), Type.Null()]),

@@ -1,3 +1,4 @@
+import { obtenerPrefiltro, validarPrefiltro } from './prefiltro-service.ts';
 import { conEscrituraSesion, contextoEscritura, iniciarEscrituraSesion } from "./escritura-sesion.ts";
 import { obtenerSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
 import { myPool } from "../db/pool.ts";
@@ -84,6 +85,7 @@ export async function updatePozo(
     await dbEscritura.query('SELECT id_pozo FROM pozo WHERE id_pozo=$1 FOR UPDATE', [id_pozo]);
     if (data.profundidad_final_m != null)
       validarSelloSanitario(await obtenerSelloSanitario(dbEscritura, id_pozo), data.profundidad_final_m);
+    if (data.profundidad_final_m != null) validarPrefiltro(await obtenerPrefiltro(dbEscritura, id_pozo), data.profundidad_final_m);
     if (Object.hasOwn(data, "numero_perforacion")) {
       const actual = await dbEscritura.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1", [id_pozo]);
       if (actual.rows[0] && data.numero_perforacion !== actual.rows[0].numero_perforacion)
@@ -146,6 +148,8 @@ export async function getPozoById(id_pozo: number): Promise<PozoDetalle | null> 
     `SELECT p.id_pozo, p.origen, p.numero_perforacion, p.propietario_provisional, p.perforador_provisional, p.id_propietario, p.id_sitio, p.empresa, p.id_perforador, p.creado_por,
       (SELECT json_build_object('desde_m',ss.desde_m,'hasta_m',ss.hasta_m)
        FROM public.sello_sanitario_pozo ss WHERE ss.id_pozo=p.id_pozo) AS sello_sanitario_constructivo,
+      (SELECT COALESCE(json_agg(json_build_object('desde_m',pf.desde_m,'hasta_m',pf.hasta_m) ORDER BY pf.desde_m),'[]'::json)
+       FROM public.prefiltro_pozo pf WHERE pf.id_pozo=p.id_pozo) AS prefiltro_constructivo,
       p.fecha_inicio, p.fecha_fin, p.profundidad_final_m, p.sello_sanitario, p.pre_filtro,
       p.nivel_estatico_m, p.nivel_dinamico_m, p.caudal_estimado_lh, p.metodo_sedimentario,
       p.metodo_rocoso, p.cementacion, p.desarrollo, p.revestimiento,

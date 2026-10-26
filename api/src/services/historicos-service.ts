@@ -1,3 +1,4 @@
+import { guardarPrefiltro, validarPrefiltro } from './prefiltro-service.ts';
 import { exigirCapacidad } from './capacidades.ts';
 import { exigirVinculacionDesdePendientes } from './litologia-provisional.ts';
 import type { Pool } from 'pg';
@@ -20,6 +21,7 @@ import { guardarSelloSanitario, validarSelloSanitario } from './sello-sanitario-
 export async function crearHistorico(actor: number, data: HistoricoBody, clave: unknown, epoca: unknown, pool: Pick<Pool, 'connect'> = myPool) {
   validarHistorico(data); validarClaveOperacion(clave);
   validarSelloSanitario(data.sello_sanitario_constructivo, data.profundidad_final_m);
+  validarPrefiltro(data.prefiltro_constructivo, data.profundidad_final_m);
   clave = clave.toLowerCase();
   const tecnicos = {
     intervalos_litologicos: data.intervalos_litologicos ?? [], intervalos_diametro: data.intervalos_diametro ?? [],
@@ -68,11 +70,12 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
       throw new T05ConflictoNumeracion('La secuencia interna no permite una identidad nueva. No se modificaron datos ni fotografías.');
     const hijos = await insertarHijos(client, Number(pozo.id_pozo), tecnicos);
     const sello = await guardarSelloSanitario(client, Number(pozo.id_pozo), data.sello_sanitario_constructivo ?? null, data.profundidad_final_m);
+    const prefiltro = await guardarPrefiltro(client, Number(pozo.id_pozo), data.prefiltro_constructivo ?? null, data.profundidad_final_m);
     if(data.foto){
       await fotoTx.cambiar(Number(pozo.id_pozo),data.foto);
       await client.query('UPDATE pozo SET foto_url=$2 WHERE id_pozo=$1',[pozo.id_pozo,`/usuarios/${actor}/pozos/${pozo.id_pozo}/foto`]);
     }
-    const resultado = { id_pozo: Number(pozo.id_pozo), numero_perforacion: pozo.numero_perforacion, origen: 'historico', creado_por: actor, sello_sanitario_constructivo: sello, ...hijos };
+    const resultado = { id_pozo: Number(pozo.id_pozo), numero_perforacion: pozo.numero_perforacion, origen: 'historico', creado_por: actor, sello_sanitario_constructivo: sello, prefiltro_constructivo: prefiltro, ...hijos };
     await client.query('INSERT INTO creacion_historica(actor,clave,epoca,huella,resultado) VALUES($1,$2,$3,$4,$5)', [actor, clave, generacion, huella, JSON.stringify(resultado)]);
     if(reingreso)await auditarReingreso(actor,data.numero_perforacion!,Number(pozo.id_pozo),clave as string,reingreso,client);
     fotoTx.commitIntentado=true;
@@ -108,6 +111,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
     exigirVinculacionDesdePendientes(original.perforador_provisional,p.id_perforador);
     exigirVinculacionDesdePendientes(original.propietario_provisional,p.id_propietario);
     const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo, p.profundidad_final_m == null ? null : Number(p.profundidad_final_m));
+    const prefiltro = await guardarPrefiltro(client, idPozo, data.prefiltro_constructivo, p.profundidad_final_m == null ? null : Number(p.profundidad_final_m));
     // pg devuelve Date para algunos entornos; validar siempre fechas calendario.
     validarFechasHistoricas({fecha_inicio:p.fecha_inicio instanceof Date?p.fecha_inicio.toISOString().slice(0,10):p.fecha_inicio,fecha_fin:p.fecha_fin instanceof Date?p.fecha_fin.toISOString().slice(0,10):p.fecha_fin});
     if(p.id_perforador&&p.perforador_provisional)throw new T05DatosIncorrectos('Seleccione perforador o nombre provisional, no ambos.');
@@ -146,7 +150,7 @@ export async function editarHistorico(actor:number,idPozo:number,data:HistoricoU
     }
     fotoTx.commitIntentado=true; await client.query('COMMIT');
     await fotoTx.confirmar(idPozo);
-    return {id_pozo:idPozo,numero_perforacion:original.numero_perforacion,origen:'historico',sello_sanitario_constructivo:sello};
+    return {id_pozo:idPozo,numero_perforacion:original.numero_perforacion,origen:'historico',sello_sanitario_constructivo:sello,prefiltro_constructivo:prefiltro};
   }catch(error){
     const compensation=await compensarFalloTransaccionalFotos({idPozo,operacion:'editar_historico',rollback:async()=>{await client.query('ROLLBACK');},restaurar:()=>fotoTx.restaurar()});
     descartar=!!compensation.errorRollback;

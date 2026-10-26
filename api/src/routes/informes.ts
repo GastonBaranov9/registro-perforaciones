@@ -85,6 +85,7 @@ const informeRoutes = async function (
           reporte.diametros,
           reporte.filtros ?? [],
           reporte.sello_sanitario_constructivo,
+          reporte.prefiltro_constructivo,
         ),
       );
     },
@@ -124,6 +125,7 @@ const informeRoutes = async function (
         borrador.intervalos_diametro,
         borrador.intervalos_filtro,
         borrador.sello_sanitario_constructivo,
+        borrador.prefiltro_constructivo,
       ));
     },
   );

@@ -62,6 +62,7 @@ export class PerfilLitologicoVistaPreviaComponent {
     const borrador: PerfilLitologicoVistaPreviaBody = {
       profundidad_final_m: profundidad!,
       sello_sanitario_constructivo: datos.sello_sanitario_constructivo ? { ...datos.sello_sanitario_constructivo } : null,
+      prefiltro_constructivo: datos.prefiltro_constructivo,
       intervalos_litologicos: datos.intervalosLitologicos.map((x) => ({ ...x.dato })),
       intervalos_diametro: datos.intervalosDiametro.map((x) => ({ ...x.dato })),
       intervalos_filtro: datos.intervalosFiltro.map((x) => ({ ...x.dato })),

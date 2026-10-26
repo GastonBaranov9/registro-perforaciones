@@ -1,8 +1,9 @@
 import { DatosTecnicosBorrador, IntervaloLitologico, IntervaloDiametroPerforacion, IntervaloFiltro, NivelAporte, SelloSanitarioConstructivo } from '../types/schemas';
 
 /** Conserva las identidades necesarias para litologías retiradas y ranuras legadas. */
-export function tecnicosPersistidos(litologia:IntervaloLitologico[],diametros:IntervaloDiametroPerforacion[],filtros:IntervaloFiltro[],aportes:NivelAporte[],sello?:SelloSanitarioConstructivo|null):DatosTecnicosBorrador{
+export function tecnicosPersistidos(litologia:IntervaloLitologico[],diametros:IntervaloDiametroPerforacion[],filtros:IntervaloFiltro[],aportes:NivelAporte[],sello?:SelloSanitarioConstructivo|null,prefiltro?:DatosTecnicosBorrador['prefiltro_constructivo']):DatosTecnicosBorrador{
   return {
+    ...(prefiltro === undefined ? {} : {prefiltro_constructivo: structuredClone(prefiltro)}),
     sello_sanitario_constructivo: sello == null ? null : { ...sello },
     intervalosLitologicos:litologia.map(x=>({idLocal:`persistido-lit-${x.id_intervalo_litologico}`,dato:{id_intervalo_litologico:x.id_intervalo_litologico,desde_m:x.desde_m,hasta_m:x.hasta_m,material:x.material,litologia_provisional:x.litologia_provisional,id_litologia:x.id_litologia??undefined}})),
     intervalosDiametro:diametros.map(x=>({idLocal:`persistido-dia-${x.id_intervalo_diametro_perforacion}`,dato:{desde_m:x.desde_m,hasta_m:x.hasta_m,diametro_pulg:x.diametro_pulg,material_tuberia:x.sin_tuberia===true?null:(x.material_tuberia??''),...(x.sin_tuberia===undefined?{}:{sin_tuberia:x.sin_tuberia})}})),

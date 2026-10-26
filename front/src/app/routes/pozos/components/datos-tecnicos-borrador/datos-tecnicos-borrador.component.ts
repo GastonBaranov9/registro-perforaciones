@@ -2,7 +2,7 @@ import { opcionTuberia, seleccionarTuberia } from '../../../../shared/utils/inte
 import { afterNextRender, Component, ElementRef, effect, inject, Injector, input, output, signal, viewChildren } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatosTecnicosBorrador, ElementoBorrador, IntervaloDiametroPerforacionBody, IntervaloFiltroBody, IntervaloLitologicoBody, NivelAporteBody } from '../../../../shared/types/schemas';
-import { ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
+import { advertenciasPrefiltro, ordenarDatosTecnicos, sugerirInicioSiguienteIntervalo, sugerirIntervaloLitologico, validarDatosTecnicos } from '../../../../shared/utils/datos-tecnicos-borrador';
 import { SelectorLitologiaComponent } from '../../../../shared/components/selector-litologia/selector-litologia.component';
 import { huellaDatosTecnicos } from '../../../../shared/utils/estado-formulario-perforacion';
 
@@ -58,6 +58,17 @@ export class DatosTecnicosBorradorComponent {
     const nueva = this.local<IntervaloLitologicoBody>({ desde_m: sugerencia.desde_m, hasta_m: sugerencia.hasta_m, material: '' });
     this.actualizar({ ...this.datos(), intervalosLitologicos: [...this.datos().intervalosLitologicos, nueva] });
     this.enfocarNueva(nueva.idLocal);
+  }
+  advertenciasPrefiltro() { return advertenciasPrefiltro(this.datos()); }
+  agregarPrefiltro() {
+    if (this.guardando()) return;
+    const actuales = this.datos().prefiltro_constructivo ?? [];
+    this.actualizar({ ...this.datos(), prefiltro_constructivo: [...actuales, {desde_m:Number.NaN,hasta_m:Number.NaN}] });
+    this.enfocarNueva('prefiltro-' + actuales.length);
+  }
+  quitarPrefiltro(indice: number) {
+    if (this.guardando()) return;
+    this.actualizar({ ...this.datos(), prefiltro_constructivo: (this.datos().prefiltro_constructivo ?? []).filter((_,i) => i !== indice) });
   }
   agregarSello() {
     if (this.guardando() || this.datos().sello_sanitario_constructivo != null) return;

@@ -15,7 +15,7 @@ export interface ConfirmacionEliminacion {
 }
 // No se persiste nada al abrir/cancelar una confirmación. Reiniciar la API invalida los desafíos.
 const claveConfirmacion = randomBytes(32);
-const hijos = ['intervalo_litologico','intervalo_diametro_perforacion','nivel_aporte','documento','informe','intervalo_filtro','sello_sanitario_pozo'] as const;
+const hijos = ['intervalo_litologico','intervalo_diametro_perforacion','nivel_aporte','documento','informe','intervalo_filtro','sello_sanitario_pozo','prefiltro_pozo'] as const;
 const conflicto = () => new T05ConflictoNumeracion('La situación cambió o hay referencias que impiden esta operación. Consultá nuevamente; no se realizó ningún cambio.');
 const huella = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 

@@ -123,13 +123,14 @@ export class HistoricosPage {
         }
         if(this.envio){
           const b=this.envio.body;
-          const {foto,reingreso,sitio,intervalos_litologicos,intervalos_diametro,intervalos_filtro,niveles_aporte,sello_sanitario_constructivo,...campos}=b;
+          const {foto,reingreso,sitio,intervalos_litologicos,intervalos_diametro,intervalos_filtro,niveles_aporte,sello_sanitario_constructivo,prefiltro_constructivo,...campos}=b;
           this.pozo.update(p=>({...p,...campos}));
           if(sitio)this.sitio.set(sitio as SitioBody);
           const t:DatosTecnicosBorrador=tecnicosVacios();
           for(const [key,values] of Object.entries({intervalosLitologicos:intervalos_litologicos,intervalosDiametro:intervalos_diametro,intervalosFiltro:intervalos_filtro,nivelesAporte:niveles_aporte}))
             if(Array.isArray(values))(t as any)[key]=values.map((dato,i)=>({idLocal:`pendiente-${key}-${i}`,dato}));
           if(sello_sanitario_constructivo)t.sello_sanitario_constructivo=sello_sanitario_constructivo as any;
+          if(prefiltro_constructivo !== undefined)t.prefiltro_constructivo=structuredClone(prefiltro_constructivo) as DatosTecnicosBorrador['prefiltro_constructivo'];
           this.inicial.set(t);this.tecnicos.set(structuredClone(t));
         }
       }
@@ -227,7 +228,7 @@ export class HistoricosPage {
     if(p.id_perforador&&!this.perforadores().some(x=>x.id_usuario===p.id_perforador)){const persona=await this.candidatos.obtenerPorId('perforador',p.id_perforador,true);if(persona)this.perforadores.update(xs=>[persona,...xs]);}
     this.pozo.set({...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)});
     if(p.sitio)this.sitio.set({...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''});
-    const technical=tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo);this.tecnicosGuardados=structuredClone(technical);this.inicial.set(technical);this.tecnicos.set(structuredClone(technical));
+    const technical=tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo,p.prefiltro_constructivo);this.tecnicosGuardados=structuredClone(technical);this.inicial.set(technical);this.tecnicos.set(structuredClone(technical));
     this.baseFormulario = this.huellaActual();
   }
   async editar(data:{pozo:NuevoPozo;foto:File|null;fotoAccion:AccionFotoEdicion}){
@@ -268,7 +269,7 @@ export class HistoricosPage {
     const canonico: EstadoPerforacion = {
       pozo: {...p,id_perforador:p.id_perforador??0,id_sitio:p.id_sitio??0,fecha_inicio:normalizarFechaCalendarioInput(p.fecha_inicio),fecha_fin:normalizarFechaCalendarioInput(p.fecha_fin)},
       sitio: p.sitio ? {...p.sitio,latitud:p.sitio.latitud??'',longitud:p.sitio.longitud??''} : {departamento:'',localidad:'',latitud:'',longitud:''},
-      tecnicos: tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo),
+      tecnicos: tecnicosPersistidos(l,d,f,a,p.sello_sanitario_constructivo,p.prefiltro_constructivo),
     };
     const actual = reconciliarPerforacion(pendiente.enviado, {pozo:this.pozo(),sitio:this.sitio(),tecnicos:this.tecnicos()}, canonico);
     this.tecnicosGuardados = structuredClone(canonico.tecnicos);

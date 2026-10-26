@@ -1,3 +1,4 @@
+import { guardarPrefiltro, validarPrefiltro } from './prefiltro-service.ts';
 import { errorMaterialDiametro, hayFiltroSinTuberia } from "./compatibilidad-entubamiento.ts";
 import { normalizarLitologiaProvisional, provisionalParaIntervaloNuevo, exigirVinculacionDesdePendientes, exigirTextoLitologico, exigirLitologiaNoConstructiva } from './litologia-provisional.ts';
 import { guardarSelloSanitario, validarSelloSanitario } from './sello-sanitario-service.ts';
@@ -18,6 +19,7 @@ import { normalizarCoordenadasTexto } from "../utils/coordenadas.ts";
 import { DATOS_TECNICOS_ESTANDAR, datosTecnicosParaCreacion } from "../constants/datos-tecnicos-estandar.ts";
 
 export interface PozoCompletoResultado {
+  prefiltro_constructivo: import('../models/schemas.ts').IntervaloPrefiltro[];
   sello_sanitario_constructivo: import('../models/schemas.ts').SelloSanitarioConstructivo | null;
   pozo: Pozo;
   sitio: import("../models/schemas.ts").Sitio;
@@ -44,6 +46,7 @@ export function validarPozoCompleto(data: DatosCompletosPozo): string[] {
   normalizarPropiedad(data.pozo);
   const errores = validarDatosTecnicosPozo({
     profundidad_final_m: data.pozo.profundidad_final_m,
+    prefiltro_constructivo: data.prefiltro_constructivo,
     intervalos_litologicos: data.intervalos_litologicos,
     intervalos_diametro: data.intervalos_diametro,
     intervalos_filtro: data.intervalos_filtro,
@@ -71,6 +74,8 @@ export function validarDatosTecnicosPozo(data: Omit<PerfilLitologicoVistaPreviaB
     try { exigirTextoLitologico(i.material); normalizarLitologiaProvisional(i); } catch (e) { errores.push((e as Error).message); }
   }
   const profundidad = data.profundidad_final_m;
+  try { validarPrefiltro(data.prefiltro_constructivo, profundidad); }
+  catch (error) { errores.push((error as Error).message); }
   validarIntervalos(data.intervalos_litologicos, "litológico", profundidad, errores);
   validarIntervalos(data.intervalos_diametro, "de diámetro", profundidad, errores);
   validarIntervalos(data.intervalos_filtro ?? [], "de filtro", profundidad, errores);
@@ -152,6 +157,7 @@ export async function crearPozoCompleto(
     const pozo = await insertarPozo(client, creadoPor, data, sitio.id_sitio);
     const idPozo = pozo.id_pozo;
     const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo ?? null, pozo.profundidad_final_m);
+    const prefiltro = await guardarPrefiltro(client, idPozo, data.prefiltro_constructivo ?? null, pozo.profundidad_final_m);
     const litologia = [] as PozoCompletoResultado["intervalos_litologicos"];
     const diametros = [] as PozoCompletoResultado["intervalos_diametro"];
     const aportes = [] as PozoCompletoResultado["niveles_aporte"];
@@ -195,7 +201,7 @@ export async function crearPozoCompleto(
       pozo.foto_url = `/usuarios/${data.pozo.id_propietario ?? data.pozo.id_perforador}/pozos/${idPozo}/foto`;
     }
 
-    const resultado = { pozo, sitio, sello_sanitario_constructivo: sello, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
+    const resultado = { pozo, sitio, sello_sanitario_constructivo: sello, prefiltro_constructivo: prefiltro, intervalos_litologicos: litologia, intervalos_diametro: diametros, intervalos_filtro: filtros, niveles_aporte: aportes };
     if (claveOffline) await client.query("INSERT INTO creacion_offline(actor,clave,huella,resultado,epoca) VALUES($1,$2,$3,$4,$5)", [creadoPor, claveOffline, huellaOffline(data), JSON.stringify(resultado), epoca]);
     commitIntentado = true;
     await client.query("COMMIT");
@@ -261,6 +267,7 @@ export async function actualizarPozoCompleto(
       throw new err.T05DatosIncorrectos("La vinculación del propietario requiere la operación administrativa específica. Recargue si cambió.");
 
     const sello = await guardarSelloSanitario(client, idPozo, data.sello_sanitario_constructivo, data.pozo.profundidad_final_m);
+    const prefiltro = await guardarPrefiltro(client, idPozo, data.prefiltro_constructivo, data.pozo.profundidad_final_m);
     const hijos = await reemplazarHijosPozo(client, idPozo, data);
     const p = data.pozo;
     const { rows } = await client.query(
@@ -299,7 +306,7 @@ export async function actualizarPozoCompleto(
     }
     const sitio = await obtenerSitioTransaccional(client, Number(bloqueado[0].id_sitio));
     await client.query("COMMIT");
-    resultado = { pozo, sitio, sello_sanitario_constructivo: sello, ...hijos };
+    resultado = { pozo, sitio, sello_sanitario_constructivo: sello, prefiltro_constructivo: prefiltro, ...hijos };
   } catch (error) {
     const compensacion = await compensarFalloTransaccionalFotos({
       idPozo,

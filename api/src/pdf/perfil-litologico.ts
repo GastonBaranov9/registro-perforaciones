@@ -1,3 +1,4 @@
+import { validarPrefiltro } from '../services/prefiltro-service.ts';
 import { rgb, type PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
 import { closePath, clip, endPath, lineTo, moveTo, popGraphicsState, pushGraphicsState } from "pdf-lib";
 import { PATRONES_LITOLOGICOS, especificacionPatron, type PatronCatalogo } from "./litologia-patrones.ts";
@@ -26,6 +27,11 @@ export interface TramoConstructivo extends IntervaloConstructivo { tipo:"tuberia
 export interface ContornoTuberia extends RangoPerfilLitologico {
   x_inicio: number; x_fin: number; x_interior_inicio: number; x_interior_fin: number;
 }
+// Fracciones del ancho de columna; convenciones gráficas, nunca dimensiones físicas.
+export const ESPESOR_GRAFICO_SELLO = 0.13;
+export const ESPESOR_GRAFICO_PREFILTRO = 0.13;
+export const ESTILO_PREFILTRO: EstiloLitologico = { color: '#e8d8ad', gris: .82, patron: 'gravilla-prefiltro' };
+
 type BandasSello = Array<{ x_inicio: number; x_fin: number }>;
 
 export interface SelloSanitarioRepresentado {
@@ -36,7 +42,7 @@ export interface SelloSanitarioRepresentado {
   geometria: { bandas: BandasSello; segmentos: Array<RangoPerfilLitologico & { bandas: BandasSello }> };
 }
 
-export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte" | "sello_sanitario" | "perforacion_abierta";
+export type TipoEtiquetaPerfil = "litologia" | "tuberia" | "filtro" | "aporte" | "sello_sanitario" | "perforacion_abierta" | "prefiltro";
 export interface EtiquetaPerfil {
   clave: string;
   tipo: TipoEtiquetaPerfil;
@@ -59,7 +65,7 @@ export interface AporteRepresentado extends AportePerfilLitologico {
 }
 
 export type PatronCatalogoLitologia = PatronCatalogo;
-export type PatronLitologico = PatronCatalogoLitologia | "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
+export type PatronLitologico = "gravilla-prefiltro" | PatronCatalogoLitologia | "diagonal" | "diagonal-inversa" | "cruz" | "puntos" | "horizontal" | "vertical";
 
 export interface EstiloLitologico {
   color: string;
@@ -95,6 +101,7 @@ export interface PerfilLitologico {
   contornos_tuberia: ContornoTuberia[];
   sobresaliente: { x_inicio:number; x_fin:number; alto_logico:number; material_tuberia:MaterialTuberia|null } | null;
   sello_sanitario_constructivo: SelloSanitarioRepresentado | null;
+  prefiltro_constructivo: SelloSanitarioRepresentado[];
   etiquetas: EtiquetaPerfil[];
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   geometria: GeometriaCanonicaPerfil;
@@ -236,6 +243,7 @@ function crearEtiquetas(
   aportes: readonly AporteRepresentado[],
   sello: SelloSanitarioRepresentado | null,
   abiertas: readonly TramoConstructivo[] = [],
+  prefiltros: readonly SelloSanitarioRepresentado[] = [],
 ): EtiquetaPerfil[] {
   const resultado: EtiquetaPerfil[] = [];
   for (const rango of rangos) {
@@ -265,6 +273,15 @@ function crearEtiquetas(
     if (sello && sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
       const anclaje = (Math.max(sello.desde_m, rango.desde_m) + Math.min(sello.hasta_m, rango.hasta_m)) / 2;
       candidatas.push({ clave:"sello-sanitario",tipo:"sello_sanitario",texto:sello.texto,profundidad_anclaje_m:anclaje,rango_desde_m:rango.desde_m,carril:1,x_anclaje_normalizado:sello.geometria.bandas[1].x_fin,preferida:(anclaje-rango.desde_m)/amplitud });
+    }
+    for (const prefiltro of prefiltros) {
+      // Una etiqueta por intervalo, en la página de su punto medio; no por segmento geométrico.
+      const anclaje = (prefiltro.desde_m + prefiltro.hasta_m) / 2;
+      if (anclaje < rango.desde_m || anclaje >= rango.hasta_m) continue;
+      const segmento = prefiltro.geometria.segmentos.find(s => s.desde_m <= anclaje && s.hasta_m > anclaje)!;
+      candidatas.push({ clave: 'prefiltro-' + prefiltro.desde_m, tipo: 'prefiltro', texto: prefiltro.texto,
+        profundidad_anclaje_m: anclaje, rango_desde_m: rango.desde_m, carril: 1,
+        x_anclaje_normalizado: segmento.bandas[1].x_fin, preferida: (anclaje-rango.desde_m)/amplitud });
     }
     resultado.push(...resolverColisionesEtiquetas(candidatas).map(({ preferida: _preferida, posicion, ...etiqueta }) => {
       const geometria = GEOMETRIA_CANONICA_PERFIL;
@@ -296,9 +313,11 @@ export function crearPerfilLitologico(
   tuberias: readonly IntervaloConstructivo[] = [],
   filtros: readonly IntervaloConstructivo[] = [],
   selloSanitario: { desde_m: number; hasta_m: number } | null = null,
+  prefiltro: Array<{ desde_m: number; hasta_m: number }> | null = null,
 ): PerfilLitologico | null {
   const errores: string[] = [];
   validarSelloSanitario(selloSanitario, profundidadFinal_m);
+  validarPrefiltro(prefiltro, profundidadFinal_m);
   const ordenados = [...intervalos].sort((a, b) => a.desde_m - b.desde_m || a.hasta_m - b.hasta_m);
   const profundidadDeclarada = profundidadFinal_m != null && Number.isFinite(profundidadFinal_m) && profundidadFinal_m > 0 ? profundidadFinal_m : 0;
   if (ordenados.length > 0 && profundidadDeclarada === 0) errores.push("La profundidad oficial del pozo es obligatoria para representar la litología.");
@@ -354,7 +373,7 @@ export function crearPerfilLitologico(
   const construcciones = [...tuberiasConstruidas, ...filtrosConstruidos];
   // Los límites verticales son siempre profundidades registradas. El ancho del
   // hormigón y el sobresaliente son convenciones gráficas, no medidas físicas.
-  const segmentos = (desde: number, hasta: number, items: readonly TramoConstructivo[]) => {
+  const segmentos = (desde: number, hasta: number, items: readonly RangoPerfilLitologico[]) => {
     const limites = [...new Set([desde, hasta, ...items.flatMap(t => [t.desde_m,t.hasta_m]).filter(m => m > desde && m < hasta)])].sort((a,b) => a-b);
     return limites.slice(0,-1).map((m,i) => ({desde_m:m,hasta_m:limites[i+1]}));
   };
@@ -364,9 +383,25 @@ export function crearPerfilLitologico(
       ? { x_inicio:Math.min(...activos.map(t=>t.geometria.x_inicio)), x_fin:Math.max(...activos.map(t=>t.geometria.x_fin)) }
       : { x_inicio:.36, x_fin:.64 };
   };
+  const bandasLaterales = (borde: {x_inicio:number;x_fin:number}, espesor: number, separacion = 0) => [
+    { x_inicio: borde.x_inicio-separacion-espesor, x_fin: borde.x_inicio-separacion },
+    { x_inicio: borde.x_fin+separacion, x_fin: borde.x_fin+separacion+espesor },
+  ];
+  const prefiltros: SelloSanitarioRepresentado[] = [...(prefiltro ?? [])].sort((a,b) => a.desde_m-b.desde_m).map(tramo => {
+    const limites = [...construcciones, ...abiertas, ...(selloSanitario ? [selloSanitario] : [])];
+    const tramos = segmentos(tramo.desde_m, tramo.hasta_m, limites).map(rango => {
+      const coincide = selloSanitario && selloSanitario.desde_m < rango.hasta_m && selloSanitario.hasta_m > rango.desde_m;
+      return { ...rango, bandas: bandasLaterales(bordes(rango, [...construcciones,...abiertas]), ESPESOR_GRAFICO_PREFILTRO, coincide ? ESPESOR_GRAFICO_SELLO : 0) };
+    });
+    return { ...tramo, texto: 'Prefiltro de gravilla · ' + String(tramo.desde_m) + '-' + String(tramo.hasta_m) + ' m',
+      estilo: ESTILO_PREFILTRO, geometria: { bandas: tramos[0].bandas, segmentos: tramos } };
+  });
+  if (prefiltros.length && !filtros.length) advertencias.push('Prefiltro declarado sin filtros ranurados: verificá que corresponda a la construcción realizada.');
+  if (selloSanitario && prefiltros.some(p => p.desde_m < selloSanitario.hasta_m && p.hasta_m > selloSanitario.desde_m))
+    advertencias.push('Sello y prefiltro coinciden en profundidad: revisá la construcción declarada. Las bandas separadas son esquemáticas; no indican posiciones radiales medidas.');
   const segmentosSello = selloSanitario ? segmentos(selloSanitario.desde_m, selloSanitario.hasta_m, [...construcciones,...abiertas]).map(rango => {
     const borde = bordes(rango, [...construcciones,...abiertas]);
-    return { ...rango, bandas:[{x_inicio:.06,x_fin:borde.x_inicio},{x_inicio:borde.x_fin,x_fin:.94}] };
+    return { ...rango, bandas: bandasLaterales(borde, ESPESOR_GRAFICO_SELLO) };
   }) : [];
   const sello: SelloSanitarioRepresentado | null = selloSanitario ? {
     ...selloSanitario,
@@ -395,7 +430,8 @@ export function crearPerfilLitologico(
     contornos_tuberia: contornos,
     sobresaliente: cañoSuperficie ? { ...cañoSuperficie.geometria, alto_logico:18, material_tuberia:cañoSuperficie.material_tuberia } : null,
     sello_sanitario_constructivo: sello,
-    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos, sello, abiertas),
+    prefiltro_constructivo: prefiltros,
+    etiquetas: crearEtiquetas(rangos, tramos, tuberiasConstruidas, filtrosConstruidos, aportesValidos, sello, abiertas, prefiltros),
     seccion_pozo: { tuberia_exterior_inicio: 0.36, tuberia_exterior_fin: 0.64, tuberia_interior_inicio: 0.43, tuberia_interior_fin: 0.57 },
     geometria: GEOMETRIA_CANONICA_PERFIL,
     rangos,
@@ -431,6 +467,12 @@ function dibujarPatronLegacy(page: PDFPage, patron: PatronLitologico, x: number,
 }
 
 function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: number, ancho: number, alto: number) {
+  if (patron === 'gravilla-prefiltro') {
+    // Granos huecos, distintos de las texturas geológicas y del hormigón.
+    for (let py=y+2; py<y+alto-1; py+=6) for (let px=x+2; px<x+ancho-1; px+=6)
+      page.drawEllipse({ x:px, y:py, xScale:1.15, yScale:.8, borderWidth:.45, borderColor:rgb(.28,.24,.16) });
+    return;
+  }
   if (!(PATRONES_LITOLOGICOS as readonly string[]).includes(patron)) { dibujarPatronLegacy(page, patron, x, y, ancho, alto); return; }
   const spec = especificacionPatron(patron as PatronCatalogo);
   const color = rgb(0.16, 0.16, 0.16);
@@ -468,7 +510,11 @@ function dibujarPatron(page: PDFPage, patron: PatronLitologico, x: number, y: nu
 }
 
 export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologico, font: PDFFont, bold: PDFFont): PDFPage[] {
-  const entradasLeyenda = obtenerEntradasLeyendaLitologica(perfil);
+  const entradasLeyenda = [
+    ...(perfil.sello_sanitario_constructivo ? [{clave:'sello',nombre:'Sello sanitario',estilo:perfil.sello_sanitario_constructivo.estilo}] : []),
+    ...((perfil.prefiltro_constructivo ?? []).length ? [{clave:'prefiltro',nombre:'Prefiltro',estilo:ESTILO_PREFILTRO}] : []),
+    ...obtenerEntradasLeyendaLitologica(perfil),
+  ];
   const paginasPerfil = perfil.rangos.map((rango, indice) => {
     const page = doc.addPage([595.28, 841.89]);
     const geometria = perfil.geometria;
@@ -497,7 +543,7 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       dibujarPatron(page, tramo.estilo.patron, xColumna, y, anchoColumna, h);
     }
 
-    const sello = perfil.sello_sanitario_constructivo;
+    for (const sello of [perfil.sello_sanitario_constructivo, ...(perfil.prefiltro_constructivo ?? [])]) {
     if (sello && sello.desde_m < rango.hasta_m && sello.hasta_m > rango.desde_m) {
       const [rojo, verde, azul] = hexARgb(sello.estilo.color);
       for (const segmento of sello.geometria.segmentos) {
@@ -510,8 +556,7 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
         dibujarPatron(page, sello.estilo.patron, inicioX, baseY, ancho, altura);
         }
       }
-      page.drawText("Elemento constructivo", { x: 45, y: 74, size: 7, font: bold });
-      dibujarEntradaLeyenda(page, { clave: "sello", nombre: sello.texto, estilo: sello.estilo }, 0, 0, font, 45, 60);
+    }
     }
 
     const primerTick = Math.ceil(rango.desde_m / perfil.paso_escala_m) * perfil.paso_escala_m;
@@ -583,21 +628,35 @@ export function dibujarPerfilLitologico(doc: PDFDocument, perfil: PerfilLitologi
       page.drawText(textoSeguro(etiqueta.texto), { x:xTexto, y:yTexto-2.5, size:6.2, font:etiqueta.tipo === "aporte" ? bold : font, color:etiqueta.tipo === "aporte" ? rgb(0.01,0.2,0.58) : rgb(0.08,0.08,0.08) });
     }
     if (indice === 0) {
-      page.drawText("Litologías presentes", { x: 45, y: 42, size: 6.2, font: bold, color: rgb(.12, .12, .12) });
+      page.drawText("Materiales presentes", { x: 45, y: 42, size: 6.2, font: bold, color: rgb(.12, .12, .12) });
       entradasLeyenda.slice(0, 6).forEach((entrada, posicion) => dibujarEntradaLeyenda(page, entrada, posicion % 3, Math.floor(posicion / 3), font));
     }
-    page.drawText("PVC celeste | Acero gris | Filtro ranurado | Discontinuo: sin cañería | Azul: aporte | Sello/sobresaliente esquemáticos", { x: 45, y: 8, size: 6.5, font });
+    page.drawText("PVC celeste | Acero gris | Filtro ranurado | Discontinuo: sin cañería | Azul: aporte | Envolventes y sobresaliente esquemáticos", { x: 45, y: 8, size: 6.5, font });
     return page;
   });
   const paginasLeyenda: PDFPage[] = [];
   for (let inicio = 6; inicio < entradasLeyenda.length; inicio += 24) {
     const page = doc.addPage([595.28, 841.89]);
-    page.drawText("Leyenda litológica (continuación)", { x: 45, y: 790, size: 16, font: bold, color: rgb(0, .2, .5) });
+    page.drawText("Leyenda de materiales (continuación)", { x: 45, y: 790, size: 16, font: bold, color: rgb(0, .2, .5) });
     entradasLeyenda.slice(inicio, inicio + 24).forEach((entrada, posicion) => {
       const columna = posicion % 3; const fila = Math.floor(posicion / 3);
       const x = 48 + columna * 175; const y = 755 - fila * 28;
       dibujarEntradaLeyenda(page, entrada, columna, fila, font, x, y);
     });
+    paginasLeyenda.push(page);
+  }
+  if (perfil.advertencias.length) {
+    const page = doc.addPage([595.28,841.89]);
+    page.drawText('Observaciones del perfil constructivo', { x:45, y:790, size:16, font:bold });
+    let y = 760;
+    for (const aviso of perfil.advertencias) {
+      const palabras = textoSeguro(aviso).split(' '); let linea = '';
+      for (const palabra of palabras) {
+        if (font.widthOfTextAtSize(linea + palabra, 10) > 490) { page.drawText(linea,{x:45,y,size:10,font}); y-=15; linea=''; }
+        linea += palabra + ' ';
+      }
+      page.drawText(linea,{x:45,y,size:10,font}); y-=30;
+    }
     paginasLeyenda.push(page);
   }
   return [...paginasPerfil, ...paginasLeyenda];

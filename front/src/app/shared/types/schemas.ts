@@ -50,6 +50,7 @@ export type UsuarioFormulario = {
 
 export type Pozo = {
   sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
+  prefiltro_constructivo?: IntervaloPrefiltro[] | null;
   origen?: 'normal' | 'historico';
   numero_perforacion?: number | null;
   id_pozo: number;
@@ -224,8 +225,11 @@ export type ElementoBorrador<T> = { idLocal: string; dato: T; ranuraOriginal?: R
 
 export type SelloSanitarioConstructivo = { desde_m: number; hasta_m: number };
 
+export type IntervaloPrefiltro = { desde_m:number; hasta_m:number };
+
 export type DatosTecnicosBorrador = {
   sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
+  prefiltro_constructivo?: IntervaloPrefiltro[] | null;
   intervalosLitologicos: Array<ElementoBorrador<IntervaloLitologicoBody>>;
   intervalosDiametro: Array<ElementoBorrador<IntervaloDiametroPerforacionBody>>;
   intervalosFiltro: Array<ElementoBorrador<IntervaloFiltroBody>>;
@@ -234,6 +238,7 @@ export type DatosTecnicosBorrador = {
 
 export type PozoCompletoBody = {
   sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
+  prefiltro_constructivo?: IntervaloPrefiltro[] | null;
   pozo: NuevoPozoCrear;
   sitio_nuevo: SitioBody;
   intervalos_litologicos: IntervaloLitologicoBody[];
@@ -262,6 +267,7 @@ export type PozoCompletoUpdateBody = Omit<PozoCompletoBody, 'foto' | 'pozo' | 's
 
 export type PozoCompletoResultado = {
   sello_sanitario_constructivo?: SelloSanitarioConstructivo | null;
+  prefiltro_constructivo?: IntervaloPrefiltro[] | null;
   pozo: Pozo;
   sitio: Sitio;
   intervalos_litologicos: IntervaloLitologico[];
@@ -287,7 +293,7 @@ export type PropietarioOperativo = {
 
 import type { PatronCatalogo } from '../canonical/litologia-patrones';
 
-export type PatronLitologico = PatronCatalogo
+export type PatronLitologico = "gravilla-prefiltro" | PatronCatalogo
   | 'diagonal'
   | 'diagonal-inversa'
   | 'cruz'
@@ -316,7 +322,8 @@ export type PerfilLitologico = {
   contornos_tuberia?: Array<{desde_m:number;hasta_m:number;x_inicio:number;x_fin:number;x_interior_inicio:number;x_interior_fin:number}>;
   sobresaliente?: {x_inicio:number;x_fin:number;alto_logico:number;material_tuberia:MaterialTuberia|null} | null;
   sello_sanitario_constructivo?: SelloSanitarioConstructivo & { texto: string; estilo: { color: string; gris: number; patron: PatronLitologico }; geometria: { bandas: Array<{ x_inicio: number; x_fin: number }>; segmentos?: Array<{desde_m:number;hasta_m:number;bandas:Array<{x_inicio:number;x_fin:number}>}> } } | null;
-  etiquetas: Array<{clave:string;tipo:'litologia'|'tuberia'|'filtro'|'aporte'|'sello_sanitario'|'perforacion_abierta';texto:string;profundidad_anclaje_m:number;rango_desde_m:number;posicion_y_normalizada:number;carril:0|1|2|3;x_anclaje_normalizado:number;x_texto_normalizado:number;conector:{puntos:Array<{x_normalizada:number;y_normalizada:number}>};caja_texto:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}}>;
+  prefiltro_constructivo?: NonNullable<PerfilLitologico['sello_sanitario_constructivo']>[];
+  etiquetas: Array<{clave:string;tipo:'litologia'|'tuberia'|'filtro'|'aporte'|'sello_sanitario'|'prefiltro'|'perforacion_abierta';texto:string;profundidad_anclaje_m:number;rango_desde_m:number;posicion_y_normalizada:number;carril:0|1|2|3;x_anclaje_normalizado:number;x_texto_normalizado:number;conector:{puntos:Array<{x_normalizada:number;y_normalizada:number}>};caja_texto:{x_normalizada:number;y_normalizada:number;ancho_normalizado:number;alto_normalizado:number}}>;
   seccion_pozo: { tuberia_exterior_inicio: 0.36; tuberia_exterior_fin: 0.64; tuberia_interior_inicio: 0.43; tuberia_interior_fin: 0.57 };
   geometria: { ancho_logico:760;alto_logico:820;columna:{x:90;y:70;ancho:180;alto:700};x_texto_escala:12;carriles_etiqueta_x:readonly [310,390,470,550];separacion_vertical_normalizada:number;conector:{salida:12;llegada:8};alto_texto:16 };
   rangos: Array<{ desde_m: number; hasta_m: number }>;

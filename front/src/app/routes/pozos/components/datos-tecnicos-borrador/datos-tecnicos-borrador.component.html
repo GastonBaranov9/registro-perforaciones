@@ -17,6 +17,20 @@
     }
   </div>
 
+  <div class="seccion" aria-label="Prefiltro">
+    <h3>Prefiltro</h3>
+    <p>Registrá los intervalos donde se colocó gravilla de prefiltro alrededor de la perforación. Si no se utilizó, dejá esta sección vacía.</p>
+    @for (tramo of datos().prefiltro_constructivo ?? []; track tramo; let i = $index) {
+      <div class="fila" #filaDinamica [attr.data-capa]="'prefiltro-' + i">
+        <label>Desde (m)<input [attr.aria-label]="'Prefiltro ' + (i + 1) + ' desde (m)'" [disabled]="guardando()" type="number" min="0" step="any" required [(ngModel)]="tramo.desde_m" (ngModelChange)="notificarEdicion()" /></label>
+        <label>Hasta (m)<input [attr.aria-label]="'Prefiltro ' + (i + 1) + ' hasta (m)'" [disabled]="guardando()" type="number" min="0" step="any" required [(ngModel)]="tramo.hasta_m" (ngModelChange)="notificarEdicion()" /></label>
+        <button class="destructive" type="button" (click)="quitarPrefiltro(i)" [disabled]="guardando()">Eliminar intervalo de prefiltro</button>
+      </div>
+    } @empty { <p>Sin prefiltro registrado.</p> }
+    <button type="button" (click)="agregarPrefiltro()" [disabled]="guardando()">Agregar prefiltro</button>
+    @for (aviso of advertenciasPrefiltro(); track aviso) { <p role="status">{{ aviso }}</p> }
+  </div>
+
   <div class="seccion">
     <h3>Intervalos litológicos</h3>
     @for (item of datos().intervalosLitologicos; track item.idLocal) {

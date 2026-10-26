@@ -114,7 +114,7 @@ export async function crearPDFConDiagnostico(reporte: ReportePozo, pozoId: numbe
     flujo.titulo("Perfil litológico", 45);
     flujo.texto("No se puede representar el perfil litológico por falta de profundidad final. Se conservan los datos registrados en las tablas.");
   } else {
-    const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[],reporte.sello_sanitario_constructivo);
+    const perfil=crearPerfilLitologico(reporte.litologia,reporte.profundidad_final_m,reporte.niveles_aporte,reporte.diametros,reporte.filtros??[],reporte.sello_sanitario_constructivo,reporte.prefiltro_constructivo);
     if(perfil) dibujarPerfilLitologico(doc,perfil,font,bold);
   }
   return { documento:doc, diagnostico:flujo.diagnostico };
@@ -153,7 +153,8 @@ function dibujarPaginaTecnica(f:FlujoPDF,r:ReportePozo) {
     ["Cementación",valorTexto(r.cementacion)],["Desarrollo",valorTexto(r.desarrollo)],
     ...(r.sello_sanitario_constructivo ? [["Sello sanitario",`Desde ${r.sello_sanitario_constructivo.desde_m} m hasta ${r.sello_sanitario_constructivo.hasta_m} m`] as [string,string]]
       : r.sello_sanitario === true ? [["Sello sanitario","Registrado en formato legado, sin profundidad especificada"] as [string,string]] : []),
-    ["Prefiltro",valorTexto(r.pre_filtro)],
+    ["Prefiltro (texto legado)",valorTexto(r.pre_filtro)],
+    ...(r.prefiltro_constructivo ?? []).map(p => ["Prefiltro de gravilla", p.desde_m + "-" + p.hasta_m + " m"] as [string,string]),
   ];
   const tablas: Array<{titulo:string;columnas:ColumnaTecnica[];filas:Record<string,unknown>[]}> = [
     { titulo:"Intervalos litológicos", filas:r.litologia, columnas:[

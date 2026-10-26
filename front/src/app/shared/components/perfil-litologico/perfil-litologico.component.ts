@@ -91,6 +91,11 @@ export class PerfilLitologicoComponent {
   abiertosEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
     return (perfil.perforaciones_abiertas ?? []).filter(t => t.desde_m < rango.hasta_m && t.hasta_m > rango.desde_m);
   }
+  bandasPrefiltroEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
+    return (perfil.prefiltro_constructivo ?? []).flatMap(p => (p.geometria.segmentos ?? [{...p,bandas:p.geometria.bandas}])
+      .filter(s => s.desde_m < rango.hasta_m && s.hasta_m > rango.desde_m)
+      .flatMap(s => s.bandas.map(b => ({...b,desde_m:s.desde_m,hasta_m:s.hasta_m,estilo:p.estilo}))));
+  }
   bandasSelloEnRango(perfil: PerfilLitologico, rango: PerfilLitologico['rangos'][number]) {
     const sello = perfil.sello_sanitario_constructivo;
     if (!sello) return [];
