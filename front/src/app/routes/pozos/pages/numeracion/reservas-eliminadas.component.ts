@@ -12,7 +12,7 @@ import { AdministracionEliminacionesService, VistaEliminacion } from '../../../.
       <p>Número {{v.numero}} · ID original {{v.id_original ?? 'desconocido'}} · Asignado {{v.asignado_en ?? 'sin reserva'}}.</p>
       <p>{{v.existe?'La perforación existe. No se puede liberar su reserva.':v.reservada?'La perforación ya no existe; conserva reserva.':'No existe una reserva comprobable.'}}</p>
       @for(b of v.bloqueos; track b) {<p role="alert">{{b}}</p>}
-      @if(!v.existe && v.reservada && v.numero! <= 3281) {
+      @if(!v.existe && v.reservada && v.origen === 'historico') {
         <p>Reingresar una perforación histórica es una operación distinta de liberar su número: conserva el antecedente y exige revisar sus referencias.</p>
         <ion-button routerLink="/pozos-historicos" [queryParams]="{reingresar:v.numero}" [disabled]="ocupado()">Revisar reingreso histórico</ion-button>
       }

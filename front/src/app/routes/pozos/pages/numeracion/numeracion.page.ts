@@ -7,12 +7,14 @@ import { EstadoNumeracion, NumeracionPerforacionService, numeroPerforacionValido
 import { ReingresoHistoricoService, VistaReingreso } from '../../../../shared/services/reingreso-historico.service';
 import { ReservasEliminadasComponent } from './reservas-eliminadas.component';
 import { RectificacionNumeracionComponent } from './rectificacion-numeracion.component';
+import { PoliticaNumeracionComponent } from './politica-numeracion.component';
 
 @Component({
- imports:[FormsModule,DatePipe,IonContent,IonButton,RouterLink,ReservasEliminadasComponent,RectificacionNumeracionComponent],
+ imports:[FormsModule,DatePipe,IonContent,IonButton,RouterLink,ReservasEliminadasComponent,RectificacionNumeracionComponent,PoliticaNumeracionComponent],
  templateUrl:'./numeracion.page.html',styleUrl:'./numeracion.page.scss',
 })
 export class NumeracionPage {
+ @ViewChild(PoliticaNumeracionComponent) politica?:PoliticaNumeracionComponent;
  @ViewChild(ReservasEliminadasComponent) rectificacion?:ReservasEliminadasComponent;
  @ViewChild(RectificacionNumeracionComponent) excepcional?:RectificacionNumeracionComponent;
  private servicio=inject(NumeracionPerforacionService);private reingresos=inject(ReingresoHistoricoService);
@@ -21,16 +23,16 @@ export class NumeracionPage {
  revision=signal<RevisionContador|null>(null);eventos=signal<EventoNumeracion[]>([]);masHistorial=signal(false);
  proximo:number|null=null;motivo='';confirmacion='';declaracion=false;numeroHistorico:number|null=null;historico=signal<VistaReingreso|null>(null);
  private turno=0;
- trabajando(){return this.ocupado()||!!this.rectificacion?.ocupado()||!!this.excepcional?.ocupado();}
+ trabajando(){return this.ocupado()||!!this.rectificacion?.ocupado()||!!this.excepcional?.ocupado()||!!this.politica?.ocupado();}
  ionViewWillEnter(){return this.cargar();}
- ionViewWillLeave(){this.turno++;this.cancelar();this.rectificacion?.cancelar();this.excepcional?.cancelar();}
+ ionViewWillLeave(){this.politica?.cancelar();this.turno++;this.cancelar();this.rectificacion?.cancelar();this.excepcional?.cancelar();}
  limpiar(){this.mensaje.set('');this.error.set('');}
  cambiar(){this.turno++;this.revision.set(null);this.confirmacion='';this.declaracion=false;this.limpiar();}
  cancelar(){this.cambiar();}
  async seleccionar(id:string){if(this.trabajando())return;this.cancelar();this.rectificacion?.cancelar();this.excepcional?.cancelar();this.seccion.set(id);this.historico.set(null);if(id==='historial')await this.cargarHistorial();}
  impedimento(){
   if(!this.estado())return 'Actualizá la información para consultar el contador.';
-  if(!numeroPerforacionValido(this.proximo)||this.proximo<3282)return 'Ingresá un número entero entre 3282 y 2147483647. Los anteriores se gestionan como históricos.';
+  if(!numeroPerforacionValido(this.proximo))return 'Ingresá un número entero entre 1 y 2147483647.';
   if(this.proximo===this.estado()!.proximo)return 'No realizaste ningún cambio.';
   if(this.estado()!.proximo!==null&&this.proximo<this.estado()!.proximo!&&!this.estado()!.puede_retroceder)return 'Para retroceder necesitás autorización especial de numeración.';
   if(this.motivo.trim().length<10)return 'Ingresá un motivo de al menos 10 caracteres.';
@@ -38,11 +40,11 @@ export class NumeracionPage {
   return '';
  }
  valido(){return !this.impedimento();}
- async cargar(){if(this.ocupado())return;this.cancelar();this.ocupado.set(true);const t=++this.turno;try{const e=await this.servicio.obtener();if(t===this.turno){this.estado.set(e);this.proximo=e.proximo;}}catch(e){if(t===this.turno)this.error.set((e as Error).message);}finally{this.ocupado.set(false);}}
- async revisar(){if(this.ocupado()||!this.valido())return;this.cambiar();const t=++this.turno;this.ocupado.set(true);try{const r=await this.servicio.revisar(this.proximo!,this.motivo.trim());if(t===this.turno)this.revision.set(r);}catch(e){if(t===this.turno)this.error.set((e as Error).message);}finally{this.ocupado.set(false);}}
- puedeGuardar(){const r=this.revision();return !this.ocupado()&&!!r?.token&&r.nuevo===this.proximo&&r.motivo===this.motivo.trim()&&this.declaracion&&this.confirmacion===`CONFIRMAR ${r.nuevo}`;}
+ async cargar(){if(this.trabajando())return;this.cancelar();this.ocupado.set(true);const t=++this.turno;try{const e=await this.servicio.obtener();if(t===this.turno){this.estado.set(e);this.proximo=e.proximo;}}catch(e){if(t===this.turno)this.error.set((e as Error).message);}finally{this.ocupado.set(false);}}
+ async revisar(){if(this.trabajando()||!this.valido())return;this.cambiar();const t=++this.turno;this.ocupado.set(true);try{const r=await this.servicio.revisar(this.proximo!,this.motivo.trim());if(t===this.turno)this.revision.set(r);}catch(e){if(t===this.turno)this.error.set((e as Error).message);}finally{this.ocupado.set(false);}}
+ puedeGuardar(){const r=this.revision();return !this.trabajando()&&!!r?.token&&r.nuevo===this.proximo&&r.motivo===this.motivo.trim()&&this.declaracion&&this.confirmacion===`CONFIRMAR ${r.nuevo}`;}
  async guardar(){if(!this.puedeGuardar())return;const r=this.revision()!;this.ocupado.set(true);this.limpiar();try{const e=await this.servicio.configurar(r.nuevo,r.anterior,r.motivo,{token:r.token!,confirmacion:this.confirmacion,registros_fisicos_confirmados:this.declaracion});this.estado.set(e);this.proximo=e.proximo;this.motivo='';this.mensaje.set('La configuración se guardó correctamente.');}catch(e){this.error.set((e as Error).message);}finally{this.revision.set(null);this.confirmacion='';this.declaracion=false;this.ocupado.set(false);}}
  async cargarHistorial(mas=false){if(this.ocupado())return;this.limpiar();this.ocupado.set(true);const t=++this.turno;try{const e=await this.servicio.historial(mas?this.eventos().at(-1)?.id:undefined);if(t===this.turno){this.eventos.set(mas?[...this.eventos(),...e]:e);this.masHistorial.set(e.length===30);}}catch(e){if(t===this.turno)this.error.set((e as Error).message);}finally{this.ocupado.set(false);}}
  cambiarHistorico(){this.turno++;this.historico.set(null);this.limpiar();}
- async consultarHistorico(){if(this.ocupado())return;this.cambiarHistorico();if(!numeroPerforacionValido(this.numeroHistorico)||this.numeroHistorico>3281){this.error.set('Ingresá un número histórico entre 1 y 3281.');return;}this.ocupado.set(true);const t=++this.turno;try{const v=await this.reingresos.consultar(this.numeroHistorico);if(t===this.turno)this.historico.set(v);}catch(e){if(t===this.turno)this.error.set((e as {error?:{message?:string};message?:string}).error?.message??(e as Error).message);}finally{this.ocupado.set(false);}}
+ async consultarHistorico(){if(this.ocupado())return;this.cambiarHistorico();if(!numeroPerforacionValido(this.numeroHistorico)){this.error.set('Ingresá un número histórico entre 1 y 2147483647.');return;}this.ocupado.set(true);const t=++this.turno;try{const v=await this.reingresos.consultar(this.numeroHistorico);if(t===this.turno)this.historico.set(v);}catch(e){if(t===this.turno)this.error.set((e as {error?:{message?:string};message?:string}).error?.message??(e as Error).message);}finally{this.ocupado.set(false);}}
 }

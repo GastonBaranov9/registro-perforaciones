@@ -5,7 +5,7 @@ import os from 'node:os';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
-const out=fs.mkdtempSync(path.join(os.tmpdir(),'rsp025-visual-'));
+const out=fs.mkdtempSync(path.join(os.tmpdir(),'rsp026-visual-'));
 const base=path.resolve('dist/front/browser');
 const server=http.createServer((req,res)=>{
  const relative=decodeURIComponent(new URL(req.url,'http://localhost').pathname).replace(/^\//,'');
@@ -33,7 +33,7 @@ try{
   const api=u.pathname.startsWith('/api/')||u.origin!==origin;
   if(!api){await send('Fetch.continueRequest',{requestId});return;}
   if(['PUT','DELETE','PATCH'].includes(request.method))writes++;
-  let body=null;if(p==='/login')body=user;else if(p==='/pozos/numeracion')body={proximo:32823,minimo:3282,agotado:false,puede_retroceder:true};else if(p==='/pozos/numeracion/revision')body=revision;else if(p==='/pozos/numeracion/historial')body=[];
+  let body=null;if(p==='/login')body=user;else if(p==='/pozos/numeracion')body={proximo:32823,minimo:1,agotado:false,puede_retroceder:true};else if(p==='/pozos/numeracion/revision')body=revision;else if(p==='/pozos/numeracion/historial')body=[];else if(p==='/pozos/numeracion/politica')body={revision:'1',rangos:[{desde:1,hasta:3281}],excepciones:[],puede_administrar:true,historial:[]};
   await send('Fetch.fulfillRequest',{requestId,responseCode:body===null?404:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:origin},{name:'Access-Control-Allow-Credentials',value:'true'},{name:'Access-Control-Allow-Headers',value:'content-type,authorization,x-csrf-token'}],body:Buffer.from(JSON.stringify(body??{})).toString('base64')});
  }});
  await send('Page.enable');await send('Fetch.enable',{patterns:[{urlPattern:'*'}]});
@@ -53,8 +53,11 @@ try{
    fs.writeFileSync(path.join(out,'requests.json'),JSON.stringify(requests));
    throw Error('Vista previa no visible; evidencia ficticia: '+out);
   }
-  const geometry=await evaluate(`(()=>{const s=document.querySelector('.numeracion-shell');return {width:innerWidth,content:s.scrollWidth,sections:document.querySelectorAll('nav[aria-label="Herramientas de numeración"] button').length,warning:document.body.textContent.includes('error de tipeo')};})()`);
-  assert.ok(geometry.content<=width);assert.equal(geometry.sections,5);assert.ok(geometry.warning);
+  await evaluate("document.querySelector('app-politica-numeracion button').click()");
+  for(let i=0;i<50;i++){if(await evaluate("!!document.querySelector('app-politica-numeracion select')"))break;await sleep(100);}
+  assert.ok(await evaluate("!!document.querySelector('app-politica-numeracion select')"),'Protecciones consultadas con formulario accesible');
+  const geometry=await evaluate(`(()=>{const s=document.querySelector('.numeracion-shell');return {width:innerWidth,content:s.scrollWidth,sections:document.querySelectorAll('nav[aria-label="Herramientas de numeración"] button').length,warning:document.body.textContent.includes('error de tipeo'),policy:document.querySelector('app-politica-numeracion').scrollWidth};})()`);
+  assert.ok(geometry.content<=width);assert.ok(geometry.policy<=width);assert.equal(geometry.sections,5);assert.ok(geometry.warning);
   const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(path.join(out,'numeracion-'+width+'.png'),Buffer.from(shot.data,'base64'));results.push(geometry);
  }
  assert.equal(writes,0);fs.writeFileSync(path.join(out,'RESULT.json'),JSON.stringify({results,realApiConnections:0,writes,productionTouched:false}));console.log(JSON.stringify({passed:results.length,out}));

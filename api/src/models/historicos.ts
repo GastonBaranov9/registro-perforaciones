@@ -7,7 +7,7 @@ const texto = () => Type.String({ minLength: 1, maxLength: 2000, pattern: '\\S' 
 const id = () => Type.Integer({ minimum: 1 });
 const fecha = () => Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 export const HistoricoBody = Type.Object({
-  numero_perforacion: Type.Integer({ minimum: 1, maximum: 3281 }),
+  numero_perforacion: Type.Union([Type.Integer({ minimum: 1, maximum: 2147483647 }),Type.Null()]),
   reingreso: Type.Optional(Type.Object({
     token: Type.String({minLength:1,maxLength:4096}), motivo: Type.String({minLength:10,maxLength:1000}),
     confirmacion: Type.String({maxLength:40}), sin_referencias_externas: Type.Literal(true),
@@ -64,7 +64,8 @@ export function validarEdicionHistorica(data: unknown): asserts data is Historic
 // Se ejecuta antes de AJV: no convertir strings/booleanos a números ni descartar
 // propiedades desconocidas. También protege llamadas internas al servicio.
 export function validarHistorico(data: unknown): asserts data is HistoricoBody {
-  if (!Value.Check(HistoricoBody, data)) throw new T05DatosIncorrectos('Histórico inválido: número entero entre 1 y 3281 y sólo datos conocidos.');
+  if (!Value.Check(HistoricoBody, data)) throw new T05DatosIncorrectos('Histórico inválido: número entero positivo o desconocido y sólo datos conocidos.');
+  if(data.reingreso && data.numero_perforacion===null)throw new T05DatosIncorrectos('El reingreso requiere el número original.');
   if (data.id_propietario && data.propietario_provisional) throw new T05DatosIncorrectos('Seleccione propietario o nombre provisional, no ambos.');
   if (data.id_perforador && data.perforador_provisional) throw new T05DatosIncorrectos('Seleccione perforador o nombre provisional, no ambos.');
   validarFechasHistoricas(data);

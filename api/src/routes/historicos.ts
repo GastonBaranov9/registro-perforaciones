@@ -8,7 +8,7 @@ import { consultarReingreso } from '../services/reingreso-historico-service.ts';
 export default async function historicosRoutes(app: FastifyInstance) {
   app.get('/pozos/historicos/reingreso/:numero',{
     onRequest:[app.authenticate],preHandler:[app.userIsAdmin],
-    schema:{params:Type.Object({numero:Type.Integer({minimum:1,maximum:3281})})},
+    schema:{params:Type.Object({numero:Type.Integer({minimum:1,maximum:2147483647})})},
   },async(req,rep)=>rep.header('Cache-Control','no-store').send(await consultarReingreso(Number(req.user.sub),(req.params as {numero:number}).numero)));
   app.post('/pozos/historicos', {
     bodyLimit: FOTO_JSON_BODY_LIMIT_BYTES,

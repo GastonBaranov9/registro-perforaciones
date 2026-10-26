@@ -3,7 +3,7 @@
     @if (agregareditar()) {
       <p>Perforación: <strong>{{ pozo().numero_perforacion ?? "Sin número asignado" }}</strong> · ID interno: {{ id_pozo() }}</p>
     } @else if (historico()) {
-      <ion-item><ion-input [disabled]="guardando()" label="Número histórico P-" labelPlacement="stacked" name="numero_historico" type="number" min="1" max="3281" step="1" required [(ngModel)]="pozo().numero_perforacion" /></ion-item>
+      <ion-item><ion-input [disabled]="guardando()" label="Número histórico P- (vacío si se desconoce)" labelPlacement="stacked" name="numero_historico" type="number" min="1" max="2147483647" step="1" [(ngModel)]="pozo().numero_perforacion" /></ion-item>
     } @else if (borradorLocal()) {
       <p>El servidor asignará el número al sincronizar.</p>
     } @else {

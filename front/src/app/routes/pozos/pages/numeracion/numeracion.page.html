@@ -30,7 +30,7 @@
       @if(revision();as r){
        <section class="revision" aria-labelledby="titulo-revision"><h3 id="titulo-revision">Revisión del cambio · {{r.tipo}}</h3>
         <div class="comparacion"><div>Actual<strong>{{r.anterior ?? 'Sin configurar'}}</strong></div><span aria-hidden="true">→</span><div>Solicitado<strong>{{r.nuevo}}</strong></div></div>
-        @if(r.disponible){<p>El número {{r.nuevo}} está disponible en el sistema.</p>}
+        @if(r.disponible){<p>El número {{r.nuevo}} está disponible en el sistema. Revisá también los antecedentes y las carpetas físicas antes de utilizarlo.</p>}
         @for(b of r.bloqueos;track b){<p class="aviso error" role="alert">{{b}}</p>}
         @if(r.salto_grande){<p class="aviso advertencia">El salto es de 100 números o más. Revisá los dígitos y las carpetas físicas para descartar un error de tipeo.</p>}
         <p>Vas a cambiar el próximo número de {{r.anterior ?? 'sin configurar'}} a {{r.nuevo}}. Esta operación no modifica perforaciones ya registradas ni libera reservas.</p>
@@ -43,13 +43,14 @@
         }
        </section>
       }
-      <p class="politica">La próxima alta recibirá exactamente el número elegido. Después, el sistema avanzará al siguiente disponible, salteando números utilizados, reservados o con referencias previas.</p>
+      <p class="politica">La próxima alta recibirá exactamente el número elegido. Después, el sistema avanzará al siguiente disponible, salteando números utilizados, reservados, protegidos como históricos o con referencias previas.</p>
+      <app-politica-numeracion [disabled]="ocupado()" (modificada)="cambiar()" />
      }
      @case('pruebas'){<app-rectificacion-numeracion (rectificada)="cargar()" />}
      @case('reservas'){<app-reservas-eliminadas (rectificada)="cargar()" />}
      @case('reingreso'){
       <p class="eyebrow">HISTÓRICOS</p><h2>Volver a ingresar una perforación eliminada</h2><p>Conservá el número empresarial y sus antecedentes. La nueva carga tendrá una identidad distinta y no cambiará el próximo automático.</p>
-      <form (ngSubmit)="consultarHistorico()"><label>Número histórico<input name="historico" type="number" inputmode="numeric" [(ngModel)]="numeroHistorico" (ngModelChange)="cambiarHistorico()" [disabled]="ocupado()" /></label><p class="ayuda">Ingresá un número entre 1 y 3281. Esta consulta no modifica datos.</p><ion-button type="submit" [disabled]="ocupado()">Consultar histórico</ion-button></form>
+      <form (ngSubmit)="consultarHistorico()"><label>Número histórico<input name="historico" type="number" inputmode="numeric" [(ngModel)]="numeroHistorico" (ngModelChange)="cambiarHistorico()" [disabled]="ocupado()" /></label><p class="ayuda">Ingresá un número entero positivo. Esta consulta no modifica datos.</p><ion-button type="submit" [disabled]="ocupado()">Consultar histórico</ion-button></form>
       @if(historico();as h){<section class="revision"><h3>P-{{h.numero}}</h3><p>Identidad anterior: {{h.id_original ?? 'Sin antecedente'}} · Referencias históricas conservadas: {{h.referencias_historicas}}</p>@for(b of h.bloqueos;track b){<p role="alert" class="aviso error">{{b}}</p>}@if(h.elegible){<p>Podés revisar una nueva carga administrativa. El formulario exigirá motivo y confirmación; esta consulta no autoriza el guardado.</p><ion-button routerLink="/pozos-historicos" [queryParams]="{reingresar:h.numero}">Revisar nueva carga histórica</ion-button>}</section>}
      }
      @case('historial'){

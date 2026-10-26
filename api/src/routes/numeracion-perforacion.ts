@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import {consultarPolitica,revisarPolitica,guardarPolitica,type CambioPolitica} from '../services/politica-numeracion-service.ts';
 import { Type } from "@fastify/type-provider-typebox";
 import { NumeroPerforacion } from "../models/schemas.ts";
 import { ErrorSchema } from "../models/errors.ts";
@@ -13,6 +14,10 @@ export default async function numeracionRoutes(fastify: FastifyInstance) {
     minimo: Type.Integer(), agotado: Type.Boolean(), puede_retroceder: Type.Optional(Type.Boolean()),
   });
   const errores = { 400: ErrorSchema, 403: ErrorSchema, 409: ErrorSchema };
+  const cambioPolitica={operacion:Type.Union([Type.Literal('proteger_rango'),Type.Literal('habilitar_numero'),Type.Literal('proteger_numero')]),desde:NumeroPerforacion,hasta:NumeroPerforacion,motivo:Type.String({minLength:10,maxLength:1000})};
+  fastify.get('/pozos/numeracion/politica',seguridad,async(req,rep)=>rep.header('Cache-Control','no-store').send(await consultarPolitica(Number(req.user.sub))));
+  fastify.post('/pozos/numeracion/politica/revision',{...seguridad,schema:{body:Type.Object(cambioPolitica,{additionalProperties:false})}},async(req,rep)=>rep.header('Cache-Control','no-store').send(await revisarPolitica(Number(req.user.sub),req.body as CambioPolitica)));
+  fastify.put('/pozos/numeracion/politica',{...seguridad,schema:{body:Type.Object({...cambioPolitica,token:Type.String({minLength:1,maxLength:4096}),confirmacion:Type.String({maxLength:40}),evidencia_fisica:Type.Literal(true)},{additionalProperties:false})}},async(req)=>guardarPolitica(Number(req.user.sub),req.body as CambioPolitica&{token:string;confirmacion:string;evidencia_fisica:boolean}));
   fastify.post('/pozos/numeracion/revision', {
     ...seguridad, schema:{body:Type.Object({proximo:NumeroPerforacion,motivo:Type.String({minLength:10,maxLength:1000})},{additionalProperties:false})},
   },async(req,rep)=>{const b=req.body as {proximo:number;motivo:string};return rep.header('Cache-Control','no-store').send(await revisarConfiguracion(Number(req.user.sub),b.proximo,b.motivo));});
@@ -20,13 +25,13 @@ export default async function numeracionRoutes(fastify: FastifyInstance) {
     ...seguridad,schema:{querystring:Type.Object({antes:Type.Optional(Type.String({pattern:'^[1-9][0-9]{0,18}$'}))},{additionalProperties:false})},
   },async(req,rep)=>rep.header('Cache-Control','no-store').send(await historialNumeracion(Number(req.user.sub),(req.query as {antes?:string}).antes)));
   fastify.get('/pozos/numeracion/rectificacion/:desde', {
-    ...seguridad, schema: { params: Type.Object({ desde: Type.Integer({ minimum: 3282, maximum: 2147483647 }) }) },
+    ...seguridad, schema: { params: Type.Object({ desde: Type.Integer({ minimum: 1, maximum: 2147483647 }) }) },
   }, async (req,rep) => rep.header('Cache-Control','no-store').send(await previsualizarRectificacion(Number(req.user.sub), (req.params as { desde: number }).desde)));
   fastify.post('/pozos/numeracion/rectificacion', {
     ...seguridad, schema: { body: Type.Object({
       token: Type.String({minLength:1,maxLength:4096}), confirmacion: Type.Literal('RECTIFICAR'), pruebas_confirmadas: Type.Literal(true),
-      desde: Type.Integer({ minimum: 3282, maximum: 2147483647 }),
-      esperado: Type.Integer({ minimum: 3283, maximum: 2147483648 }),
+      desde: Type.Integer({ minimum: 1, maximum: 2147483647 }),
+      esperado: Type.Integer({ minimum: 2, maximum: 2147483648 }),
       mayor_esperado: NumeroPerforacion,
       motivo: Type.String({ minLength: 10, maxLength: 1000 }),
       sin_referencias_externas: Type.Literal(true),

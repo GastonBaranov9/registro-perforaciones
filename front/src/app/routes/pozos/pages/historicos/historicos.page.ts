@@ -70,7 +70,7 @@ export class HistoricosPage {
   private storageKey() { const actor = this.auth.userId(); if (!actor) throw new Error('Inicie sesión con permiso para carga histórica.'); return `historico-pendiente:${environment.apiURL}:${actor}`; }
   propietarios = signal<CandidatoPozo[]>([]); perforadores = signal<CandidatoPozo[]>([]);
   error = signal(''); ocupado = signal(false); retirada = signal(false);
-  resultado = signal<{ id_pozo: number; numero_perforacion: number } | null>(null);
+  resultado = signal<{ id_pozo: number; numero_perforacion: number|null } | null>(null);
   readonly id_pozo=input<string>();
   readonly pozo=signal<NuevoPozo>({id_propietario:null,id_perforador:0,id_sitio:0,...DATOS_TECNICOS_ESTANDAR});
   readonly sitio=signal<SitioBody>({departamento:'',localidad:'',latitud:'',longitud:''});
@@ -114,7 +114,7 @@ export class HistoricosPage {
         const guardada=this.envio?.body['reingreso'] as ConfirmacionReingreso|undefined;
         const n=solicitado?Number(solicitado):guardada?Number(this.envio?.body['numero_perforacion']):null;
         if(n!==null){
-          if(!this.auth.tieneRol('administracion')||!Number.isInteger(n)||n<1||n>3281)throw Error('Reingreso histórico no autorizado.');
+          if(!this.auth.tieneRol('administracion')||!Number.isInteger(n)||n<1||n>2147483647)throw Error('Reingreso histórico no autorizado.');
           this.reingresar.set(n);this.reingresoCancelado=false;
           if(this.envio&&this.envio.body['numero_perforacion']!==n)throw Error('Existe otra carga pendiente. Sus datos y fotografía se conservan; no se reemplazará.');
           this.numero=n;
@@ -148,7 +148,7 @@ export class HistoricosPage {
       if (!this.envio) {
         const actor = this.auth.userId();
         if (!actor) throw new Error('Inicie sesión como administrador.');
-        if (!Number.isInteger(this.numero) || this.numero! < 1 || this.numero! > 3281) throw new Error('Ingrese un número entero entre 1 y 3281.');
+        if (this.numero!==null && (!Number.isInteger(this.numero) || this.numero < 1 || this.numero > 2147483647)) throw new Error('Ingrese un número entero positivo o deje el campo vacío si se desconoce.');
         const body=cuerpoHistorico(data?.pozo??this.pozo(),this.sitio(),this.tecnicos(),false);
         body['numero_perforacion']=this.numero;
         if(this.reingresar()){
@@ -169,7 +169,7 @@ export class HistoricosPage {
       }
       // Persistir antes del primer envío. Un reload conserva la época original.
       sessionStorage.setItem(this.storageKey(), JSON.stringify({...e,body:{...e.body,foto:undefined}}));
-      const result = await firstValueFrom(this.http.post<{ id_pozo: number; numero_perforacion: number }>(`${environment.apiURL}pozos/historicos`, e.body,
+      const result = await firstValueFrom(this.http.post<{ id_pozo: number; numero_perforacion: number|null }>(`${environment.apiURL}pozos/historicos`, e.body,
         { headers: { 'Idempotency-Key': e.clave, 'X-Epoca-Datos': e.epoca } }).pipe(timeout(90000)));
       this.resultado.set(result);
       sessionStorage.removeItem(this.storageKey());
@@ -191,9 +191,9 @@ export class HistoricosPage {
     this.ocupado.set(true);this.error.set('');
     try {
       const numero=e.body['numero_perforacion'];
-      if(!Number.isInteger(numero) || Number(numero)<1 || Number(numero)>3281)throw Error('El intento no contiene un número histórico válido.');
+      if(numero!==null && (!Number.isInteger(numero) || Number(numero)<1 || Number(numero)>2147483647))throw Error('El intento no contiene un número histórico válido.');
       const [disponibilidad,actual]=await Promise.all([
-        firstValueFrom(this.http.get<{utilizado:boolean}>(environment.apiURL+'pozos/numeracion/disponibilidad/'+numero).pipe(timeout(15000))),
+        numero===null?Promise.resolve({utilizado:false}):firstValueFrom(this.http.get<{utilizado:boolean}>(environment.apiURL+'pozos/numeracion/disponibilidad/'+numero).pipe(timeout(15000))),
         firstValueFrom(this.http.get<{epoca:string}>(environment.apiURL+'pozos/epoca-datos').pipe(timeout(15000))),
       ]);
       if(this.envio!==e || e.actor!==this.auth.userId())throw Error('La sesión cambió.');

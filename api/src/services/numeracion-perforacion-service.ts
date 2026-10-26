@@ -35,8 +35,8 @@ export function traducirErrorNumeracion(error: unknown): unknown {
 
 function estado(fila: { proximo: string | number | null; mayor_asignado: number }): EstadoNumeracion {
   const proximo = fila.proximo == null ? null : Number(fila.proximo);
-  // El rango 1..3281 es histórico, aunque todavía no tenga reservas cargadas.
-  const minimo = 3282;
+  // La disponibilidad depende de la política y los antecedentes, no de un corte fijo.
+  const minimo = 1;
   return { proximo, minimo, agotado: proximo !== null && proximo > MAX_NUMERO_PERFORACION };
 }
 
@@ -46,16 +46,15 @@ export async function obtenerNumeracion(idUsuario: number, db: Db = myPool): Pro
   return {...estado(rows[0]),puede_retroceder:!!await autorizacionNumeracion(idUsuario,db)};
 }
 
-async function autorizacionNumeracion(actor:number,db:Db,lock=false) {
+export async function autorizacionNumeracion(actor:number,db:Db,lock=false) {
   return (await db.query(`SELECT id::text,revision::text,concedida_en FROM autorizacion_numeracion WHERE usuario=$1 AND activa ${lock?'FOR SHARE':''}`,[actor])).rows[0]??null;
 }
 async function situacionConfiguracion(actor:number,numero:number,motivo:string,db:Db,lock=false) {
   validarNumeroPerforacion(numero); exigirMotivo(motivo);
-  if(numero<3282)throw new err.T05DatosIncorrectos('Los números hasta 3281 se gestionan como históricos.');
   await exigirAdministracionNumeracion(actor,db);
   const c=(await db.query(`SELECT proximo,mayor_asignado FROM numeracion_perforacion WHERE singleton ${lock?'FOR UPDATE':''}`)).rows[0];
   const anterior=c.proximo==null?null:Number(c.proximo),autorizacion=await autorizacionNumeracion(actor,db,lock);
-  const r=(await db.query(`SELECT EXISTS(SELECT 1 FROM pozo WHERE numero_perforacion=$1) activo,
+  const r=(await db.query(`SELECT numero_protegido($1) protegido,(SELECT revision::text FROM politica_numeracion WHERE singleton) politica_revision, EXISTS(SELECT 1 FROM pozo WHERE numero_perforacion=$1) activo,
     EXISTS(SELECT 1 FROM numero_perforacion_reservado WHERE numero_perforacion=$1) reservado,
     EXISTS(SELECT 1 FROM numeros_no_disponibles() WHERE numero=$1) incompatible,
     (SELECT COALESCE(max(id),0)::text FROM numeracion_perforacion_configuracion) revision`,[numero])).rows[0];
@@ -65,9 +64,10 @@ async function situacionConfiguracion(actor:number,numero:number,motivo:string,d
   if(r.activo)bloqueos.push('El número solicitado ya pertenece a una perforación.');
   else if(r.reservado)bloqueos.push('Este número está reservado. Revisá su situación antes de utilizarlo.');
   else if(r.incompatible)bloqueos.push('Existen referencias anteriores que impiden utilizar este número.');
+  if(r.protegido)bloqueos.push('Este número está protegido por antecedentes pendientes de digitalización. Revisá la política histórica y las carpetas físicas.');
   if((tipo==='retroceso'||numero<=c.mayor_asignado)&&!autorizacion)bloqueos.push('Para retroceder necesitás autorización especial de numeración.');
   return {anterior,nuevo:numero,tipo,mayor:c.mayor_asignado,revision:r.revision,autorizacion,
-    disponible:!r.incompatible,motivo:motivo.trim(),bloqueos,
+    protegido:r.protegido,politica_revision:r.politica_revision,disponible:!r.incompatible&&!r.protegido,motivo:motivo.trim(),bloqueos,
     salto_grande:anterior!==null&&Math.abs(numero-anterior)>=100};
 }
 export async function revisarConfiguracion(actor:number,numero:number,motivo:string,db:Db=myPool) {
@@ -92,7 +92,7 @@ export async function configurarNumeracion(idUsuario:number,proximo:number,esper
     await client.query(`INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por,motivo,tipo,estado_verificado,autorizacion_id,nonce,confirmacion)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[s.anterior,proximo,idUsuario,s.motivo,s.tipo,JSON.stringify({...s,registros_fisicos_confirmados:true}),s.autorizacion?.id??null,c.nonce,confirmacion.confirmacion]);
     await client.query('COMMIT');
-    return {proximo,minimo:3282,agotado:false,puede_retroceder:!!s.autorizacion};
+    return {proximo,minimo:1,agotado:false,puede_retroceder:!!s.autorizacion};
   }catch(e){await client.query('ROLLBACK');throw traducirErrorNumeracion(e);}finally{client.release();}
 }
 export async function historialNumeracion(actor:number,antes?:string,db:Db=myPool) {
@@ -108,19 +108,21 @@ export async function historialNumeracion(actor:number,antes?:string,db:Db=myPoo
 export async function consultarNumero(idUsuario: number, numero: number, db: Db = myPool): Promise<{ utilizado: boolean }> {
   validarNumeroPerforacion(numero);
   await exigirAdministracionNumeracion(idUsuario, db);
-  const { rows } = await db.query("SELECT 1 FROM public.numero_perforacion_reservado WHERE numero_perforacion=$1", [numero]);
+  const { rows } = await db.query("SELECT 1 FROM numeros_no_disponibles() WHERE numero=$1", [numero]);
   return { utilizado: rows.length > 0 };
 }
 
 export async function asignarNumeroPendiente(idUsuario: number, idPozo: number, numero: number, pool: ConnectionPool = myPool): Promise<{ numero_perforacion: number }> {
   validarNumeroPerforacion(numero);
-  if (numero > 3281) throw new err.T05DatosIncorrectos('La asignación manual está limitada a históricos hasta 3281.');
   const client = await pool.connect();
   try {
     await iniciarEscrituraSesion(client, false);
     await exigirAdministracionNumeracion(idUsuario, client);
-    const { rows } = await client.query("SELECT numero_perforacion FROM public.pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
+    await client.query('SELECT singleton FROM numeracion_perforacion WHERE singleton FOR UPDATE');
+    const { rows } = await client.query("SELECT numero_perforacion,origen FROM public.pozo WHERE id_pozo=$1 FOR UPDATE", [idPozo]);
     if (!rows[0]) throw new err.T05PozoNoEncontrado();
+    if (rows[0].origen!=='historico') throw new err.T05DatosIncorrectos('La asignación manual requiere un registro de origen histórico.');
+    if ((await client.query('SELECT 1 FROM numeros_no_disponibles() WHERE numero=$1',[numero])).rowCount) throw new err.T05ConflictoNumeracion('El número tiene una reserva o referencia anterior.');
     if (rows[0].numero_perforacion != null) throw new err.T05ConflictoNumeracion("Este pozo ya tiene un número de perforación asignado.");
     await client.query("UPDATE public.pozo SET numero_perforacion=$2 WHERE id_pozo=$1", [idPozo, numero]);
     await client.query("COMMIT");

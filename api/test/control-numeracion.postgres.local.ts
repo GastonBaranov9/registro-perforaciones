@@ -38,7 +38,7 @@ try{
  const estado=async()=> (await pool!.query('SELECT to_jsonb(n) s FROM numeracion_perforacion n')).rows[0].s;
  const reservas=async()=> (await pool!.query('SELECT coalesce(jsonb_agg(r ORDER BY numero_perforacion),\'[]\') s FROM numero_perforacion_reservado r')).rows[0].s;
  const original=await estado();
- await check('024 a 025 sólo estructura: contador y reservas intactos, sin concesiones',async()=>{assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,['025_control_administrativo_numeracion.sql']);assert.deepEqual(await estado(),original);assert.equal((await pool!.query('SELECT count(*) FROM autorizacion_numeracion')).rows[0].count,'0');});
+ await check('024 a 025 sólo estructura: contador y reservas intactos, sin concesiones',async()=>{assert.deepEqual((await ejecutarMigraciones(pool!,{logger:()=>{}})).aplicadas,['025_control_administrativo_numeracion.sql','026_numeracion_empresarial_configurable.sql']);assert.deepEqual(await estado(),original);assert.equal((await pool!.query('SELECT count(*) FROM autorizacion_numeracion')).rows[0].count,'0');});
  const privilegio=async(conceder:boolean,actor=1,destinatario=1,revision?:number)=>{
   const r=revision??Number((await pool!.query('SELECT revision FROM autorizacion_numeracion WHERE usuario=$1',[destinatario])).rows[0]?.revision??0);
   return pool!.query('SELECT administrar_autorizacion_numeracion($1,$2,$3,$4,$5,$6)',[destinatario,actor,conceder,'Gestion ficticia de capacidad administrativa',r,`${conceder?'CONCEDER':'REVOCAR'} ${destinatario}`]);

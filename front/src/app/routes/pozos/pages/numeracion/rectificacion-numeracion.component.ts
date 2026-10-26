@@ -13,11 +13,11 @@ import { NumeracionPerforacionService, numeroPerforacionValido, VistaRectificaci
       <p>Esta herramienta permite recuperar números utilizados en pruebas eliminadas. No modifica perforaciones existentes.</p>
       <p>Revisa sólo las últimas reservas consecutivas del rango automático. Para corregir un error de tipeo sin asignaciones, usá Próximo automático.</p>
       <label>Volver a ofrecer desde el número
-        <input type="number" name="desdeRectificacion" min="3282" max="2147483647" step="1"
+        <input type="number" name="desdeRectificacion" min="1" max="2147483647" step="1"
           [ngModel]="desde" (ngModelChange)="cambiarDesde($event)" [disabled]="ocupado()" />
       </label>
       <ion-button (click)="previsualizar()" [disabled]="ocupado() || !desdeValido()">Revisar reservas</ion-button>
-      @if(!desdeValido()){<p class="ayuda">Ingresá un número entero desde 3282 para revisar.</p>}
+      @if(!desdeValido()){<p class="ayuda">Ingresá un número entero desde 1 para revisar.</p>}
       @if (vista(); as v) {
         <p>Próximo número: {{ v.proximo }} → {{ desde }}. Mayor asignado actual: {{ v.mayor_asignado }}.</p>
         <ul>@for (r of v.reservas; track r.numero_perforacion) {
@@ -55,7 +55,7 @@ export class RectificacionNumeracionComponent {
   motivo = '';
   sinReferencias = false;
   confirmacion = '';
-  desdeValido() { return numeroPerforacionValido(this.desde) && this.desde >= 3282; }
+  desdeValido() { return numeroPerforacionValido(this.desde); }
   cambiarDesde(valor: number | null) { this.desde = valor; this.cancelar(); }
   cancelar() { if (this.ocupado()) return; this.vista.set(null); this.motivo = ''; this.sinReferencias = false; this.confirmacion = ''; this.mensaje.set(''); }
   candidata() {

@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 export interface VistaEliminacion {
-  numero:number|null; id_original:number|null; asignado_en:string|null; existe:boolean;
+  origen?:'normal'|'historico'|'desconocido'; numero:number|null; id_original:number|null; asignado_en:string|null; existe:boolean;
   reservada:boolean; proximo:number; bloqueos:string[]; elegible:boolean; token:string|null;
 }
 export interface ConfirmacionEliminacion {

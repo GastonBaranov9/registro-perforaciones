@@ -5,7 +5,7 @@ import { emitirConfirmacion, verificarConfirmacion, exigirMotivo } from './confi
 import { T05ConflictoNumeracion, T05DatosIncorrectos } from '../models/errors.ts';
 type Db=Pick<PoolClient,'query'>;
 export interface AutorizacionReingreso {token:string;motivo:string;confirmacion:string;sin_referencias_externas:boolean;nueva_carga_administrativa:boolean}
-function validar(numero:number){validarNumeroPerforacion(numero);if(numero>3281)throw new T05DatosIncorrectos('El reingreso sólo admite números históricos hasta 3281.');}
+function validar(numero:number){validarNumeroPerforacion(numero);}
 async function estado(numero:number,db:Db){
   const r=(await db.query(`SELECT to_jsonb(r) AS reserva FROM numero_perforacion_reservado r WHERE numero_perforacion=$1`,[numero])).rows[0]?.reserva??null;
   const id=r?.id_pozo_original??null;
@@ -20,11 +20,13 @@ async function estado(numero:number,db:Db){
       (jsonb_array_length(COALESCE(anterior#>'{detalles,documento}','[]'::jsonb))>0 OR jsonb_array_length(COALESCE(anterior#>'{detalles,informe}','[]'::jsonb))>0)) AS documentos_archivados`,[String(id),String(numero),id])).rows[0];
   const antecedentes=(await db.query('SELECT id,id_original,id_nuevo,numero_perforacion FROM reingreso_historico WHERE numero_perforacion=$1 ORDER BY id',[numero])).rows;
   const epoca=(await db.query('SELECT epoca FROM epoca_datos')).rows[0]?.epoca;
-  return {reserva:r,referencias,activos,conflictos,antecedentes,epoca};
+  const origen=(await db.query('SELECT origen_reserva_numero($1) origen',[numero])).rows[0].origen;
+  return {origen,reserva:r,referencias,activos,conflictos,antecedentes,epoca};
 }
 type Estado=Awaited<ReturnType<typeof estado>>;
 function bloqueos(s:Estado,numero:number){
   const b:string[]=[];
+  if(s.origen!=='historico')b.push('El antecedente no permite confirmar un origen histórico. Se requiere revisión.');
   if(!s.reserva)b.push('No existe una reserva comprobable.');
   if(s.activos.length)b.push('Existe una perforación activa con ese número o identidad.');
   for(const [k,v] of Object.entries(s.conflictos))if(v)b.push('Referencia incompatible: '+k+'.');

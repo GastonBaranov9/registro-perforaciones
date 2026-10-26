@@ -20,15 +20,15 @@ test("duplicados reales y contador sin configurar producen conflictos identifica
   assert.equal(traducirErrorNumeracion(ajeno), ajeno);
 });
 
-test('mínimo automático respeta el corte histórico, el mayor reservado y el contador', async () => {
-  for (const [proximo, mayor_asignado, minimo] of [
-    [null, 0, 3282], [null, 2100, 3282], [null, 3281, 3282],
-    [2101, 2100, 3282], [3282, 3281, 3282], [5000, 3282, 5000],
-    [null, 5000, 5001], [2147483648, 2147483647, 2147483648],
+test('rango entero independiente de cursor y mayor; disponibilidad se revisa por política', async () => {
+  for (const [proximo, mayor_asignado] of [
+    [null, 0], [null, 2100], [null, 3281],
+    [2101, 2100], [3282, 3281], [5000, 3282],
+    [null, 5000], [2147483648, 2147483647],
   ] as const) {
-    const db = { query: async () => ({ rows: [{ proximo, mayor_asignado }] }) };
+    const db = { query: async (sql:string) => ({ rows: sql.includes('autorizacion_numeracion')?[]:[{ proximo, mayor_asignado }] }) };
     assert.deepEqual(await obtenerNumeracion(1, db as never), {
-      proximo, minimo, agotado: minimo > 2147483647,
+      proximo, minimo:1, agotado: proximo!==null&&proximo > 2147483647,puede_retroceder:false,
     });
   }
 });
@@ -40,7 +40,7 @@ function reporte(numero?: number | null): ReportePozo {
     profundidad_final_m: 30, nivel_estatico_m: null, nivel_dinamico_m: null, caudal_estimado_lh: null,
     metodo_sedimentario: null, metodo_rocoso: null, cementacion: null, desarrollo: null,
     introduccion: null, nombre_archivo: null, foto_url: null,
-    litologia: [{ desde_m: 0, hasta_m: 5, material: "Sello sanitario" }, { desde_m: 5, hasta_m: 30, material: "Basalto" }],
+    litologia: [{ desde_m: 0, hasta_m: 5, material: "Arcilla" }, { desde_m: 5, hasta_m: 30, material: "Basalto" }],
     diametros: [], niveles_aporte: [], filtros: [],
   };
 }

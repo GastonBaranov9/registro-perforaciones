@@ -80,9 +80,10 @@ try {
     await rejected(() => rectificarNumeracion(1,solicitud,pool!),403);
     await pool!.query('UPDATE usuario SET activo=TRUE WHERE id_usuario=1');
   });
-  await check('motivo y declaración obligatorios; rango histórico protegido',async () => {
-    for (const cambio of [{motivo:'  '},{sin_referencias_externas:false},{desde:3281}])
+  await check('motivo y declaración obligatorios; cambio de número invalida autorización',async () => {
+    for (const cambio of [{motivo:'  '},{sin_referencias_externas:false}])
       await rejected(() => rectificarNumeracion(1,{...solicitud,...cambio},pool!),400);
+    await rejected(() => rectificarNumeracion(1,{...solicitud,desde:3281},pool!),409);
   });
   await check('estado obsoleto, reservas incompletas e identidad incorrecta rechazados',async () => {
     for (const cambio of [{esperado:3285},{reservas:solicitud.reservas.slice(0,1)},

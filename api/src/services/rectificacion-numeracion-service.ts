@@ -18,7 +18,6 @@ export interface SolicitudRectificacion {
 
 function validarDesde(desde: number) {
   validarNumeroPerforacion(desde);
-  if (desde < 3282) throw new T05DatosIncorrectos('La rectificación no puede afectar el rango histórico hasta 3281.');
 }
 
 // Una sola sentencia obtiene contador y reservas con la misma fotografía de lectura.
@@ -26,7 +25,7 @@ async function vista(desde: number, db: Db): Promise<VistaRectificacion> {
   const { rows } = await db.query(`SELECT proximo, mayor_asignado,
     COALESCE((SELECT json_agg(r ORDER BY r.numero_perforacion) FROM (
       SELECT n.numero_perforacion, n.id_pozo_original::text, n.asignado_en::text,
-        (EXISTS(SELECT 1 FROM pozo p WHERE p.id_pozo=n.id_pozo_original OR p.numero_perforacion=n.numero_perforacion)
+        (origen_reserva_numero(n.numero_perforacion)<>'normal' OR numero_protegido(n.numero_perforacion) OR EXISTS(SELECT 1 FROM pozo p WHERE p.id_pozo=n.id_pozo_original OR p.numero_perforacion=n.numero_perforacion)
          OR EXISTS(SELECT 1 FROM creacion_offline c WHERE c.resultado->>'id_pozo'=n.id_pozo_original::text OR c.resultado#>>'{pozo,id_pozo}'=n.id_pozo_original::text
            OR c.resultado->>'numero_perforacion'=n.numero_perforacion::text OR c.resultado#>>'{pozo,numero_perforacion}'=n.numero_perforacion::text)
          OR EXISTS(SELECT 1 FROM creacion_historica c WHERE c.resultado->>'id_pozo'=n.id_pozo_original::text OR c.resultado->>'numero_perforacion'=n.numero_perforacion::text)
@@ -78,7 +77,7 @@ export async function rectificarNumeracion(actor: number, solicitud: SolicitudRe
       if (a.bloqueada || a.numero_perforacion!==solicitud.desde+i || a.numero_perforacion !== b.numero_perforacion || a.id_pozo_original !== b.id_pozo_original
           || a.asignado_en !== b.asignado_en) throw conflicto();
     }
-    const { rows: restantes } = await client.query(`SELECT GREATEST(3281,
+    const { rows: restantes } = await client.query(`SELECT GREATEST(0,
       COALESCE((SELECT max(numero_perforacion) FROM numero_perforacion_reservado WHERE numero_perforacion<$1),0),
       COALESCE((SELECT max(numero_perforacion) FROM pozo),0)) AS mayor`, [solicitud.desde]);
     const mayorNuevo = restantes[0].mayor;

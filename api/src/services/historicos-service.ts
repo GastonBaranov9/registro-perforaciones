@@ -45,16 +45,13 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     if (previo.rows[0]) {
       if (previo.rows[0].epoca !== generacion || previo.rows[0].huella !== huella) throw new T05ConflictoNumeracion('La clave histórica ya pertenece a otra operación.');
       const original=previo.rows[0].resultado;
-      const existe=await client.query('SELECT 1 FROM pozo WHERE id_pozo=$1 AND numero_perforacion=$2',[original.id_pozo,original.numero_perforacion]);
+      const existe=await client.query('SELECT 1 FROM pozo WHERE id_pozo=$1 AND numero_perforacion IS NOT DISTINCT FROM $2',[original.id_pozo,original.numero_perforacion]);
       if(!existe.rowCount) throw new T05ConflictoNumeracion('La creación original fue eliminada. Se conserva su referencia; administración debe revisar su recuperación. No se creará una copia automáticamente.');
       await client.query('COMMIT'); return previo.rows[0].resultado;
     }
-    // El trigger conserva proximo=NULL al reservar un histórico. Sólo impedir
-    // elevar un contador configurado debajo del corte; compartir su bloqueo.
-    const estado = await client.query('SELECT proximo FROM numeracion_perforacion WHERE singleton=TRUE FOR UPDATE');
-    if (!estado.rows[0] || (estado.rows[0].proximo != null && Number(estado.rows[0].proximo) < 3282))
-      throw new T05ConflictoNumeracion('Habilite primero la numeración desde 3282.');
-    const reingreso=data.reingreso ? await prepararReingreso(actor,data.numero_perforacion,data.reingreso,client) : null;
+    await client.query('SELECT singleton FROM numeracion_perforacion WHERE singleton FOR UPDATE');
+    const reingreso=data.reingreso ? await prepararReingreso(actor,data.numero_perforacion!,data.reingreso,client) : null;
+    if(!reingreso && data.numero_perforacion!==null && (await client.query('SELECT 1 FROM numeros_no_disponibles() WHERE numero=$1',[data.numero_perforacion])).rowCount)throw new T05HistoricoNumeroOcupado();
     if (data.id_propietario) await validarPersonaPozo(data.id_propietario, 'propietario', client);
     if (data.id_perforador) await validarPersonaPozo(data.id_perforador, 'perforador', client);
     let sitio: Record<string, unknown> | null = null;
@@ -77,7 +74,7 @@ export async function crearHistorico(actor: number, data: HistoricoBody, clave: 
     }
     const resultado = { id_pozo: Number(pozo.id_pozo), numero_perforacion: pozo.numero_perforacion, origen: 'historico', creado_por: actor, sello_sanitario_constructivo: sello, ...hijos };
     await client.query('INSERT INTO creacion_historica(actor,clave,epoca,huella,resultado) VALUES($1,$2,$3,$4,$5)', [actor, clave, generacion, huella, JSON.stringify(resultado)]);
-    if(reingreso)await auditarReingreso(actor,data.numero_perforacion,Number(pozo.id_pozo),clave as string,reingreso,client);
+    if(reingreso)await auditarReingreso(actor,data.numero_perforacion!,Number(pozo.id_pozo),clave as string,reingreso,client);
     fotoTx.commitIntentado=true;
     await client.query('COMMIT');
     await fotoTx.confirmar(Number(pozo.id_pozo));

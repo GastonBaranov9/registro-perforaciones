@@ -46,7 +46,9 @@ async function estado(id: number | null, numero: number | null, db: Db) {
   const detalles:Record<string,unknown>={};
   if(original!=null) for(const tabla of hijos)
     detalles[tabla]=(await db.query(`SELECT to_jsonb(t) AS dato FROM ${tabla} t WHERE id_pozo=$1 ORDER BY to_jsonb(t)::text`,[original])).rows.map(r=>r.dato);
-  return {...s, referencias, detalles, eliminacionComprobada};
+  const origen=num==null?'desconocido':(await db.query('SELECT origen_reserva_numero($1) origen',[num])).rows[0].origen;
+  const protegido=num==null?false:(await db.query('SELECT numero_protegido($1) protegido',[num])).rows[0].protegido;
+  return {...s, origen, protegido, referencias, detalles, eliminacionComprobada};
 }
 
 function impedimentos(s: Awaited<ReturnType<typeof estado>>, op: OperacionEliminacion): string[] {
@@ -66,7 +68,9 @@ function impedimentos(s: Awaited<ReturnType<typeof estado>>, op: OperacionElimin
     motivos.push('Falta una auditoría de la eliminación original. Es necesario revisar el respaldo y sus referencias antes de liberar.');
   if (op==='eliminar_prueba' && !s.pozo) motivos.push('La perforación ya no existe.');
   const n = s.reserva?.numero_perforacion;
-  if (n>=3282 && (Number(s.contador.proximo)!==n+1 || s.contador.mayor_asignado!==n))
+  if (s.origen==='desconocido')motivos.push('No se puede comprobar el origen de la reserva. Requiere revisión de antecedentes.');
+  if (s.origen==='normal' && s.protegido)motivos.push('El número pertenece a un rango histórico protegido.');
+  if (s.origen==='normal' && (Number(s.contador.proximo)!==n+1 || s.contador.mayor_asignado!==n))
     motivos.push('Sólo se puede recuperar el último número automático asignado, individualmente.');
   if (s.pozo && (s.pozo.id_pozo!==s.reserva?.id_pozo_original || s.pozo.numero_perforacion!==n))
     motivos.push('La identidad de la reserva no coincide.');
@@ -83,7 +87,7 @@ export async function consultarEliminacion(actor: number, op: OperacionEliminaci
   const token = bloqueos.length ? null : payload+'.'+createHmac('sha256',claveConfirmacion).update(payload).digest('base64url');
   return { numero:s.pozo?.numero_perforacion ?? s.reserva?.numero_perforacion ?? (op==='liberar_reserva'?valor:null),
     id_original:s.pozo?.id_pozo ?? s.reserva?.id_pozo_original ?? null, asignado_en:s.reserva?.asignado_en ?? null,
-    existe:!!s.pozo, reservada:!!s.reserva, proximo:Number(s.contador.proximo),
+    origen:s.origen,existe:!!s.pozo, reservada:!!s.reserva, proximo:Number(s.contador.proximo),
     bloqueos, elegible:bloqueos.length===0, token };
 }
 
@@ -132,9 +136,9 @@ export async function ejecutarEliminacion(actor:number,op:OperacionEliminacion,v
       if(s.pozo.foto_url && !fotos.length) throw new T05ConflictoNumeracion('Falta una fotografía esperada. No se eliminó la perforación.');
     }
     const posterior={...s.contador};
-    if(op!=='eliminar' && s.reserva.numero_perforacion>=3282) {
+    if(op!=='eliminar' && s.origen==='normal') {
       const n=s.reserva.numero_perforacion;
-      const mayor=Number((await client.query(`SELECT GREATEST(3281,COALESCE((SELECT max(numero_perforacion) FROM numero_perforacion_reservado WHERE numero_perforacion<>$1),0),COALESCE((SELECT max(numero_perforacion) FROM pozo WHERE id_pozo<>$2),0)) AS mayor`,[n,id])).rows[0].mayor);
+      const mayor=Number((await client.query(`SELECT GREATEST(0,COALESCE((SELECT max(numero_perforacion) FROM numero_perforacion_reservado WHERE numero_perforacion<>$1),0),COALESCE((SELECT max(numero_perforacion) FROM pozo WHERE id_pozo<>$2),0)) AS mayor`,[n,id])).rows[0].mayor);
       if(mayor>=n) throw conflicto();
       posterior.proximo=n;posterior.mayor_asignado=mayor;
     }
@@ -143,7 +147,7 @@ export async function ejecutarEliminacion(actor:number,op:OperacionEliminacion,v
     if(op!=='liberar_reserva' && (await client.query('DELETE FROM pozo WHERE id_pozo=$1',[id])).rowCount!==1) throw conflicto();
     if(op!=='eliminar') {
       if((await client.query('DELETE FROM numero_perforacion_reservado WHERE numero_perforacion=$1 AND id_pozo_original=$2',[s.reserva.numero_perforacion,id])).rowCount!==1) throw conflicto();
-      if(s.reserva.numero_perforacion>=3282) {
+      if(s.origen==='normal') {
         await client.query('UPDATE numeracion_perforacion SET proximo=$1,mayor_asignado=$2 WHERE singleton',[posterior.proximo,posterior.mayor_asignado]);
         await client.query('INSERT INTO numeracion_perforacion_configuracion(anterior,proximo,cambiado_por,motivo) VALUES($1,$2,$3,$4)',[s.contador.proximo,posterior.proximo,actor,solicitud.motivo.trim()]);
       }

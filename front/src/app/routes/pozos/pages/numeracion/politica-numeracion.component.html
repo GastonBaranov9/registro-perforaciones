@@ -1,0 +1,31 @@
+<h3>Antecedentes y carpetas pendientes de digitalización</h3>
+<p>Un número sin registro digital puede corresponder a una perforación anterior. Las protecciones evitan asignarlo automáticamente.</p>
+<button type="button" (click)="cargar()" [disabled]="ocupado()||disabled()">{{abierta()?'Actualizar protecciones':'Consultar protecciones históricas'}}</button>
+@if(abierta()){
+ <button type="button" (click)="cerrar()" [disabled]="ocupado()">Cerrar sin guardar</button>
+ @if(ocupado()){<p role="status">Comprobando…</p>}
+ @if(error()){<p role="alert" class="error">{{error()}}</p>}
+ @if(mensaje()){<p role="status">{{mensaje()}}</p>}
+ @if(politica();as p){
+  <h4>Rangos protegidos</h4><ul>@for(r of p.rangos;track r.desde){<li>{{r.desde}} a {{r.hasta}}</li>}@empty{<li>Sin rangos protegidos. Revisá los antecedentes físicos antes de configurar.</li>}</ul>
+  <p>Excepciones individuales revisadas: {{p.excepciones.join(', ')||'Ninguna'}}. Las reservas y referencias siempre prevalecen.</p>
+  @if(p.puede_administrar){
+   <form (ngSubmit)="revisar()">
+    <label>Operación<select name="operacion" [(ngModel)]="operacion" (ngModelChange)="cambiar()" [disabled]="ocupado()||disabled()"><option value="habilitar_numero">Habilitar un número sin antecedentes, previa revisión</option><option value="proteger_rango">Proteger un rango de antecedentes</option><option value="proteger_numero">Retirar una excepción individual</option></select></label>
+    <label>{{operacion==='proteger_rango'?'Desde el número':'Número a revisar'}}<input name="desde" type="number" min="1" step="1" [(ngModel)]="desde" (ngModelChange)="cambiar()" [disabled]="ocupado()||disabled()" /></label>
+    @if(operacion==='proteger_rango'){<label>Hasta el número<input name="hasta" type="number" min="1" step="1" [(ngModel)]="hasta" (ngModelChange)="cambiar()" [disabled]="ocupado()||disabled()" /></label>}
+    <label>Motivo y antecedentes revisados<textarea name="motivoPolitica" rows="3" maxlength="1000" [(ngModel)]="motivo" (ngModelChange)="cambiar()" [disabled]="ocupado()||disabled()"></textarea></label>
+    <p aria-live="polite">{{impedimento()||'Revisá el efecto antes de confirmar. Todavía no se guardó.'}}</p>
+    <button type="submit" [disabled]="ocupado()||disabled()||!!impedimento()">Revisar protección</button>
+   </form>
+   @if(revision();as r){<section class="revision"><h4>Confirmar revisión de antecedentes</h4>
+    <p>{{operacion==='habilitar_numero'?'Se permitirá elegir este número si sigue libre. No se libera ninguna reserva ni se cambia el contador.':operacion==='proteger_rango'?'El rango quedará excluido de las nuevas asignaciones automáticas. No se modifican perforaciones existentes.':'El número volverá a quedar protegido contra asignaciones automáticas.'}}</p>
+    <p>Número: {{desde}} @if(operacion==='proteger_rango'){ a {{hasta}} } · Motivo: {{motivo}}</p>
+    <label><input type="checkbox" [(ngModel)]="declaracion" [disabled]="ocupado()" /> Revisé carpetas físicas, documentos, referencias externas y sincronizaciones pendientes. @if(operacion==='habilitar_numero'){Confirmo que este número nunca fue asignado y no corresponde a una perforación anterior.}</label>
+    <label>Escribí {{r.frase}}<input [(ngModel)]="confirmacion" autocomplete="off" [disabled]="ocupado()" /></label>
+    <button type="button" (click)="cancelar()" [disabled]="ocupado()">Cancelar sin guardar</button><button type="button" (click)="guardar()" [disabled]="!puedeGuardar()">Confirmar protección</button>
+   </section>}
+  }@else{<p>La consulta está disponible. Los cambios requieren autorización especial de numeración.</p>}
+  <h4>Últimas revisiones de protección · sólo consulta</h4><ul>@for(e of p.historial;track e.id){<li>{{e.fecha | date:'dd/MM/yyyy HH:mm'}} · Responsable {{e.actor}} · {{e.motivo}}</li>}@empty{<li>Sin cambios administrativos registrados.</li>}</ul>
+ }
+}

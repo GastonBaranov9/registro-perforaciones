@@ -460,8 +460,12 @@ describe('Carga histórica separada',()=>{
     });
   }
 
-  it('rechaza >=3282 y no envía solicitud',async()=>{
-    page.numero=3282;await page.guardar();expect(page.error()).toContain('3281');http.expectNone(`${environment.apiURL}pozos/historicos`);
+  it('rechaza valores fuera del entero soportado sin solicitud',async()=>{
+    page.numero=2147483648;await page.guardar();expect(page.error()).toContain('entero positivo');http.expectNone(`${environment.apiURL}pozos/historicos`);
+  });
+  for(const numero of [9000,null])it(`histórico ${numero??'sin número conocido'} conserva el origen por formulario`,async()=>{
+    page.numero=numero;const save=page.guardar();http.expectOne(`${environment.apiURL}pozos/epoca-datos`).flush({epoca:epoch});await Promise.resolve();
+    const r=http.expectOne(`${environment.apiURL}pozos/historicos`);expect(r.request.body.numero_perforacion).toBe(numero);r.flush({id_pozo:99,numero_perforacion:numero});await save;expect(page.resultado()?.id_pozo).toBe(99);
   });
   it('envía estándares y omite otros datos desconocidos; recarga y reintento mantienen UUID, época y payload',async()=>{
     page.numero=3281;const save=page.guardar();
