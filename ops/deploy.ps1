@@ -13,6 +13,8 @@ param(
   [ValidateRange(1,65535)][int]$SmokeInternalPort=18443,
   [string]$SmokeCaFile="",
   [switch]$BuildImages,
+  [string]$Recognition027File="",
+  [string]$Recognition027Sha256="",
   [ValidateSet("","preflight","maintenance","photo_storage","backup","images","migrate","services","services_incompatible","health","smoke","persist_state")][string]$TestFailAfterPhase="",
   [int]$TestPhotoCopyFailAfter=0,
   [string]$ComposeFile="docker-compose.production.yaml"
@@ -22,6 +24,7 @@ $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "deployment-audit.ps1")
 . (Join-Path $PSScriptRoot "validation-026.ps1")
 . (Join-Path $PSScriptRoot "validation-027.ps1")
+. (Join-Path $PSScriptRoot "recognition-027.ps1")
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 Assert-DeploymentGitSha $GitSha
 if($BuildImages){Assert-DeploymentImageRef $TargetApiImage $GitSha;Assert-DeploymentImageRef $TargetFrontImage $GitSha}
@@ -31,14 +34,23 @@ if(($TestFailAfterPhase-or $TestPhotoCopyFailAfter-gt 0)-and $ProjectName-notmat
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path;$envPath=(Resolve-Path $EnvFile).Path;$deploymentPath=(Resolve-Path $DeploymentStateFile).Path;$composePath=(Resolve-Path (Join-Path $repo $ComposeFile)).Path
 $backupPath=[IO.Path]::GetFullPath($BackupDir);$statePath=[IO.Path]::GetFullPath($StateDir);[IO.Directory]::CreateDirectory($backupPath)|Out-Null;[IO.Directory]::CreateDirectory($statePath)|Out-Null
 $compose=@("--project-name",$ProjectName,"--env-file",$envPath,"--env-file",$deploymentPath,"-f",$composePath)
-$auditFile=Join-Path $statePath "deploy-$ProjectName.json"
+$operationLock=Open-DeploymentOperationLock $deploymentPath
+try{
+$auditFile=Resolve-Rsp027DeploymentAudit $statePath $ProjectName
+$recognition027=$null
+$priorAudit=$null
 # Do not lose the pre-migration baseline or bypass a failed gate on a retry
 # just because 026 is already in the ledger. Recovery requires operator review.
 if(Test-Path -LiteralPath $auditFile){
   $priorAudit=[IO.File]::ReadAllText($auditFile) | ConvertFrom-Json
   if($priorAudit.validation_026 -eq 'pending'){throw '026: validacion anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
-  if($priorAudit.validation_027 -eq 'pending' -or ($priorAudit.validation_027 -eq 'passed' -and $priorAudit.status -ne 'success')){throw '027: validacion/despliegue anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
+  if($priorAudit.validation_027 -eq 'pending' -or ($priorAudit.validation_027 -eq 'passed' -and $priorAudit.status -ne 'success')){
+    if(-not $Recognition027File){throw '027: validacion/despliegue anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
+    $recognition027=Use-Rsp027Recognition $statePath $ProjectName $Recognition027File $Recognition027Sha256 $GitSha $deploymentPath $compose (Join-Path $repo 'api/db/migrations')
+    $auditFile=$recognition027.attempt
+  }
 }
+if(($Recognition027File -or $Recognition027Sha256) -and $null -eq $recognition027){throw '027: reconocimiento no aplicable a este intento.'}
 $previous=Read-DeploymentState $deploymentPath
 $savedEnvironment=@{}
 foreach($name in @('API_IMAGE_REF','FRONT_IMAGE_REF','APP_VERSION','GIT_SHA','SMOKE_INTERNAL_PORT')){$savedEnvironment[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
@@ -116,6 +128,15 @@ function Test-RecoveryMaintenance{
 
 $audit=[ordered]@{format=3;project=$ProjectName;started_at_utc=[DateTime]::UtcNow.ToString('o');updated_at_utc=[DateTime]::UtcNow.ToString('o');status='started';phase_started='preflight';phase_completed='none';database_recovery='not_required';legacy_schema_without_ledger=$false;deployment_state=$deploymentPath;deployment_state_persisted=$false;previous_config_hash=$previous.ConfigHash;previous_api_ref=$previous.ApiImage;previous_api_id='';previous_front_ref=$previous.FrontImage;previous_front_id='';previous_version=$previous.AppVersion;previous_git_sha=$previous.GitSha;target_config_hash=(Get-DeploymentConfigHash $TargetApiImage $TargetFrontImage $TargetVersion $GitSha);target_api_ref=$TargetApiImage;target_front_ref=$TargetFrontImage;target_version=$TargetVersion;git_sha=$GitSha;backup_bundle=''}
 $previousApiContainerId='';$previousProxyContainerId=''
+if($recognition027){
+  $audit.validation_027='pending'
+  $audit.recognition_027=@{record=$recognition027.record;record_sha256=$recognition027.record_sha256;incident=$recognition027.incident;incident_sha256=$recognition027.incident_sha256;archived_incident=$recognition027.archived_incident;operator=$recognition027.operator;reason=$recognition027.reason;consumed_at_utc=$recognition027.consumed_at_utc}
+}elseif($priorAudit.recognition_027){$audit.recognition_027=$priorAudit.recognition_027}
+# Failure here must not enter deployment recovery or overwrite an existing attempt.
+if($recognition027){
+  try{New-Rsp027AttemptAudit $recognition027 $audit $statePath $ProjectName}
+  catch{$initialAuditError=$_;try{Restore-DeploymentEnvironment}catch{};throw $initialAuditError}
+}
 try{
   Write-DeploymentAuditAtomic $auditFile $audit
   Clear-DeploymentEnvironment
@@ -136,6 +157,7 @@ try{
     if($validate027){Assert-Rsp027Services $compose;Assert-Rsp026Images $compose $previous.GitSha $previous.ApiImage $previous.FrontImage}
     if($validate027 -and $BuildImages){Assert-Rsp027BuildSource $repo $GitSha}
   }
+  if($recognition027 -and ($validate026 -or -not $validate027)){throw '027: reconocimiento requiere ejecutar toda la actualizacion inicial 026 -> 027.'}
   $audit.validation_026=if($validate026){'pending'}else{'not_required'}
   $audit.validation_027=if($validate027){'pending'}else{'not_required'}
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
@@ -302,3 +324,4 @@ try{
   # Never replace the original deployment failure with a cleanup/reporting failure.
   try{Restore-DeploymentEnvironment}catch{if($originalError){$originalError.Exception.Data['EnvironmentRestoreError']=$_.Exception.Message}else{throw}}
 }
+}finally{$operationLock.Dispose()}

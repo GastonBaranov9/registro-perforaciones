@@ -28,13 +28,26 @@ function Assert-Rsp027BuildSource([string]$Repo,[string]$GitSha) {
   if($LASTEXITCODE -ne 0 -or $dirty){throw '027: construir requiere checkout limpio del SHA autorizado.'}
 }
 function Assert-Rsp027TargetMigrations([string]$ApiImage,[string]$FrontImage,[string]$GitSha,[string]$MigrationDir) {
+  if($GitSha -cnotmatch '^[a-f0-9]{40}$'){throw '027: SHA objetivo vacio o invalido.'}
+  $apiImageId=$null
   foreach($ref in @($ApiImage,$FrontImage)){
-    $label=(& docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $ref | Out-String).Trim()
-    if($LASTEXITCODE -ne 0 -or $label -cne $GitSha){throw '027: etiqueta SHA de imagen objetivo incompatible.'}
+    if([string]::IsNullOrWhiteSpace($ref)){throw '027: referencia de imagen vacia.'}
+    # JSON avoids Windows PowerShell native-argument quoting of Go templates.
+    $raw=(& docker image inspect $ref | Out-String).Trim()
+    if($LASTEXITCODE -ne 0 -or -not $raw){throw "027: inspeccion Docker fallida o vacia: $ref"}
+    try{$parsed=$raw | ConvertFrom-Json -ErrorAction Stop}catch{throw "027: JSON Docker invalido: $ref"}
+    $images=@($parsed)
+    if(-not $raw.StartsWith('[') -or $images.Count -ne 1 -or $null -eq $images[0] -or
+      $images[0].Id -isnot [string] -or $images[0].Id -cnotmatch '^sha256:[a-f0-9]{64}$'){
+      throw "027: identidad de imagen ausente o ambigua: $ref"
+    }
+    $label=$images[0].Config.Labels.'org.opencontainers.image.revision'
+    if($label -isnot [string] -or $label -cne $GitSha){throw "027: etiqueta SHA de imagen objetivo incompatible: $ref"}
+    if($null -eq $apiImageId){$apiImageId=$images[0].Id}
   }
   # Never start the application, attach networks/volumes, or supply DB secrets.
   $js="const f=require('fs'),c=require('crypto');console.log(JSON.stringify(f.readdirSync('/api/db/migrations').filter(n=>/^\d{3}_.+\.sql$/.test(n)).sort().map(n=>({version:n.slice(0,3),nombre:n.slice(4,-4),checksum_sha256:c.createHash('sha256').update(f.readFileSync('/api/db/migrations/'+n,'utf8').replace(/\r\n/g,'\n')).digest('hex')}))));"
-  $json=(& docker run --rm --pull=never --network none --read-only --entrypoint node $ApiImage -e $js | Out-String)
+  $json=(& docker run --rm --pull=never --network none --read-only --entrypoint node $apiImageId -e $js | Out-String)
   if($LASTEXITCODE -ne 0){throw '027: no se pudo inspeccionar el inventario de migraciones de la imagen.'}
   $imageLedger=$json | ConvertFrom-Json
   Assert-Rsp026Ledger $imageLedger 27 $MigrationDir

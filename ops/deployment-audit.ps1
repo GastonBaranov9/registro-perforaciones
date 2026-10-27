@@ -4,6 +4,14 @@ if(-not (Get-Command Assert-DeploymentImageRef -ErrorAction SilentlyContinue)){
 
 $script:DeploymentAuditPhases=[ordered]@{none=0;preflight=1;maintenance=2;photo_storage=3;backup=4;images=5;migrate=6;services=7;health=8;smoke=9;persist_state=10;complete=11}
 
+# Cooperating deploy/027-recognition processes serialize on the actual state file.
+# Keep the lock file: deleting it after closing can race a second opener.
+function Open-DeploymentOperationLock([string]$DeploymentStateFile){
+  $path=[IO.Path]::GetFullPath($DeploymentStateFile)+'.operation.lock'
+  try{return [IO.File]::Open($path,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}
+  catch{throw 'Otra operacion mantiene el bloqueo de deployment state, o no hay acceso.'}
+}
+
 function Write-DeploymentAuditAtomic{
   param([Parameter(Mandatory=$true)][string]$Path,[Parameter(Mandatory=$true)]$Audit)
   $full=[IO.Path]::GetFullPath($Path);$parent=[IO.Path]::GetDirectoryName($full)

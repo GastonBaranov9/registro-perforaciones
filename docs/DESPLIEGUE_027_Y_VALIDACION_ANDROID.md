@@ -180,3 +180,216 @@ compilación correcta no acredita una prueba física satisfactoria.
    crear claves nuevas para evitar errores. Nunca usar borradores del piloto.
 6. Registrar capturas, PDF y resultado de cada paso sin información personal.
    La validación Android físico permanece pendiente hasta realizar esta prueba.
+
+## Incidente del 27/10/2026 UTC: corrección local, sin reintento
+
+El intento del SHA `df0a41caaddd106ff19810a5379fbf62ca391052` construyó API y
+frontend, pero se detuvo antes de mantenimiento. Windows PowerShell perdió las
+comillas internas de la plantilla Go usada para consultar la etiqueta
+`org.opencontainers.image.revision`; Docker informó `function "org" not defined`.
+Las etiquetas reales eran correctas. No fue una discrepancia del código construido.
+
+`Assert-Rsp027TargetMigrations` ahora consume `docker image inspect` como JSON,
+exige exactamente una imagen con ID SHA-256 válido por referencia y compara una
+etiqueta de texto con el SHA completo esperado. Rechaza error de Docker, respuesta
+vacía, JSON inválido, objetos en lugar de la colección de inspección, colecciones
+vacías/ambiguas, ID inválido y etiqueta ausente, vacía o diferente. API y frontend
+se inspeccionan independientemente. El inventario se ejecuta usando el ID
+inmutable de la API inspeccionada, sin depender de que su tag siga apuntando al
+mismo objeto. Se mantienen `--rm --pull=never --network none --read-only`, sin
+montajes, variables de credenciales ni inicio del servidor/API.
+
+Resultados del parche:
+
+- Validadores con snapshots sintéticos existentes: **68/68**. Se añadieron
+  rechazos independientes para ambas imágenes y errores de inventario; no se
+  repitieron migraciones ni suites funcionales.
+- Windows PowerShell real **5.1.26100.9711** y Docker real: lectura correcta de
+  las dos imágenes del intento; inventario completo **000–027** y checksums
+  correctos mediante el contenedor efímero por ID.
+- Docker real: SHA esperado incorrecto rechazado; imagen nginx existente sin
+  etiqueta de revisión rechazada tanto en posición API como frontend. JSON
+  inválido, resultados ambiguos y fallos de transporte se ensayan con mocks,
+  sin fabricar ni modificar imágenes reales.
+- No se reconstruyeron ni reetiquetaron imágenes. Las del intento siguen
+  perteneciendo a `df0a41c`; el parche local necesitará un nuevo commit y nuevas
+  imágenes de ese SHA cuando se autoricen.
+
+### Clasificación del incidente, comprobada en lectura
+
+Auditoría: `state/deploy-rsp-pilot.json`, dentro del directorio privado de la
+operación `20261025T211057792Z`. Sigue con `status=failed`, fases
+`preflight/preflight`, `validation_027=pending`, `database_recovery=not_required`,
+sin bundle y con `deployment_state_persisted=false`.
+
+`Read-DeploymentAuditForRollback` devuelve `rollback_noop=true`,
+`rollback_requires_full=false` y `backup_completed=false`. Esto clasifica el
+incidente; **no autoriza un reintento ni elimina la barrera pending**.
+
+La evidencia adicional coincide: logs sin inicio de mantenimiento/respaldo/
+migración; ningún contenedor de mantenimiento; los cuatro contenedores originales
+saludables y arrancados antes del intento; imágenes en 026; deployment state
+idéntico byte por byte a su copia anterior; ledger 000–026 con checksums correctos
+y `prefiltro_pozo` ausente. Numeración observada: 3284/3283, sin modificarla.
+No se ha usado esta comprobación para afirmar que no haya actividad empresarial
+legítima posterior: el próximo despliegue deberá capturar su propio baseline.
+
+Huellas SHA-256 comprobadas, antes y después de las lecturas:
+
+- Auditoría fallida: `66769CD6E1F089F5072DD0DC3CBF73BB6AC2AC898B8215FBD4C70D0B6A3081EE`.
+- Archivo deployment state: `FF5205CA4DD8ABF41F47871E370525F8F37B6597AA909C5130AF550E1ABD586A`.
+
+No se ejecutó rollback, mantenimiento, migración, reconocimiento ni otro deploy.
+
+### Reconocimiento excepcional implementado localmente (NO aplicado en producción)
+
+`ops/acknowledge-027-preflight.ps1` emite un reconocimiento; `ops/deploy.ps1`
+lo consume posteriormente. La lógica compartida está en `ops/recognition-027.ps1`.
+No es una validación exitosa de 027, un rollback ni una dispensa del mantenimiento,
+respaldo, migración, conservación, smoke o persistencia del estado.
+
+La elegibilidad se limita al proyecto `rsp-pilot`, actualización inicial 026→027,
+auditoría formato 3 `failed/pending`, fases **preflight/preflight**,
+`database_recovery=not_required`, sin bundle, sin estado persistido y sin errores
+de recuperación. Deben constar explícitamente mantenimiento y bloqueo público
+no activados. `rollback_noop` solo es una condición adicional, no la prueba única.
+Se rechazan incidentes de mantenimiento/migración y reconocimientos de reintentos.
+
+Se comprueban nuevamente, al emitir **y al consumir**:
+
+- SHA-256 del incidente; state idéntico a su copia previa y coherente con el cierre
+  satisfactorio de 026; SHA, referencias e IDs originales de API/frontend.
+- Log del mismo target/configuración, dentro de las fechas del incidente, con
+  `DEPLOY_FAILED`/`ROLLBACK_NOT_REQUIRED` y sin inicio de mantenimiento u otras fases.
+- Ledger 000–026 y checksums; 027 única pendiente; `prefiltro_pozo` ausente.
+- Cuatro servicios saludables del proyecto correcto, arrancados antes del intento;
+  imágenes originales activas; ausencia de contenedores de mantenimiento y proxy
+  de smoke, incluso detenidos; ninguna operación adicional activa en el proyecto.
+- Ausencia observable de otros procesos operativos. Deploy y reconocimiento usan
+  además un bloqueo exclusivo sobre `<DeploymentStateFile>.operation.lock`, que
+  se conserva como archivo y se libera como handle al finalizar el proceso.
+
+No se consultan valores fijos de numeración ni se restablece la política 026.
+La empresa puede continuar trabajando con 026: el próximo deploy tomará un nuevo
+baseline cuando contenga las escrituras. Estas comprobaciones demuestran la fase
+operativa alcanzada; no sustituyen la confirmación responsable del operador.
+
+#### Etapa A: emitir, únicamente después de autorización específica
+
+El nuevo SHA definitivo debe existir después del futuro commit/publicación. No usar
+`df0a41c` ni un SHA ficticio en producción. En el ejemplo, las variables representan
+rutas privadas ya verificadas; no son valores por defecto ni nuevos directorios.
+
+```powershell
+& .\ops\acknowledge-027-preflight.ps1 `
+  -EnvFile $EnvFile -DeploymentStateFile $DeploymentStateFile `
+  -StateDir $StateDir -ProjectName rsp-pilot `
+  -IncidentSha256 $IncidentSha256 -Operator $Operator -Reason $Reason `
+  -NewGitSha $NewGitSha -Confirm VERIFIED_NO_PRODUCTIVE_CHANGES `
+  -PreviousStateFile $PreviousStateFile -PreviousAuditFile $PreviousAuditFile `
+  -LogFile $IncidentStdoutLog
+```
+
+El hash se suministra en hexadecimal minúsculo. Las copias previas y el log deben
+ser los originales del intento, no archivos reconstruidos para satisfacer controles.
+Los directorios privados deben conservar sus permisos restringidos. La identidad
+del operador es una declaración auditada bajo esos permisos, no un nuevo sistema
+de autenticación. No se copian secretos de entorno ni credenciales de smoke.
+La revisión final agregó rechazo de rutas fuera del directorio autorizado, streams
+alternativos y enlaces/junctions en sus componentes. También se rechazan permisos
+de escritura para grupos amplios (Everyone, Authenticated Users, Users, Guests y
+Anonymous); no se cambian ACL automáticamente. Los archivos nuevos heredan los
+permisos del directorio privado comprobado. No se admiten rutas de red para esta
+recuperación local de Windows. Administradores y operadores con acceso autorizado
+deben abstenerse de editar evidencia o ejecutar comandos concurrentes manuales.
+
+Primero se reserva `deploy-rsp-pilot.027-claim.json` con `CreateNew` exclusivo y
+flush durable. Después se crea `incident-027-<id>/`, con copias byte por byte de
+`audit.json`, `previous-state.env`, `previous-audit.json` e `incident.log`. Cada
+archivo tiene SHA-256 y se compara con su fuente. Los logs originales no se editan.
+Finalmente se publica `deploy-rsp-pilot.027-recognition.json`, que contiene el
+incidente, SHA de origen/objetivo fallido/nuevo objetivo, operador, motivo, fecha UTC,
+confirmación, inventario y evidencia de lectura. Se devuelve su ruta y SHA-256.
+La auditoría original **permanece en su ruta, con bytes y marcas intactos**.
+
+#### Etapa B: consumir, únicamente con autorización posterior de despliegue
+
+A los parámetros habituales de `deploy.ps1` se añaden exclusivamente:
+
+```powershell
+-Recognition027File $RecognitionFile -Recognition027Sha256 $RecognitionSha256
+```
+
+Sin reconocimiento válido se mantiene el bloqueo actual. Proyecto, incidente,
+state, archivos históricos y nuevo `GitSha` deben coincidir exactamente. Se repiten
+los controles de elegibilidad; luego se crea de forma exclusiva
+`deploy-rsp-pilot.027-consumed.json`. Esta reserva atómica permite un solo ganador
+entre dos procesos. Se escribe y fuerza a disco **antes** de crear la nueva auditoría.
+Un comprobante truncado también bloquea; nunca se elimina para permitir un reintento.
+
+La nueva auditoría es `deploy-rsp-pilot.027-attempt-<id>.json`, formato 3 habitual.
+`recognition_027` incluye ruta/hash del reconocimiento y del incidente, copia
+histórica, operador, motivo y fecha de consumo. Comienza con `validation_027=pending`.
+Se exige ejecutar la actualización inicial completa; el reconocimiento nunca puede
+convertirla en `not_required` ni sustituir las comprobaciones de 026/027.
+La publicación inicial de esta auditoría usa también `CreateNew` y revalida las
+huellas del incidente y su copia. Si aparece un archivo entre el consumo y esa
+publicación, se rechaza sin sobrescribirlo y sin entrar en acciones de despliegue
+o recuperación. Las actualizaciones posteriores conservan el escritor atómico habitual.
+
+El comprobante permite resolver la auditoría actual sin sobrescribir el incidente.
+Los despliegues posteriores correctos siguen usando esa auditoría actual y conservan
+el vínculo al incidente. Para inspección/recuperación, usar la ruta real indicada en
+`DEPLOY_AUDIT` o `ROLLBACK_REQUIRED`, no asumir que el archivo canónico antiguo es
+el último. `Resolve-Rsp027DeploymentAudit` valida el vínculo antes de continuar.
+
+#### Interrupciones y recuperación
+
+- Antes de reservar el reconocimiento: no se publica autorización alguna.
+- Después del claim, antes/durante el archivo o antes de publicar el reconocimiento:
+  el claim incompleto bloquea nuevas emisiones; conservar todo para revisión manual.
+- Después del archivo: sus bytes y el incidente siguen disponibles, aunque no se
+  haya completado la emisión.
+- Durante/después del consumo, antes de escribir la nueva auditoría: el comprobante
+  existente, incluso truncado, impide reutilizar el reconocimiento. Si falta la
+  auditoría enlazada, deploy se detiene antes de operar servicios.
+- Fallo del nuevo deploy: su auditoría propia conserva el error y las barreras
+  existentes mantienen la contención correspondiente a la fase alcanzada. No hay
+  segundo reconocimiento automático, limpieza de marcas ni rollback destructivo.
+
+No borrar claims/comprobantes/archivos para desbloquear. Una interrupción requiere
+evaluación y autorización de recuperación específica, fuera de este procedimiento.
+Los locks coordinan estos scripts actualizados; no constituyen una exclusión contra
+comandos Docker manuales u operadores externos. No ejecutar operaciones paralelas.
+
+`Read-DeploymentAuditForRollback`, `rollback.ps1`, la restauración integral y la
+barrera 026 no cambian de contrato. El lector acepta la nueva auditoría formato 3
+con metadatos adicionales. No utilizar rollback sobre el incidente original para
+reclasificarlo: esa ruta histórica debe permanecer inmutable. Una recuperación real
+posterior usará la auditoría del intento correspondiente y sus autorizaciones.
+
+#### Verificación local y pasos pendientes
+
+Ensayos con Windows PowerShell 5.1, archivos temporales sintéticos y Docker simulado
+que rechaza llamadas no previstas. Las copias de prueba solo aceptan proyectos
+`rsp07f-r3-*`; el fixture rechaza `rsp-pilot`. No se consultó ni cambió producción
+durante estos ensayos y no se generó un reconocimiento productivo.
+
+- Reconocimiento: **63/63** tras la revisión final (55/55 anteriores), incluidos hashes, evidencia ausente/alterada,
+  fases tardías, state, imágenes, ledger, mantenimiento, concurrencia, archivos
+  truncados, interrupciones, contención de rutas, junctions, ACL, publicación
+  exclusiva de auditoría y conservación exacta del historial.
+- Deploy con reconocimiento real sobre fixtures: **19/19** tras la revisión final (18/18 anteriores), flujo completo,
+  respaldo obligatorio, fallos de migración/smoke/conservación, bloqueo, reintento
+  y colisión al publicar la nueva auditoría sin sobrescritura ni recuperación accidental.
+- Regresión de mantenimiento: **24/24**; barreras 026 **10/10** y 027 **13/13**.
+- Recuperación/rollback simulado: **13/13**; sintaxis PowerShell y `git diff --check`
+  correctos. No se ejecutó ningún rollback real.
+- La corrección Docker y su evidencia real **68/68** precedente se conservan;
+  no se repiten pruebas funcionales del prefiltro ni Android.
+
+Pendientes separados: revisión y autorización del commit; publicación autorizada;
+autorización de reconocimiento con su nuevo SHA; autorización de despliegue y
+construcción de imágenes de ese mismo SHA. No reutilizar ni reetiquetar las imágenes
+del intento anterior para aparentar que incluyen el parche. Android físico continúa
+diferido. Ninguna de estas autorizaciones está implícita en las pruebas locales.

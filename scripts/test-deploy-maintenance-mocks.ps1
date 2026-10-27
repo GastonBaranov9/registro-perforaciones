@@ -1,12 +1,13 @@
 # Executes only temporary copies with fail-closed Docker and smoke mocks.
-param([switch]$BackupOnly,[switch]$Validation026Only,[switch]$Validation027Only,[string]$SnapshotDirectory='')
+param([switch]$BackupOnly,[switch]$Validation026Only,[switch]$Validation027Only,[switch]$Recognition027Only,[string]$SnapshotDirectory='')
 $ErrorActionPreference='Stop'
+if($Recognition027Only){$Validation027Only=$true}
 $repo=Split-Path $PSScriptRoot -Parent
 $root=Join-Path ([IO.Path]::GetTempPath()) ('rsp-deploy-mocks-'+[guid]::NewGuid().ToString('N'))
 $ops=Join-Path $root 'ops'
 [IO.Directory]::CreateDirectory($ops)|Out-Null
 $utf8=[Text.UTF8Encoding]::new($false)
-foreach($name in @('deploy.ps1','deployment-state.ps1','deployment-audit.ps1','smoke-proxy.compose.yaml','validation-026.ps1','validation-027.ps1')){Copy-Item -LiteralPath (Join-Path $repo "ops/$name") -Destination $ops}
+foreach($name in @('deploy.ps1','deployment-state.ps1','deployment-audit.ps1','smoke-proxy.compose.yaml','validation-026.ps1','validation-027.ps1','recognition-027.ps1')){Copy-Item -LiteralPath (Join-Path $repo "ops/$name") -Destination $ops}
 if($Validation027Only){
   if(-not $SnapshotDirectory){throw '027 needs synthetic snapshots from test-validation-027-postgres.mjs'}
   $deployCopy=Join-Path $ops 'deploy.ps1'
@@ -19,7 +20,7 @@ if($Validation027Only){
   [IO.File]::AppendAllText((Join-Path $ops 'validation-027.ps1'),@'
 
 function Test-Rsp026Upgrade { return $false }
-function Test-Rsp027Upgrade { $global:DeployMockEvents.Add('027-preflight');return $true }
+function Test-Rsp027Upgrade { $global:DeployMockEvents.Add('027-preflight');return ($global:DeployMockFailure -ne 'recognition-skip-gate') }
 function Assert-Rsp027Services {}
 function Assert-Rsp027BuildSource {}
 function Assert-Rsp027TargetMigrations {$global:DeployMockEvents.Add('027-target-migrations')}
@@ -210,14 +211,32 @@ function docker {
   throw "Unexpected Docker command: $line"
 }
 try{
+  if($Recognition027Only){
+    $helper=Join-Path $ops 'recognition-027.ps1'
+    [IO.File]::WriteAllText($helper,[IO.File]::ReadAllText($helper).Replace("'rsp-pilot'","'rsp07f-r3-mock'"),$utf8)
+    [IO.File]::AppendAllText($helper,@'
+
+function Get-Rsp027RecognitionFacts {$global:DeployMockEvents.Add('recognition-live-revalidation');return @{ledger='000-026';checksums='passed';prefiltro_exists=$false}}
+function Write-Rsp027NewJson([string]$Path,$Value){
+  Write-Rsp027NewFile $Path ([Text.UTF8Encoding]::new($false).GetBytes((ConvertTo-Json -InputObject $Value -Depth 12)))
+  if($global:DeployMockFailure -eq 'recognition-audit-collision' -and $Path.EndsWith('.027-consumed.json')){
+    [IO.File]::WriteAllText($Value.attempt,'synthetic competing evidence')
+    $global:DeployMockCollisionPath=$Value.attempt
+  }
+}
+'@,$utf8)
+    . (Join-Path $PSScriptRoot 'fixtures/recognition-027.ps1')
+  }
   $cases=@('success','maintenance','photo_storage','backup','images','migrate','services','private-proxy','health','smoke','persist_state','public',
     'public-audit','audit-space','audit-permission','public-first-stop','public-stop-all','public-unverified','public-maintenance-fail')
   $backupCases=@('backup-dump','backup-copy','backup-integrity','backup-missing','backup-unverified')
   if($BackupOnly){$cases=@('success')+$backupCases}else{$cases+=$backupCases}
   if($Validation026Only){$cases=@('success','026-counter','026-max','026-reserves','026-permission','026-chain','026-policy','026-exception','026-images','026-api-missing')}
   if($Validation027Only){$cases=@('success','027-counter','027-policy','027-legacy','027-structure','027-invented','027-sql','027-api-missing','027-post-smoke','027-images','027-persistence','persist_state','public')}
+  if($Recognition027Only){$cases+=@('backup-unverified','migrate','smoke','recognition-absent','recognition-skip-gate','recognition-audit-collision')}
   foreach($case in $cases){
-    $mockAudit=Join-Path $root 'state/deploy-rsp07f-r3-mock.json'
+    $caseStateDir=Join-Path $root $(if($Recognition027Only){"state-$case"}else{'state'})
+    $mockAudit=Join-Path $caseStateDir 'deploy-rsp07f-r3-mock.json'
     if(Test-Path -LiteralPath $mockAudit){Remove-Item -LiteralPath $mockAudit}
     Write-DeploymentStateAtomic $state "fixture-api:$oldSha" "fixture-front:$oldSha" old $oldSha|Out-Null
     $global:DeployMockEvents=[Collections.Generic.List[string]]::new()
@@ -227,25 +246,53 @@ try{
     $global:DeployMockStates=@{'proxy-id'='running';'api-id'='running';'front-id'='running';'maintenance-id'='exited';'smoke-proxy-id'='exited'}
     $phase=if($case -in @('maintenance','photo_storage','backup','images','health','persist_state')){$case}else{''}
     $failed=$false;$failure=$null;$output=[Collections.Generic.List[string]]::new()
-    $deployArguments=@{EnvFile=(Join-Path $root 'production.env');DeploymentStateFile=$state;ProjectName='rsp07f-r3-mock';BackupDir=(Join-Path $root 'backup');StateDir=(Join-Path $root 'state');TargetApiImage="fixture-api:$newSha";TargetFrontImage="fixture-front:$newSha";TargetVersion='new';GitSha=$newSha;SmokeAdminEmail='fixture@example.test';SmokeAdminPasswordFile=(Join-Path $root 'password');BuildImages=$true;TestFailAfterPhase=$phase}
+    $deployArguments=@{EnvFile=(Join-Path $root 'production.env');DeploymentStateFile=$state;ProjectName='rsp07f-r3-mock';BackupDir=(Join-Path $root 'backup');StateDir=$caseStateDir;TargetApiImage="fixture-api:$newSha";TargetFrontImage="fixture-front:$newSha";TargetVersion='new';GitSha=$newSha;SmokeAdminEmail='fixture@example.test';SmokeAdminPasswordFile=(Join-Path $root 'password');BuildImages=$true;TestFailAfterPhase=$phase}
+    if($Recognition027Only){
+      . (Join-Path $ops 'recognition-027.ps1')
+      $fixture=New-Recognition027Fixture $caseStateDir 'rsp07f-r3-mock' $state $oldSha ('d'*40)
+      $originalHash=Get-Rsp027FileHash $fixture.audit
+      if($case -ne 'recognition-absent'){
+        $r=New-Rsp027Recognition $caseStateDir 'rsp07f-r3-mock' $state @('mock') mock $originalHash operator 'synthetic recovery' $newSha VERIFIED_NO_PRODUCTIVE_CHANGES $fixture.state $fixture.previous $fixture.log
+        $deployArguments.Recognition027File=$r.path;$deployArguments.Recognition027Sha256=$r.sha256
+      }
+    }
     try{
       & (Join-Path $ops 'deploy.ps1') @deployArguments 3>&1 | ForEach-Object {$output.Add([string]$_)}
     }catch{$failed=$true;$failure=$_}
     if($failed -ne ($case -ne 'success')){throw "Unexpected result: $case; $failure"}
+    if($Recognition027Only){
+      if((Get-Rsp027FileHash $fixture.audit) -cne $originalHash){throw 'Original incident overwritten'}
+      if($case -eq 'recognition-absent'){
+        if($global:DeployMockEvents.Count -ne 0 -or $failure.Exception.Message -notmatch 'anterior pendiente'){throw 'Missing recognition allowed execution'}
+        Write-Output "PASS recognition-deploy/$case";continue
+      }
+      if($case -eq 'recognition-audit-collision'){
+        if($global:DeployMockMaintenance -or [IO.File]::ReadAllText($global:DeployMockCollisionPath) -cne 'synthetic competing evidence' -or
+          ($global:DeployMockEvents -join ' ') -match 'audit/|compose |internal-smoke|public-smoke'){throw 'Audit collision started deploy/recovery or overwrote evidence'}
+        Write-Output "PASS recognition-deploy/$case";continue
+      }
+      $mockAudit=Resolve-Rsp027DeploymentAudit $caseStateDir 'rsp07f-r3-mock'
+      $linked=Read-Rsp027Json $mockAudit
+      if($linked.recognition_027.incident_sha256 -cne $originalHash -or $linked.recognition_027.record_sha256 -cne $r.sha256){throw 'New audit not linked'}
+      if($case -eq 'recognition-skip-gate'){
+        if($global:DeployMockMaintenance -or $linked.validation_027 -ne 'pending' -or $failure.Exception.Message -notmatch 'toda la actualizacion inicial'){throw 'Recognition bypassed initial gate'}
+        Write-Output "PASS recognition-deploy/$case";continue
+      }
+    }
     if($case -notin @('success','public-maintenance-fail') -and -not $global:DeployMockMaintenance){throw "Maintenance not attempted: $case"}
     . (Join-Path $ops 'deployment-audit.ps1')
-    $audit=Read-DeploymentAuditForRollback (Join-Path $root 'state/deploy-rsp07f-r3-mock.json') 'rsp07f-r3-mock' $state
+    $audit=Read-DeploymentAuditForRollback $mockAudit 'rsp07f-r3-mock' $state
     if($audit.rollback_noop){throw "Recovery incorrectly classified as no-op: $case"}
     $events=$global:DeployMockEvents -join "`n"
     if($Validation027Only){
-      if($events.IndexOf('027-snapshot-1') -lt $events.IndexOf('backup-verified') -or $events.IndexOf('run --rm migrate') -lt $events.IndexOf('027-snapshot-1')){throw 'Incorrect backup/baseline/migration order'}
+      if($case -notin $backupCases -and ($events.IndexOf('027-snapshot-1') -lt $events.IndexOf('backup-verified') -or $events.IndexOf('run --rm migrate') -lt $events.IndexOf('027-snapshot-1'))){throw 'Incorrect backup/baseline/migration order'}
       if($case -eq 'success'){
         if($events.IndexOf('027-snapshot-2') -gt $events.IndexOf('internal-smoke') -or $events.IndexOf('027-snapshot-3') -lt $events.IndexOf('internal-smoke') -or $events.IndexOf('stop maintenance') -lt $events.IndexOf('027-complete')){throw 'Incorrect 027 reopening order'}
         if($audit.validation_027 -ne 'passed'){throw '027 validation not recorded'}
       }else{
         $eventCount=$global:DeployMockEvents.Count;$retryError=$null
         try{& (Join-Path $ops 'deploy.ps1') @deployArguments | Out-Null}catch{$retryError=$_}
-        if(-not $retryError -or $retryError.Exception.Message -notmatch 'anterior pendiente' -or $global:DeployMockEvents.Count -ne $eventCount){throw 'Retry bypassed pending 027 evidence'}
+        if(-not $retryError -or $retryError.Exception.Message -notmatch 'anterior pendiente|reconocimiento consumido' -or $global:DeployMockEvents.Count -ne $eventCount){throw 'Retry bypassed pending 027 evidence'}
       }
     }
     if($Validation026Only){

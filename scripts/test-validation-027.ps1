@@ -50,14 +50,44 @@ try{
   $script:dirtyBuild=$true
   Check 'dirty-build-source' {Assert-Rsp027BuildSource 'mock' 'fixture-sha'} $true
 }finally{Remove-Item Function:\git}
+$imageSha='a'*40
+$mockApiImageId='sha256:'+('1'*64)
+$imageMode='correct';$imageFailureRef='api';$inventoryMode='correct'
+$imageInspections=[Collections.Generic.List[string]]::new();$imageRuns=0
 function docker {
   $global:LASTEXITCODE=0
   if($args[0] -eq 'compose'){return 'mock-postgres'}
-  if($args[0] -eq 'image'){return $(if($script:badLabel){'wrong'}else{'fixture-sha'})}
+  if($args[0] -eq 'image'){
+    if($args.Count -ne 3 -or $args[1] -ne 'inspect' -or $args[2] -notin @('api','front')){throw 'Expected JSON inspect of exactly one reference'}
+    $script:imageInspections.Add($args[2])
+    $im=@{Id=$(if($args[2] -eq 'api'){$mockApiImageId}else{'sha256:'+('2'*64)});Config=@{Labels=@{'org.opencontainers.image.revision'=$imageSha}}}
+    if($args[2] -eq $imageFailureRef){
+      switch($imageMode){
+        'wrong' {$im.Config.Labels.'org.opencontainers.image.revision'='b'*40}
+        'missing' {$im.Config.Labels.Remove('org.opencontainers.image.revision')}
+        'empty-sha' {$im.Config.Labels.'org.opencontainers.image.revision'=''}
+        'invalid-json' {return '{invalid'}
+        'docker-error' {$global:LASTEXITCODE=1}
+        'empty-response' {return ''}
+        'empty-array' {return '[]'}
+        'null-image' {return '[null]'}
+        'object-response' {return ConvertTo-Json -InputObject $im -Depth 5}
+        'ambiguous' {return ConvertTo-Json -InputObject @($im,$im) -Depth 5}
+        'invalid-id' {$im.Id='not-an-image-id'}
+      }
+    }
+    return ConvertTo-Json -InputObject @($im) -Depth 5
+  }
   if($args[0] -eq 'run'){
-    if($args -notcontains '--read-only' -or $args -notcontains 'none' -or $args -contains '-v' -or $args -contains '--env'){throw 'Unsafe image inspection'}
+    $script:imageRuns++
+    if($args -notcontains '--read-only' -or $args -notcontains 'none' -or $args -contains '-v' -or $args -contains '--env' -or $args -notcontains $mockApiImageId -or $args -notcontains '--pull=never' -or $args -notcontains '--rm'){throw 'Unsafe or unpinned image inspection'}
     $ledger=Clone $after.ledger
-    if($script:badImageLedger){$ledger[27].checksum_sha256='f'*64}
+    switch($inventoryMode){
+      'checksum' {$ledger[27].checksum_sha256='f'*64}
+      'missing' {$ledger=@($ledger | Where-Object {$_.version -ne '027'})}
+      'invalid-json' {return '{invalid'}
+      'docker-error' {$global:LASTEXITCODE=1}
+    }
     return ConvertTo-Json -InputObject @($ledger) -Depth 5
   }
   if($args[0] -eq 'exec'){
@@ -73,11 +103,19 @@ function docker {
   throw 'Real Docker forbidden'
 }
 try{
-  Check 'target-image-migrations' {Assert-Rsp027TargetMigrations 'api' 'front' 'fixture-sha' $migrationDir}
-  $script:badLabel=$true
-  Check 'target-image-label-fails' {Assert-Rsp027TargetMigrations 'api' 'front' 'fixture-sha' $migrationDir} $true
-  $script:badLabel=$false;$script:badImageLedger=$true
-  Check 'target-image-checksum-fails' {Assert-Rsp027TargetMigrations 'api' 'front' 'fixture-sha' $migrationDir} $true
+  Check 'target-image-migrations' {Assert-Rsp027TargetMigrations 'api' 'front' $imageSha $migrationDir;if(($imageInspections -join ',') -ne 'api,front' -or $imageRuns -ne 1){throw 'Missing independent inspections/inventory'}}
+  Check 'empty-expected-sha' {Assert-Rsp027TargetMigrations 'api' 'front' '' $migrationDir} $true
+  foreach($imageFailureRef in @('api','front')){
+    foreach($imageMode in @('wrong','missing','empty-sha','invalid-json','docker-error','empty-response','empty-array','null-image','object-response','ambiguous','invalid-id')){
+      $runsBefore=$imageRuns
+      Check "target-$imageFailureRef-$imageMode" {Assert-Rsp027TargetMigrations 'api' 'front' $imageSha $migrationDir} $true
+      if($imageRuns -ne $runsBefore){throw 'Inventory ran despite invalid image inspection'}
+    }
+  }
+  $imageMode='correct'
+  foreach($inventoryMode in @('checksum','missing','invalid-json','docker-error')){
+    Check "target-inventory-$inventoryMode" {Assert-Rsp027TargetMigrations 'api' 'front' $imageSha $migrationDir} $true
+  }
   $inventoryFile=Join-Path $SnapshotDirectory 'persistence.inventory'
   [IO.File]::WriteAllText($inventoryFile,"d 755:1000:1000 .",[Text.UTF8Encoding]::new($false))
   $script:persistenceHash=(Get-FileHash -LiteralPath $inventoryFile -Algorithm SHA256).Hash.ToLowerInvariant()
