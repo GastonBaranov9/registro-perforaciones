@@ -21,6 +21,7 @@ $ErrorActionPreference="Stop"
 . (Join-Path $PSScriptRoot "deployment-state.ps1")
 . (Join-Path $PSScriptRoot "deployment-audit.ps1")
 . (Join-Path $PSScriptRoot "validation-026.ps1")
+. (Join-Path $PSScriptRoot "validation-027.ps1")
 if($ProjectName-notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 Assert-DeploymentGitSha $GitSha
 if($BuildImages){Assert-DeploymentImageRef $TargetApiImage $GitSha;Assert-DeploymentImageRef $TargetFrontImage $GitSha}
@@ -36,6 +37,7 @@ $auditFile=Join-Path $statePath "deploy-$ProjectName.json"
 if(Test-Path -LiteralPath $auditFile){
   $priorAudit=[IO.File]::ReadAllText($auditFile) | ConvertFrom-Json
   if($priorAudit.validation_026 -eq 'pending'){throw '026: validacion anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
+  if($priorAudit.validation_027 -eq 'pending' -or ($priorAudit.validation_027 -eq 'passed' -and $priorAudit.status -ne 'success')){throw '027: validacion/despliegue anterior pendiente; conservar evidencia y revisar recuperacion antes de reintentar.'}
 }
 $previous=Read-DeploymentState $deploymentPath
 $savedEnvironment=@{}
@@ -43,6 +45,7 @@ foreach($name in @('API_IMAGE_REF','FRONT_IMAGE_REF','APP_VERSION','GIT_SHA','SM
 $env:SMOKE_INTERNAL_PORT=[string]$SmokeInternalPort
 $maintenance=$false;$persisted=$false;$smokeProxyAttempted=$false
 $validate026=$false;$baseline026=$null
+$validate027=$false;$baseline027=$null
 $migrationDir=Join-Path $repo 'api/db/migrations'
 function Log([string]$Event,[string]$Detail=""){Write-Output "[$([DateTime]::UtcNow.ToString('o'))] $Event $Detail".TrimEnd()}
 function Compose([string[]]$Arguments){& docker compose @compose @Arguments;if($LASTEXITCODE-ne 0){throw "docker compose fallo: $($Arguments-join ' ')"}}
@@ -128,12 +131,19 @@ try{
   # RSP-specific initial upgrade, automatic and without an opt-out switch.
   # Subsequent deployments must not reassert the initial policy after legitimate edits.
   if($ProjectName -eq 'rsp-pilot'){$validate026=Test-Rsp026Upgrade $compose $migrationDir}
+  if($ProjectName -eq 'rsp-pilot' -and -not $validate026 -and (Test-Path (Join-Path $migrationDir '027_prefiltro_constructivo.sql'))){
+    $validate027=Test-Rsp027Upgrade $compose $migrationDir $priorAudit $previous.GitSha
+    if($validate027){Assert-Rsp027Services $compose;Assert-Rsp026Images $compose $previous.GitSha $previous.ApiImage $previous.FrontImage}
+    if($validate027 -and $BuildImages){Assert-Rsp027BuildSource $repo $GitSha}
+  }
   $audit.validation_026=if($validate026){'pending'}else{'not_required'}
+  $audit.validation_027=if($validate027){'pending'}else{'not_required'}
   Complete-DeploymentAuditPhase $audit 'preflight' $auditFile;Test-PhaseFailure 'preflight'
 
   Set-DeploymentEnvironment $TargetApiImage $TargetFrontImage $TargetVersion $GitSha
   Compose @("config","--quiet")
   if($BuildImages){Log "image_build_start";Compose @("build","api","front")}else{Log "image_pull_start";Compose @("pull","api","front")}
+  if($validate027){Assert-Rsp027TargetMigrations $TargetApiImage $TargetFrontImage $GitSha $migrationDir}
 
   # A failure from this point leaves maintenance active; recovery is no longer a no-op.
   $audit.database_recovery='operator_assessment_required'
@@ -169,6 +179,15 @@ try{
   }
 
   Start-DeploymentAuditPhase $audit 'images' $auditFile
+  if($validate027){
+    $baseline027=Get-Rsp027Snapshot $compose
+    Assert-Rsp026Ledger $baseline027.ledger 26 $migrationDir
+    Assert-Rsp027Baseline $baseline027
+    $audit.validation_027_evidence=Join-Path $statePath "$($audit.backup_bundle)-027.json"
+    $evidence027=[ordered]@{source_git_sha=$previous.GitSha;target_git_sha=$GitSha;backup_bundle=$audit.backup_bundle;before=$baseline027;checks=@('baseline')}
+    Write-Rsp027Evidence $audit.validation_027_evidence $evidence027
+    Write-DeploymentAuditAtomic $auditFile $audit
+  }
   Compose @("config","--quiet")
   Complete-DeploymentAuditPhase $audit 'images' $auditFile;Test-PhaseFailure 'images'
   $audit.database_recovery='operator_assessment_required'
@@ -176,6 +195,13 @@ try{
   Log "migrate_start"
   if($audit.legacy_schema_without_ledger){Compose @("--profile","ops","run","--rm","migrate","npm","run","db:migrate","--","--adopt-current-schema")}else{Compose @("--profile","ops","run","--rm","migrate")}
   Log "migrate_ok";Complete-DeploymentAuditPhase $audit 'migrate' $auditFile;Test-PhaseFailure 'migrate'
+  if($validate027){
+    $migrated027=Get-Rsp027Snapshot $compose
+    Assert-Rsp026Ledger $migrated027.ledger 27 $migrationDir
+    Assert-Rsp027Conservation $baseline027 $migrated027
+    $evidence027.after_migration=$migrated027;$evidence027.checks+=@('ledger-027','structure','strict-conservation')
+    Write-Rsp027Evidence $audit.validation_027_evidence $evidence027
+  }
   Start-DeploymentAuditPhase $audit 'services' $auditFile
   Log "services_start";Compose @("up","-d","--no-deps","--wait","--wait-timeout","180","api","front")
   $smokeProxyAttempted=$true
@@ -185,7 +211,7 @@ try{
   Test-PhaseFailure 'services'
   Start-DeploymentAuditPhase $audit 'health' $auditFile;Log "health_ok";Complete-DeploymentAuditPhase $audit 'health' $auditFile;Test-PhaseFailure 'health'
   Start-DeploymentAuditPhase $audit 'smoke' $auditFile;Log "smoke_start"
-  $smoke=& (Join-Path $PSScriptRoot "smoke.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -AdminEmail $SmokeAdminEmail -AdminPasswordFile $SmokeAdminPasswordFile -ComposeFile $ComposeFile -ConnectPort $SmokeInternalPort -TlsCaFile $SmokeCaFile -Validate026:$validate026
+  $smoke=& (Join-Path $PSScriptRoot "smoke.ps1") -EnvFile $envPath -DeploymentStateFile $deploymentPath -ProjectName $ProjectName -AdminEmail $SmokeAdminEmail -AdminPasswordFile $SmokeAdminPasswordFile -ComposeFile $ComposeFile -ConnectPort $SmokeInternalPort -TlsCaFile $SmokeCaFile -Validate026:$validate026 -Validate027:$validate027
   if($smoke-notcontains "SMOKE_OK"){throw "El smoke operacional fallo."}
   if($validate026){
     if($smoke -notcontains 'SMOKE_026_API_OK'){throw '026: falta validacion del contrato API autenticado.'}
@@ -199,6 +225,21 @@ try{
     [IO.File]::WriteAllText($audit.validation_026_evidence,(ConvertTo-Json -InputObject $evidence026 -Depth 14),[Text.UTF8Encoding]::new($false))
     $audit.validation_026='passed';Log 'validation_026_ok'
   }
+  if($validate027){
+    if($smoke -notcontains 'SMOKE_027_API_OK'){throw '027: falta smoke privado autenticado.'}
+    $smokeUser=@($smoke | Where-Object {$_ -cmatch '^SMOKE_027_USER=[1-9][0-9]*$'})
+    if($smokeUser.Count -ne 1){throw '027: falta identidad del usuario smoke.'}
+    $after027=Get-Rsp027Snapshot $compose
+    Assert-Rsp026Ledger $after027.ledger 27 $migrationDir
+    Assert-Rsp027Conservation $baseline027 $after027 ([long]($smokeUser[0] -split '=')[1])
+    Assert-Rsp026Images $compose $GitSha $TargetApiImage $TargetFrontImage
+    $persistence027=Assert-Rsp027Persistence $compose (Join-Path $backupPath $audit.backup_bundle)
+    $evidence027.after_smoke=$after027;$evidence027.persistence=$persistence027
+    $evidence027.checks+=@('authenticated-smoke','post-smoke-conservation','images','persistence')
+    $evidence027.validated_at_utc=[DateTime]::UtcNow.ToString('o')
+    Write-Rsp027Evidence $audit.validation_027_evidence $evidence027
+    $audit.validation_027='passed';Log 'validation_027_ok'
+  }
   Log "smoke_ok";Complete-DeploymentAuditPhase $audit 'smoke' $auditFile;Test-PhaseFailure 'smoke'
 
   Start-DeploymentAuditPhase $audit 'persist_state' $auditFile
@@ -207,6 +248,7 @@ try{
   Clear-DeploymentEnvironment;Assert-ComposeState $written
   # All critical checks and state persistence succeeded while public writes were blocked.
   if($validate026 -and $audit.validation_026 -ne 'passed'){throw '026: reapertura bloqueada sin validacion completa.'}
+  if($validate027 -and $audit.validation_027 -ne 'passed'){throw '027: reapertura bloqueada sin validacion completa.'}
   ComposeSmoke @('stop','smoke-proxy');ComposeSmoke @('rm','-f','smoke-proxy');$smokeProxyAttempted=$false
   Compose @('stop','maintenance');$maintenance=$false;Compose @('rm','-f','maintenance')
   Compose @('up','-d','--no-deps','--wait','--wait-timeout','180','proxy')

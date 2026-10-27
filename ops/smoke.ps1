@@ -8,6 +8,7 @@ param(
   [string]$TlsCaFile="",
   [switch]$PublicOnly,
   [switch]$Validate026,
+  [switch]$Validate027,
   [string]$ComposeFile="docker-compose.production.yaml"
 )
 
@@ -17,6 +18,10 @@ $ErrorActionPreference="Stop"
 if($Validate026){
   if($PublicOnly){throw '026 debe validarse mediante el smoke privado antes de reabrir.'}
   . (Join-Path $PSScriptRoot 'validation-026.ps1')
+}
+if($Validate027){
+  if($PublicOnly -or $Validate026){throw '027 requiere smoke privado independiente de la inicializacion 026.'}
+  . (Join-Path $PSScriptRoot 'validation-027.ps1')
 }
 if($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]+$'){throw "ProjectName no es seguro."}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -81,6 +86,10 @@ try{
   if(-not $csrfLine){throw "No se obtuvo cookie CSRF."};$csrf=($csrfLine-split "`t")[6]
   Copy-Item -LiteralPath $cookies -Destination $cookiesCopy
   Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/login")) "200" "request autenticada"
+  if($Validate027){
+    $smokeIdentity=[IO.File]::ReadAllText($body) | ConvertFrom-Json
+    if([string]$smokeIdentity.id_usuario -cnotmatch '^[1-9][0-9]*$' -or @($smokeIdentity.roles | Where-Object {$_.nombre -eq 'administracion'}).Count -eq 0){throw '027: identidad administrativa incompatible.'}
+  }
   Assert-Status (Invoke-Https @("--request","POST","--cookie",$cookies,"--header","Origin: $($origin.AbsoluteUri.TrimEnd('/'))","$($origin.AbsoluteUri)api/logout")) "403" "CSRF ausente"
 
   Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/usuarios/0/pozos")) "200" "lista de pozos"
@@ -94,6 +103,7 @@ try{
   Write-Pass "wells-list"
   $wellId=$null;$ownerId=$null;$photoChecked=$false;$pdfChecked=$false
   if($pozos.Count-eq 0){
+    if($Validate027){throw '027: no hay perforacion existente para comprobar contrato/PDF/perfil; requiere revision del operador.'}
     Write-Skip "well-detail" "no wells available"
     Write-Skip "photo" "no wells available"
     Write-Skip "pdf" "no well available"
@@ -101,6 +111,7 @@ try{
     # 0 is the existing administrative route context, never an invented owner.
     $pozo=$pozos[0];$wellId=[long]$pozo.id_pozo;$ownerId=if($null-eq $pozo.id_propietario){0}else{[long]$pozo.id_propietario}
     Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/usuarios/$ownerId/pozos/$wellId")) "200" "detalle de pozo";Write-Pass "well-detail"
+    if($Validate027){Assert-Rsp027ApiDetail ([IO.File]::ReadAllText($body) | ConvertFrom-Json)}
     Assert-Status (Invoke-Https @("--cookie",$cookies,"$($origin.AbsoluteUri)api/usuarios/$ownerId/pozos/$wellId/informe-pdf")) "200" "PDF"
     if((Get-Item $body).Length-lt 4 -or [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($body),0,4)-ne '%PDF'){throw "PDF inválido."}
     $pdfChecked=$true;Write-Pass "pdf"
@@ -123,6 +134,22 @@ try{
     Assert-Status (Invoke-Https @('--cookie',$cookies,"$($origin.AbsoluteUri)api/pozos/numeracion/politica")) '200' 'politica 026'
     Assert-Rsp026Policy ([IO.File]::ReadAllText($body) | ConvertFrom-Json) -Api
   }
+  if($Validate027){
+    $profileChecked=$false
+    foreach($candidate in $pozos){
+      $candidateOwner=if($null -eq $candidate.id_propietario){0}else{[long]$candidate.id_propietario}
+      $candidateUrl="$($origin.AbsoluteUri)api/usuarios/$candidateOwner/pozos/$($candidate.id_pozo)"
+      Assert-Status (Invoke-Https @('--cookie',$cookies,$candidateUrl)) '200' 'detalle legado 027'
+      $detail=[IO.File]::ReadAllText($body) | ConvertFrom-Json
+      Assert-Rsp027ApiDetail $detail
+      if($detail.profundidad_final_m -gt 0){
+        Assert-Status (Invoke-Https @('--cookie',$cookies,"$candidateUrl/perfil-litologico")) '200' 'perfil legado 027'
+        Assert-Rsp027ApiProfile ([IO.File]::ReadAllText($body) | ConvertFrom-Json)
+        $profileChecked=$true;break
+      }
+    }
+    if(-not $profileChecked){throw '027: no hay perfil con profundidad conocida para validar; no se inventan datos.'}
+  }
 
   $oldPreference=$ErrorActionPreference;$ErrorActionPreference="Continue"
   try{$ws=(& curl.exe --silent --show-error --include --max-time 2 @transport --cookie $cookies --header "Origin: $($origin.AbsoluteUri.TrimEnd('/'))" --header "Connection: Upgrade" --header "Upgrade: websocket" --header "Sec-WebSocket-Version: 13" --header "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "$($origin.AbsoluteUri)ws" 2>&1|Out-String);$wsExit=$LASTEXITCODE}finally{$ErrorActionPreference=$oldPreference}
@@ -133,6 +160,7 @@ try{
   Assert-Status (Invoke-Https @("--cookie",$cookiesCopy,"$($origin.AbsoluteUri)api/login")) "401" "revocación logout"
   Write-Output "SMOKE_OK"
   if($Validate026){Write-Output 'SMOKE_026_API_OK'}
+  if($Validate027){Write-Output 'SMOKE_027_API_OK';Write-Output "SMOKE_027_USER=$($smokeIdentity.id_usuario)"}
   [pscustomobject]@{health="ok";ready="ok";login=$true;csrf=403;pozo=$wellId;foto=$photoChecked;pdf=$pdfChecked;websocket=101;swagger=404;internal_ports=$true;logout_revocado=$true}|ConvertTo-Json -Compress
 }finally{
   if([IO.Directory]::Exists($tempRoot)){[IO.Directory]::Delete($tempRoot,$true)}

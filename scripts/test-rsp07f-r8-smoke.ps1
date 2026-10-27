@@ -1,4 +1,4 @@
-param([string]$ProjectName = "rsp07f-r8-smoke-$PID", [string]$RealJqPath='',[switch]$Validation026Only)
+param([string]$ProjectName = "rsp07f-r8-smoke-$PID", [string]$RealJqPath='',[switch]$Validation026Only,[switch]$Validation027Only)
 
 $ErrorActionPreference = "Stop"
 if ($ProjectName -notmatch '^rsp07f-r8-smoke-[A-Za-z0-9-]+$') { throw "ProjectName inseguro." }
@@ -41,6 +41,7 @@ function Invoke-R8FakeCurl {
     }
   }
   if (-not $url) { throw "fixture curl: URL ausente" }
+  if($Validation027Only -and ($method -ne 'GET') -and $url -notmatch '/api/(login|logout)$'){throw '027 smoke attempted business write'}
   if ($headersPath) { [IO.File]::WriteAllText($headersPath, "", $utf8) }
   if ($url.EndsWith('/ws')) {
     $global:LASTEXITCODE = 0
@@ -61,6 +62,7 @@ function Invoke-R8FakeCurl {
     } else {
       $status = if ($cookie -match 'old-cookies|cookies-copy') { "401" } else { "200" }
       $bodyText = '{"authenticated":true}'
+      if($Validation027Only){$bodyText='{"id_usuario":1,"roles":[{"nombre":"administracion"}]}'}
     }
   }
   elseif ($url.EndsWith('/api/logout')) { $status = if ($csrf) { "204" } else { "403" }; $bodyText = "" }
@@ -81,6 +83,7 @@ function Invoke-R8FakeCurl {
     if($ownerCases.PSObject.Properties[$global:R8SmokeScenario]){$status='200';$bodyText=ConvertTo-Json -InputObject @($ownerCases.($global:R8SmokeScenario)) -Compress}
     else {switch ($global:R8SmokeScenario) {
       {$_ -eq 'empty' -or $_ -like '026_*'} { $status = "200"; $bodyText = '[]' }
+      {$_ -like '027_*'} { $status='200';$bodyText=if($_ -eq '027_empty'){'[]'}else{'[{"id_pozo":1,"id_propietario":2,"foto_url":null}]'} }
       "no_photo" { $status = "200"; $bodyText = '[{"id_pozo":1,"id_propietario":2,"foto_url":null}]' }
       { $_ -in @("valid_photo", "missing_photo") } { $status = "200"; $bodyText = '[{"id_pozo":1,"id_propietario":2,"foto_url":"/api/usuarios/2/pozos/1/foto"}]' }
       "second_photo" { $status = "200"; $bodyText = '[{"id_pozo":1,"id_propietario":2,"foto_url":null},{"id_pozo":3,"id_propietario":4,"foto_url":"/api/usuarios/4/pozos/3/foto"}]' }
@@ -98,8 +101,25 @@ function Invoke-R8FakeCurl {
       $headerText = "HTTP/1.1 200 OK`r`nContent-Type: image/jpeg`r`n`r`n"
     }
   }
-  elseif ($url -match '/api/usuarios/\d+/pozos/\d+/informe-pdf$') { $status = "200"; $bodyText = "%PDF-fixture" }
-  elseif ($url -match '/api/usuarios/\d+/pozos/\d+$') { $status = "200"; $bodyText = '{"id_pozo":1,"id_propietario":2}' }
+  elseif ($url -match '/api/usuarios/\d+/pozos/\d+/informe-pdf$') { $status = "200"; $bodyText = if($global:R8SmokeScenario -eq '027_bad_pdf'){'invalid'}else{"%PDF-fixture"} }
+  elseif ($url -match '/api/usuarios/\d+/pozos/\d+/perfil-litologico$') {
+    if($method -ne 'GET' -or -not $cookie){throw '027 profile must be authenticated GET'}
+    $status=if($global:R8SmokeScenario -eq '027_profile_500'){'500'}else{'200'}
+    $bodyText=if($global:R8SmokeScenario -eq '027_bad_profile'){'null'}else{'{"profundidad_m":30,"rangos":[{"desde_m":0,"hasta_m":30}],"tramos":[],"etiquetas":[],"prefiltro_constructivo":[]}'}
+  }
+  elseif ($url -match '/api/usuarios/\d+/pozos/\d+$') {
+    $status = "200"; $bodyText = '{"id_pozo":1,"id_propietario":2}'
+    if($Validation027Only){
+      $d=@{id_pozo=1;id_propietario=2;profundidad_final_m=30;prefiltro_constructivo=@()}
+      switch($global:R8SmokeScenario){
+        '027_missing' {$d.Remove('prefiltro_constructivo')}
+        '027_null' {$d.prefiltro_constructivo=$null}
+        '027_invented' {$d.prefiltro_constructivo=@(@{desde_m=12;hasta_m=15})}
+        '027_no_depth' {$d.profundidad_final_m=$null}
+      }
+      $bodyText=ConvertTo-Json -InputObject $d -Depth 5 -Compress
+    }
+  }
   elseif ($url.EndsWith('/pozos-detail/1')) { $status = "200"; $bodyText = '<app-root></app-root>' }
   elseif ($url.EndsWith('/')) {
     $status = "200"; $bodyText = '<app-root></app-root>'
@@ -134,7 +154,7 @@ function Invoke-PowerShellScenario([string]$Scenario, [bool]$ShouldPass) {
   $global:R8SmokeScenario = $Scenario
   $captured = @(); $failed = $false
   try {
-    $captured = @(& (Join-Path $repo 'ops/smoke.ps1') -EnvFile $envFile -DeploymentStateFile $stateFile -ProjectName $ProjectName -AdminEmail 'fixture@example.test' -AdminPasswordFile $passwordFile -ConnectPort $global:R8ConnectOverride -Validate026:$Validation026Only 2>&1)
+    $captured = @(& (Join-Path $repo 'ops/smoke.ps1') -EnvFile $envFile -DeploymentStateFile $stateFile -ProjectName $ProjectName -AdminEmail 'fixture@example.test' -AdminPasswordFile $passwordFile -ConnectPort $global:R8ConnectOverride -Validate026:$Validation026Only -Validate027:$Validation027Only 2>&1)
   } catch {
     $failed = $true; $captured += $_.Exception.Message
   }
@@ -142,6 +162,7 @@ function Invoke-PowerShellScenario([string]$Scenario, [bool]$ShouldPass) {
   if ($failed -eq $ShouldPass) { throw "PowerShell/$Scenario no respetó exit esperado:`n$output" }
   Assert-ScenarioResult "PowerShell" $Scenario $ShouldPass $output
   if($Validation026Only -and (($output -match '(?m)^SMOKE_026_API_OK\r?$') -ne $ShouldPass)){throw '026 smoke sentinel incorrect'}
+  if($Validation027Only -and (($output -match '(?m)^SMOKE_027_API_OK\r?$') -ne $ShouldPass)){throw '027 smoke sentinel incorrect'}
 }
 
 function Quote-Bash([string]$Value) {
@@ -170,6 +191,14 @@ function Invoke-PosixScenario([string]$Scenario, [bool]$ShouldPass) {
 
 try {
   Set-Alias -Name 'curl.exe' -Value Invoke-R8FakeCurl -Scope Global
+  if($Validation027Only){
+    foreach($case in @('027_ok','027_missing','027_null','027_invented','027_no_depth','027_empty','027_profile_500','027_bad_profile','027_bad_pdf')){
+      Invoke-PowerShellScenario $case ($case -eq '027_ok')
+      Write-Output "PASS smoke/$case"
+    }
+    Write-Output 'SMOKE_027_MOCKS_OK 9/9; no real HTTP or Docker commands'
+    return
+  }
   if($Validation026Only){
     foreach($case in @('026_ok','026_forbidden','026_absent','026_permission','026_exception','026_range')){
       Invoke-PowerShellScenario $case ($case -eq '026_ok')

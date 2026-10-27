@@ -1,12 +1,59 @@
 # Executes only temporary copies with fail-closed Docker and smoke mocks.
-param([switch]$BackupOnly,[switch]$Validation026Only)
+param([switch]$BackupOnly,[switch]$Validation026Only,[switch]$Validation027Only,[string]$SnapshotDirectory='')
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $root=Join-Path ([IO.Path]::GetTempPath()) ('rsp-deploy-mocks-'+[guid]::NewGuid().ToString('N'))
 $ops=Join-Path $root 'ops'
 [IO.Directory]::CreateDirectory($ops)|Out-Null
 $utf8=[Text.UTF8Encoding]::new($false)
-foreach($name in @('deploy.ps1','deployment-state.ps1','deployment-audit.ps1','smoke-proxy.compose.yaml','validation-026.ps1')){Copy-Item -LiteralPath (Join-Path $repo "ops/$name") -Destination $ops}
+foreach($name in @('deploy.ps1','deployment-state.ps1','deployment-audit.ps1','smoke-proxy.compose.yaml','validation-026.ps1','validation-027.ps1')){Copy-Item -LiteralPath (Join-Path $repo "ops/$name") -Destination $ops}
+if($Validation027Only){
+  if(-not $SnapshotDirectory){throw '027 needs synthetic snapshots from test-validation-027-postgres.mjs'}
+  $deployCopy=Join-Path $ops 'deploy.ps1'
+  [IO.File]::WriteAllText($deployCopy,[IO.File]::ReadAllText($deployCopy).Replace("'rsp-pilot'","'rsp07f-r3-mock'"),$utf8)
+  [IO.Directory]::CreateDirectory((Join-Path $root 'api/db/migrations'))|Out-Null
+  [IO.File]::WriteAllText((Join-Path $root 'api/db/migrations/027_prefiltro_constructivo.sql'),'fixture marker',$utf8)
+  $global:DeployMock027Before=[IO.File]::ReadAllText((Join-Path $SnapshotDirectory 'before.json')) | ConvertFrom-Json
+  $global:DeployMock027After=[IO.File]::ReadAllText((Join-Path $SnapshotDirectory 'after.json')) | ConvertFrom-Json
+  $global:DeployMock027Smoke=[IO.File]::ReadAllText((Join-Path $SnapshotDirectory 'smoke.json')) | ConvertFrom-Json
+  [IO.File]::AppendAllText((Join-Path $ops 'validation-027.ps1'),@'
+
+function Test-Rsp026Upgrade { return $false }
+function Test-Rsp027Upgrade { $global:DeployMockEvents.Add('027-preflight');return $true }
+function Assert-Rsp027Services {}
+function Assert-Rsp027BuildSource {}
+function Assert-Rsp027TargetMigrations {$global:DeployMockEvents.Add('027-target-migrations')}
+function Assert-Rsp026Ledger {}
+function Get-Rsp027Snapshot {
+  if(-not $global:DeployMockMaintenance){throw '027 snapshot outside maintenance'}
+  $global:DeployMock027Calls++
+  $source=switch($global:DeployMock027Calls){1 {$global:DeployMock027Before};2 {$global:DeployMock027After};3 {$global:DeployMock027Smoke};default {throw 'Unexpected snapshot'}}
+  if($global:DeployMock027Calls -le 2 -and $global:DeployMockStates['api-id'] -ne 'exited'){throw '027 strict comparison while API running'}
+  $global:DeployMockEvents.Add("027-snapshot-$global:DeployMock027Calls")
+  $s=$source | ConvertTo-Json -Depth 40 | ConvertFrom-Json
+  if($global:DeployMock027Calls -eq 2){
+    switch($global:DeployMockFailure){
+      '027-counter' {$s.counter.proximo=99999}
+      '027-policy' {$s.data.politica_numeracion.hash='changed'}
+      '027-legacy' {$s.data.pozo.hash='changed'}
+      '027-structure' {$s.prefiltro.columns[0].type='text'}
+      '027-invented' {$s.prefiltro_rows=1}
+      '027-sql' {throw '027 SQL failure'}
+    }
+  }
+  if($global:DeployMock027Calls -eq 3 -and $global:DeployMockFailure -eq '027-post-smoke'){$s.data.usuario.business='changed'}
+  return $s
+}
+function Assert-Rsp026Images {
+  if($global:DeployMockCriticalPassed -and $global:DeployMockFailure -eq '027-images'){throw '027 image mismatch'}
+}
+function Assert-Rsp027Persistence {
+  if($global:DeployMockFailure -eq '027-persistence'){throw '027 persistence changed'}
+  $global:DeployMock027Passed=$true;$global:DeployMockEvents.Add('027-complete')
+  return @{sha256='synthetic';entries=1}
+}
+'@,$utf8)
+}
 if($Validation026Only){
   # Only the temporary copy recognizes the fictitious project as RSP production.
   $deployCopy=Join-Path $ops 'deploy.ps1'
@@ -78,7 +125,7 @@ if($global:DeployMockFailure -in @('backup-dump','backup-copy','backup-integrity
 if($global:DeployMockFailure -ne 'backup-unverified'){'BACKUP_VERIFIED_FULL=rsp-backup-20261021T000000Z'}
 '@,$utf8)
 [IO.File]::WriteAllText((Join-Path $ops 'smoke.ps1'),@'
-param($EnvFile,$DeploymentStateFile,$ProjectName,$AdminEmail,$AdminPasswordFile,$ComposeFile,$ConnectPort,$TlsCaFile,[switch]$PublicOnly,[switch]$Validate026)
+param($EnvFile,$DeploymentStateFile,$ProjectName,$AdminEmail,$AdminPasswordFile,$ComposeFile,$ConnectPort,$TlsCaFile,[switch]$PublicOnly,[switch]$Validate026,[switch]$Validate027)
 if($PublicOnly){
   $global:DeployMockEvents.Add('public-smoke')
   if(-not $global:DeployMockCriticalPassed){throw 'Opened before internal checks'}
@@ -91,6 +138,7 @@ if($PublicOnly){
   $global:DeployMockCriticalPassed=$true
   'SMOKE_OK'
   if($Validate026 -and $global:DeployMockFailure -ne '026-api-missing'){'SMOKE_026_API_OK'}
+  if($Validate027 -and $global:DeployMockFailure -ne '027-api-missing'){'SMOKE_027_API_OK';'SMOKE_027_USER=1'}
 }
 '@,$utf8)
 . (Join-Path $ops 'deployment-state.ps1')
@@ -135,6 +183,7 @@ function docker {
     if($a[-1] -eq 'maintenance'){
       if(-not $global:DeployMockCriticalPassed){throw 'Premature maintenance removal'}
       if($Validation026Only -and -not $global:DeployMock026Passed){throw 'Premature reopening before 026'}
+      if($Validation027Only -and -not $global:DeployMock027Passed){throw 'Premature reopening before 027'}
       $global:DeployMockMaintenance=$false
     }
     return
@@ -148,6 +197,7 @@ function docker {
     if($a[-1] -eq 'smoke-proxy' -and $global:DeployMockFailure -eq 'private-proxy'){throw 'Private proxy failure'}
     if($a[-1] -eq 'proxy' -and -not $global:DeployMockCriticalPassed){throw 'Premature public start'}
     if($a[-1] -eq 'proxy' -and $Validation026Only -and -not $global:DeployMock026Passed){throw 'Public start before 026'}
+    if($a[-1] -eq 'proxy' -and $Validation027Only -and -not $global:DeployMock027Passed){throw 'Public start before 027'}
     $global:DeployMockStates[($a[-1]+'-id')]='running'
     return
   }
@@ -165,6 +215,7 @@ try{
   $backupCases=@('backup-dump','backup-copy','backup-integrity','backup-missing','backup-unverified')
   if($BackupOnly){$cases=@('success')+$backupCases}else{$cases+=$backupCases}
   if($Validation026Only){$cases=@('success','026-counter','026-max','026-reserves','026-permission','026-chain','026-policy','026-exception','026-images','026-api-missing')}
+  if($Validation027Only){$cases=@('success','027-counter','027-policy','027-legacy','027-structure','027-invented','027-sql','027-api-missing','027-post-smoke','027-images','027-persistence','persist_state','public')}
   foreach($case in $cases){
     $mockAudit=Join-Path $root 'state/deploy-rsp07f-r3-mock.json'
     if(Test-Path -LiteralPath $mockAudit){Remove-Item -LiteralPath $mockAudit}
@@ -172,6 +223,7 @@ try{
     $global:DeployMockEvents=[Collections.Generic.List[string]]::new()
     $global:DeployMockMaintenance=$false;$global:DeployMockCriticalPassed=$false;$global:DeployMockFailure=$case
     $global:DeployMock026Passed=$false
+    $global:DeployMock027Passed=$false;$global:DeployMock027Calls=0
     $global:DeployMockStates=@{'proxy-id'='running';'api-id'='running';'front-id'='running';'maintenance-id'='exited';'smoke-proxy-id'='exited'}
     $phase=if($case -in @('maintenance','photo_storage','backup','images','health','persist_state')){$case}else{''}
     $failed=$false;$failure=$null;$output=[Collections.Generic.List[string]]::new()
@@ -185,6 +237,17 @@ try{
     $audit=Read-DeploymentAuditForRollback (Join-Path $root 'state/deploy-rsp07f-r3-mock.json') 'rsp07f-r3-mock' $state
     if($audit.rollback_noop){throw "Recovery incorrectly classified as no-op: $case"}
     $events=$global:DeployMockEvents -join "`n"
+    if($Validation027Only){
+      if($events.IndexOf('027-snapshot-1') -lt $events.IndexOf('backup-verified') -or $events.IndexOf('run --rm migrate') -lt $events.IndexOf('027-snapshot-1')){throw 'Incorrect backup/baseline/migration order'}
+      if($case -eq 'success'){
+        if($events.IndexOf('027-snapshot-2') -gt $events.IndexOf('internal-smoke') -or $events.IndexOf('027-snapshot-3') -lt $events.IndexOf('internal-smoke') -or $events.IndexOf('stop maintenance') -lt $events.IndexOf('027-complete')){throw 'Incorrect 027 reopening order'}
+        if($audit.validation_027 -ne 'passed'){throw '027 validation not recorded'}
+      }else{
+        $eventCount=$global:DeployMockEvents.Count;$retryError=$null
+        try{& (Join-Path $ops 'deploy.ps1') @deployArguments | Out-Null}catch{$retryError=$_}
+        if(-not $retryError -or $retryError.Exception.Message -notmatch 'anterior pendiente' -or $global:DeployMockEvents.Count -ne $eventCount){throw 'Retry bypassed pending 027 evidence'}
+      }
+    }
     if($Validation026Only){
       if($events.IndexOf('026-baseline') -lt $events.IndexOf('backup-verified')){throw 'Baseline before verified backup'}
       if($events.IndexOf('run --rm migrate') -lt $events.IndexOf('026-baseline')){throw 'Migration before baseline'}
