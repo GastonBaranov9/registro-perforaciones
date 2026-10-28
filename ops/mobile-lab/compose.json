@@ -1,0 +1,211 @@
+{
+  "name": "rsp-mobile-lab",
+  "services": {
+    "postgres": {
+      "image": "postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
+      "restart": "no",
+      "environment": {
+        "POSTGRES_USER": "rsp_mobile_lab",
+        "POSTGRES_DB": "rsp_mobile_lab",
+        "POSTGRES_PASSWORD": "${LAB_PG_PASSWORD:?Falta secreto independiente}"
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "lab_db",
+          "target": "/var/lib/postgresql/data"
+        }
+      ],
+      "networks": [
+        "lab_db"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 10
+      }
+    },
+    "migrate": {
+      "image": "rsp-mobile-lab-api:${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+      "build": {
+        "context": "../../api",
+        "target": "production",
+        "args": {
+          "APP_VERSION": "mobile-lab",
+          "GIT_SHA": "${LAB_GIT_SHA:?Falta SHA de laboratorio}"
+        }
+      },
+      "restart": "no",
+      "networks": [
+        "lab_db"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "profiles": [
+        "setup"
+      ],
+      "command": [
+        "npm",
+        "run",
+        "db:migrate"
+      ],
+      "environment": {
+        "PGHOST": "postgres",
+        "PGPORT": "5432",
+        "PGUSER": "rsp_mobile_lab",
+        "PGDATABASE": "rsp_mobile_lab",
+        "PGPASSWORD": "${LAB_PG_PASSWORD:?Falta secreto independiente}"
+      }
+    },
+    "bootstrap": {
+      "image": "rsp-mobile-lab-api:${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+      "build": {
+        "context": "../../api",
+        "target": "production",
+        "args": {
+          "APP_VERSION": "mobile-lab",
+          "GIT_SHA": "${LAB_GIT_SHA:?Falta SHA de laboratorio}"
+        }
+      },
+      "restart": "no",
+      "networks": [
+        "lab_db"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "profiles": [
+        "setup"
+      ],
+      "stdin_open": true,
+      "command": [
+        "npm",
+        "run",
+        "bootstrap:admin",
+        "--",
+        "--password-stdin"
+      ],
+      "environment": {
+        "PGHOST": "postgres",
+        "PGPORT": "5432",
+        "PGUSER": "rsp_mobile_lab",
+        "PGDATABASE": "rsp_mobile_lab",
+        "PGPASSWORD": "${LAB_PG_PASSWORD:?Falta secreto independiente}",
+        "NODE_ENV": "production",
+        "ADMIN_EMAIL": "admin@rsp-mobile-lab.invalid",
+        "ADMIN_NAME": "Administrador Laboratorio"
+      }
+    },
+    "api": {
+      "image": "rsp-mobile-lab-api:${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+      "build": {
+        "context": "../../api",
+        "target": "production",
+        "args": {
+          "APP_VERSION": "mobile-lab",
+          "GIT_SHA": "${LAB_GIT_SHA:?Falta SHA de laboratorio}"
+        }
+      },
+      "restart": "no",
+      "networks": [
+        "lab_db",
+        "lab_edge"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "stop_grace_period": "480s",
+      "environment": {
+        "PGHOST": "postgres",
+        "PGPORT": "5432",
+        "PGUSER": "rsp_mobile_lab",
+        "PGDATABASE": "rsp_mobile_lab",
+        "PGPASSWORD": "${LAB_PG_PASSWORD:?Falta secreto independiente}",
+        "NODE_ENV": "production",
+        "API_PORT": "3000",
+        "APP_VERSION": "mobile-lab",
+        "GIT_SHA": "${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+        "FASTIFY_SECRET": "${LAB_COOKIE_SECRET:?Falta secreto independiente}",
+        "NATIVE_TOKEN_HMAC_SECRET": "${LAB_TOKEN_SECRET:?Falta secreto independiente}",
+        "MIN_NATIVE_ANDROID_BUILD": "1",
+        "MIN_NATIVE_IOS_BUILD": "1",
+        "NATIVE_CORS_ORIGINS": "https://localhost,capacitor://localhost",
+        "PUBLIC_HOST": "${LAB_HOST:?Falta hostname autorizado}",
+        "PUBLIC_ORIGIN": "${LAB_ORIGIN:?Falta HTTPS autorizado}",
+        "FOTOS_DIR": "/var/lib/registro-perforaciones/fotos",
+        "ENABLE_API_DOCS": "false",
+        "MAP_STATIC_URL_TEMPLATE": "https://maps.googleapis.com/maps/api/staticmap?center={lat},{lon}&zoom=14&size=600x400&key={apiKey}",
+        "MAP_STATIC_ALLOWED_HOST": "maps.googleapis.com",
+        "MAP_STATIC_API_KEY": "${LAB_MAP_KEY:?Falta clave exclusiva de laboratorio}",
+        "MAP_STATIC_ATTRIBUTION": "Google Maps"
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "lab_files",
+          "target": "/var/lib/registro-perforaciones"
+        }
+      ]
+    },
+    "front": {
+      "image": "rsp-mobile-lab-front:${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+      "build": {
+        "context": "../../front",
+        "target": "production",
+        "args": {
+          "APP_VERSION": "mobile-lab",
+          "GIT_SHA": "${LAB_GIT_SHA:?Falta SHA de laboratorio}"
+        }
+      },
+      "restart": "no",
+      "networks": [
+        "lab_edge"
+      ]
+    },
+    "proxy": {
+      "image": "rsp-mobile-lab-proxy:${LAB_GIT_SHA:?Falta SHA de laboratorio}",
+      "build": {
+        "context": "./proxy"
+      },
+      "restart": "no",
+      "environment": {
+        "LAB_HOST": "${LAB_HOST:?Falta hostname autorizado}"
+      },
+      "ports": [
+        "127.0.0.1:18080:8080"
+      ],
+      "networks": [
+        "lab_edge"
+      ],
+      "depends_on": {
+        "api": {
+          "condition": "service_healthy"
+        },
+        "front": {
+          "condition": "service_healthy"
+        }
+      }
+    }
+  },
+  "volumes": {
+    "lab_db": {},
+    "lab_files": {}
+  },
+  "networks": {
+    "lab_db": {
+      "internal": true
+    },
+    "lab_edge": {}
+  }
+}

@@ -4,15 +4,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assertProductionAppId,
-  deriveNativeWebsocketOrigin,
   validateNativeBackendOrigin,
 } from './native-backend-config.mjs';
 import { validateNativeStyleDelivery } from './native-style-contract.mjs';
+import mobileConfig from './mobile-build-config.cjs';
+import { recordNativeArtifact, nativeCsp } from './native-artifact.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
 const mode = process.argv[2];
-const origin = validateNativeBackendOrigin(process.env.NATIVE_BACKEND_ORIGIN, mode);
-const websocketOrigin = deriveNativeWebsocketOrigin(origin);
+const mobile = mobileConfig.mobileSelection();
+if ((mode === 'lab') !== (mobile.variant === 'lab')) throw new Error('Modo y variante móvil incompatibles.');
+const origin = mobile.variant === 'lab' ? mobile.origin : validateNativeBackendOrigin(process.env.NATIVE_BACKEND_ORIGIN, mode);
 const environmentPath = join(frontRoot, 'src', 'environments', 'environment.native.generated.ts');
 const indexPath = join(frontRoot, 'src', 'index.native.generated.html');
 const angularCli = fileURLToPath(new URL('../node_modules/@angular/cli/bin/ng.js', import.meta.url));
@@ -26,21 +28,11 @@ const environmentSource = `export const environment = {
   apiURL: ${JSON.stringify(`${origin}/api/`)},
   wsUrl: '',
   nativeBackendOrigin: ${JSON.stringify(origin)},
-  nativeBuildMode: ${JSON.stringify(mode)} as const,
+  nativeBuildMode: ${JSON.stringify(mode === 'lab' ? 'development' : mode)} as const,
 };
 `;
 
-const csp = [
-  "default-src 'self' data: blob:",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${origin}`,
-  "font-src 'self' data:",
-  `connect-src 'self' ${origin} ${websocketOrigin}`,
-  "object-src 'none'",
-  "base-uri 'self'",
-  "frame-src 'none'",
-].join('; ');
+const csp = nativeCsp(origin);
 
 const indexSource = `<!doctype html>
 <html lang="es">
@@ -51,8 +43,10 @@ const indexSource = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content=${JSON.stringify(csp)}>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  ${mode === 'lab' ? '<style>body{padding-top:calc(26px + env(safe-area-inset-top))!important}ion-app{top:calc(26px + env(safe-area-inset-top))!important}#rsp-lab-banner{position:fixed;top:0;left:0;right:0;padding-top:env(safe-area-inset-top);height:calc(26px + env(safe-area-inset-top));z-index:2147483647;background:#ffdf00;color:#111;text-align:center;font:700 13px/26px sans-serif;pointer-events:none}</style>' : ''}
 </head>
 <body>
+  ${mode === 'lab' ? '<aside id="rsp-lab-banner" aria-label="Aplicación de laboratorio">ENTORNO DE PRUEBAS</aside>' : ''}
   <app-root>
     <div aria-hidden="true" style="position:fixed;inset:-16px;background:#2b241d url('branding/rs_splash_piloto.png') center/cover no-repeat;filter:blur(14px)"></div>
     <img src="branding/rs_splash_piloto.png" alt="Raúl Silva Perforaciones" style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;object-position:center top">
@@ -62,19 +56,24 @@ const indexSource = `<!doctype html>
 </html>
 `;
 
+let ownsEnvironment = false;
+let ownsIndex = false;
 try {
   await writeFile(environmentPath, environmentSource, { encoding: 'utf8', flag: 'wx' });
+  ownsEnvironment = true;
   await writeFile(indexPath, indexSource, { encoding: 'utf8', flag: 'wx' });
+  ownsIndex = true;
   const result = spawnSync(
     process.execPath,
-    [angularCli, 'build', `--configuration=native-${mode}`],
+    [angularCli, 'build', `--configuration=native-${mode === 'lab' ? 'development' : mode}`,
+      ...(mode === 'lab' ? ['--output-path=dist/mobile-lab'] : [])],
     { cwd: frontRoot, env: process.env, stdio: 'inherit' },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
     process.exitCode = result.status ?? 1;
   } else {
-    const outputPath = join(frontRoot, 'dist', 'front', 'browser');
+    const outputPath = join(frontRoot, mobile.webDir);
     const outputIndex = await readFile(join(outputPath, 'index.html'), 'utf8');
     const stylesheetNames = (await readdir(outputPath)).filter((name) =>
       /^styles(?:-[^.]+)?\.css$/i.test(name),
@@ -86,10 +85,11 @@ try {
     ).join('\n');
     const contract = validateNativeStyleDelivery(outputIndex, stylesheetCss);
     console.log(`Contrato CSS nativo validado: ${contract.stylesheetHref}`);
+    await recordNativeArtifact(outputPath, mobile, mode, origin);
   }
 } finally {
   await Promise.all([
-    rm(environmentPath, { force: true }),
-    rm(indexPath, { force: true }),
+    ownsEnvironment ? rm(environmentPath, { force: true }) : Promise.resolve(),
+    ownsIndex ? rm(indexPath, { force: true }) : Promise.resolve(),
   ]);
 }

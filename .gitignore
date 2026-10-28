@@ -4,6 +4,8 @@
 !.env.example
 deployment.env
 *.deployment.env
+mobile-lab.private.json
+mobile-lab.private/
 
 # Dependencias
 node_modules/

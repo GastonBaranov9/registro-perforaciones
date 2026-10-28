@@ -3,11 +3,15 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import './verify-android-branding.mjs';
+import mobile from './mobile-build-config.cjs';
+import { verifyNativeArtifact } from './native-artifact.mjs';
 
 const frontRoot = fileURLToPath(new URL('../', import.meta.url));
-const distRoot = join(frontRoot, 'dist', 'front', 'browser');
+const selection = mobile.mobileSelection();
+const distRoot = join(frontRoot, selection.webDir);
 const nativeRoot = join(frontRoot, 'android', 'app', 'src', 'main', 'assets', 'public');
 const capacitorOnlyAssets = new Set(['cordova.js', 'cordova_plugins.js']);
+await verifyNativeArtifact(nativeRoot, selection, JSON.parse(await readFile(join(frontRoot, 'android/app/src/main/assets/capacitor.config.json'), 'utf8')));
 
 async function filesBelow(root, current = root) {
   const entries = await readdir(current, { withFileTypes: true });

@@ -1,10 +1,15 @@
 apply plugin: 'com.android.application'
 
+def mobileVariant = providers.environmentVariable('RSP_MOBILE_VARIANT').getOrElse('production')
+if (!(mobileVariant in ['production', 'lab'])) throw new GradleException('Variante móvil desconocida')
+def mobileLab = mobileVariant == 'lab'
+
 android {
     namespace "uy.com.raulsilva.perforaciones"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "uy.com.raulsilva.perforaciones"
+        if (mobileLab) applicationIdSuffix '.pruebas'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -33,6 +38,26 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+    if (mobileLab) {
+        // Debug resource overlay: production resources and namespace remain intact.
+        sourceSets.debug.res.srcDir 'src/mobileLab/res'
+    }
+}
+
+tasks.register('verifyMobileIsolation', Exec) {
+    workingDir rootProject.projectDir.parentFile
+    commandLine 'node', 'scripts/verify-native-selection.mjs', mobileVariant,
+        'android/app/src/main/assets/public', 'android/app/src/main/assets/capacitor.config.json'
+}
+tasks.named('preBuild').configure { dependsOn 'verifyMobileIsolation' }
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def expectedId = mobileLab ? 'uy.com.raulsilva.perforaciones.pruebas' : 'uy.com.raulsilva.perforaciones'
+    if (variant.applicationId.get() != expectedId) throw new GradleException('Identidad Android efectiva incompatible')
+}
+gradle.taskGraph.whenReady { graph ->
+    if (mobileLab && graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') }) {
+        throw new GradleException('Laboratorio sólo admite debug; distribución deshabilitada')
     }
 }
 

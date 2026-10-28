@@ -1,3 +1,4 @@
+import mobileConfig from './mobile-build-config.cjs';
 const PRODUCTION_HOST_MARKER = /(^|[.-])(dev|stage|staging|test)([.-]|$)/i;
 const RESERVED_PRODUCTION_SUFFIXES = ['invalid', 'example', 'localhost', 'test'];
 const RESERVED_DOCUMENTATION_DOMAINS = ['example.com', 'example.net', 'example.org'];
@@ -9,7 +10,8 @@ export function isReservedProductionHostname(rawHostname) {
     RESERVED_DOCUMENTATION_DOMAINS.some(belongsTo);
 }
 
-export function validateNativeBackendOrigin(rawOrigin, mode) {
+export function validateNativeBackendOrigin(rawOrigin, mode, labConfig) {
+  if (mode === 'lab') return mobileConfig.validateLabConfig(labConfig, rawOrigin);
   if (!['development', 'production'].includes(mode)) {
     throw new Error('NATIVE_BUILD_MODE debe ser development o production.');
   }
