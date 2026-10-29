@@ -64,6 +64,17 @@ front/src/index.native.generated.html
 **/keystore.properties
 **/signing.properties
 
+# iOS: versionar posteriormente el proyecto revisado, nunca assets/firma locales.
+front/ios/App/App/public/
+front/ios/App/App/capacitor.config.json
+front/ios/App/build/
+**/DerivedData/
+**/xcuserdata/
+*.ipa
+*.p12
+*.p8
+*.mobileprovision
+
 # Certificados/llaves TLS locales o accidentales. La producción los monta fuera de Git.
 *.crt
 *.key

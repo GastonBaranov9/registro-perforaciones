@@ -1,0 +1,6 @@
+{
+  "NSCameraUsageDescription": "Usamos la cámara cuando elegís tomar una fotografía de una perforación.",
+  "NSPhotoLibraryUsageDescription": "Accedemos a las fotografías que seleccionás para adjuntarlas a una perforación.",
+  "NSLocationWhenInUseUsageDescription": "Usamos tu ubicación mientras utilizás la aplicación para completar las coordenadas de una perforación.",
+  "NSLocationAlwaysAndWhenInUseUsageDescription": "Usamos tu ubicación mientras utilizás la aplicación para completar las coordenadas de una perforación."
+}
