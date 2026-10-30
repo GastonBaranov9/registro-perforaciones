@@ -1,0 +1,52 @@
+{
+  "name": "iOS simulator - manual unsigned verification",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "approved_sha": { "description": "SHA completo aprobado; debe coincidir con la rama seleccionada", "required": true, "type": "string" }
+      }
+    }
+  },
+  "permissions": { "contents": "read" },
+  "concurrency": { "group": "ios-simulator-${{ github.ref }}", "cancel-in-progress": false },
+  "jobs": {
+    "simulator": {
+      "runs-on": "macos-26",
+      "timeout-minutes": 40,
+      "env": {
+        "DEVELOPER_DIR": "/Applications/Xcode_26.0.1.app/Contents/Developer",
+        "RSP_MOBILE_VARIANT": "production",
+        "NATIVE_BACKEND_ORIGIN": "https://api.raulsilvaperforaciones.com",
+        "IOS_APPROVED_SHA": "${{ inputs.approved_sha }}"
+      },
+      "defaults": { "run": { "shell": "bash" } },
+      "steps": [
+        {
+          "name": "Require explicit approved revision",
+          "env": { "WORKFLOW_SHA": "${{ github.sha }}" },
+          "run": "set -euo pipefail\n[[ \"$IOS_APPROVED_SHA\" =~ ^[0-9a-f]{40}$ ]]\n[[ \"$IOS_APPROVED_SHA\" == \"$WORKFLOW_SHA\" ]]\nxcodebuild -version\nxcodebuild -showsdks"
+        },
+        {
+          "name": "Checkout exact source (checkout v4.2.2)",
+          "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+          "with": { "ref": "${{ inputs.approved_sha }}", "persist-credentials": false }
+        },
+        {
+          "name": "Node 24.18.0 (setup-node v4.4.0)",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": { "node-version": "24.18.0" }
+        },
+        { "name": "Install locked dependencies", "working-directory": "front", "run": "npm ci --no-audit --no-fund" },
+        { "name": "iOS and shared configuration contracts (no Android toolchain)", "working-directory": "front", "run": "npm run test:ios\nnode --test scripts/native-backend-config.test.mjs scripts/native-style-contract.test.mjs scripts/native-websocket-contract.test.mjs" },
+        { "name": "Build native Angular assets", "working-directory": "front", "run": "npm run build:native:production" },
+        { "name": "Official iOS generation and deterministic configuration", "working-directory": "front", "run": "npm run prepare:ios" },
+        { "name": "Verify and build unsigned simulator", "working-directory": "front", "run": "npm run build:ios:simulator" },
+        {
+          "name": "Evidence and project for review (upload-artifact v4.6.2)",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": { "name": "ios-simulator-${{ inputs.approved_sha }}", "path": "front/dist/ios-evidence/", "if-no-files-found": "error", "retention-days": 7 }
+        }
+      ]
+    }
+  }
+}
