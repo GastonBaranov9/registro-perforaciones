@@ -1,0 +1,3 @@
+# Preserve the reviewed native sources and Swift lock bytes on Windows/macOS.
+* text=auto eol=lf
+*.png -text

@@ -1,5 +1,7 @@
 # Móvil 03 — base iOS universal y simulador sin firma
 
+Actualización 04A: el run `41048734153` completó la compilación sobre `8c2bafd2e3d27bb2e62c32cb46924a0edd299e3c`. Se recuperaron y versionaron localmente el proyecto real y su lock Swift; ver [evidencia, inventario y límites de la recuperación](MOVIL_04_PROYECTO_XCODE.md). Los estados de generación/compilación pendientes descritos abajo corresponden al cierre histórico 03D, anterior a ese resultado. No se lanzó otra ejecución durante 04A.
+
 Estado: corrección local 03D sobre `b5bc884d4688a3b3f4edd305313a596aaf4a4a00`, rama `feature/rsp-mobile-multiplataforma`. La primera ejecución remota autorizada por el propietario falló por incompatibilidad SDK/runtime (detalle abajo). En esta corrección no se ejecutó Actions ni Xcode, no se instaló ninguna aplicación ni se realizó login real. Producción 027 permanece intacta. Android físico sigue pendiente por el cable USB.
 
 ## Inventario inicial de la etapa 03

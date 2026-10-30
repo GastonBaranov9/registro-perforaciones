@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { IOS_ORIGIN, IOS_PLUGINS, iosSelection, iosPolicy, plist, configureIos,
   loadProject, verifyProject, verifyInfo, verifyIosAssets, verifyIosSpm, readJson } from './ios-contract.mjs';
 import { recordNativeArtifact, nativeCsp } from './native-artifact.mjs';
@@ -16,6 +17,74 @@ const front = dirname(dirname(fileURLToPath(import.meta.url)));
 const env = { RSP_MOBILE_VARIANT: 'production', NATIVE_BACKEND_ORIGIN: IOS_ORIGIN };
 const selection = iosSelection(env);
 const requireCli = createRequire(import.meta.resolve('@capacitor/cli/package.json'));
+
+const versionedIos = join(front, 'ios');
+const resolvedPath = 'App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved';
+
+test('proyecto recuperado del build: identidad, privacidad, permisos y siete plugins coherentes', async () => {
+  verifyProject(loadProject(versionedIos), selection);
+  verifyInfo(plist.parse(await readFile(join(versionedIos, 'App/App/Info.plist'), 'utf8')), selection, await iosPolicy(front));
+  assert.deepEqual(await readFile(join(versionedIos, 'App/App/PrivacyInfo.xcprivacy')),
+    await readFile(join(front, 'native/ios/PrivacyInfo.xcprivacy')));
+  await verifyIosSpm(front, versionedIos);
+});
+
+test('lock recuperado: cuatro repositorios, versiones y revisiones del build aprobado', async () => {
+  const bytes = await readFile(join(versionedIos, resolvedPath));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), '56a364979903d2990a2eaad3fb86781113e286e27d4c7d63a7945dc9722ae9df');
+  const lock = JSON.parse(bytes);
+  assert.equal(lock.version, 3);
+  assert.match(lock.originHash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(lock.pins.map(pin => [pin.identity, pin.kind, pin.location, pin.state]), [
+    ['capacitor-swift-pm', 'remoteSourceControl', 'https://github.com/ionic-team/capacitor-swift-pm.git',
+      { revision: '4f71d0b979f2f957326f04353eca7604ee937e1e', version: '8.5.0' }],
+    ['ion-ios-filesystem', 'remoteSourceControl', 'https://github.com/ionic-team/ion-ios-filesystem.git',
+      { revision: '56bd6f9e77cb4f2269c03f2d92a9fe58fe168a1c', version: '1.1.4' }],
+    ['ion-ios-geolocation', 'remoteSourceControl', 'https://github.com/ionic-team/ion-ios-geolocation.git',
+      { revision: 'db363927d3a954e3ea24d2e72b6e9814769a84be', version: '2.1.1' }],
+    ['keychain-swift', 'remoteSourceControl', 'https://github.com/evgenyneu/keychain-swift.git',
+      { revision: '265806607b45687a3d646e4c9837c31c90f202e8', version: '21.0.0' }],
+  ]);
+});
+
+test('configurador sobre copia del proyecto compilado conserva bytes y lock', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'rsp-ios-imported-project-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const ios = join(root, 'ios');
+  await cp(versionedIos, ios, { recursive: true });
+  const files = ['App/App/Info.plist', 'App/App/PrivacyInfo.xcprivacy', 'App/App.xcodeproj/project.pbxproj',
+    'App/CapApp-SPM/Package.swift', resolvedPath];
+  const before = await Promise.all(files.map(file => readFile(join(ios, file))));
+  await configureIos(front, ios, selection);
+  for (let index = 0; index < files.length; index++) assert.deepEqual(await readFile(join(ios, files[index])), before[index], files[index]);
+});
+
+test('generador SPM oficial reproduce el Package.swift importado sin rutas del runner', async () => {
+  const { generatePackageText } = requireCli('./dist/util/spm.js');
+  const config = { app: { rootDir: front, extConfig: {} }, ios: { name: 'ios', nativeXcodeProjDirAbs: join(versionedIos, 'App/App.xcodeproj') } };
+  const plugins = Object.entries(IOS_PLUGINS).sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, [name]]) => ({ id, name, rootPath: join(front, 'node_modules', id), ios: { name, type: 0 } }));
+  const generated = (await generatePackageText(config, plugins)).replaceAll('\\', '/');
+  assert.equal(generated, await readFile(join(versionedIos, 'App/CapApp-SPM/Package.swift'), 'utf8'));
+});
+
+test('Git conserva lock y fuentes; ignora assets generados, caches y material de firma', () => {
+  const native = path => 'ios/' + path;
+  for (const path of [resolvedPath, 'App/App.xcodeproj/project.pbxproj', 'App/App/AppDelegate.swift']) {
+    const result = spawnSync('git', ['check-ignore', '--no-index', '-q', native(path)], { cwd: front });
+    assert.equal(result.status, 1, path);
+  }
+  for (const path of ['App/App/public/index.html', 'App/App/capacitor.config.json', 'App/App/config.xml',
+    'App/build/App.app/App', 'DerivedData/cache', 'App/App.xcodeproj/xcuserdata/user.xcuserdatad',
+    'App/CapApp-SPM/.build/cache', 'App/CapApp-SPM/Packages/cache', 'capacitor-cordova-ios-plugins/generated',
+    'private.p12', 'private.p8', 'profile.mobileprovision']) {
+    const result = spawnSync('git', ['check-ignore', '--no-index', '-q', native(path)], { cwd: front });
+    assert.equal(result.status, 0, path);
+  }
+  const attributes = spawnSync('git', ['check-attr', 'eol', '--', native(resolvedPath)], { cwd: front, encoding: 'utf8' });
+  assert.equal(attributes.status, 0);
+  assert.match(attributes.stdout, /: eol: lf\s*$/);
+});
 
 test('identidad y backend iOS productivos explícitos', () => {
   assert.equal(selection.appId, 'uy.com.raulsilva.perforaciones');
