@@ -5,19 +5,19 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { check, iosPolicy, iosSelection, plist, verifyInfo, verifyIosAssets, verifyIosProject } from './ios-contract.mjs';
-import { XCODE_VERSION, XCODE_BUILD, SIMULATOR_SDK, simulatorArguments, verifySimulatorSettings } from './ios-simulator-contract.mjs';
+import { SIMULATOR_SDK, simulatorArguments, verifySimulatorSettings, verifyApprovedSha, inspectSimulatorToolchain } from './ios-simulator-contract.mjs';
 
 check(process.platform === 'darwin', 'La compilación de simulador requiere macOS/Xcode.');
 const front = dirname(dirname(fileURLToPath(import.meta.url)));
 const run = (command, args) => execFileSync(command, args, { cwd: front, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim();
 const sha = run('git', ['rev-parse', 'HEAD']);
-check(/^[0-9a-f]{40}$/.test(process.env.IOS_APPROVED_SHA ?? '') && process.env.IOS_APPROVED_SHA === sha, 'SHA fuente no aprobado.');
+verifyApprovedSha(process.env.IOS_APPROVED_SHA, sha);
 check(!run('git', ['diff', 'HEAD', '--name-only']), 'Archivos versionados modificados.');
 const selection = iosSelection();
 check(selection.variant === 'production', 'Este workflow de simulador solamente admite la identidad productiva autorizada.');
-const xcode = run('xcodebuild', ['-version']);
-check(xcode === `Xcode ${XCODE_VERSION}\nBuild version ${XCODE_BUILD}`, 'Xcode distinto del evaluado.');
-check(run('xcodebuild', ['-showsdks']).includes(`-sdk ${SIMULATOR_SDK}`), 'SDK de simulador ausente.');
+const toolchain = inspectSimulatorToolchain(run, { developerDir: process.env.DEVELOPER_DIR, nodeArch: process.arch });
+const { xcode } = toolchain;
+console.log('IOS_SIMULATOR_PREFLIGHT_OK ' + JSON.stringify(toolchain));
 await verifyIosProject(front, join(front, 'ios'), selection);
 const derived = join(front, 'dist/ios-simulator');
 const lock = join(front, 'ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved');
@@ -43,7 +43,7 @@ check(!oldLock || oldLock.equals(resolved), 'Xcode modificó el lock SPM aprobad
 const output = join(front, 'dist/ios-evidence');
 await mkdir(output, { recursive: true });
 await writeFile(join(output, 'Package.resolved'), resolved);
-await writeFile(join(output, 'build.json'), JSON.stringify({ sha, xcode, capacitor: '8.5.0',
+await writeFile(join(output, 'build.json'), JSON.stringify({ sha, xcode, toolchain, capacitor: '8.5.0',
   appId: info.CFBundleIdentifier, deviceFamily: info.UIDeviceFamily, origin: selection.origin,
   websocketOrigin: selection.origin.replace('https:', 'wss:'), sdk: SIMULATOR_SDK,
   signed: false, result: 'IOS_SIMULATOR_BUILD_OK', firstSpmResolution: !locked,

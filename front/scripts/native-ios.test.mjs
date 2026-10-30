@@ -9,7 +9,8 @@ import { createRequire } from 'node:module';
 import { IOS_ORIGIN, IOS_PLUGINS, iosSelection, iosPolicy, plist, configureIos,
   loadProject, verifyProject, verifyInfo, verifyIosAssets, verifyIosSpm, readJson } from './ios-contract.mjs';
 import { recordNativeArtifact, nativeCsp } from './native-artifact.mjs';
-import { simulatorArguments, verifySimulatorSettings, SIMULATOR_SDK } from './ios-simulator-contract.mjs';
+import { simulatorArguments, verifySimulatorSettings, SIMULATOR_SDK, DEVELOPER_DIR,
+  inspectSimulatorToolchain, verifyApprovedSha } from './ios-simulator-contract.mjs';
 
 const front = dirname(dirname(fileURLToPath(import.meta.url)));
 const env = { RSP_MOBILE_VARIANT: 'production', NATIVE_BACKEND_ORIGIN: IOS_ORIGIN };
@@ -190,7 +191,7 @@ test('comando de simulador prohíbe firma y respeta lockfile disponible', () => 
   assert.ok(!args.some(value => /archive|exportArchive|allowProvisioning/.test(value)));
   const settings = [{ target: 'App', buildSettings: { PRODUCT_BUNDLE_IDENTIFIER: selection.appId, TARGETED_DEVICE_FAMILY: '1,2',
     CODE_SIGNING_ALLOWED: 'NO', CODE_SIGNING_REQUIRED: 'NO', CODE_SIGN_IDENTITY: '', DEVELOPMENT_TEAM: '',
-    IPHONEOS_DEPLOYMENT_TARGET: '15.0', PLATFORM_NAME: 'iphonesimulator', SDK_NAME: SIMULATOR_SDK } }];
+    IPHONEOS_DEPLOYMENT_TARGET: '15.0', ARCHS: 'arm64 x86_64', PLATFORM_NAME: 'iphonesimulator', SDK_NAME: SIMULATOR_SDK } }];
   verifySimulatorSettings(settings, selection);
   settings[0].buildSettings.CODE_SIGNING_ALLOWED = 'YES';
   assert.throws(() => verifySimulatorSettings(settings, selection));
@@ -198,7 +199,7 @@ test('comando de simulador prohíbe firma y respeta lockfile disponible', () => 
 test('mínimo iOS efectivo rechaza overrides de compilación', () => {
   const s = { PRODUCT_BUNDLE_IDENTIFIER: selection.appId, TARGETED_DEVICE_FAMILY: '1,2',
     CODE_SIGNING_ALLOWED: 'NO', CODE_SIGNING_REQUIRED: 'NO', CODE_SIGN_IDENTITY: '', DEVELOPMENT_TEAM: '',
-    IPHONEOS_DEPLOYMENT_TARGET: '15.0', PLATFORM_NAME: 'iphonesimulator', SDK_NAME: SIMULATOR_SDK };
+    IPHONEOS_DEPLOYMENT_TARGET: '15.0', ARCHS: 'arm64 x86_64', PLATFORM_NAME: 'iphonesimulator', SDK_NAME: SIMULATOR_SDK };
   verifySimulatorSettings([{ target: 'App', buildSettings: s }], selection);
   for (const minimum of ['14.0', '16.0', undefined]) {
     assert.throws(() => verifySimulatorSettings([{ target: 'App', buildSettings: { ...s, IPHONEOS_DEPLOYMENT_TARGET: minimum } }], selection), /mínimo iOS/);
@@ -212,7 +213,7 @@ test('workflow estático: exclusivamente manual, SHA exacto, mínimo permiso y s
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   const job = workflow.jobs.simulator;
   assert.equal(job['runs-on'], 'macos-26');
-  assert.equal(job.env.DEVELOPER_DIR, '/Applications/Xcode_26.0.1.app/Contents/Developer');
+  assert.equal(job.env.DEVELOPER_DIR, '/Applications/Xcode_26.2.app/Contents/Developer');
   assert.equal(job.env.NATIVE_BACKEND_ORIGIN, IOS_ORIGIN);
   assert.equal(job.env.RSP_MOBILE_VARIANT, 'production');
   assert.ok(job.steps[0].run.includes('"$IOS_APPROVED_SHA" == "$WORKFLOW_SHA"'));
@@ -223,6 +224,99 @@ test('workflow estático: exclusivamente manual, SHA exacto, mínimo permiso y s
   assert.doesNotMatch(JSON.stringify(workflow), /secrets\.|pull_request|assemble|docker|TestFlight|app-store/);
   const commands = job.steps.map(step => step.run ?? '').join('\n');
   for (const expected of ['npm ci', 'build:native:production', 'prepare:ios', 'build:ios:simulator']) assert.ok(commands.includes(expected));
+});
+
+function toolchainFixture() {
+  const runtime = { identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-2', name: 'iOS 26.2',
+    version: '26.2', buildversion: '23C54', isAvailable: true };
+  const replies = {
+    'xcodebuild -version': 'Xcode 26.2\nBuild version 17C52',
+    'xcodebuild -showsdks': 'Simulator - iOS 26.2\t-sdk iphonesimulator26.2\n',
+    'xcrun --sdk iphonesimulator26.2 --show-sdk-version': '26.2',
+    'xcrun --sdk iphonesimulator26.2 --show-sdk-path': `${DEVELOPER_DIR}/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk`,
+    'uname -m': 'arm64',
+    'xcrun simctl list runtimes -j': JSON.stringify({ runtimes: [runtime] }),
+  };
+  const calls = [];
+  const run = (command, args) => {
+    const key = [command, ...args].join(' '); calls.push(key);
+    assert.ok(Object.hasOwn(replies, key), `Operación inesperada: ${key}`);
+    return replies[key];
+  };
+  return { runtime, replies, run, calls, options: { developerDir: DEVELOPER_DIR, nodeArch: 'arm64' } };
+}
+
+test('preflight acepta solamente la combinación evaluada y usa sondas de lectura', () => {
+  const f = toolchainFixture(); const evidence = inspectSimulatorToolchain(f.run, f.options);
+  assert.equal(evidence.sdk, 'iphonesimulator26.2'); assert.equal(evidence.runtime.build, '23C54');
+  assert.equal(evidence.hostArch, 'arm64'); assert.equal(f.calls.length, 6);
+  assert.ok(f.calls.includes('xcrun simctl list runtimes -j'));
+  assert.ok(!f.calls.some(c => / boot |download|install| build$/.test(c)));
+});
+for (const [name, runtimes, message] of [
+  ['runtime ausente', () => [], /ausente/],
+  ['solo runtime posterior', r => [{ ...r, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-4', version: '26.4' }], /ausente/],
+  ['runtime no disponible', r => [{ ...r, isAvailable: false }], /no disponible/],
+  ['disponibilidad ausente', r => [{ ...r, isAvailable: undefined }], /no disponible/],
+  ['disponibilidad textual', r => [{ ...r, isAvailable: 'true' }], /no disponible/],
+  ['error de disponibilidad', r => [{ ...r, availabilityError: 'Unsupported host' }], /no disponible/],
+  ['version contradictoria', r => [{ ...r, version: '26.0' }], /contradictorio/],
+  ['nombre contradictorio', r => [{ ...r, name: 'tvOS 26.2' }], /contradictorio/],
+  ['build ausente', r => [{ ...r, buildversion: '' }], /identidad/],
+  ['runtime ambiguo', r => [r, r], /ambiguo/],
+]) test(`preflight rechaza ${name}`, () => {
+  const f = toolchainFixture(); f.replies['xcrun simctl list runtimes -j'] = JSON.stringify({ runtimes: runtimes(f.runtime) });
+  assert.throws(() => inspectSimulatorToolchain(f.run, f.options), message);
+});
+for (const [name, command, value, message] of [
+  ['Xcode incorrecto', 'xcodebuild -version', 'Xcode 26.0.1\nBuild version 17A400', /Xcode distinto/],
+  ['build Xcode incorrecto', 'xcodebuild -version', 'Xcode 26.2\nBuild version 17C529', /Xcode distinto/],
+  ['SDK incorrecto', 'xcodebuild -showsdks', '-sdk iphonesimulator26.0', /SDK de simulador/],
+  ['prefijo SDK engañoso', 'xcodebuild -showsdks', '-sdk iphonesimulator26.20', /SDK de simulador/],
+  ['SDK efectivo distinto', 'xcrun --sdk iphonesimulator26.2 --show-sdk-version', '26.0', /SDK efectivo/],
+  ['SDK de otro Xcode', 'xcrun --sdk iphonesimulator26.2 --show-sdk-path', '/Applications/Xcode_26.0.1.app/SDKs/iPhoneSimulator26.2.sdk', /mezcla/],
+  ['host no evaluado', 'uname -m', 'x86_64', /Arquitectura/],
+  ['JSON inválido', 'xcrun simctl list runtimes -j', '{', /JSON válido/],
+  ['inventario sin runtimes', 'xcrun simctl list runtimes -j', '{}', /Inventario/],
+]) test(`preflight rechaza ${name}`, () => {
+  const f = toolchainFixture(); f.replies[command] = value;
+  assert.throws(() => inspectSimulatorToolchain(f.run, f.options), message);
+});
+test('preflight rechaza DEVELOPER_DIR mezclado y Node bajo arquitectura diferente', () => {
+  const f = toolchainFixture();
+  assert.throws(() => inspectSimulatorToolchain(f.run, { ...f.options, developerDir: '/Applications/Xcode.app/Contents/Developer' }), /DEVELOPER_DIR/);
+  assert.throws(() => inspectSimulatorToolchain(f.run, { ...f.options, nodeArch: 'x64' }), /Arquitectura/);
+});
+test('preflight propaga fallo de herramienta sin continuar ni reintentar', () => {
+  const f = toolchainFixture(); let attempts = 0;
+  assert.throws(() => inspectSimulatorToolchain((command, args) => {
+    if (command === 'xcrun' && args[0] === 'simctl') { attempts++; throw Error('simctl unavailable'); }
+    return f.run(command, args);
+  }, f.options), /JSON válido/);
+  assert.equal(attempts, 1);
+});
+test('SHA aprobado: rechaza ausencia, otro commit y formatos incompletos', () => {
+  const sha = 'a'.repeat(40); verifyApprovedSha(sha, sha);
+  for (const approved of [undefined, '', 'b'.repeat(40), sha.slice(0, 7), sha.toUpperCase()]) {
+    assert.throws(() => verifyApprovedSha(approved, sha), /SHA fuente/);
+  }
+});
+test('settings efectivos rechazan arquitectura, SDK y firma incompatibles', () => {
+  const s = { PRODUCT_BUNDLE_IDENTIFIER: selection.appId, TARGETED_DEVICE_FAMILY: '1,2',
+    CODE_SIGNING_ALLOWED: 'NO', CODE_SIGNING_REQUIRED: 'NO', CODE_SIGN_IDENTITY: '', DEVELOPMENT_TEAM: '',
+    IPHONEOS_DEPLOYMENT_TARGET: '15.0', ARCHS: 'arm64 x86_64', PLATFORM_NAME: 'iphonesimulator', SDK_NAME: SIMULATOR_SDK };
+  for (const patch of [{ ARCHS: 'x86_64' }, { EXCLUDED_ARCHS: 'arm64' }, { ARCHS: undefined },
+    { SDK_NAME: 'iphonesimulator26.0' }, { CODE_SIGNING_ALLOWED: 'YES' }, { CODE_SIGN_IDENTITY: 'Apple Development' }]) {
+    assert.throws(() => verifySimulatorSettings([{ target: 'App', buildSettings: { ...s, ...patch } }], selection));
+  }
+});
+test('script invoca preflight antes de settings/build y conserva evidencia de runtime', async () => {
+  const script = await readFile(join(front, 'scripts/build-ios-simulator.mjs'), 'utf8');
+  const probe = script.indexOf('const toolchain = inspectSimulatorToolchain(');
+  assert.ok(probe > script.indexOf('verifyApprovedSha(process.env.IOS_APPROVED_SHA, sha)'));
+  assert.ok(probe < script.indexOf('await verifyIosProject('));
+  assert.ok(probe < script.indexOf("execFileSync('xcodebuild', args"));
+  assert.ok(script.includes('sha, xcode, toolchain'));
 });
 
 test('Windows rechaza generación/compilación real antes de crear proyecto', { skip: process.platform === 'darwin' }, () => {

@@ -1,8 +1,8 @@
 # Móvil 03 — base iOS universal y simulador sin firma
 
-Estado: base iOS revisada para cierre mediante un único commit local. Base `c4b90d1a404e545496af34526b7359ee73d2ac95`, rama `feature/rsp-mobile-multiplataforma`. No se ejecutó GitHub Actions, Xcode, una instalación ni un login real. No se intervino producción 027. Android físico sigue pendiente por el cable USB.
+Estado: corrección local 03D sobre `b5bc884d4688a3b3f4edd305313a596aaf4a4a00`, rama `feature/rsp-mobile-multiplataforma`. La primera ejecución remota autorizada por el propietario falló por incompatibilidad SDK/runtime (detalle abajo). En esta corrección no se ejecutó Actions ni Xcode, no se instaló ninguna aplicación ni se realizó login real. Producción 027 permanece intacta. Android físico sigue pendiente por el cable USB.
 
-## Inventario local
+## Inventario inicial de la etapa 03
 
 Modificados (3): `.gitignore`, `front/package.json`, `front/package-lock.json`.
 
@@ -50,7 +50,7 @@ Se inspeccionaron los `Package.swift` y las clases nativas instaladas. Todos los
 | `@capacitor/share@8.0.0` | CapacitorShare / SharePlugin | El código iOS prepara popover centrado para iPad |
 | `@aparajita/capacitor-secure-storage@8.0.0` | AparajitaCapacitorSecureStorage / SecureStorage | KeychainSwift |
 
-No se detectó incompatibilidad declarada con Capacitor 8. La resolución y compilación Swift real quedan pendientes del runner. No se introdujo CocoaPods ni se cambiaron plugins. Las declaraciones SPM de los plugins tienen rangos para dependencias transitivas; **el primer build todavía debe obtener y revisar `Package.resolved`**. El procedimiento conserva ese archivo en la evidencia; los builds posteriores con lock existente exigen sus versiones y rechazan su modificación. Capacitor queda fijado a 8.5.0 exacto. No se afirma reproducibilidad binaria absoluta de la primera resolución remota.
+No se detectó incompatibilidad declarada con Capacitor 8. La primera ejecución resolvió dependencias Swift, pero no completó la compilación; no acredita que todos los plugins compilen correctamente. No se introdujo CocoaPods ni se cambiaron plugins. Las declaraciones SPM tienen rangos transitivos: **se debe obtener, revisar y versionar `Package.resolved` tras un build satisfactorio**. El procedimiento conserva ese archivo en la evidencia; los builds posteriores con lock existente exigen sus versiones y rechazan su modificación. Capacitor queda fijado a 8.5.0 exacto. No se afirma reproducibilidad binaria absoluta de la primera resolución remota.
 
 ## Permisos y privacidad
 
@@ -84,11 +84,11 @@ El PDF se solicita al backend, se comprueba, se guarda en caché y se comparte c
 
 `front/ios` sigue ausente en Windows. Los tests extraen la plantilla oficial **solamente a directorios temporales**, usan el generador SPM oficial y prueban el parche PBX/Info.plist. Esos fixtures no son un proyecto compilado ni un artefacto instalable.
 
-Con autorización posterior, en un macOS con Xcode 26.0.1:
+Con autorización posterior, en el runner macOS arm64 evaluado con Xcode 26.2 y runtime iOS 26.2 disponible:
 
 ```bash
 # Desde front, después del checkout del SHA completo autorizado.
-export DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer
+export DEVELOPER_DIR=/Applications/Xcode_26.2.app/Contents/Developer
 export RSP_MOBILE_VARIANT=production
 export NATIVE_BACKEND_ORIGIN=https://api.raulsilvaperforaciones.com
 unset NATIVE_LAB_CONFIG
@@ -102,13 +102,13 @@ npm run build:ios:simulator
 
 `prepare:ios` rechaza Windows. Si el proyecto no existe ejecuta `cap add ios --packagemanager SPM`, luego `cap sync ios`; aplica permisos, identidad universal y privacy manifest de manera determinista. Si existe, exige una estructura SPM reconocible. No sobrescribe un proyecto CocoaPods/incompleto. El verificador exige las clases y productos de los siete plugins, rutas a los paquetes instalados, política de red, manifest en Resources y hashes de assets iguales al build Angular.
 
-`build:ios:simulator` exige SHA aprobado, código versionado sin modificaciones, Xcode **26.0.1 (17A400)** y SDK **iphonesimulator26.0** realmente disponibles. Verifica settings efectivos y ejecuta `xcodebuild` con `CODE_SIGNING_ALLOWED=NO`, `CODE_SIGNING_REQUIRED=NO`, identidad de firma y equipo vacíos. Rechaza entitlements de firma y artefactos con firma/provisioning inesperados. No inicia un simulador, no abre la app y no llama a producción.
+`build:ios:simulator` exige SHA aprobado, código versionado sin modificaciones, Xcode **26.2 (17C52)**, SDK **iphonesimulator26.2** y runtime **iOS 26.2** disponibles. El preflight se detalla abajo. Verifica settings efectivos y ejecuta `xcodebuild` con `CODE_SIGNING_ALLOWED=NO`, `CODE_SIGNING_REQUIRED=NO`, identidad de firma y equipo vacíos. Rechaza entitlements de firma y artefactos con firma/provisioning inesperados. No inicia un simulador, no abre la app y no llama a producción. El mínimo de la aplicación continúa en **iOS 15.0**.
 
 Después verifica Info.plist del `.app`, familia `[1,2]`, bundle ID, nombre, mínimo iOS 15.0, permisos, privacidad y copia de assets. También exige `IPHONEOS_DEPLOYMENT_TARGET=15.0` en los settings efectivos: un override no puede pasar sólo porque el PBX original indique 15.0. Emite `IOS_SIMULATOR_BUILD_OK` sólo tras completar esas comprobaciones.
 
 Evidencias en `front/dist/ios-evidence/`:
 
-- `build.json`: SHA, Xcode, SDK, Capacitor, identidad, API/WSS, resultado y hash de resolución Swift.
+- `build.json`: SHA, Xcode, SDK efectivo y ruta, arquitectura, identidad/versión/build del runtime, Capacitor, identidad, API/WSS, resultado y hash de resolución Swift.
 - `Package.resolved`: revisarlo y conservarlo para futuros builds.
 - `ios-project-review.tgz`: proyecto nativo para revisión, sin assets web ni configuración copiada local.
 - `simulator-app.tgz`: aplicación de simulador **sin firma**, no IPA ni aplicación instalable en un iPhone.
@@ -119,15 +119,15 @@ Tras la primera ejecución autorizada, descargar y revisar el proyecto; en una e
 
 `.github/workflows/ios-simulator.yml` usa sintaxis JSON válida como YAML, para permitir su validación estructural local sin agregar un parser. Sólo tiene `workflow_dispatch`, no push/PR/schedule. Requiere un SHA completo igual al SHA de la rama seleccionada; hace checkout de ese mismo SHA. Las acciones oficiales se fijan por SHA, los permisos son `contents: read` y no se conservan credenciales Git ni se usan secretos Apple/productivos.
 
-Runner `macos-26`, Node 24.18.0 y Xcode estable seleccionado por ruta, sin `macos-latest` ni selección automática. El [inventario oficial del runner](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md) consultado incluye Xcode 26.0.1 y su SDK. Si GitHub los retira, el control falla y exige revisión; no cambia silenciosamente de compilador. [Capacitor requiere Xcode 26+](https://capacitorjs.com/docs/ios).
+Runner `macos-26`, Node 24.18.0 y Xcode estable seleccionado por ruta, sin `macos-latest` ni selección automática. El [inventario de la imagen arm64 realmente utilizada](https://github.com/actions/runner-images/blob/macos-26-arm64/20261021.0445/images/macos/macos-26-arm64-Readme.md) incluye Xcode 26.2 (17C52), SDK y runtime de simulador 26.2. Si GitHub cambia la combinación, el control falla y exige revisión; no cambia silenciosamente de compilador. [Apple documenta Xcode 26.2 con SDK iOS 26.2 y soporte de iOS 15](https://developer.apple.com/xcode/system-requirements).
 
-Los contratos del job excluyen el probe Gradle, pues el runner iOS no requiere Android SDK. Después de compilar, los artefactos se conservan siete días. No hay distribución, login, despliegue ni escrituras empresariales. Los minutos macOS pueden generar costos; no se ejecutó el workflow en esta etapa.
+Los contratos del job excluyen el probe Gradle, pues el runner iOS no requiere Android SDK. Después de compilar, los artefactos se conservan siete días. No hay distribución, login, despliegue ni escrituras empresariales. Los minutos macOS pueden generar costos; no se lanzó ni reintentó el workflow durante la corrección 03D.
 
-**Bloqueo operativo de activación:** la rama predeterminada es `main`. GitHub exige que `workflow_dispatch` exista en ella para su activación manual normal. Publicar sólo la rama móvil no resuelve este requisito. [Documentación oficial](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow?tool=webui). Se propone autorizar posteriormente una incorporación revisada de este workflow a `main`, sin fusionar funcionalidades móviles ni desplegar; luego seleccionar explícitamente `feature/rsp-mobile-multiplataforma` y su SHA aprobado para ejecutarlo. La guarda exige que ese SHA coincida con la rama elegida. No se modificó `main`, no se abrió PR y no se ejecutó ningún workflow en este cierre. No se habilita un disparador por push ni se asume que `gh workflow run --ref` elimina el requisito inicial.
+**Registro manual ya disponible:** el workflow existe en `main` tras el PR #19, verificado mediante lectura de GitHub. GitHub permite seleccionar otra rama al ejecutar manualmente un workflow registrado en la rama predeterminada. [Documentación oficial](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow). Para el siguiente intento, primero autorizar el push del nuevo commit 03D y, por separado, una nueva ejecución seleccionando `feature/rsp-mobile-multiplataforma` con su **nuevo SHA completo**. Esa selección utiliza el workflow revisado de la rama móvil; no reutilizar `b5bc884` ni pulsar Re-run sobre el intento fallido. No ejecutar sobre `main`, que no contiene los scripts móviles. No se modifica `main` ni se agregan triggers automáticos en 03D.
 
 ## Pruebas locales y límites
 
-Verificaciones repetidas en Windows durante el cierre técnico:
+Evidencias históricas del cierre 03 (anteriores al parche 03D):
 
 - Resolución npm: dependencia iOS directa 8.5.0; plugins y Core/CLI sin cambios de versión.
 - Contratos nativos: **131/131**, incluidos **41 casos iOS**. Cubren SPM, identidad del artefacto, modos mezclados, patrones de secretos y mínimo iOS efectivo.
@@ -143,12 +143,38 @@ Los primeros intentos dentro del sandbox fallaron por acceso a archivos/identida
 
 En el cierre se reprodujo una omisión del verificador: aceptaba un `.app` o settings efectivos con mínimo iOS distinto/ausente, aunque el PBX declarara 15.0. Dos pruebas negativas fallaron antes del parche y pasaron después de exigir 15.0 en ambos niveles. La corrección sólo afecta los verificadores y sus tests; no cambia código empresarial, permisos ni el destino del build.
 
-No se validó todavía: resolución Swift en macOS, compilación Xcode, agregado final de privacidad por Xcode, renderizado en simulador, permisos/cámara/Keychain reales, suspensión/reanudación, teclado, share sheet de iPad, GPS ni persistencia tras cierre físico. Una compilación exitosa tampoco certificará esas pruebas.
+No se validó todavía: compilación Xcode completa y plugins Swift en conjunto, revisión del lock resuelto, agregado final de privacidad por Xcode, renderizado en simulador, permisos/cámara/Keychain reales, suspensión/reanudación, teclado, share sheet de iPad, GPS ni persistencia tras cierre físico. Una compilación exitosa tampoco certificará esas pruebas.
+
+## Incidente y corrección 03D — SDK y runtime
+
+Se revisó el log completo del [run 40982213300, job 123824739601](https://github.com/GastonBaranov9/registro-perforaciones/actions/runs/40982213300), ejecutado sobre `b5bc884d4688a3b3f4edd305313a596aaf4a4a00`. Imagen `macos-26-arm64`, versión `20261021.0445.8`, macOS 26.6.2. Las pruebas nativas, instalación, build Angular y generación oficial iOS finalizaron; el primer error nativo fue en `CompileAssetCatalogVariant`, a las 00:53:51 UTC del 30/10/2026:
+
+```text
+No simulator runtime version from ["23C54", "23E254a", "23F77"] available to use with iphonesimulator SDK version 23A339
+```
+
+Xcode seleccionado: 26.0.1 (17A400), SDK `iphonesimulator26.0`. Los runtimes observados por actool eran posteriores; el inventario de esa imagen documenta iOS 26.2, 26.4.1 y 26.5, no 26.0. No aparecen errores nativos independientes antes de ese fallo. El exit code de Node es consecuencia del `xcodebuild` fallido, no la causa. Esto no demuestra un defecto Angular ni de los plugins y tampoco acredita su compilación completa.
+
+El parche modifica solamente cinco archivos: workflow, `ios-simulator-contract.mjs`, `build-ios-simulator.mjs`, `native-ios.test.mjs` y este documento. No cambia dependencias, privacidad, identidad, backend, Android ni mínimo iOS.
+
+Antes de consultar settings o invocar `xcodebuild build`, el preflight:
+
+1. Exige Xcode 26.2/17C52 y `DEVELOPER_DIR` exacto; consulta `xcodebuild -version` y `-showsdks` con coincidencia completa de SDK.
+2. Comprueba versión y ruta efectiva del SDK mediante `xcrun --sdk ... --show-sdk-version/--show-sdk-path`, rechazando instalaciones mezcladas.
+3. Exige host y Node arm64 nativos, coherentes con la imagen evaluada. Intel/Rosetta quedan bloqueados hasta evaluación explícita; no se infiere compatibilidad universal de herramientas.
+4. Analiza JSON de `xcrun simctl list runtimes -j`. Exige un único runtime con identificador `com.apple.CoreSimulator.SimRuntime.iOS-26-2`, versión 26.2, `isAvailable=true`, sin error de disponibilidad y con identidad de build. La presencia del SDK sola no basta.
+5. Exige arquitectura arm64 incluida y no excluida en los settings efectivos; conserva comprobaciones de SDK, mínimo 15.0, familia universal y firma deshabilitada.
+
+Emite `IOS_SIMULATOR_PREFLIGHT_OK` con evidencia técnica y añade esa evidencia a `build.json` únicamente si el build completo termina correctamente. Un runtime ausente/no disponible, JSON inválido o cualquier contradicción bloquea la compilación; no descarga componentes, inicia simuladores, cambia de Xcode ni reintenta automáticamente. La consulta simctl es evidencia de disponibilidad local, no una prueba de ejecución física de la app.
+
+Regresiones locales 03D: **156/156 contratos nativos, incluidos 66 casos iOS**, y **140/140 Angular** (autenticación, almacenamiento seguro simulado, offline e interceptor/WebSocket). Total **296 casos únicos**; la ejecución focalizada de los 66 iOS no se vuelve a sumar. Los casos nuevos cubren runtime ausente, posterior, ambiguo, contradictorio o no disponible, JSON inválido, error de simctl, SDK/Xcode equivocados, mezcla de rutas, arquitecturas, SHA no aprobado y firma. Se conservan las pruebas de mínimo iOS 15.0.
+
+Build Angular nativo y `IOS_WEB_ASSETS_VERIFIED` satisfactorios, incluidos CSP/HTTPS/WSS e inventario de hashes. El primer build local falló por acceso denegado del sandbox; el mismo comando con acceso autorizado pasó, sin corregir código empresarial. Permanece la advertencia no bloqueante `empty-glob` de Stencil. Sintaxis Node, YAML/JSON y `git diff --check` revisados. La APK previa conserva su SHA-256; no se generaron artefactos Android. Estas verificaciones no sustituyen la próxima compilación macOS ni las pruebas físicas.
 
 ## Pasos siguientes separados por autorización
 
 1. Revisar el commit local de cierre y autorizar su publicación por separado.
-2. Autorizar el registro y la ejecución manual del workflow para un SHA definitivo. Obtener el primer build sin firma y revisar resolución Swift, proyecto y manifests transitivos.
+2. Autorizar por separado una nueva ejecución manual del workflow ya registrado, seleccionando la rama móvil publicada y el nuevo SHA definitivo 03D. Obtener el primer build completo sin firma y revisar resolución Swift, proyecto y manifests transitivos.
 3. Revisar y versionar el proyecto generado/lock. Ejecutar regresión de simulador con ese estado reproducible.
 4. Para iPhone/iPad físicos: definir identidad registrada, equipo Apple, firma y aprovisionamiento. El simulador no necesita Apple Developer; TestFlight/Ad Hoc requiere la membresía correspondiente, certificados/perfiles y eventualmente App Store Connect. Nada de ello se solicitó ni configuró aquí. [Opciones oficiales de Apple](https://developer.apple.com/support/compare-memberships/).
 5. Con autorización específica de instalación: probar primero apertura, login del propietario, consultas, perfil/PDF y orientación vertical/horizontal, sin crear registros, subir fotos ni sincronizar escrituras. Esta app comparte funcionalidades empresariales; **no es una variante técnicamente de sólo lectura**. El límite de consulta es operativo, no una promesa de bloqueo de todos los botones de escritura.

@@ -14,7 +14,7 @@
       "runs-on": "macos-26",
       "timeout-minutes": 40,
       "env": {
-        "DEVELOPER_DIR": "/Applications/Xcode_26.0.1.app/Contents/Developer",
+        "DEVELOPER_DIR": "/Applications/Xcode_26.2.app/Contents/Developer",
         "RSP_MOBILE_VARIANT": "production",
         "NATIVE_BACKEND_ORIGIN": "https://api.raulsilvaperforaciones.com",
         "IOS_APPROVED_SHA": "${{ inputs.approved_sha }}"
