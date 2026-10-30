@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "sources": {
+    "branding/rs_icono_piloto.png": "8b5bcda23d1647dac485d7f6887750cac343c743ef9a59e2843b7a729d478ad7",
+    "branding/rs_splash_piloto.png": "08aeb74c564fd8130dfe6f59e628a0e3757e6e8c255529b08c3fd593aa393f87"
+  },
+  "background": {
+    "rgb": [
+      6,
+      148,
+      252
+    ],
+    "sourcePixel": [
+      800,
+      700
+    ]
+  },
+  "outputs": {
+    "App/App/Assets.xcassets/AppIcon.appiconset/rs-icon-1024.png": "496dc8f782265dbe9a996bd86303e57a29f245787aefc0d56550ce8b5e126563",
+    "App/App/Assets.xcassets/Splash.imageset/rs-splash.png": "331a1c32e3c46a80c3e6bd71e9e900aed502ac603352a59062b92d11ef9edf1d",
+    "App/App/Base.lproj/LaunchScreen.storyboard": "f109ada1e9f92e82b97565519a7d40443947180b79ff5a275d27c59ad712d558",
+    "App/App/Assets.xcassets/AppIcon.appiconset/Contents.json": "6dfd13de4c14517abc8aa943daac3dd3f00d8669e7bbf36bfe4d6c18fc0f644e",
+    "App/App/Assets.xcassets/Splash.imageset/Contents.json": "41cbf201a26a74646f3099a4c8ba00f967cd21f1e0215053a302d2c2b47f9d32"
+  }
+}

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+import { crc32 } from 'node:zlib';
+import { generateIosBranding, verifyIosBranding, inspectPng, verifyLaunch, ICON, SPLASH, LAUNCH } from './ios-branding.mjs';
 import { IOS_ORIGIN, IOS_PLUGINS, iosSelection, iosPolicy, plist, configureIos,
   loadProject, verifyProject, verifyInfo, verifyIosAssets, verifyIosSpm, readJson } from './ios-contract.mjs';
 import { recordNativeArtifact, nativeCsp } from './native-artifact.mjs';
@@ -20,6 +22,74 @@ const requireCli = createRequire(import.meta.resolve('@capacitor/cli/package.jso
 
 const versionedIos = join(front, 'ios');
 const resolvedPath = 'App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved';
+
+test('branding iOS: originales aprobados, RGB opaco sRGB, catálogos y splash íntegro', async () => {
+  await verifyIosBranding(front, versionedIos);
+});
+
+test('branding: generador Windows reproducible dos veces y coincide con recursos versionados', { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'rsp-ios-branding-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = await generateIosBranding(front, root);
+  const files = [...Object.keys(first.outputs), 'branding.json'];
+  const bytes = await Promise.all(files.map(file => readFile(join(root, file))));
+  await generateIosBranding(front, root);
+  for (let i = 0; i < files.length; i++) {
+    assert.deepEqual(await readFile(join(root, files[i])), bytes[i], files[i]);
+    assert.deepEqual(await readFile(join(versionedIos, files[i])), bytes[i], files[i]);
+  }
+  await verifyIosBranding(front, root);
+});
+
+test('configurador iOS conserva branding versionado en vez de restaurar Capacitor', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'rsp-ios-branding-prepare-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await cp(versionedIos, root, { recursive: true });
+  await configureIos(front, root, selection);
+  await verifyIosBranding(front, root);
+  const prepare = await readFile(join(front, 'scripts/prepare-ios.mjs'), 'utf8');
+  assert.match(prepare, /if \(!exists\) cap\('add', 'ios'/);
+});
+
+for (const [name, mutate, message] of [
+  ['CRC dañado', b => { b[45] ^= 1; }, /CRC/],
+  ['PNG truncado', b => b.subarray(0, -4), /truncado/],
+  ['canal alfa', b => { b[25] = 6; b.writeUInt32BE(crc32(b.subarray(12, 29)), 29); }, /sin alfa/],
+]) test(`branding rechaza ${name}`, async () => {
+  const bytes = Buffer.from(await readFile(join(versionedIos, ICON)));
+  const changed = mutate(bytes) ?? bytes;
+  assert.throws(() => inspectPng(changed, true), message);
+});
+test('branding rechaza PNG sin espacio de color explícito', async () => {
+  const original = await readFile(join(front, 'branding/rs_icono_piloto.png'));
+  assert.throws(() => inspectPng(original, true), /sRGB/);
+});
+
+for (const [name, from, to] of [
+  ['recorte', 'scaleAspectFit', 'scaleAspectFill'],
+  ['estiramiento', 'scaleAspectFit', 'scaleToFill'],
+  ['fondo dinámico', 'customColorSpace="sRGB"', 'systemColor="systemBackgroundColor"'],
+  ['salida del área segura', 'secondItem="rsp-safe"', 'secondItem="rsp-root"'],
+]) test(`LaunchScreen rechaza ${name}`, async () => {
+  const xml = await readFile(join(versionedIos, LAUNCH), 'utf8');
+  assert.throws(() => verifyLaunch(xml.replace(from, to)));
+});
+
+test('aspect fit conserva logo completo en iPhone/iPad, ambas orientaciones y área segura', async () => {
+  verifyLaunch(await readFile(join(versionedIos, LAUNCH), 'utf8'));
+  const image = inspectPng(await readFile(join(versionedIos, SPLASH)), true);
+  for (const [width, height, top, bottom, left, right] of [
+    [375, 667, 20, 0, 0, 0], [393, 852, 59, 34, 0, 0], [852, 393, 0, 21, 59, 59],
+    [820, 1180, 24, 20, 0, 0], [1180, 820, 24, 20, 0, 0], [507, 1180, 24, 20, 0, 0],
+  ]) {
+    const w = width - left - right, h = height - top - bottom;
+    const scale = Math.min(w / image.width, h / image.height);
+    const drawnW = image.width * scale, drawnH = image.height * scale;
+    assert.ok(drawnW <= w + 1e-9 && drawnH <= h + 1e-9);
+    assert.ok(Math.abs(drawnW / drawnH - image.width / image.height) < 1e-9);
+    assert.ok((w - drawnW) / 2 >= -1e-9 && (h - drawnH) / 2 >= -1e-9);
+  }
+});
 
 test('proyecto recuperado del build: identidad, privacidad, permisos y siete plugins coherentes', async () => {
   verifyProject(loadProject(versionedIos), selection);
